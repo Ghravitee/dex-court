@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+/* =========================
+   🌐 Base Theme Variables
+   ========================= */
+:root {
+  --background: 222 84% 6%;
+  --foreground: 210 40% 98%;
+
+  --card: 222 84% 7%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222 84% 7%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 188 94% 54%;
+  --primary-foreground: 222 47% 11%;
+
+  --secondary: 217 33% 18%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217 33% 14%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 190 95% 42%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 2 90% 58%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 215 28% 20%;
+  --input: 215 28% 20%;
+  --ring: 188 94% 54%;
+
+  --radius: 0.75rem;
+
+  --sidebar-background: 222 84% 5%;
+  --sidebar-foreground: 210 40% 96%;
+  --sidebar-primary: 188 94% 54%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 14%;
+  --sidebar-accent-foreground: 210 40% 96%;
+  --sidebar-border: 217 33% 17%;
+  --sidebar-ring: 188 94% 54%;
+}
+
+.dark {
+  --background: 222 84% 6%;
+  --foreground: 210 40% 98%;
+
+  --card: 222 84% 7%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222 84% 7%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 188 94% 54%;
+  --primary-foreground: 222 47% 11%;
+
+  --secondary: 217 33% 18%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217 33% 14%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 190 95% 42%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 2 90% 58%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 215 28% 20%;
+  --input: 215 28% 20%;
+  --ring: 188 94% 54%;
+
+  --sidebar-background: 222 84% 5%;
+  --sidebar-foreground: 210 40% 96%;
+  --sidebar-primary: 188 94% 54%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 14%;
+  --sidebar-accent-foreground: 210 40% 96%;
+  --sidebar-border: 217 33% 17%;
+  --sidebar-ring: 188 94% 54%;
+}
+
+/* =========================
+   🌐 Base Styles
+   ========================= */
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+    Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background-image: radial-gradient(
+      1000px 600px at 10% -10%,
+      rgba(34, 211, 238, 0.15),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 500px at 120% -20%,
+      rgba(56, 189, 248, 0.1),
+      transparent 60%
+    );
+  background-attachment: fixed;
+}
+
+/* =========================
+   🧩 Components
+   ========================= */
+
+/* Glass effect */
+.glass {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+}
+.sidebar-glass {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top-right-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+/* Neon glow effects */
+.neon {
+  box-shadow: 0 0 0px rgba(34, 211, 238, 0), 0 0 30px rgba(34, 211, 238, 0.25);
+}
+
+.neon-hover:hover {
+  box-shadow: 0 0 0px rgba(34, 211, 238, 0), 0 0 36px rgba(34, 211, 238, 0.4);
+}
+
+/* Glow text */
+.glow-text {
+  text-shadow: 0 0 16px rgba(34, 211, 238, 0.55);
+}
+
+/* Badge styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-width: 1px;
+}
+
+/* Badge variants */
+.badge-green {
+  border-color: rgba(16, 185, 129, 0.3);
+  color: rgb(110, 231, 183);
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.badge-orange {
+  border-color: rgba(249, 115, 22, 0.3);
+  color: rgb(253, 186, 116);
+  background-color: rgba(249, 115, 22, 0.1);
+}
+
+.badge-red {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgb(252, 165, 165);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.badge-blue {
+  border-color: rgba(56, 189, 248, 0.3);
+  color: rgb(125, 211, 252);
+  background-color: rgba(56, 189, 248, 0.1);
+}
