@@ -8,6 +8,7 @@ import {
   User,
   Timer,
   ArrowRight,
+  Vote,
 } from "lucide-react";
 
 export default function Index() {
@@ -15,13 +16,13 @@ export default function Index() {
     <div className="space-y-8">
       <section className="grid grid-cols-1 items-center gap-6 rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-transparent to-transparent p-8 md:grid-cols-3">
         <div className="md:col-span-2">
-          <h1 className="text-3xl font-bold tracking-tight text-white glow-text">
+          <h1 className="text-3xl font-bold tracking-tight text-white glow-text space">
             Dex Court dApp
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Create agreements, resolve disputes, vote on cases, and manage
-            escrow with neon-fast UX. Your actions update reputation across the
-            network.
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            A decentralized platform for trustless agreements, transparent
+            dispute resolution, and on-chain reputation. Govern your deals and
+            votes with full cryptographic assurance.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link to="/agreements">
@@ -45,50 +46,55 @@ export default function Index() {
           <Stat label="Reputation" value="78" />
         </div>
       </section>
-
       <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card
           title="Agreements"
           icon={<FileText className="h-4 w-4" />}
           to="/agreements"
           color="from-cyan-500/10"
+          description="Draft, sign, and manage tamper-proof smart agreements."
         />
         <Card
           title="Disputes"
           icon={<Scale className="h-4 w-4" />}
           to="/disputes"
-          color="from-rose-500/10"
+          color="from-cyan-500/10"
+          description="Resolve conflicts through transparent voting and evidence."
         />
         <Card
           title="Escrow"
           icon={<BadgeDollarSign className="h-4 w-4" />}
           to="/escrow"
           color="from-sky-500/10"
+          description="Secure funds in trustless, automated escrow vaults."
         />
         <Card
           title="Voting Hub"
-          icon={<Scale className="h-4 w-4" />}
+          icon={<Vote className="h-4 w-4" />}
           to="/voting"
-          color="from-emerald-500/10"
+          color="from-cyan-500/10"
+          description="Participate in community verdicts and shape case outcomes."
         />
         <Card
           title="Reputation"
           icon={<Star className="h-4 w-4" />}
           to="/reputation"
-          color="from-amber-500/10"
+          color="from-cyan-500/10"
+          description="Earn credibility as you engage with agreements & disputes."
         />
         <Card
           title="Profile"
           icon={<User className="h-4 w-4" />}
           to="/profile"
-          color="from-fuchsia-500/10"
+          color="from-cyan-500/10"
+          description="View your activity, reputation, and arbitration history."
         />
       </section>
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="glass p-5 ring-1 ring-white/10">
+        <div className="glass p-5  border border-white/10 ring-white/10 bg-gradient-to-br from-cyan-500/10 ">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/90">
+            <h3 className="text-sm font-semibold text-white/90 space">
               Upcoming Deadlines
             </h3>
             <Timer className="h-4 w-4 text-cyan-300" />
@@ -114,9 +120,9 @@ export default function Index() {
             </li>
           </ul>
         </div>
-        <div className="glass p-5 ring-1 ring-white/10">
+        <div className="glass p-5  border border-white/10 ring-white/10 bg-gradient-to-br from-cyan-500/10">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/90">
+            <h3 className="text-sm font-semibold text-white/90 space">
               Recent Agreements
             </h3>
             <Link
@@ -147,26 +153,32 @@ export default function Index() {
             </li>
           </ul>
         </div>
-        <div className="glass p-5 ring-1 ring-white/10">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/90">Flow</h3>
+        <div className="glass p-5 ring-1 ring-white/10 relative overflow-hidden bg-gradient-to-br from-cyan-500/10">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white/90 tracking-wide uppercase">
+              Flow
+            </h3>
           </div>
-          <ol className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex items-center gap-2">
-              <span className="text-cyan-300">1.</span> Create Agreement
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-cyan-300">2.</span> Raise Dispute
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-cyan-300">3.</span> Voting
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-cyan-300">4.</span> Verdict
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="text-cyan-300">5.</span> Escrow/Reputation Update
-            </li>
+
+          <ol className="relative border-l border-cyan-500/30 space-y-6 ml-3">
+            {[
+              "Create Agreement",
+              "Raise Dispute",
+              "Voting",
+              "Verdict",
+              "Escrow / Reputation Update",
+            ].map((step, idx) => (
+              <li key={idx} className="relative pl-6 group">
+                {/* Bullet */}
+                <span className="absolute -left-[10px] top-1 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500/10 ring-1 ring-cyan-400/40 group-hover:scale-110 group-hover:bg-cyan-500/20 transition">
+                  <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)]"></span>
+                </span>
+
+                <span className="text-sm text-white/80 group-hover:text-cyan-300 transition">
+                  {idx + 1}. {step}
+                </span>
+              </li>
+            ))}
           </ol>
         </div>
       </section>
@@ -188,17 +200,19 @@ function Card({
   icon,
   to,
   color,
+  description,
 }: {
   title: string;
   icon: React.ReactNode;
   to: string;
   color: string;
+  description: string;
 }) {
   return (
     <Link
       to={to}
       className={
-        "group glass flex items-center justify-between p-5 ring-1 ring-white/10 hover:ring-cyan-400/30 transition " +
+        "group glass flex flex-col gap-1 justify-between px-5 py-3 border border-white/10 group-hover:border-cyan-400 transition-all transform hover:scale-[1.04] " +
         `bg-gradient-to-br ${color}`
       }
     >
@@ -207,13 +221,11 @@ function Card({
           {icon}
         </div>
         <div>
-          <div className="font-medium text-white/90">{title}</div>
-          <div className="text-xs text-muted-foreground">
-            Go to {title.toLowerCase()}
-          </div>
+          <div className="font-medium text-white/90 space text-lg">{title}</div>
+          <div className="text-sm text-muted-foreground">{description}</div>
         </div>
       </div>
-      <ArrowRight className="h-4 w-4 text-cyan-300 opacity-0 transition group-hover:opacity-100" />
+      <ArrowRight className="h-4 w-4 text-cyan-300 opacity-0 transition group-hover:opacity-100 self-end" />
     </Link>
   );
 }

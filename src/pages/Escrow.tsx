@@ -107,7 +107,9 @@ export default function Escrow() {
         ? "ring-rose-400/40 shadow-[0_0_24px_rgba(244,63,94,0.25)]"
         : "ring-sky-400/40 shadow-[0_0_24px_rgba(56,189,248,0.25)]";
     return (
-      <div className={`glass ring-1 ring-white/10 p-5 rounded-xl ${ring}`}>
+      <div
+        className={`glass ring-1 ring-white/10 p-5 rounded-xl bg-gradient-to-br from-cyan-500/10 ${ring}`}
+      >
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold text-white/90">{e.id}</div>
           <span

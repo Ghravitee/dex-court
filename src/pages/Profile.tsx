@@ -81,7 +81,7 @@ export default function Profile() {
       </header>
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="glass ring-1 ring-white/10 p-6 flex items-center gap-4">
+        <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 p-6 flex items-center gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
             <User className="h-5 w-5" />
           </div>
@@ -95,7 +95,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="glass ring-1 ring-white/10 p-6">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
           <div className="mb-2 text-xs text-muted-foreground">Roles</div>
           <div className="flex flex-wrap gap-3">
             <button
@@ -118,7 +118,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="glass ring-1 ring-white/10 p-6">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
           <div className="mb-2 text-xs text-muted-foreground">
             Verifications
           </div>
@@ -158,7 +158,7 @@ export default function Profile() {
       </section>
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="glass ring-1 ring-white/10 p-6">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
           <div className="mb-4 flex items-center gap-2">
             <Bell className="h-4 w-4 text-cyan-300" />
             <h3 className="text-sm font-semibold text-white/90">
@@ -193,7 +193,7 @@ export default function Profile() {
           />
         </div>
 
-        <div className="glass ring-1 ring-white/10 p-6">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
           <div className="mb-4 flex items-center gap-2">
             <Lock className="h-4 w-4 text-cyan-300" />
             <h3 className="text-sm font-semibold text-white/90">Privacy</h3>

@@ -191,7 +191,7 @@ export default function Reputation() {
       </header>
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="glass ring-1 ring-white/10 p-6 flex items-center gap-4">
+        <div className="glass ring-1 ring-white/10 p-6 flex items-center gap-4 bg-gradient-to-br from-cyan-500/10">
           <div className="grid h-12 w-12 place-items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
             <User className="h-5 w-5" />
           </div>
@@ -200,7 +200,7 @@ export default function Reputation() {
             <div className="text-white/90 font-semibold">{profile.handle}</div>
           </div>
         </div>
-        <div className="glass ring-1 ring-white/10 p-6">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
           <div className="text-xs text-muted-foreground">Summary</div>
           <div className="mt-2 grid grid-cols-4 gap-4 text-center">
             <div>
@@ -231,7 +231,7 @@ export default function Reputation() {
             </div>
           </div>
         </div>
-        <div className="glass ring-1 ring-white/10 p-6 flex items-center justify-between">
+        <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 p-6 flex items-center justify-between">
           <div>
             <div className="text-xs text-muted-foreground">30d Change</div>
             <div
@@ -254,7 +254,7 @@ export default function Reputation() {
         </div>
       </section>
 
-      <section className="glass ring-1 ring-white/10">
+      <section className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10">
         <div className="flex items-center justify-between border-b border-white/10 p-5">
           <h3 className="text-sm font-semibold text-white/90">History</h3>
           <div className="text-xs text-muted-foreground">

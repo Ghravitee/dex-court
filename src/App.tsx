@@ -12,6 +12,7 @@ import Voting from "./pages/Voting";
 import Escrow from "./pages/Escrow";
 import Reputation from "./pages/Reputation";
 import Profile from "./pages/Profile";
+// import Landing from "./pages/Landing";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,7 @@ export default function App() {
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* <Route path="/landing" element={<Landing />} /> */}
             <Route path="/" element={<Layout />}>
               <Route index element={<Index />} />
               <Route path="agreements" element={<Agreements />} />
