@@ -138,50 +138,51 @@ export default function Voting() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-6">
-        <header className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white/90">Voting Hub</h2>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>Judge Mode</span>
-            <Switch checked={judgeMode} onCheckedChange={setJudgeMode} />
-          </div>
-        </header>
-
-        {/* Custom Tabs */}
-        <div className="flex w-fit rounded-md bg-white/5 p-1">
-          <button
-            onClick={() => setTab("live")}
-            className={`px-4 py-1.5 text-sm rounded-md transition ${
-              tab === "live"
-                ? "bg-cyan-500/20 text-cyan-300"
-                : "text-muted-foreground hover:text-white/80"
-            }`}
-          >
-            LIVE
-          </button>
-          <button
-            onClick={() => setTab("done")}
-            className={`px-4 py-1.5 text-sm rounded-md transition ${
-              tab === "done"
-                ? "bg-cyan-500/20 text-cyan-300"
-                : "text-muted-foreground hover:text-white/80"
-            }`}
-          >
-            CONCLUDED
-          </button>
+    <div className="space-y-6 relative">
+      <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]"></div>
+      <header className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-white/90 space">
+          Voting Hub
+        </h2>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>Judge Mode</span>
+          <Switch checked={judgeMode} onCheckedChange={setJudgeMode} />
         </div>
+      </header>
 
-        {/* Tab Content */}
-        <div className="mt-4 space-y-4">
-          {tab === "live" &&
-            live.map((c) => (
-              <LiveCaseCard key={c.id} c={c} judgeMode={judgeMode} />
-            ))}
+      {/* Custom Tabs */}
+      <div className="flex w-fit rounded-md bg-white/5 p-1">
+        <button
+          onClick={() => setTab("live")}
+          className={`px-4 py-1.5 text-sm rounded-md transition ${
+            tab === "live"
+              ? "bg-cyan-500/20 text-cyan-300"
+              : "text-muted-foreground hover:text-white/80"
+          }`}
+        >
+          LIVE
+        </button>
+        <button
+          onClick={() => setTab("done")}
+          className={`px-4 py-1.5 text-sm rounded-md transition ${
+            tab === "done"
+              ? "bg-cyan-500/20 text-cyan-300"
+              : "text-muted-foreground hover:text-white/80"
+          }`}
+        >
+          CONCLUDED
+        </button>
+      </div>
 
-          {tab === "done" &&
-            concluded.map((c) => <DoneCaseCard key={c.id} c={c} />)}
-        </div>
+      {/* Tab Content */}
+      <div className="mt-4 space-y-4 max-w-[1100px] mx-auto">
+        {tab === "live" &&
+          live.map((c) => (
+            <LiveCaseCard key={c.id} c={c} judgeMode={judgeMode} />
+          ))}
+
+        {tab === "done" &&
+          concluded.map((c) => <DoneCaseCard key={c.id} c={c} />)}
       </div>
     </div>
   );
@@ -195,7 +196,7 @@ function LiveCaseCard({ c, judgeMode }: { c: LiveCase; judgeMode: boolean }) {
   const remain = Math.max(0, c.endsAt - now());
 
   return (
-    <div className="glass ring-1 ring-white/10 p-0 mx-w-[40rem] mx-auto">
+    <div className=" border border-white/10 rounded-xl p-0 mx-w-[40rem] mx-auto relative">
       <Accordion type="single" collapsible>
         <AccordionItem value="item-1">
           <div className="grid grid-cols-1 lg:grid-cols-2 justify-between px-5 pt-4">
@@ -308,7 +309,7 @@ function LiveCaseCard({ c, judgeMode }: { c: LiveCase; judgeMode: boolean }) {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4 h-fit">
                 <div className="mb-2 text-sm font-medium text-white/90">
                   Participants
                 </div>

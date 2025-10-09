@@ -143,7 +143,11 @@ export default function Disputes() {
   return (
     <div className="space-y-8">
       {/* Intro section */}
-      <section className="glass ring-1 ring-white/10 p-6">
+      <section className="rounded-xl border border-b-3 border-white/10 p-6 relative">
+        <div className="lg:size-[30rem] size-[20rem] rounded-full bg-cyan-500/20 absolute lg:top-32 lg:right-10 blur-3xl block"></div>
+        <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute -top-20 -left-6 blur-3xl block"></div>
+        <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute top-[30rem] left-0 blur-3xl block"></div>
+        <div className="absolute inset-0 bg-cyan-500/10 blur-3xl -z-[50]"></div>
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-3">
             <h2 className="text-xl font-semibold text-white/90 space">
@@ -509,7 +513,7 @@ export default function Disputes() {
         </div>
 
         {/* Table */}
-        <div className="glass p-0 ring-1 ring-white/10">
+        <div className="border border-b-2 border-white/10 rounded-xl p-0 ring-1 ring-white/10">
           <div className="flex items-center justify-between border-b border-white/10 p-5">
             <h3 className="font-semibold text-white/90">Disputes</h3>
           </div>

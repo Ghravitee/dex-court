@@ -83,19 +83,6 @@
   --sidebar-ring: 188 94% 54%;
 }
 
-/* Force hover & focus styles globally */
-*,
-*::before,
-*::after {
-  /* Forces hover */
-  &:hover,
-  &:focus,
-  &:focus-visible,
-  &:focus-within {
-    outline: none !important;
-  }
-}
-
 /* =========================
    🌐 Base Styles
    ========================= */
@@ -182,6 +169,48 @@ body::after {
   }
 }
 
+/* tailwind.css or global.css */
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 6s ease-in-out infinite;
+}
+
+.shimmer {
+  inset: -20%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(34, 211, 238, 0.3),
+    rgba(56, 189, 248, 0.25),
+    rgba(16, 185, 129, 0.2),
+    rgba(34, 211, 238, 0.3)
+  );
+  filter: blur(20px); /* less blur for sharper aurora */
+  opacity: 0.3; /* more visible */
+  animation: aurora-spin 60s linear infinite; /* slower rotation */
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes aurora-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* =========================
    🧩 Components
    ========================= */
@@ -204,6 +233,27 @@ body::after {
   border-radius: inherit;
   pointer-events: none;
   mix-blend-mode: overlay;
+}
+
+.glow {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate; /* ensures glow doesn't leak outside */
+}
+
+.glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background: radial-gradient(
+    circle at center,
+    rgba(34, 211, 238, 0.25) 0%,
+    rgba(34, 211, 238, 0.05) 40%,
+    transparent 70%
+  );
+  filter: blur(40px);
+  pointer-events: none;
 }
 
 .sidebar-glass {

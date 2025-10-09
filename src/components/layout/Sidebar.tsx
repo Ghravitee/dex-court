@@ -36,6 +36,7 @@ export function Sidebar({
       )}
       aria-hidden={!open}
     >
+      <div className="lg:size-[20rem] rounded-full bg-cyan-500/30 absolute top-[300px] right-0 blur-3xl block"></div>
       <div className="flex h-16 items-center justify-between gap-3 px-5">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 flex items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60 neon">

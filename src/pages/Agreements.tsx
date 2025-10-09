@@ -93,9 +93,13 @@ export default function AgreementForm() {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 relative">
+      <div className="lg:size-[30rem] rounded-full bg-cyan-500/20 absolute top-32 right-10 blur-3xl block"></div>
+      <div className="lg:size-[15rem] rounded-full bg-cyan-500/20 absolute -top-20 left-0 blur-3xl block"></div>
+      <div className="absolute inset-0 bg-cyan-500/10 blur-3xl -z-[50]"></div>
       <div className="lg:col-span-2 space-y-4">
-        <div className="glass p-6 ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 space-y-5">
+        <h1 className="text-white text-xl space mb-2">Agreements</h1>
+        <div className="glass p-6 border border-white/10 bg-gradient-to-br from-cyan-500/10 space-y-5">
           {/* Title */}
           <div>
             <label className="mb-2 block font-semibold text-white space">
@@ -335,7 +339,7 @@ export default function AgreementForm() {
         </div>
       </div>
       <aside className="space-y-4">
-        <div className="glass p-5 ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10">
+        <div className="glass p-5 border border-white/10 bg-gradient-to-br from-cyan-500/10">
           {/* Filter Header */}
           {/* Filter Header */}
           <div className="mb-3 flex items-center justify-between">
