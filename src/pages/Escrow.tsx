@@ -248,260 +248,287 @@ export default function Escrow() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-4 relative">
+    <div className="relative">
       {/* Main */}
       <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]"></div>
 
       <div className="lg:col-span-3 space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <h2 className="text-xl font-semibold text-white/90">
+        <div className="flex justify-between items-center">
+          <header className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-[22px] font-semibold text-white/90 space mb-4">
                 Escrow Center
               </h2>
-              <Button variant="neon" className="neon-hover w-fit">
+              <Button
+                variant="neon"
+                className="neon-hover w-fit mb-4"
+                onClick={() => setOpen(true)}
+              >
                 Create Escrow
               </Button>
+
+              <p className="text-lg text-muted-foreground max-w-[20rem]">
+                Browse public escrows. Create, review, and manage funds
+                securely.
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Browse public escrows. Create, review, and manage funds securely.
-            </p>
-          </div>
-          {/* Moved call-to-action under heading for emphasis */}
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild></DialogTrigger>
-            <DialogContent className="border border-b-2 rounded-xl border-white/10 max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Create Escrow</DialogTitle>
-                <DialogDescription>
-                  Set up the agreement, parties, and funding details.
-                </DialogDescription>
-              </DialogHeader>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  createEscrow();
-                }}
-                className="grid grid-cols-1 gap-4 md:grid-cols-2"
-              >
-                {/* Title */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Title
-                  </label>
-                  <input
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm({ ...form, title: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    placeholder="e.g. Design Sprint Phase 1"
-                    required
-                  />
-                </div>
-
-                {/* Type */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Type
-                  </label>
-                  <select
-                    value={form.type}
-                    onChange={(e) =>
-                      setForm({ ...form, type: e.target.value as any })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    required
-                  >
-                    <option value="public">Public</option>
-                    <option value="private">Private</option>
-                  </select>
-                </div>
-
-                {/* Counterparty */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Counterparty
-                  </label>
-                  <input
-                    value={form.counterparty}
-                    onChange={(e) =>
-                      setForm({ ...form, counterparty: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    placeholder="@0xHandle or address"
-                    required
-                  />
-                </div>
-
-                {/* Who pays */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Who Pays?
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["me", "counterparty"] as const).map((p) => (
-                      <label
-                        key={p}
-                        className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                          form.payer === p
-                            ? "bg-cyan-500/10 border-cyan-400/40 text-cyan-200"
-                            : "border-white/10 bg-white/5"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="payer"
-                          className="hidden"
-                          checked={form.payer === p}
-                          onChange={() => setForm({ ...form, payer: p })}
-                        />
-                        {p === "me" ? "Me" : "Counterparty"}
-                      </label>
-                    ))}
+            {/* Moved call-to-action under heading for emphasis */}
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild></DialogTrigger>
+              <DialogContent className="border border-b-2 rounded-xl border-white/10 max-w-2xl bg-black">
+                <DialogHeader>
+                  <DialogTitle>Create Escrow</DialogTitle>
+                  <DialogDescription>
+                    Set up the agreement, parties, and funding details.
+                  </DialogDescription>
+                </DialogHeader>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    createEscrow();
+                  }}
+                  className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                >
+                  {/* Title */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Title
+                    </label>
+                    <input
+                      value={form.title}
+                      onChange={(e) =>
+                        setForm({ ...form, title: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      placeholder="e.g. Design Sprint Phase 1"
+                      required
+                    />
                   </div>
-                </div>
+                  {/* Type */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Type
+                    </label>
+                    <select
+                      value={form.type}
+                      onChange={(e) =>
+                        setForm({ ...form, type: e.target.value as any })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      required
+                    >
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </div>
+                  {/* Counterparty */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Counterparty
+                    </label>
+                    <input
+                      value={form.counterparty}
+                      onChange={(e) =>
+                        setForm({ ...form, counterparty: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      placeholder="@0xHandle or address"
+                      required
+                    />
+                  </div>
+                  {/* Who pays */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Who Pays?
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["me", "counterparty"] as const).map((p) => (
+                        <label
+                          key={p}
+                          className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                            form.payer === p
+                              ? "bg-cyan-500/30 border-cyan-400/40 text-cyan-200"
+                              : "border-white/10 bg-white/5"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="payer"
+                            className="hidden"
+                            checked={form.payer === p}
+                            onChange={() => setForm({ ...form, payer: p })}
+                          />
+                          {p === "me" ? "Me" : "Counterparty"}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Token */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Payment Token
+                    </label>
+                    <select
+                      value={form.token}
+                      onChange={(e) =>
+                        setForm({ ...form, token: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      required
+                    >
+                      <option>USDC</option>
+                      <option>DAI</option>
+                      <option>ETH</option>
+                    </select>
+                  </div>
+                  {/* Amount */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Amount
+                    </label>
+                    <input
+                      value={form.amount}
+                      onChange={(e) =>
+                        setForm({ ...form, amount: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      placeholder="1000"
+                      required
+                    />
+                  </div>
+                  {/* Description */}
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Description
+                    </label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) =>
+                        setForm({ ...form, description: e.target.value })
+                      }
+                      className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      placeholder="Details, milestones, and expectations"
+                    />
+                  </div>
+                  {/* Image */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Image Upload
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) =>
+                        setForm({ ...form, image: e.target.files?.[0] || null })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2"
+                    />
+                  </div>
+                  {/* Deadline */}
+                  <div>
+                    <label className="mb-2 block text-sm text-muted-foreground">
+                      Deadline
+                    </label>
+                    <input
+                      type="date"
+                      value={form.deadline}
+                      onChange={(e) =>
+                        setForm({ ...form, deadline: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                      required
+                    />
+                  </div>
+                  {/* Footer */}
+                  <DialogFooter className="md:col-span-2 mt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      onClick={() => setOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" variant="neon" className="neon-hover">
+                      Submit & Sign
+                    </Button>
+                  </DialogFooter>
+                </form>
+                {/* Conditional note */}
+                {form.payer === "me" ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    After signing, you will be prompted to deposit{" "}
+                    <span className="text-cyan-300">
+                      {form.amount || "amount"} {form.token}
+                    </span>{" "}
+                    to activate this escrow.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Counterparty will be notified to deposit funds. You can sign
+                    immediately.
+                  </p>
+                )}
+              </DialogContent>
+            </Dialog>
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative grow sm:max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search escrows by title, party, or description"
+                  className="w-full rounded-md border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm outline-none ring-0 placeholder:text-muted-foreground focus:border-cyan-400/40"
+                />
+              </div>
+              <Button
+                variant="outline"
+                className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                onClick={() => setSortAsc((v) => !v)}
+              >
+                {sortAsc ? (
+                  <SortAsc className="mr-2 h-4 w-4" />
+                ) : (
+                  <SortDesc className="mr-2 h-4 w-4" />
+                )}{" "}
+                {sortAsc ? "Old → New" : "New → Old"}
+              </Button>
+            </div>
+          </header>
 
-                {/* Token */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Payment Token
-                  </label>
-                  <select
-                    value={form.token}
-                    onChange={(e) =>
-                      setForm({ ...form, token: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    required
-                  >
-                    <option>USDC</option>
-                    <option>DAI</option>
-                    <option>ETH</option>
-                  </select>
-                </div>
-
-                {/* Amount */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Amount
-                  </label>
-                  <input
-                    value={form.amount}
-                    onChange={(e) =>
-                      setForm({ ...form, amount: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    placeholder="1000"
-                    required
-                  />
-                </div>
-
-                {/* Description */}
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Description
-                  </label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm({ ...form, description: e.target.value })
-                    }
-                    className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    placeholder="Details, milestones, and expectations"
-                  />
-                </div>
-
-                {/* Image */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Image Upload
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      setForm({ ...form, image: e.target.files?.[0] || null })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2"
-                  />
-                </div>
-
-                {/* Deadline */}
-                <div>
-                  <label className="mb-2 block text-sm text-muted-foreground">
-                    Deadline
-                  </label>
-                  <input
-                    type="date"
-                    value={form.deadline}
-                    onChange={(e) =>
-                      setForm({ ...form, deadline: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    required
-                  />
-                </div>
-
-                {/* Footer */}
-                <DialogFooter className="md:col-span-2 mt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    onClick={() => setOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" variant="neon" className="neon-hover">
-                    Submit & Sign
-                  </Button>
-                </DialogFooter>
-              </form>
-
-              {/* Conditional note */}
-              {form.payer === "me" ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  After signing, you will be prompted to deposit{" "}
-                  <span className="text-cyan-300">
-                    {form.amount || "amount"} {form.token}
-                  </span>{" "}
-                  to activate this escrow.
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Counterparty will be notified to deposit funds. You can sign
-                  immediately.
-                </p>
-              )}
-            </DialogContent>
-          </Dialog>
-        </header>
-
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative grow sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search escrows by title, party, or description"
-              className="w-full rounded-md border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm outline-none ring-0 placeholder:text-muted-foreground focus:border-cyan-400/40"
-            />
-          </div>
-          <Button
-            variant="outline"
-            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-            onClick={() => setSortAsc((v) => !v)}
-          >
-            {sortAsc ? (
-              <SortAsc className="mr-2 h-4 w-4" />
-            ) : (
-              <SortDesc className="mr-2 h-4 w-4" />
-            )}{" "}
-            {sortAsc ? "Old → New" : "New → Old"}
-          </Button>
+          <aside className="space-y-4">
+            <div className="border border-b-2 border-white/10 rounded-xl py-5 px-4 ring-1 ring-white/10">
+              <div className="mb-3 text-sm font-semibold text-white/90">
+                Filter
+              </div>
+              <Tabs value={statusTab} onValueChange={setStatusTab}>
+                <TabsList className="bg-white/5">
+                  <TabsTrigger value="active">Active</TabsTrigger>
+                  <TabsTrigger value="completed">Completed</TabsTrigger>
+                  <TabsTrigger value="disputed">Disputed</TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="active"
+                  className="mt-3 text-xs text-muted-foreground"
+                >
+                  Showing pending escrows
+                </TabsContent>
+                <TabsContent
+                  value="completed"
+                  className="mt-3 text-xs text-muted-foreground"
+                >
+                  Showing completed escrows
+                </TabsContent>
+                <TabsContent
+                  value="disputed"
+                  className="mt-3 text-xs text-muted-foreground"
+                >
+                  Showing disputed escrows
+                </TabsContent>
+              </Tabs>
+            </div>
+          </aside>
         </div>
 
         {/* Cards grid */}
@@ -510,7 +537,7 @@ export default function Escrow() {
             No escrows found.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {listed.map((e) => (
               <div
                 key={e.id}
@@ -524,7 +551,7 @@ export default function Escrow() {
               >
                 <div className=" gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-white/90">
+                    <div className="space font-semibold text-white/90">
                       {e.title}
                     </div>
                     <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -579,40 +606,10 @@ export default function Escrow() {
       </div>
 
       {/* Right aside */}
-      <aside className="space-y-4">
-        <div className="glass border border-b-2 border-white/10 rounded-xl py-5 px-4 ring-1 ring-white/10">
-          <div className="mb-3 text-sm font-semibold text-white/90">Filter</div>
-          <Tabs value={statusTab} onValueChange={setStatusTab}>
-            <TabsList className="bg-white/5">
-              <TabsTrigger value="active">Active</TabsTrigger>
-              <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="disputed">Disputed</TabsTrigger>
-            </TabsList>
-            <TabsContent
-              value="active"
-              className="mt-3 text-xs text-muted-foreground"
-            >
-              Showing pending escrows
-            </TabsContent>
-            <TabsContent
-              value="completed"
-              className="mt-3 text-xs text-muted-foreground"
-            >
-              Showing completed escrows
-            </TabsContent>
-            <TabsContent
-              value="disputed"
-              className="mt-3 text-xs text-muted-foreground"
-            >
-              Showing disputed escrows
-            </TabsContent>
-          </Tabs>
-        </div>
-      </aside>
 
       {/* View modal */}
       <Dialog open={!!view} onOpenChange={(v) => !v && setView(null)}>
-        <DialogContent className="glass border-white/10 max-w-xl">
+        <DialogContent className=" border-white/20 max-w-xl bg-black/80">
           <DialogHeader>
             <DialogTitle>{view?.title}</DialogTitle>
             <DialogDescription>Escrow details</DialogDescription>

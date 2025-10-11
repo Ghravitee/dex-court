@@ -8,9 +8,8 @@ import {
   FaDollarSign,
 } from "react-icons/fa";
 import { FaXTwitter, FaTiktok } from "react-icons/fa6";
-import { FiSend, FiBell, FiLock, FiAlertCircle } from "react-icons/fi";
+import { FiSend, FiAlertCircle } from "react-icons/fi";
 import { RiShieldCheckFill } from "react-icons/ri";
-import { Switch } from "../components/ui/switch";
 import { Button } from "../components/ui/button";
 
 function MiniTrust({ score }: { score: number }) {
@@ -41,18 +40,6 @@ export default function Profile() {
   const [roles] = useState<{ judge: boolean; user: boolean }>({
     judge: true,
     user: true,
-  });
-
-  const [notify, setNotify] = useState({
-    caseUpdates: true,
-    marketing: false,
-    telegram: true,
-    email: false,
-  });
-  const [privacy, setPrivacy] = useState({
-    publicHandle: true,
-    showHistory: true,
-    showWallets: false,
   });
 
   const verifications = useMemo(
@@ -96,17 +83,35 @@ export default function Profile() {
     revenue: { "7d": 420, "30d": 1760, "90d": 5030 },
   };
 
+  const judgedDisputes = [
+    {
+      title: "Escrow breach – CryptoSwap",
+      parties: "Alice vs Bob",
+      status: "Resolved",
+    },
+    {
+      title: "NFT delivery delay",
+      parties: "Eve vs Mallory",
+      status: "Pending",
+    },
+    {
+      title: "DAO treasury misuse",
+      parties: "Liam vs Noah",
+      status: "Resolved",
+    },
+  ];
+
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-8 relative">
       <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]" />
       <header className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white/90 space">Profile</h2>
+        <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
       </header>
 
-      {/* Top Section */}
+      {/* ===== Top Summary Section ===== */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Profile Summary */}
-        <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 p-6 flex items-center gap-4">
+        <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 p-6 flex items-center gap-4 rounded-2xl">
           <div className="grid h-14 w-14 place-items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
             <FaUser className="h-6 w-6" />
           </div>
@@ -129,7 +134,7 @@ export default function Profile() {
         </div>
 
         {/* Escrow Stats */}
-        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 flex flex-col gap-4 justify-center">
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 flex flex-col gap-4 justify-center rounded-2xl">
           <StatRow
             icon={<FaHandshake className="text-cyan-300" />}
             label="Deals"
@@ -148,24 +153,106 @@ export default function Profile() {
         </div>
 
         {/* Revenue Stats */}
-        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 flex flex-col gap-3 justify-center">
-          <div className="flex items-center gap-2 text-sm text-white/80 mb-1">
-            <FaDollarSign className="h-4 w-4 text-cyan-300" />
-            <span>Revenue Earned</span>
-          </div>
-          {Object.entries(stats.revenue).map(([period, amount]) => (
-            <div key={period} className="flex justify-between text-sm">
-              <span className="text-muted-foreground">
-                {period.toUpperCase()}
-              </span>
-              <span className="font-semibold text-white">${amount}</span>
+        <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 to-transparent flex flex-col gap-4 justify-center relative overflow-hidden rounded-2xl">
+          <div className="absolute inset-0 bg-cyan-500/20 blur-3xl opacity-40 -z-10" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-white/80">
+              <FaDollarSign className="h-4 w-4 text-cyan-300 animate-pulse" />
+              <span className="tracking-wide">Revenue Earned</span>
             </div>
-          ))}
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Unclaimed</div>
+              <div className="text-cyan-300 font-semibold text-base">$132</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(stats.revenue).map(([period, amount]) => (
+              <div key={period} className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {period.toUpperCase()}
+                </span>
+                <span className="font-semibold text-cyan-300">
+                  ${amount.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Button
+            variant="neon"
+            className="mt-4 bg-cyan-600/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all duration-300"
+          >
+            Claim Revenue
+          </Button>
         </div>
       </section>
 
-      {/* Verifications */}
-      <section className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
+      {/* ===== Bento Grid Section ===== */}
+      <section className="grid md:grid-cols-3 gap-6">
+        <BentoCard
+          title="My Disputes"
+          icon={<FiAlertCircle />}
+          color="rose"
+          count={2}
+        />
+        <BentoCard
+          title="My Agreements"
+          icon={<FaHandshake />}
+          color="emerald"
+          count={19}
+        />
+        <BentoCard
+          title="My Reputation History"
+          icon={<RiShieldCheckFill />}
+          color="cyan"
+        />
+      </section>
+
+      {/* ===== Judged Disputes Leaderboard ===== */}
+      {roles.judge && (
+        <section className="glass ring-1 ring-white/10 p-6 rounded-2xl bg-gradient-to-br from-cyan-500/10">
+          <h3 className="text-lg font-semibold text-white/90 mb-4">
+            Judged Disputes
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left text-white/80">
+              <thead className="text-xs uppercase text-cyan-300 border-b border-cyan-500/20">
+                <tr>
+                  <th className="py-2 px-3">Title</th>
+                  <th className="py-2 px-3">Parties</th>
+                  <th className="py-2 px-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {judgedDisputes.map((d, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-white/5 hover:bg-white/5 transition"
+                  >
+                    <td className="py-2 px-3">{d.title}</td>
+                    <td className="py-2 px-3 text-muted-foreground">
+                      {d.parties}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          d.status === "Resolved"
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-yellow-500/20 text-yellow-300"
+                        }`}
+                      >
+                        {d.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ===== Verifications ===== */}
+      <section className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 rounded-2xl">
         <div className="mb-2 text-xs text-muted-foreground">Verifications</div>
         <div className="grid gap-3 md:grid-cols-2">
           {verifications.map((v) => (
@@ -175,7 +262,7 @@ export default function Profile() {
             >
               <div className="flex items-center gap-3">
                 <v.icon
-                  className={`h-4 w-4 ${
+                  className={`h-5 w-5 ${
                     v.id === "x"
                       ? "text-white"
                       : v.id === "instagram"
@@ -206,71 +293,6 @@ export default function Profile() {
           ))}
         </div>
       </section>
-
-      {/* Notifications & Privacy */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SettingsCard
-          icon={<FiBell className="h-4 w-4 text-cyan-300" />}
-          title="Notifications"
-        >
-          <Setting
-            label="Case updates"
-            desc="Get notified when cases you follow change state."
-            checked={notify.caseUpdates}
-            onCheckedChange={(v) =>
-              setNotify((n) => ({ ...n, caseUpdates: v }))
-            }
-          />
-          <Setting
-            label="Telegram"
-            desc="Receive alerts via Telegram bot."
-            checked={notify.telegram}
-            onCheckedChange={(v) => setNotify((n) => ({ ...n, telegram: v }))}
-          />
-          <Setting
-            label="Email"
-            desc="Weekly summary and critical updates."
-            checked={notify.email}
-            onCheckedChange={(v) => setNotify((n) => ({ ...n, email: v }))}
-          />
-          <Setting
-            label="Marketing"
-            desc="Occasional product announcements."
-            checked={notify.marketing}
-            onCheckedChange={(v) => setNotify((n) => ({ ...n, marketing: v }))}
-          />
-        </SettingsCard>
-
-        <SettingsCard
-          icon={<FiLock className="h-4 w-4 text-cyan-300" />}
-          title="Privacy"
-        >
-          <Setting
-            label="Public handle"
-            desc="Allow others to see your handle."
-            checked={privacy.publicHandle}
-            onCheckedChange={(v) =>
-              setPrivacy((p) => ({ ...p, publicHandle: v }))
-            }
-          />
-          <Setting
-            label="Show history"
-            desc="Display agreements and disputes on your profile."
-            checked={privacy.showHistory}
-            onCheckedChange={(v) =>
-              setPrivacy((p) => ({ ...p, showHistory: v }))
-            }
-          />
-          <Setting
-            label="Show wallets"
-            desc="Expose linked wallet addresses on profile."
-            checked={privacy.showWallets}
-            onCheckedChange={(v) =>
-              setPrivacy((p) => ({ ...p, showWallets: v }))
-            }
-          />
-        </SettingsCard>
-      </section>
     </div>
   );
 }
@@ -295,44 +317,44 @@ function StatRow({
   );
 }
 
-function SettingsCard({
-  icon,
+function BentoCard({
   title,
-  children,
+  icon,
+  color = "cyan",
+  count,
 }: {
-  icon: React.ReactNode;
   title: string;
-  children: React.ReactNode;
+  icon: React.ReactNode;
+  color?: "cyan" | "emerald" | "rose";
+  count?: number;
 }) {
-  return (
-    <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
-      <div className="mb-4 flex items-center gap-2">
-        {icon}
-        <h3 className="text-sm font-semibold text-white/90">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
+  const colorMap: Record<string, string> = {
+    cyan: "from-cyan-500/20 border-cyan-400/30 text-cyan-200",
+    emerald: "from-emerald-500/20 border-emerald-400/30 text-emerald-200",
+    rose: "from-rose-500/20 border-rose-400/30 text-rose-200",
+  };
 
-function Setting({
-  label,
-  desc,
-  checked,
-  onCheckedChange,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  onCheckedChange: (v: boolean) => void;
-}) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-white/5 p-4 mt-3 first:mt-0">
-      <div>
-        <div className="text-sm font-medium text-white/90">{label}</div>
-        <div className="text-xs text-muted-foreground">{desc}</div>
+    <div
+      className={`glass p-6 rounded-2xl ring-1 ring-white/10 border ${colorMap[color]} bg-gradient-to-br to-transparent flex flex-col justify-between hover:scale-[1.02] transition-transform`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 text-lg font-semibold text-white/90">
+          {icon}
+          <span>{title}</span>
+        </div>
+        {count !== undefined && (
+          <div className="text-2xl font-bold text-white/90">{count}</div>
+        )}
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Button
+        variant="outline"
+        className={`mt-4 border-white/10 text-xs ${colorMap[color]
+          .split(" ")[2]
+          .replace("text-", "hover:text-")}`}
+      >
+        View
+      </Button>
     </div>
   );
 }

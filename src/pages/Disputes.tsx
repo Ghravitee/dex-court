@@ -141,290 +141,293 @@ export default function Disputes() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      <div className="lg:size-[30rem] size-[20rem] rounded-full bg-cyan-500/20 absolute lg:top-28 lg:right-20 blur-3xl block"></div>
+      <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute -top-20 -left-6 blur-3xl block"></div>
+      <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute top-[30rem] left-0 blur-3xl block -z-[50]"></div>
+      <div className="absolute inset-0 bg-cyan-500/10 blur-3xl -z-[50]"></div>
       {/* Intro section */}
-      <section className="rounded-xl border border-b-3 border-white/10 p-6 relative">
-        <div className="lg:size-[30rem] size-[20rem] rounded-full bg-cyan-500/20 absolute lg:top-32 lg:right-10 blur-3xl block"></div>
-        <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute -top-20 -left-6 blur-3xl block"></div>
-        <div className="lg:size-[25rem] rounded-full bg-cyan-500/20 absolute top-[30rem] left-0 blur-3xl block"></div>
-        <div className="absolute inset-0 bg-cyan-500/10 blur-3xl -z-[50]"></div>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-3">
-            <h2 className="text-xl font-semibold text-white/90 space">
-              Have you been wronged or cheated? Don’t stay silent, start a
-              dispute.
-            </h2>
-            <div>
-              <h3 className="text-lg font-semibold text-white/90">
-                Who Judges Your Case?
-              </h3>
-              <p className="mt-1 text-cyan-400 text-muted-foreground space">
-                Judges
-              </p>
-              <p className="text-sm text-muted-foreground">
-                DexCourt’s panel of judges consists of reputable and well-known
-                figures across both Web3 and traditional spaces.
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                <li>Top influencers (e.g., IncomeSharks)</li>
-                <li>Leading project founders (e.g., CZ)</li>
-                <li>Experienced blockchain developers</li>
-                <li>Respected degens with strong community reputation</li>
-                <li>Licensed lawyers and real-world judges</li>
-                <li>Prominent Web2 personalities</li>
-              </ul>
-              <p className="mt-2 text-sm text-muted-foreground">
-                These individuals are selected based on proven{" "}
-                <span className="text-cyan-400">
-                  credibility, influence, and integrity
-                </span>{" "}
-                within their respective domains.
-              </p>
-              <p className="mt-3 text-cyan-400 text-muted-foreground space">
-                The Community
-              </p>
-              <p className="text-sm text-muted-foreground">
-                In addition to the judges, the broader DexCourt community also
-                plays a vital role. Holders of the $LAW token can review cases
-                and cast their votes, ensuring that justice remains
-                decentralized and inclusive.
-              </p>
-              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-4 w-fit">
-                <div className="text-sm font-medium text-white/90">
-                  Weighted Decision Model
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* left column */}
+        <div className="col-span-3">
+          <section className="rounded-xl border border-b-3 border-white/10 p-6 ">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 space-y-3">
+                <h2 className="text-[22px] font-semibold text-white/90 space max-w-[25rem]">
+                  Have you been wronged or cheated? Don’t stay silent, start a
+                  dispute.
+                </h2>
+                <div>
+                  <h3 className="text-lg font-semibold text-white/90">
+                    Who Judges Your Case?
+                  </h3>
+                  <p className="mt-1 text-cyan-400 text-muted-foreground space">
+                    Judges
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    DexCourt’s panel of judges consists of reputable and
+                    well-known figures across both Web3 and traditional spaces.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                    <li>Top influencers (e.g., IncomeSharks)</li>
+                    <li>Leading project founders (e.g., CZ)</li>
+                    <li>Experienced blockchain developers</li>
+                    <li>Respected degens with strong community reputation</li>
+                    <li>Licensed lawyers and real-world judges</li>
+                    <li>Prominent Web2 personalities</li>
+                  </ul>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    These individuals are selected based on proven{" "}
+                    <span className="text-cyan-400">
+                      credibility, influence, and integrity
+                    </span>{" "}
+                    within their respective domains.
+                  </p>
+                  <p className="mt-3 text-cyan-400 text-muted-foreground space">
+                    The Community
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    In addition to the judges, the broader DexCourt community
+                    also plays a vital role. Holders of the $LAW token can
+                    review cases and cast their votes, ensuring that justice
+                    remains decentralized and inclusive.
+                  </p>
                 </div>
-                <ul className="mt-2 text-sm text-muted-foreground">
-                  <li>
-                    Judges’ Votes:{" "}
-                    <span className="text-emerald-300 font-medium">
-                      70% influence
-                    </span>
-                  </li>
-                  <li>
-                    Community Votes:{" "}
-                    <span className="text-cyan-300 font-medium">
-                      30% influence
-                    </span>
-                  </li>
-                </ul>
+              </div>
+              <div className="flex items-start justify-end">
+                <Dialog open={open} onOpenChange={setOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="neon" className="neon-hover">
+                      <Scale className="mr-2 h-4 w-4" />
+                      Raise New Dispute
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className=" max-w-2xl bg-black">
+                    <DialogHeader>
+                      <DialogTitle>Raise New Dispute</DialogTitle>
+                      <DialogDescription>
+                        Provide details and evidence. Max 5 witnesses.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submit} className="space-y-4">
+                      <div>
+                        <div className="mb-2 flex items-center justify-between">
+                          <label className="text-sm text-muted-foreground">
+                            Title <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative group cursor-help">
+                            <Info className="h-4 w-4 text-cyan-300" />
+                            {/* Tooltip content */}
+                            <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                              Never underestimate the power of a catchy title —
+                              it can grab attention and attract judges to your
+                              case faster.
+                            </div>
+                          </div>
+                        </div>
+                        <input
+                          value={form.title}
+                          onChange={(e) =>
+                            setForm({ ...form, title: e.target.value })
+                          }
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
+                          placeholder="e.g. Payment for Smart Contract Audit"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-2 flex items-center justify-between">
+                          <label className="text-sm text-muted-foreground">
+                            Request Kind <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex items-center gap-3 text-xs">
+                            <div className="relative group cursor-pointer">
+                              <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                                Pro Bono
+                              </span>
+                              {/* Tooltip content */}
+                              <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                No payment required. Judges will handle your
+                                case pro bono when available.
+                              </div>
+                            </div>
+                            <div className="relative group cursor-pointer">
+                              <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                                Paid
+                              </span>
+                              {/* Tooltip content */}
+                              <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                A fee of 0.01 ETH is required to initiate your
+                                dispute. This fee helps prioritize your case and
+                                notifies all judges to begin reviewing it
+                                immediately.
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {(["Pro Bono", "Paid"] as const).map((k) => (
+                            <label
+                              key={k}
+                              className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                                form.kind === k
+                                  ? "bg-cyan-500/30 border-cyan-400/40 text-cyan-200"
+                                  : "border-white/10 bg-white/5"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="kind"
+                                className="hidden"
+                                checked={form.kind === k}
+                                onChange={() => setForm({ ...form, kind: k })}
+                              />
+                              {k}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm text-muted-foreground">
+                          Defendant <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          value={form.defendant}
+                          onChange={(e) =>
+                            setForm({ ...form, defendant: e.target.value })
+                          }
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
+                          placeholder="@0xHandle or address"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm text-muted-foreground">
+                          Detailed Description{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          value={form.description}
+                          onChange={(e) =>
+                            setForm({ ...form, description: e.target.value })
+                          }
+                          className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
+                          placeholder="Describe the situation, milestones, messages, and expectations"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm text-muted-foreground">
+                          Evidence Upload{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <label className="group flex cursor-pointer items-center justify-between rounded-md border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm text-muted-foreground hover:border-cyan-400/40">
+                          <div className="flex items-center gap-3">
+                            <Upload className="h-4 w-4 text-cyan-300" />
+                            <span>
+                              {form.evidence.length
+                                ? `${form.evidence.length} file(s) selected`
+                                : "Upload files (images, pdf, txt)"}
+                            </span>
+                          </div>
+                          <input
+                            onChange={onFile}
+                            type="file"
+                            multiple
+                            className="hidden"
+                          />
+                        </label>
+                        {form.evidence.length > 0 && (
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                            {form.evidence.map((f, i) => (
+                              <li key={i}>{f.name}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <div className="mb-2 flex items-center justify-between">
+                          <label className="text-sm text-muted-foreground">
+                            Witness list (max 5)
+                          </label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                            onClick={addWitness}
+                            disabled={form.witnesses.length >= 5}
+                          >
+                            Add witness
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {form.witnesses.map((w, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <input
+                                value={w}
+                                onChange={(e) =>
+                                  updateWitness(i, e.target.value)
+                                }
+                                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
+                                placeholder={`@username or address #${i + 1}`}
+                              />
+                              {form.witnesses.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeWitness(i)}
+                                  className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs text-muted-foreground hover:text-white"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <DialogFooter className="pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                          onClick={() => toast.message("Draft saved")}
+                        >
+                          Save Draft
+                        </Button>
+                        <Button
+                          type="submit"
+                          variant="neon"
+                          className="neon-hover"
+                        >
+                          Submit
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
-          </div>
-          <div className="flex items-start justify-end">
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button variant="neon" className="neon-hover">
-                  <Scale className="mr-2 h-4 w-4" />
-                  Raise New Dispute
-                </Button>
-              </DialogTrigger>
-              <DialogContent className=" max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Raise New Dispute</DialogTitle>
-                  <DialogDescription>
-                    Provide details and evidence. Max 5 witnesses.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={submit} className="space-y-4">
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm text-muted-foreground">
-                        Title <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative group cursor-help">
-                        <Info className="h-4 w-4 text-cyan-300" />
-
-                        {/* Tooltip content */}
-                        <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                          Never underestimate the power of a catchy title — it
-                          can grab attention and attract judges to your case
-                          faster.
-                        </div>
-                      </div>
-                    </div>
-                    <input
-                      value={form.title}
-                      onChange={(e) =>
-                        setForm({ ...form, title: e.target.value })
-                      }
-                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
-                      placeholder="e.g. Payment for Smart Contract Audit"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm text-muted-foreground">
-                        Request Kind <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex items-center gap-3 text-xs">
-                        <div className="relative group cursor-pointer">
-                          <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                            Pro Bono
-                          </span>
-
-                          {/* Tooltip content */}
-                          <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                            No payment required. Judges will handle your case
-                            pro bono when available.
-                          </div>
-                        </div>
-
-                        <div className="relative group cursor-pointer">
-                          <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                            Paid
-                          </span>
-
-                          {/* Tooltip content */}
-                          <div className="absolute right-0 top-full mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                            A fee of 0.01 ETH is required to initiate your
-                            dispute. This fee helps prioritize your case and
-                            notifies all judges to begin reviewing it
-                            immediately.
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {(["Pro Bono", "Paid"] as const).map((k) => (
-                        <label
-                          key={k}
-                          className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                            form.kind === k
-                              ? "bg-cyan-500/30 border-cyan-400/40 text-cyan-200"
-                              : "border-white/10 bg-white/5"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="kind"
-                            className="hidden"
-                            checked={form.kind === k}
-                            onChange={() => setForm({ ...form, kind: k })}
-                          />
-                          {k}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
-                      Defendant <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      value={form.defendant}
-                      onChange={(e) =>
-                        setForm({ ...form, defendant: e.target.value })
-                      }
-                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
-                      placeholder="@0xHandle or address"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
-                      Detailed Description{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={form.description}
-                      onChange={(e) =>
-                        setForm({ ...form, description: e.target.value })
-                      }
-                      className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
-                      placeholder="Describe the situation, milestones, messages, and expectations"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
-                      Evidence Upload <span className="text-red-500">*</span>
-                    </label>
-                    <label className="group flex cursor-pointer items-center justify-between rounded-md border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm text-muted-foreground hover:border-cyan-400/40">
-                      <div className="flex items-center gap-3">
-                        <Upload className="h-4 w-4 text-cyan-300" />
-                        <span>
-                          {form.evidence.length
-                            ? `${form.evidence.length} file(s) selected`
-                            : "Upload files (images, pdf, txt)"}
-                        </span>
-                      </div>
-                      <input
-                        onChange={onFile}
-                        type="file"
-                        multiple
-                        className="hidden"
-                      />
-                    </label>
-                    {form.evidence.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                        {form.evidence.map((f, i) => (
-                          <li key={i}>{f.name}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm text-muted-foreground">
-                        Witness list (max 5)
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                        onClick={addWitness}
-                        disabled={form.witnesses.length >= 5}
-                      >
-                        Add witness
-                      </Button>
-                    </div>
-                    <div className="space-y-2">
-                      {form.witnesses.map((w, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <input
-                            value={w}
-                            onChange={(e) => updateWitness(i, e.target.value)}
-                            className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40 placeholder:text-sm"
-                            placeholder={`@username or address #${i + 1}`}
-                          />
-                          {form.witnesses.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeWitness(i)}
-                              className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs text-muted-foreground hover:text-white"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <DialogFooter className="pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                      onClick={() => toast.message("Draft saved")}
-                    >
-                      Save Draft
-                    </Button>
-                    <Button type="submit" variant="neon" className="neon-hover">
-                      Submit
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
+          </section>
+          {/* List toolbar */}
         </div>
-      </section>
 
-      {/* List toolbar */}
+        {/* Second column */}
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 w-full h-fit col-span-2">
+          <div className="text-xl font-medium text-white/90 ">
+            Weighted Decision Model
+          </div>
+          <ul className="mt-2 text-muted-foreground">
+            <li>
+              Judges’ Votes:{" "}
+              <span className="text-emerald-300 font-medium">
+                70% influence
+              </span>
+            </li>
+            <li>
+              Community Votes:{" "}
+              <span className="text-cyan-300 font-medium">30% influence</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Table */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative grow sm:max-w-xs">
@@ -462,7 +465,6 @@ export default function Disputes() {
           <div className="ml-auto flex items-center gap-2">
             <div className="hidden items-center gap-2 sm:flex">
               <span className="text-sm text-muted-foreground space">Date:</span>
-
               <div className="relative">
                 <select
                   value={dateRange}
@@ -479,7 +481,6 @@ export default function Disputes() {
                     Last 30d
                   </option>
                 </select>
-
                 {/* Custom dropdown arrow */}
                 <svg
                   className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-white/70"
@@ -496,7 +497,6 @@ export default function Disputes() {
                 </svg>
               </div>
             </div>
-
             <Button
               variant="outline"
               className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
@@ -511,7 +511,6 @@ export default function Disputes() {
             </Button>
           </div>
         </div>
-
         {/* Table */}
         <div className="border border-b-2 border-white/10 rounded-xl p-0 ring-1 ring-white/10">
           <div className="flex items-center justify-between border-b border-white/10 p-5">

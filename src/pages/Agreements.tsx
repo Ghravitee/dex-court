@@ -21,6 +21,8 @@ export default function AgreementForm() {
   const [secureWithEscrow, setSecureWithEscrow] = useState<"yes" | "no" | "">(
     ""
   );
+  const [customTokenAddress, setCustomTokenAddress] = useState("");
+
   const [deadline, setDeadline] = useState<Date | null>(null);
 
   const [isTokenOpen, setIsTokenOpen] = useState(false);
@@ -90,14 +92,15 @@ export default function AgreementForm() {
     { value: "USDC", label: "USDC" },
     { value: "DAI", label: "DAI" },
     { value: "ETH", label: "ETH" },
+    { value: "custom", label: "Custom Token" }, // 👈 new option
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 relative">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 relative">
       <div className="lg:size-[30rem] rounded-full bg-cyan-500/20 absolute top-32 right-10 blur-3xl block"></div>
       <div className="lg:size-[15rem] rounded-full bg-cyan-500/20 absolute -top-20 left-0 blur-3xl block"></div>
       <div className="absolute inset-0 bg-cyan-500/10 blur-3xl -z-[50]"></div>
-      <div className="lg:col-span-2 space-y-4">
+      <div className="lg:col-span-3 space-y-4">
         <h1 className="text-white text-xl space mb-2">Agreements</h1>
         <div className="glass p-6 border border-white/10 bg-gradient-to-br from-cyan-500/10 space-y-5">
           {/* Title */}
@@ -212,7 +215,7 @@ export default function AgreementForm() {
           {/* Include Funds Toggle */}
           <div>
             <label className="mb-2 block text-sm text-muted-foreground">
-              Does this Agreement Include Funds”: Yes/No{" "}
+              Does this Agreement Include Funds{" "}
               <span className="text-cyan-400">(Optional)</span>
             </label>
             <div className="flex gap-4">
@@ -301,12 +304,32 @@ export default function AgreementForm() {
                             onClick={() => {
                               setSelectedToken(option.value);
                               setIsTokenOpen(false);
+                              if (option.value !== "custom") {
+                                setCustomTokenAddress("");
+                              }
                             }}
                             className="px-4 py-2 cursor-pointer hover:bg-cyan-300 hover:text-white transition-colors"
                           >
                             {option.label}
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {selectedToken === "custom" && (
+                      <div className="mt-3">
+                        <label className="mb-2 block text-sm text-muted-foreground">
+                          Paste Contract Address{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={customTokenAddress}
+                          onChange={(e) =>
+                            setCustomTokenAddress(e.target.value)
+                          }
+                          placeholder="0x..."
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-1 ring-cyan-400"
+                        />
                       </div>
                     )}
                   </div>
@@ -338,14 +361,12 @@ export default function AgreementForm() {
           </div>
         </div>
       </div>
-      <aside className="space-y-4">
+      <aside className="space-y-4 col-span-2">
+        <h1 className="text-white text-xl space mb-2">Recent Agreements</h1>
         <div className="glass p-5 border border-white/10 bg-gradient-to-br from-cyan-500/10">
           {/* Filter Header */}
           {/* Filter Header */}
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/90">
-              Recent Agreements
-            </h3>
             {/* Filter Dropdown */}
             <div className="relative w-36 group" ref={filterRef}>
               {/* Trigger */}
