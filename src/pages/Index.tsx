@@ -49,7 +49,7 @@ export default function Index() {
       {/* <CardLinks /> */}
       <StatsGrid />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-6">
         <JudgesIntro />
         {/* <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-4 w-full">
         <div className="text-xl font-medium text-white/90 ">
@@ -76,7 +76,7 @@ export default function Index() {
 function HeroSection() {
   return (
     <section>
-      <div className="relative items-center gap-6 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-transparent to-transparent p-8 md:grid-cols-3">
+      <div className="relative items-center gap-6 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-transparent to-transparent p-8 md:grid-cols-3 ">
         <div className="relative z-[1]">
           <h1 className="text-3xl font-bold tracking-tight text-white glow-text space">
             DexCourt dApp
@@ -177,12 +177,11 @@ function StatsGrid() {
 
       <div
         className="
-          flex flex-wrap justify-center gap-8
-          rounded-2xl border border-white/10
-          bg-white/5 p-8
-          backdrop-blur-xl
-          max-w-5xl w-full
-          shadow-[0_0_30px_-10px_rgba(0,255,255,0.35)]
+          grid lg:grid-cols-4 justify-center gap-8
+          rounded-2xl border 
+        p-8 
+    
+    
         "
       >
         {stats.map((s) => (
@@ -195,10 +194,7 @@ function StatsGrid() {
           >
             <div
               className="
-                grid h-14 w-14 place-items-center
-                rounded-lg border border-cyan-400/30
-                bg-cyan-500/10 text-cyan-200
-                shadow-[0_0_12px_rgba(0,255,255,0.35)]
+                p-6 rounded-2xl ring-1 ring-white/10 border 
               "
             >
               <s.icon className="h-6 w-6" />
@@ -398,7 +394,11 @@ function JudgesIntro() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <section className="glass ring-1 ring-white/10 p-6 relative col-span-2 h-[15rem]">
+    <section
+      className={`glass ring-1 ring-white/10 p-6 relative col-span-2 transition-all duration-300 overflow-hidden ${
+        expanded ? "h-auto" : "h-[15rem]"
+      }`}
+    >
       {/* Cyan glow effect */}
       <div className="lg:size-[30rem] rounded-full bg-cyan-500/20 absolute top-0 -right-10 blur-3xl block"></div>
 
@@ -513,7 +513,7 @@ function RenownedJudges() {
   ];
 
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative mt-10 items-stretch">
+    <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative items-stretch">
       {/* Judges Carousel */}
       <div className="flex flex-col  bg-transparent overflow-hidden">
         <Carousel
@@ -579,7 +579,7 @@ function RenownedJudges() {
         </p>
 
         <div className="flex gap-3 mt-2">
-          <button className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-200 py-1.5 text-sm hover:bg-cyan-500/20 transition">
+          <button className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/30 text-cyan-200 py-1.5 text-sm hover:bg-cyan-500/20 transition">
             <ThumbsUp className="w-4 h-4" /> Approve
           </button>
           <button className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 text-red-300 py-1.5 text-sm hover:bg-red-500/20 transition">
