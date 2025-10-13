@@ -360,17 +360,27 @@ export default function Reputation() {
 
   const [query, setQuery] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
 
   const sortedData = useMemo(() => {
     return [...data].sort((a, b) =>
-      sortDir === "desc" ? b.score - a.score : a.score - b.score
+      sortDir === "desc" ? b.score - a.score : a.score - a.score
     );
   }, [data, sortDir]);
 
   const profile =
-    data.find((p) => p.handle.toLowerCase() === query.toLowerCase()) || data[0];
+    selectedProfile ||
+    data.find((p) => p.handle.toLowerCase() === query.toLowerCase()) ||
+    null;
 
-  const delta = profile.history.reduce((acc, h) => acc + h.impact, 0);
+  const handleRowClick = (user: Profile) => {
+    setSelectedProfile(user);
+    setQuery(user.handle);
+  };
+
+  const delta = profile
+    ? profile.history.reduce((acc, h) => acc + h.impact, 0)
+    : 0;
 
   return (
     <div className="space-y-6 relative">
@@ -393,9 +403,6 @@ export default function Reputation() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT COLUMN */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Profile summary */}
-
-          {/* Leaderboard */}
           {/* Leaderboard */}
           <section className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10">
             <div className="flex items-center justify-between border-b border-white/10 p-5">
@@ -450,7 +457,7 @@ export default function Reputation() {
                       <tr
                         key={user.handle}
                         className="border-t border-white/10 hover:bg-white/5 cursor-pointer"
-                        onClick={() => setQuery(user.handle)}
+                        onClick={() => handleRowClick(user)}
                       >
                         <td className="px-5 py-4 text-muted-foreground">
                           {index + 1}
@@ -523,113 +530,116 @@ export default function Reputation() {
             </div>
           </section>
 
-          <section className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10">
-            <div className="flex items-center justify-between border-b border-white/10 p-5">
-              <h3 className="text-sm font-semibold text-white/90">
-                Reputation History
-              </h3>
-            </div>
+          {/* Reputation History - Only show when a profile is selected */}
+          {profile && (
+            <section className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10">
+              <div className="flex items-center justify-between border-b border-white/10 p-5">
+                <h3 className="text-sm font-semibold text-white/90">
+                  Reputation History for {profile.handle}
+                </h3>
+              </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-muted-foreground">
-                    <th className="px-5 py-3 w-[5%]">S/N</th>
-                    <th className="px-5 py-3">User</th>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-5 py-3 w-[5%]">S/N</th>
+                      <th className="px-5 py-3">User</th>
 
-                    <th className="px-5 py-3 w-[35%]">Reason</th>
-                    <th className="px-5 py-3">Reputation Change</th>
-                    <th className="px-5 py-3">Date</th>
-                    <th className="px-5 py-3 text-right">
-                      Trust Score → Reputation
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profile.history.map((h, i) => {
-                    const prevScore = profile.score - h.impact;
-                    const currentScore = profile.score;
-                    const reason =
-                      h.type === "Agreement"
-                        ? "Completed successful agreement"
-                        : h.type === "Dispute" && h.outcome === "Won"
-                        ? "Won a dispute"
-                        : h.type === "Dispute" && h.outcome === "Lost"
-                        ? "Lost a dispute"
-                        : "Ignored official ruling";
+                      <th className="px-5 py-3 w-[35%]">Reason</th>
+                      <th className="px-5 py-3">Reputation Change</th>
+                      <th className="px-5 py-3">Date</th>
+                      <th className="px-5 py-3 text-right">
+                        Trust Score → Reputation
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profile.history.map((h, i) => {
+                      const prevScore = profile.score - h.impact;
+                      const currentScore = profile.score;
+                      const reason =
+                        h.type === "Agreement"
+                          ? "Completed successful agreement"
+                          : h.type === "Dispute" && h.outcome === "Won"
+                          ? "Won a dispute"
+                          : h.type === "Dispute" && h.outcome === "Lost"
+                          ? "Lost a dispute"
+                          : "Ignored official ruling";
 
-                    return (
-                      <tr
-                        key={i}
-                        className="border-t border-white/10 hover:bg-white/5 transition"
-                      >
-                        {/* Reputation change */}
-                        <td className="px-5 py-4 text-muted-foreground">
-                          {i + 1}
-                        </td>
+                      return (
+                        <tr
+                          key={i}
+                          className="border-t border-white/10 hover:bg-white/5 transition"
+                        >
+                          {/* Reputation change */}
+                          <td className="px-5 py-4 text-muted-foreground">
+                            {i + 1}
+                          </td>
 
-                        <td className="px-5 py-4 flex items-center gap-3 hover">
-                          <div className="h-8 w-8 rounded-full bg-white/10 grid place-items-center ">
-                            <User className="h-5 w-5" />
-                          </div>
-                          <Link
-                            to={`/profile/${h.counterparty.replace("@", "")}`}
-                            className="text-white/80 hover:text-cyan-400 hover:underline"
-                          >
-                            {h.counterparty}
-                          </Link>
-                        </td>
+                          <td className="px-5 py-4 flex items-center gap-3 hover">
+                            <div className="h-8 w-8 rounded-full bg-white/10 grid place-items-center ">
+                              <User className="h-5 w-5" />
+                            </div>
+                            <Link
+                              to={`/profile/${h.counterparty.replace("@", "")}`}
+                              className="text-white/80 hover:text-cyan-400 hover:underline"
+                            >
+                              {h.counterparty}
+                            </Link>
+                          </td>
 
-                        {/* Reason */}
-                        <td className="px-5 py-4 text-white/80">{reason}</td>
+                          {/* Reason */}
+                          <td className="px-5 py-4 text-white/80">{reason}</td>
 
-                        {/* User */}
+                          {/* User */}
 
-                        <td className="px-5 py-4">
-                          <span
-                            className={`font-medium ${
-                              h.impact >= 0
-                                ? "text-emerald-400"
-                                : "text-rose-400"
-                            }`}
-                          >
-                            {h.impact >= 0 ? "+" : ""}
-                            {h.impact}
-                          </span>
-                        </td>
-                        {/* Date */}
-                        <td className="px-0 py-4 text-muted-foreground text-xs">
-                          {h.date}
-                        </td>
-
-                        {/* Trust score change */}
-                        <td className="px-5 py-4 text-right text-white/90">
-                          <span className="inline-flex items-center gap-1">
-                            <span className="text-muted-foreground">
-                              {prevScore}
-                            </span>
-                            <span className="text-cyan-400 text-xs">→</span>
+                          <td className="px-5 py-4">
                             <span
-                              className={`font-semibold ${
+                              className={`font-medium ${
                                 h.impact >= 0
-                                  ? "text-emerald-300"
-                                  : "text-rose-300"
+                                  ? "text-emerald-400"
+                                  : "text-rose-400"
                               }`}
                             >
-                              {currentScore}
+                              {h.impact >= 0 ? "+" : ""}
+                              {h.impact}
                             </span>
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                          </td>
+                          {/* Date */}
+                          <td className="px-0 py-4 text-muted-foreground text-xs">
+                            {h.date}
+                          </td>
+
+                          {/* Trust score change */}
+                          <td className="px-5 py-4 text-right text-white/90">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-muted-foreground">
+                                {prevScore}
+                              </span>
+                              <span className="text-cyan-400 text-xs">→</span>
+                              <span
+                                className={`font-semibold ${
+                                  h.impact >= 0
+                                    ? "text-emerald-300"
+                                    : "text-rose-300"
+                                }`}
+                              >
+                                {currentScore}
+                              </span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
 
-        {/* RIGHT COLUMN - Notifications */}
+        {/* RIGHT COLUMN - Notifications and Profile Details */}
         <aside className="space-y-2">
           <section className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 p-5 max-h-[500px] overflow-y-auto">
             <h3 className="text-sm font-semibold text-white/90 border-b border-white/10 pb-2">
@@ -661,84 +671,101 @@ export default function Reputation() {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-2">
-            <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 px-6 py-2 flex items-center justify-between">
-              <div>
-                <div className="text-xs text-muted-foreground">30d Change</div>
-                <div
-                  className={`mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
-                    delta >= 0
-                      ? "border-emerald-400/30 text-emerald-300 bg-emerald-500/10"
-                      : "border-rose-400/30 text-rose-300 bg-rose-500/10"
-                  }`}
-                >
-                  {delta >= 0 ? (
-                    <TrendingUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <TrendingDown className="h-3.5 w-3.5" />
-                  )}
-                  {delta >= 0 ? "+" : ""}
-                  {delta}
+          {/* Profile, Trust score, Reputation - Only show when a profile is selected */}
+          {profile ? (
+            <>
+              <div className="glass ring-1 ring-white/10 p-6 flex items-center gap-4 bg-gradient-to-br from-cyan-500/10">
+                <div className="grid h-12 w-12 place-items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+                  <User className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Profile</div>
+                  <div className="text-white/90 font-semibold">
+                    {profile.handle}
+                  </div>
                 </div>
               </div>
-              <TrustMeter score={profile.score} />
-            </div>
-            <div className="glass ring-1 ring-white/10 p-6 flex items-center gap-4 bg-gradient-to-br from-cyan-500/10">
-              <div className="grid h-12 w-12 place-items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
-                <User className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Profile</div>
-                <div className="text-white/90 font-semibold">
-                  {profile.handle}
-                </div>
-              </div>
-            </div>
-            <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
-              <div className=" text-muted-foreground">Summary</div>
-              <div className="mt-2 grid grid-cols-2 gap-4">
-                {/* Agreements/Won */}
-                <div className="flex flex-col gap-2">
+
+              <section className="grid grid-cols-1 gap-2">
+                <div className="glass ring-1 ring-white/10 bg-gradient-to-br from-cyan-500/10 px-6 py-2 flex items-center justify-between">
                   <div>
-                    <div className="text-sm text-muted-foreground space">
-                      Agreements
+                    <div className="text-xs text-muted-foreground">
+                      30d Change
                     </div>
-                    <div className="text-lg font-semibold text-white/90">
-                      {profile.agreements}
+                    <div
+                      className={`mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                        delta >= 0
+                          ? "border-emerald-400/30 text-emerald-300 bg-emerald-500/10"
+                          : "border-rose-400/30 text-rose-300 bg-rose-500/10"
+                      }`}
+                    >
+                      {delta >= 0 ? (
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5" />
+                      )}
+                      {delta >= 0 ? "+" : ""}
+                      {delta}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground space">
-                      Won
-                    </div>
-                    <div className="text-lg font-semibold text-emerald-300">
-                      {profile.disputesWon}
-                    </div>
-                  </div>
+
+                  <TrustMeter score={profile.score} />
                 </div>
 
-                {/* Lost/Ignored*/}
-                <div className="flex flex-col gap-2">
-                  <div>
-                    <div className="text-sm text-muted-foreground space">
-                      Lost
+                <div className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10">
+                  <div className=" text-muted-foreground">Summary</div>
+                  <div className="mt-2 grid grid-cols-2 gap-4">
+                    {/* Agreements/Won */}
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        <div className="text-sm text-muted-foreground space">
+                          Agreements
+                        </div>
+                        <div className="text-lg font-semibold text-white/90">
+                          {profile.agreements}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground space">
+                          Won
+                        </div>
+                        <div className="text-lg font-semibold text-emerald-300">
+                          {profile.disputesWon}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-lg font-semibold text-rose-300">
-                      {profile.disputesLost}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground space">
-                      Ignored
-                    </div>
-                    <div className="text-lg font-semibold text-amber-300">
-                      {profile.ignoredRulings}
+
+                    {/* Lost/Ignored*/}
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        <div className="text-sm text-muted-foreground space">
+                          Lost
+                        </div>
+                        <div className="text-lg font-semibold text-rose-300">
+                          {profile.disputesLost}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground space">
+                          Ignored
+                        </div>
+                        <div className="text-lg font-semibold text-amber-300">
+                          {profile.ignoredRulings}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
+              </section>
+            </>
+          ) : (
+            <div className="glass ring-1 ring-white/10 p-8 text-center bg-gradient-to-br from-cyan-500/10">
+              <User className="h-8 w-8 text-cyan-300 mx-auto mb-2" />
+              <div className="text-sm text-muted-foreground">
+                Select a user from the leaderboard to view their profile
               </div>
             </div>
-          </section>
+          )}
         </aside>
       </div>
     </div>

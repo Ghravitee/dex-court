@@ -160,7 +160,7 @@ export default function Escrow() {
         createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
       },
     ],
-    []
+    [],
   );
 
   const [escrows, setEscrows] = useState<Escrow[]>(initial);
@@ -174,8 +174,8 @@ export default function Escrow() {
       statusTab === "active"
         ? e.status === "pending"
         : statusTab === "completed"
-        ? e.status === "completed"
-        : e.status === "frozen"
+          ? e.status === "completed"
+          : e.status === "frozen",
     )
     .filter((e) =>
       query.trim()
@@ -183,10 +183,10 @@ export default function Escrow() {
           e.description.toLowerCase().includes(query.toLowerCase()) ||
           e.from.toLowerCase().includes(query.toLowerCase()) ||
           e.to.toLowerCase().includes(query.toLowerCase())
-        : true
+        : true,
     )
     .sort((a, b) =>
-      sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
+      sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt,
     );
 
   // Modal state
@@ -250,24 +250,24 @@ export default function Escrow() {
   return (
     <div className="relative">
       {/* Main */}
-      <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]"></div>
+      <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
-      <div className="lg:col-span-3 space-y-4">
-        <div className="flex justify-between items-center">
+      <div className="space-y-4 lg:col-span-3">
+        <div className="flex items-center justify-between">
           <header className="flex flex-col gap-3">
             <div>
-              <h2 className="text-[22px] font-semibold text-white/90 space mb-4">
+              <h2 className="space mb-4 text-[22px] font-semibold text-white/90">
                 Escrow Center
               </h2>
               <Button
                 variant="neon"
-                className="neon-hover w-fit mb-4"
+                className="neon-hover mb-4 w-fit"
                 onClick={() => setOpen(true)}
               >
                 Create Escrow
               </Button>
 
-              <p className="text-lg text-muted-foreground max-w-[20rem]">
+              <p className="text-muted-foreground max-w-[20rem] text-lg">
                 Browse public escrows. Create, review, and manage funds
                 securely.
               </p>
@@ -275,7 +275,7 @@ export default function Escrow() {
             {/* Moved call-to-action under heading for emphasis */}
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild></DialogTrigger>
-              <DialogContent className="border border-b-2 rounded-xl border-white/10 max-w-2xl bg-black">
+              <DialogContent className="max-w-2xl rounded-xl border border-b-2 border-white/10 bg-black">
                 <DialogHeader>
                   <DialogTitle>Create Escrow</DialogTitle>
                   <DialogDescription>
@@ -291,7 +291,7 @@ export default function Escrow() {
                 >
                   {/* Title */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Title
                     </label>
                     <input
@@ -306,7 +306,7 @@ export default function Escrow() {
                   </div>
                   {/* Type */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Type
                     </label>
                     <select
@@ -323,7 +323,7 @@ export default function Escrow() {
                   </div>
                   {/* Counterparty */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Counterparty
                     </label>
                     <input
@@ -338,7 +338,7 @@ export default function Escrow() {
                   </div>
                   {/* Who pays */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Who Pays?
                     </label>
                     <div className="grid grid-cols-2 gap-2">
@@ -347,7 +347,7 @@ export default function Escrow() {
                           key={p}
                           className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
                             form.payer === p
-                              ? "bg-cyan-500/30 border-cyan-400/40 text-cyan-200"
+                              ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
                               : "border-white/10 bg-white/5"
                           }`}
                         >
@@ -365,7 +365,7 @@ export default function Escrow() {
                   </div>
                   {/* Token */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Payment Token
                     </label>
                     <select
@@ -383,7 +383,7 @@ export default function Escrow() {
                   </div>
                   {/* Amount */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Amount
                     </label>
                     <input
@@ -398,7 +398,7 @@ export default function Escrow() {
                   </div>
                   {/* Description */}
                   <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Description
                     </label>
                     <textarea
@@ -412,7 +412,7 @@ export default function Escrow() {
                   </div>
                   {/* Image */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Image Upload
                     </label>
                     <input
@@ -426,7 +426,7 @@ export default function Escrow() {
                   </div>
                   {/* Deadline */}
                   <div>
-                    <label className="mb-2 block text-sm text-muted-foreground">
+                    <label className="text-muted-foreground mb-2 block text-sm">
                       Deadline
                     </label>
                     <input
@@ -440,7 +440,7 @@ export default function Escrow() {
                     />
                   </div>
                   {/* Footer */}
-                  <DialogFooter className="md:col-span-2 mt-4">
+                  <DialogFooter className="mt-4 md:col-span-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -456,7 +456,7 @@ export default function Escrow() {
                 </form>
                 {/* Conditional note */}
                 {form.payer === "me" ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="text-muted-foreground mt-2 text-xs">
                     After signing, you will be prompted to deposit{" "}
                     <span className="text-cyan-300">
                       {form.amount || "amount"} {form.token}
@@ -464,7 +464,7 @@ export default function Escrow() {
                     to activate this escrow.
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="text-muted-foreground mt-2 text-xs">
                     Counterparty will be notified to deposit funds. You can sign
                     immediately.
                   </p>
@@ -474,12 +474,12 @@ export default function Escrow() {
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative grow sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search escrows by title, party, or description"
-                  className="w-full rounded-md border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm outline-none ring-0 placeholder:text-muted-foreground focus:border-cyan-400/40"
+                  className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm ring-0 outline-none focus:border-cyan-400/40"
                 />
               </div>
               <Button
@@ -498,7 +498,7 @@ export default function Escrow() {
           </header>
 
           <aside className="space-y-4">
-            <div className="border border-b-2 border-white/10 rounded-xl py-5 px-4 ring-1 ring-white/10">
+            <div className="rounded-xl border border-b-2 border-white/10 px-4 py-5 ring-1 ring-white/10">
               <div className="mb-3 text-sm font-semibold text-white/90">
                 Filter
               </div>
@@ -510,19 +510,19 @@ export default function Escrow() {
                 </TabsList>
                 <TabsContent
                   value="active"
-                  className="mt-3 text-xs text-muted-foreground"
+                  className="text-muted-foreground mt-3 text-xs"
                 >
                   Showing pending escrows
                 </TabsContent>
                 <TabsContent
                   value="completed"
-                  className="mt-3 text-xs text-muted-foreground"
+                  className="text-muted-foreground mt-3 text-xs"
                 >
                   Showing completed escrows
                 </TabsContent>
                 <TabsContent
                   value="disputed"
-                  className="mt-3 text-xs text-muted-foreground"
+                  className="text-muted-foreground mt-3 text-xs"
                 >
                   Showing disputed escrows
                 </TabsContent>
@@ -533,7 +533,7 @@ export default function Escrow() {
 
         {/* Cards grid */}
         {listed.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm text-muted-foreground">
+          <div className="text-muted-foreground rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
             No escrows found.
           </div>
         ) : (
@@ -541,31 +541,32 @@ export default function Escrow() {
             {listed.map((e) => (
               <div
                 key={e.id}
-                className={` ring-2 ring-white/10 p-5 rounded-xl ${
+                className={`rounded-xl p-5 ring-2 ring-white/10 ${
                   e.status === "completed"
-                    ? "ring-emerald-400/40 shadow-[0_0_24px_rgba(16,185,129,0.25)]"
+                    ? "shadow-[0_0_24px_rgba(16,185,129,0.25)] ring-emerald-400/40"
                     : e.status === "frozen"
-                    ? "ring-rose-400/40 shadow-[0_0_24px_rgba(244,63,94,0.25)]"
-                    : "ring-sky-400/40 shadow-[0_0_24px_rgba(56,189,248,0.25)]"
+                      ? "shadow-[0_0_24px_rgba(244,63,94,0.25)] ring-rose-400/40"
+                      : "shadow-[0_0_24px_rgba(56,189,248,0.25)] ring-sky-400/40"
                 }`}
               >
-                <div className=" gap-3">
+                <div className="gap-3">
                   <div>
-                    <div className="space font-semibold text-white/90">
+                    <div className="text-lg font-semibold tracking-wide text-[#0891b2] drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
                       {e.title}
                     </div>
+
                     <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                       <div>
                         <div className="text-muted-foreground">Payer</div>
-                        <div className="text-white/90">{e.from}</div>
+                        <div className="text-cyan-300/90">{e.from}</div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">Payee</div>
-                        <div className="text-white/90">{e.to}</div>
+                        <div className="text-pink-300/90">{e.to}</div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">Amount</div>
-                        <div className="text-white/90">
+                        <div className="text-green-500/90">
                           {e.amount} {e.token}
                         </div>
                       </div>
@@ -584,11 +585,11 @@ export default function Escrow() {
                     </div>
                   </div>
                 </div>
-                <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-3 line-clamp-2 text-sm">
                   {e.description}
                 </p>
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-muted-foreground text-xs">
                     Deadline: {e.deadline}
                   </div>
                   <Button
@@ -609,7 +610,7 @@ export default function Escrow() {
 
       {/* View modal */}
       <Dialog open={!!view} onOpenChange={(v) => !v && setView(null)}>
-        <DialogContent className=" border-white/20 max-w-xl bg-black/80">
+        <DialogContent className="max-w-xl border-white/20 bg-black/80">
           <DialogHeader>
             <DialogTitle>{view?.title}</DialogTitle>
             <DialogDescription>Escrow details</DialogDescription>

@@ -519,14 +519,15 @@ export default function Disputes() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="text-left text-muted-foreground space">
-                  <th className="px-5 py-3">Creation date</th>
-                  <th className="px-5 py-3">Title</th>
-                  <th className="px-5 py-3">Request type</th>
-                  <th className="px-5 py-3">Parties</th>
-                  <th className="px-5 py-3">Status</th>
+                <tr className="text-left font-semibold text-sm">
+                  <th className="px-5 py-3 text-cyan-300">Creation date</th>
+                  <th className="px-5 py-3 text-emerald-300">Title</th>
+                  <th className="px-5 py-3 text-yellow-300">Request type</th>
+                  <th className="px-5 py-3 text-pink-300">Parties</th>
+                  <th className="px-5 py-3 text-indigo-300">Status</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((d) => (
                   <tr key={d.id} className="border-t border-white/10">
@@ -536,8 +537,10 @@ export default function Disputes() {
                     <td className="px-5 py-4 font-medium text-white/90">
                       {d.title}
                     </td>
-                    <td className="px-5 py-4">{d.request}</td>
-                    <td className="px-5 py-4">{d.parties}</td>
+                    <td className="px-5 py-4 ">{d.request}</td>
+                    <td className="px-5 py-4 hover:text-cyan-400 hover:underline">
+                      {d.parties}
+                    </td>
                     <td className="px-5 py-4">
                       {d.status === "Settled" ? (
                         <span className="badge badge-blue">Settled</span>

@@ -88,7 +88,7 @@ export default function Profile() {
         handle: "Not linked",
       },
     ],
-    []
+    [],
   );
 
   const stats = {
@@ -117,18 +117,18 @@ export default function Profile() {
   ];
 
   return (
-    <div className="space-y-8 relative">
+    <div className="relative space-y-8">
       {/* <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]" /> */}
       <header className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
       </header>
 
       {/* ===== Top Summary Section ===== */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3 ">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
-          <div className="glass px-6 py-3 rounded-2xl ring-1 ring-white/10 border from-cyan-500/20 border-cyan-400/30 bg-gradient-to-br to-transparent flex flex-col justify-between h-fit row-span-1">
-            <div className="flex gap-2 items-center">
+          <div className="glass row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-3 ring-1 ring-white/10">
+            <div className="flex items-center gap-2">
               <div className="grid h-14 w-14 place-items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
                 <FaUser className="h-6 w-6" />
               </div>
@@ -148,7 +148,7 @@ export default function Profile() {
                     />
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground">{wallet}</div>
+                <div className="text-muted-foreground text-xs">{wallet}</div>
               </div>
               <MiniTrust score={score} />
             </div>
@@ -164,11 +164,11 @@ export default function Profile() {
               {disputes.map((d) => (
                 <li
                   key={d.id}
-                  className="flex justify-between bg-white/5 p-3 rounded-md border border-white/10 text-sm"
+                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
                 >
                   <span>{d.title}</span>
                   <span
-                    className={`text-xs px-2 py-1 rounded ${
+                    className={`rounded px-2 py-1 text-xs ${
                       d.status === "Resolved"
                         ? "bg-emerald-500/20 text-emerald-300"
                         : "bg-yellow-500/20 text-yellow-300"
@@ -191,7 +191,7 @@ export default function Profile() {
               {reputation.map((r) => (
                 <li
                   key={r.id}
-                  className="flex justify-between bg-white/5 p-3 rounded-md border border-white/10 text-sm"
+                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
                 >
                   <span>{r.event}</span>
                   <span className="text-xs text-cyan-300">{r.impact}</span>
@@ -205,15 +205,15 @@ export default function Profile() {
 
         {/* Revenue Stats */}
         <div className="space-y-4">
-          <div className="glass p-6 rounded-2xl ring-1 ring-white/10 border from-cyan-500/20 border-cyan-400/30 bg-gradient-to-br to-transparent flex flex-col justify-between h-fit">
-            <div className="absolute inset-0 bg-cyan-500/20 blur-3xl opacity-40 -z-10" />
-            <div className="flex justify-between items-center">
-              <div className="space text-lg text-muted-foreground">
+          <div className="glass flex h-fit flex-col justify-between rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 ring-1 ring-white/10">
+            <div className="absolute inset-0 -z-10 bg-cyan-500/20 opacity-40 blur-3xl" />
+            <div className="flex items-center justify-between">
+              <div className="space text-muted-foreground text-lg">
                 Revenue Earned
               </div>
-              <div className="text-right flex gap-3 items-center">
+              <div className="flex items-center gap-3 text-right">
                 <div className="text-muted-foreground">Unclaimed</div>
-                <div className="text-green-500 font-semibold text-base">
+                <div className="text-base font-semibold text-green-500">
                   ( $132 )
                 </div>
               </div>
@@ -232,7 +232,7 @@ export default function Profile() {
             </div>
             <Button
               variant="neon"
-              className="mt-4 bg-cyan-600/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all duration-300"
+              className="mt-4 border border-cyan-400/40 bg-cyan-600/20 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all duration-300 hover:bg-cyan-500/30"
             >
               Claim Revenue
             </Button>
@@ -248,10 +248,10 @@ export default function Profile() {
               {agreements.map((a) => (
                 <li
                   key={a.id}
-                  className="flex justify-between bg-white/5 p-3 rounded-md border border-white/10 text-sm"
+                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
                 >
                   <span>{a.name}</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-muted-foreground text-xs">
                     {a.date}
                   </span>
                 </li>
@@ -261,11 +261,11 @@ export default function Profile() {
         </div>
 
         {/* ===== Verifications ===== */}
-        <section className="glass ring-1 ring-white/10 p-6 bg-gradient-to-br from-cyan-500/10 rounded-2xl h-fit">
-          <div className="mb-4 space text-lg text-muted-foreground">
+        <section className="glass h-fit rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+          <div className="space text-muted-foreground mb-4 text-lg">
             Verifications
           </div>
-          <div className="grid gap-6 grid-cols-1">
+          <div className="grid grid-cols-1 gap-6">
             {verifications.map((v) => (
               <div
                 key={v.id}
@@ -277,15 +277,15 @@ export default function Profile() {
                       v.id === "x"
                         ? "text-white"
                         : v.id === "instagram"
-                        ? "text-pink-400"
-                        : v.id === "tiktok"
-                        ? "text-gray-200"
-                        : "text-cyan-300"
+                          ? "text-pink-400"
+                          : v.id === "tiktok"
+                            ? "text-gray-200"
+                            : "text-cyan-300"
                     }`}
                   />
                   <div>
                     <div className="text-sm text-white/90">{v.name}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-muted-foreground text-xs">
                       {v.handle}
                     </div>
                   </div>
@@ -308,37 +308,37 @@ export default function Profile() {
 
       {/* ===== Bento Grid Section ===== */}
       {/* Bento Grid */}
-      <section className="grid md:grid-cols-3 gap-6"></section>
+      {/* <section className="grid md:grid-cols-3 gap-6"></section> */}
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ===== Judged Disputes Leaderboard ===== */}
         {roles.judge && (
-          <section className="glass ring-1 ring-white/10 p-6 rounded-2xl bg-gradient-to-br from-cyan-500/10 ">
-            <h3 className="text-lg font-semibold text-white/90 mb-4">
+          <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <h3 className="mb-4 text-lg font-semibold text-white/90">
               Judged Disputes
             </h3>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-white/80">
-                <thead className="text-xs uppercase text-cyan-300 border-b border-cyan-500/20">
+              <table className="w-full text-left text-sm text-white/80">
+                <thead className="border-b border-cyan-500/20 text-xs text-cyan-300 uppercase">
                   <tr>
-                    <th className="py-2 px-3">Title</th>
-                    <th className="py-2 px-3">Parties</th>
-                    <th className="py-2 px-3 text-right">Status</th>
+                    <th className="px-3 py-2">Title</th>
+                    <th className="px-3 py-2">Parties</th>
+                    <th className="px-3 py-2 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {judgedDisputes.map((d, i) => (
                     <tr
                       key={i}
-                      className="border-b border-white/5 hover:bg-white/5 transition"
+                      className="border-b border-white/5 transition hover:bg-white/5"
                     >
-                      <td className="py-2 px-3">{d.title}</td>
-                      <td className="py-2 px-3 text-muted-foreground">
+                      <td className="px-3 py-2">{d.title}</td>
+                      <td className="text-muted-foreground px-3 py-2">
                         {d.parties}
                       </td>
-                      <td className="py-2 px-3 text-right">
+                      <td className="px-3 py-2 text-right">
                         <span
-                          className={`px-2 py-1 rounded text-xs ${
+                          className={`rounded px-2 py-1 text-xs ${
                             d.status === "Resolved"
                               ? "bg-emerald-500/20 text-emerald-300"
                               : "bg-yellow-500/20 text-yellow-300"
@@ -380,7 +380,7 @@ function BentoCard({
 
   return (
     <div
-      className={`glass p-6 rounded-2xl ring-1 ring-white/10 border ${colorMap[color]} bg-gradient-to-br to-transparent flex flex-col justify-between`}
+      className={`glass rounded-2xl border p-6 ring-1 ring-white/10 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
     >
       {/* Header */}
       <div className="flex items-center justify-between">

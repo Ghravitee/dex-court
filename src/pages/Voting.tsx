@@ -194,7 +194,7 @@ export default function Voting() {
         ],
       },
     ],
-    [t0]
+    [t0],
   );
   const concluded = useMemo<DoneCase[]>(
     () => [
@@ -228,7 +228,7 @@ export default function Voting() {
         ],
       },
     ],
-    []
+    [],
   );
 
   const [tab, setTab] = useState<"live" | "done">("live");
@@ -240,8 +240,8 @@ export default function Voting() {
   }, []);
 
   return (
-    <div className="space-y-6 relative">
-      <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]" />
+    <div className="relative space-y-6">
+      <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl" />
 
       {/* Header */}
       <header className="flex items-center justify-between">
@@ -256,7 +256,7 @@ export default function Voting() {
       <div className="flex w-fit rounded-md bg-white/5 p-1">
         <button
           onClick={() => setTab("live")}
-          className={`px-4 py-1.5 text-sm rounded-md transition ${
+          className={`rounded-md px-4 py-1.5 text-sm transition ${
             tab === "live"
               ? "bg-cyan-500/20 text-cyan-300"
               : "text-muted-foreground hover:text-white/80"
@@ -266,7 +266,7 @@ export default function Voting() {
         </button>
         <button
           onClick={() => setTab("done")}
-          className={`px-4 py-1.5 text-sm rounded-md transition ${
+          className={`rounded-md px-4 py-1.5 text-sm transition ${
             tab === "done"
               ? "bg-cyan-500/20 text-cyan-300"
               : "text-muted-foreground hover:text-white/80"
@@ -277,7 +277,7 @@ export default function Voting() {
       </div>
 
       {/* Tab Content */}
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6 grid-flow-row-dense items-start max-w-[1050px] mx-auto">
+      <div className="mx-auto mt-4 grid max-w-[1050px] grid-flow-row-dense grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {tab === "live" &&
           live.map((c) => (
             <LiveCaseCard key={c.id} c={c} currentUser={currentUser} />
@@ -297,36 +297,35 @@ function LiveCaseCard({
   currentUser: string;
 }) {
   const [choice, setChoice] = useState<"plaintiff" | "defendant" | "dismissed">(
-    "plaintiff"
+    "plaintiff",
   );
   const [comment, setComment] = useState("");
   const remain = Math.max(0, c.endsAt - now());
 
   const isJudge = c.participants.some(
-    (p) => p.handle === currentUser && p.role === "judge"
+    (p) => p.handle === currentUser && p.role === "judge",
   );
 
   return (
-    <div className="border border-white/10 rounded-xl p-0 relative">
+    <div className="relative rounded-xl border border-white/10 p-0">
       <Accordion type="single" collapsible>
         <AccordionItem value="item-1">
           {/* Header */}
           <div className="flex items-center justify-between px-4 pt-4">
             <div>
-              <div className="text-sm text-muted-foreground">{c.id}</div>
-              <div className="text-white/90 font-semibold">{c.title}</div>
-              <div className="text-xs text-muted-foreground">
-                <span className="text-cyan-300 font-medium">
+              <div className="font-semibold text-white/90">{c.title}</div>
+              <div className="text-muted-foreground text-xs">
+                <span className="font-medium text-cyan-300">
                   Plaintiff: {c.parties.plaintiff}
                 </span>{" "}
                 vs{" "}
-                <span className="text-pink-300 font-medium">
+                <span className="font-medium text-pink-300">
                   Defendant: {c.parties.defendant}
                 </span>
               </div>
             </div>
             <div className="text-right">
-              <div className="mb-1 text-muted-foreground flex items-center justify-end gap-2 text-xl">
+              <div className="text-muted-foreground mb-1 flex items-center justify-end gap-2 text-xl">
                 <Clock className="h-5 w-5 text-cyan-300" /> Voting ends
               </div>
               <div className="font-mono text-lg text-cyan-300">
@@ -337,7 +336,7 @@ function LiveCaseCard({
 
           <AccordionTrigger className="px-5" />
 
-          <AccordionContent className="px-5">
+          <AccordionContent className="mt-3 px-5">
             <div className="space-y-3">
               <Link
                 to={`/disputes?case=${c.id}`}
@@ -348,11 +347,13 @@ function LiveCaseCard({
               </Link>
 
               {/* Voting Options */}
-              <div>
-                <div className="mb-2 text-sm text-muted-foreground">
+              {/* Voting Section */}
+              <div className="mt-2">
+                <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                   Who is your vote for?
-                </div>
-                <div className="grid grid-cols-3 gap-2">
+                </h4>
+
+                <div className="grid grid-cols-3 gap-3">
                   <VoteOption
                     label={`Plaintiff (${c.parties.plaintiff})`}
                     active={choice === "plaintiff"}
@@ -374,12 +375,12 @@ function LiveCaseCard({
               {/* Comment Section */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-muted-foreground text-sm">
                     Comment{" "}
                     {isJudge && <span className="text-xs">(max 1200)</span>}
                   </span>
                   {!isJudge && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       Only judges can comment
                     </span>
                   )}
@@ -399,21 +400,21 @@ function LiveCaseCard({
                   }
                 />
                 {isJudge && (
-                  <div className="mt-1 text-right text-[10px] text-muted-foreground">
+                  <div className="text-muted-foreground mt-1 text-right text-[10px]">
                     {1200 - comment.length} characters left
                   </div>
                 )}
               </div>
 
               {/* Vote Button + Info */}
-              <div className="flex items-center justify-between gap-3 mt-3">
+              <div className="mt-3 flex items-center justify-between gap-3">
                 <Button variant="neon" className="neon-hover">
                   Cast Vote
                 </Button>
 
-                <div className="relative group cursor-pointer">
-                  <Info className="w-4 h-4 text-cyan-300/70 group-hover:text-cyan-300 transition" />
-                  <div className="absolute right-0 top-full mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                <div className="group relative cursor-pointer">
+                  <Info className="h-4 w-4 text-cyan-300/70 transition group-hover:text-cyan-300" />
+                  <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
                     Your vote remains private until the voting period ends.
                     During this time, only your participation status (“voted”)
                     is visible — not your decision.
@@ -422,7 +423,7 @@ function LiveCaseCard({
               </div>
 
               {/* Participants */}
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4 h-fit mt-2">
+              <div className="mt-2 h-fit rounded-lg border border-white/10 bg-white/5 p-4">
                 <div className="mb-2 text-sm font-medium text-white/90">
                   Participants
                 </div>
@@ -438,14 +439,14 @@ function LiveCaseCard({
                         }`}
                       >
                         {p.handle}{" "}
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           ({p.role})
                         </span>
                       </span>
                     </li>
                   ))}
                 </ul>
-                <p className="mt-3 text-xs text-muted-foreground">
+                <p className="text-muted-foreground mt-3 text-xs">
                   Votes and comments remain hidden until conclusion.
                 </p>
               </div>
@@ -469,7 +470,7 @@ function VoteOption({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center hover:bg-cyan-500/30 justify-center gap-2 rounded-md border px-3 py-2 text-center text-xs transition ${
+      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform hover:bg-cyan-500/30 active:scale-[0.98] ${
         active
           ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
           : "border-white/10 bg-white/5 hover:border-cyan-400/30"
@@ -485,7 +486,7 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
 
   // Approximate for demo (you can replace with backend values)
   const plaintiffVotes = Math.round(
-    (totalVotes * (c.judgePct + c.communityPct)) / 200
+    (totalVotes * (c.judgePct + c.communityPct)) / 200,
   );
   const defendantVotes = totalVotes - plaintiffVotes;
 
@@ -493,25 +494,25 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
     c.winner === "plaintiff"
       ? "Plaintiff"
       : c.winner === "defendant"
-      ? "Defendant"
-      : "Dismissed";
+        ? "Defendant"
+        : "Dismissed";
 
   const winPct = Math.round(c.judgePct * 0.7 + c.communityPct * 0.3);
 
   return (
-    <div className="border border-white/10 rounded-xl relative overflow-hidden">
+    <div className="relative overflow-hidden rounded-xl border border-white/10">
       <Accordion type="single" collapsible>
         <AccordionItem value="case">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 px-5 pt-4">
             <div>
-              <div className="text-white/90 font-semibold">{c.title}</div>
-              <div className="text-xs text-muted-foreground">
-                <span className="text-cyan-300 font-medium">
+              <div className="font-semibold text-white/90">{c.title}</div>
+              <div className="text-muted-foreground text-xs">
+                <span className="font-medium text-cyan-300">
                   Plaintiff: {c.parties.plaintiff}
                 </span>{" "}
                 vs{" "}
-                <span className="text-pink-300 font-medium">
+                <span className="font-medium text-pink-300">
                   Defendant: {c.parties.defendant}
                 </span>
               </div>
@@ -524,8 +525,8 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
                     winLabel === "Dismissed"
                       ? "text-yellow-400"
                       : winLabel === "Plaintiff"
-                      ? "text-cyan-300"
-                      : "text-pink-300"
+                        ? "text-cyan-300"
+                        : "text-pink-300"
                   }`}
                 >
                   {winLabel}
@@ -539,25 +540,25 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
 
           <AccordionTrigger className="px-5"></AccordionTrigger>
 
-          <AccordionContent className="px-5">
+          <AccordionContent className="mt-3 px-5">
             <div className="space-y-4">
               {/* Unified Voting Breakdown */}
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-medium text-white/90 mb-2">
+              <div className="glass rounded-lg border border-cyan-400/30 bg-white/5 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+                <div className="mb-2 text-sm font-medium text-white/90">
                   Voting Breakdown
                 </div>
 
                 {/* Plaintiff Bar */}
                 <div className="mb-3">
-                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <div className="text-muted-foreground mb-1 flex justify-between text-xs">
                     <span>
                       Plaintiff ({c.parties.plaintiff}) — {plaintiffVotes} votes
                     </span>
                     <span>{c.judgePct}%</span>
                   </div>
-                  <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                     <motion.div
-                      className="h-full bg-cyan-400 rounded-full"
+                      className="h-full rounded-full bg-cyan-400"
                       initial={{ width: 0 }}
                       animate={{ width: `${c.judgePct}%` }}
                       transition={{ duration: 1, ease: "easeOut" }}
@@ -567,15 +568,15 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
 
                 {/* Defendant Bar */}
                 <div>
-                  <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <div className="text-muted-foreground mb-1 flex justify-between text-xs">
                     <span>
                       Defendant ({c.parties.defendant}) — {defendantVotes} votes
                     </span>
                     <span>{c.communityPct}%</span>
                   </div>
-                  <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                     <motion.div
-                      className="h-full bg-pink-400 rounded-full"
+                      className="h-full rounded-full bg-pink-400"
                       initial={{ width: 0 }}
                       animate={{ width: `${c.communityPct}%` }}
                       transition={{
@@ -587,14 +588,14 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
                   </div>
                 </div>
 
-                <p className="text-sm text-muted-foreground mt-3">
+                <p className="text-muted-foreground mt-3 text-sm">
                   {winLabel} wins with a combined {winPct}% majority.
                 </p>
               </div>
 
               {/* Judges’ Comments */}
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-medium text-white/90 mb-2">
+              <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+                <div className="mb-2 text-sm font-medium text-white/90">
                   Judges’ Comments
                 </div>
                 <ul className="space-y-2 text-sm">
@@ -603,7 +604,7 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
                       key={i}
                       className="rounded-md border border-white/10 bg-white/5 p-3"
                     >
-                      <span className="text-cyan-300 mr-2">{cm.handle}</span>
+                      <span className="mr-2 text-cyan-300">{cm.handle}</span>
                       {cm.text}
                     </li>
                   ))}
@@ -611,11 +612,11 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
               </div>
 
               {/* Case Description */}
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
                 <div className="text-sm font-medium text-white/90">
                   Case Description
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-1 text-sm">
                   {c.description}
                 </p>
                 <Link
