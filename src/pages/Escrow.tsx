@@ -616,8 +616,13 @@ export default function Escrow() {
                         <div>
                           {e.status === "completed" ? (
                             <span className="badge badge-green">Completed</span>
-                          ) : e.status === "frozen" ? (
+                          ) : e.status === "frozen" ||
+                            e.status === "disputed" ? (
                             <span className="badge badge-red">Disputed</span>
+                          ) : e.status === "cancelled" ? (
+                            <span className="badge badge-gray">Cancelled</span>
+                          ) : e.status === "active" ? (
+                            <span className="badge badge-yellow">Active</span>
                           ) : (
                             <span className="badge badge-blue">Pending</span>
                           )}

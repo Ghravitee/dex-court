@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from "react";
 import {
   FaUser,
@@ -12,6 +13,13 @@ import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
 import User from "../components/ui/svgcomponents/User";
+import { toast } from "sonner"; // optional, if you already use toast notifications
+
+import {
+  registerTelegram,
+  getTelegramOtp,
+  loginTelegram,
+} from "../lib/apiClient";
 
 // Add this component near the top of your file
 const Tooltip = ({
@@ -64,6 +72,39 @@ export default function Profile() {
     community: true,
     user: true,
   });
+  const [otp, setOtp] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [, setLoading] = useState(false);
+
+  async function handleTelegramConnect() {
+    try {
+      setLoading(true);
+      const telegramId = "7522367627";
+      const username = "@LuminalLink";
+
+      await registerTelegram(telegramId, username);
+      console.log("✅ Registered successfully!");
+
+      const { otp } = await getTelegramOtp(telegramId);
+      console.log("📩 Received OTP:", otp);
+      setOtp(otp);
+
+      const { token } = await loginTelegram(otp);
+      console.log("🔐 Received token:", token);
+      setToken(token);
+
+      localStorage.setItem("authToken", token);
+      toast.success("Telegram connected successfully!");
+    } catch (err: any) {
+      console.error(
+        "❌ Telegram connection failed:",
+        err.response?.data || err.message,
+      );
+      toast.error("Failed to connect Telegram.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const disputes = [
     { id: 1, title: "Escrow breach – CryptoSwap", status: "Resolved" },
@@ -452,11 +493,24 @@ export default function Profile() {
                     <span className="badge badge-green">Verified</span>
                   ) : (
                     <Button
+                      onClick={handleTelegramConnect}
                       variant="outline"
                       className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
                     >
                       Connect
                     </Button>
+                  )}
+                  {otp && (
+                    <div className="mt-4 hidden rounded-md border border-cyan-400/30 bg-cyan-500/10 p-3 text-sm text-cyan-200">
+                      <div>
+                        <strong>OTP:</strong> {otp}
+                      </div>
+                      {token && (
+                        <div className="mt-2 break-all">
+                          <strong>Token:</strong> {token}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

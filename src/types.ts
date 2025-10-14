@@ -34,7 +34,13 @@ export type Escrow = {
   to: string;
   token: string;
   amount: number;
-  status: "pending" | "active" | "cancelled" | "completed" | "frozen";
+  status:
+    | "pending"
+    | "active"
+    | "cancelled"
+    | "completed"
+    | "frozen"
+    | "disputed";
   deadline: string;
   type: "public" | "private";
   description: string;

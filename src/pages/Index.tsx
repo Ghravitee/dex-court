@@ -766,7 +766,7 @@ function SignedAgreements() {
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
             }}
-            className="glass flex h-[15rem] min-w-full flex-col items-start justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+            className="glass flex h-[14.6rem] min-w-full flex-col items-start justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
           >
             <div className="flex items-center gap-3">
               <Handshake className="h-6 w-6 text-cyan-400" />
