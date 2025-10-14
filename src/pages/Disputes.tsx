@@ -4,6 +4,8 @@ import { useMemo, useRef, useState, useEffect } from "react";
 
 import { Info, Search, SortAsc, SortDesc, Upload, Scale } from "lucide-react";
 import { toast } from "sonner";
+import { getDisputes } from "../lib/mockDisputes";
+import { useNavigate } from "react-router-dom";
 
 // Types
 type DisputeRow = {
@@ -16,44 +18,17 @@ type DisputeRow = {
 };
 
 export default function Disputes() {
-  // Sample data
-  const data = useMemo<DisputeRow[]>(
-    () => [
-      {
-        id: "D-311",
-        createdAt: "2025-10-30",
-        title: "Payment dispute for audit",
-        request: "Paid",
-        parties: "@0xAlfa vs @0xBeta",
-        status: "Vote in Progress",
-      },
-      {
-        id: "D-309",
-        createdAt: "2025-10-28",
-        title: "Missed delivery window",
-        request: "Pro Bono",
-        parties: "@0xAstra vs @0xNova",
-        status: "Pending",
-      },
-      {
-        id: "D-300",
-        createdAt: "2025-10-14",
-        title: "IP infringement claim",
-        request: "Paid",
-        parties: "@0xOrion vs @0xEcho",
-        status: "Settled",
-      },
-      {
-        id: "D-296",
-        createdAt: "2025-10-09",
-        title: "Unresponsive contractor",
-        request: "Pro Bono",
-        parties: "@0xZen vs @0xVolt",
-        status: "Dismissed",
-      },
-    ],
-    [],
-  );
+  const navigate = useNavigate();
+
+  const [data, setData] = useState<DisputeRow[]>([]);
+  const [, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDisputes().then((res) => {
+      setData(res);
+      setLoading(false);
+    });
+  }, []);
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<DisputeRow["status"] | "All">("All");
@@ -387,7 +362,8 @@ export default function Disputes() {
                     {filtered.map((d) => (
                       <tr
                         key={d.id}
-                        className="border-t border-white/10 text-xs"
+                        onClick={() => navigate(`/disputes/${d.id}`)}
+                        className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-cyan-500/10"
                       >
                         <td className="text-muted-foreground px-5 py-4">
                           {d.createdAt}

@@ -15,6 +15,7 @@ import Profile from "./pages/Profile";
 import AgreementDetails from "./pages/AgreementDetails";
 import EscrowDetails from "./pages/EscrowDetails";
 import { ScrollToTop } from "./components/ScrollToTop";
+import DisputeDetails from "./pages/DisputeDetails";
 // import Landing from "./pages/Landing";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="agreements" element={<Agreements />} />
               <Route path="agreements/:id" element={<AgreementDetails />} />
               <Route path="disputes" element={<Disputes />} />
+              <Route path="/disputes/:id" element={<DisputeDetails />} />
               <Route path="voting" element={<Voting />} />
               <Route path="escrow" element={<Escrow />} />
               <Route path="/escrow/:id" element={<EscrowDetails />} />

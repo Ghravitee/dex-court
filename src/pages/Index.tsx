@@ -33,6 +33,7 @@ import CountUp from "../components/ui/CountUp";
 import { Link } from "react-router-dom";
 import avatar from "../assets/avatar.webp";
 import { fetchAgreements } from "../lib/mockApi";
+import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
 
 export default function Index() {
   return (
@@ -390,50 +391,27 @@ function genSeries(type: "daily" | "weekly" | "monthly"): any[] {
 }
 
 function DisputesSlideshow() {
-  const items = [
-    {
-      id: 1,
-      title: "Payment dispute for audit",
-      parties: "@0xAlfa vs @0xBeta",
-      desc: "Invoice unpaid after delivered audit.",
-      href: "/disputes?case=D-311",
-    },
-    {
-      id: 2,
-      title: "Missed delivery window",
-      parties: "@0xAstra vs @0xNova",
-      desc: "Shipment delayed beyond 7 days.",
-      href: "/disputes?case=D-309",
-    },
-    {
-      id: 3,
-      title: "IP infringement claim",
-      parties: "@0xOrion vs @0xEcho",
-      desc: "Assets reused without license.",
-      href: "/disputes?case=D-300",
-    },
-    {
-      id: 4,
-      title: "Unresponsive contractor",
-      parties: "@0xZen vs @0xVolt",
-      desc: "Ghosted after partial payment.",
-      href: "/disputes?case=D-296",
-    },
-  ];
+  const [data, setData] = useState<DisputeRow[]>([]);
+  const [, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDisputes().then((res) => {
+      setData(res);
+      setLoading(false);
+    });
+  }, []);
 
   const [index, setIndex] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const delay = 3500 + Math.floor(Math.random() * 1200); // desync by up to 1.2s
+  const delay = useMemo(() => 3500 + Math.floor(Math.random() * 1200), []);
 
-  const nextSlide = useCallback(
-    () => setIndex((prev) => (prev + 1) % items.length),
-    [items.length],
-  );
-  const prevSlide = useCallback(
-    () => setIndex((prev) => (prev - 1 + items.length) % items.length),
-    [items.length],
-  );
+  const nextSlide = useCallback(() => {
+    setIndex((prev) => (prev + 1) % data.length);
+  }, [data.length]);
 
+  const prevSlide = useCallback(() => {
+    setIndex((prev) => (prev - 1 + data.length) % data.length);
+  }, [data.length]);
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(nextSlide, delay);
@@ -484,10 +462,10 @@ function DisputesSlideshow() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {items.map((item, i) => (
+        {data.map((item, i) => (
           <Link
             key={item.id}
-            to={item.href}
+            to={`/disputes/${item.id}`}
             style={{
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
@@ -498,7 +476,7 @@ function DisputesSlideshow() {
               {item.title}
             </div>
             <div className="mt-2 text-sm text-white/60">{item.parties}</div>
-            <p className="mt-2 text-sm text-white/80">{item.desc}</p>
+            <p className="mt-2 text-sm text-white/80">{item.status}</p>
           </Link>
         ))}
       </div>

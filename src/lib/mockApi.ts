@@ -49,7 +49,7 @@ const agreements: Agreement[] = [
     useEscrow: true,
     token: "ETH",
     amount: "2.5",
-    status: "disputed", // 🔹 changed from "signed"
+    status: "disputed", // remains disputed
     createdBy: "@0xTech",
     dateCreated: "2025-10-05",
     escrowAddress: "0x7890abcdef1234567890abcdef1234567890abcd",
@@ -67,7 +67,7 @@ const agreements: Agreement[] = [
     useEscrow: true,
     token: "ETH",
     amount: "5",
-    status: "disputed", // 🔹 changed from "pending"
+    status: "disputed",
     createdBy: "@0xGallery",
     dateCreated: "2025-10-08",
     escrowAddress: "0xdef456abc789012def456abc789012def456abc7",
@@ -99,7 +99,7 @@ const agreements: Agreement[] = [
     useEscrow: true,
     token: "USDC",
     amount: "15000",
-    status: "disputed", // 🟢 remains disputed
+    status: "disputed",
     createdBy: "@0xWallet",
     dateCreated: "2025-09-15",
     escrowAddress: "0x2345678901bcdef2345678901bcdef2345678901",
@@ -134,7 +134,7 @@ const agreements: Agreement[] = [
     useEscrow: true,
     token: "ETH",
     amount: "8",
-    status: "signed",
+    status: "signed", // ✅ signed #1
     createdBy: "@0xNetwork",
     dateCreated: "2025-10-01",
     escrowAddress: "0x8901234567cdef8901234567cdef8901234567cd",
@@ -152,7 +152,7 @@ const agreements: Agreement[] = [
     useEscrow: false,
     token: "USDC",
     amount: "2500",
-    status: "cancelled",
+    status: "signed", // ✅ changed from cancelled → signed #2
     createdBy: "@0xStartup",
     dateCreated: "2025-09-10",
   },
