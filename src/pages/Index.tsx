@@ -10,10 +10,7 @@ import {
   Banknote,
   Wallet,
   Landmark,
-  ThumbsUp,
-  ThumbsDown,
   Users,
-  Timer,
   ChevronLeft,
   ChevronRight,
   // Vote,
@@ -32,14 +29,10 @@ import {
   Bar,
   ComposedChart,
 } from "recharts";
-
 import CountUp from "../components/ui/CountUp";
-import avatar1 from "../assets/avatar-1.jpg";
-import avatar2 from "../assets/avatar-2.jpg";
-import avatar3 from "../assets/avatar-3.jpg";
-import avatar4 from "../assets/avatar-4.jpg";
-import avatar5 from "../assets/avatar-5.jpg";
 import { Link } from "react-router-dom";
+import avatar from "../assets/avatar.webp";
+import { fetchAgreements } from "../lib/mockApi";
 
 export default function Index() {
   return (
@@ -58,14 +51,16 @@ export default function Index() {
           <StatsGrid />
         </div>
       </div>
-      {/* <CardLinks /> */}
 
-      <div className="mt-4 grid grid-cols-1 gap-x-6 lg:grid-cols-3">
-        <JudgesIntro />
-
+      <div className="mt-4 grid grid-cols-1 items-stretch gap-x-6 lg:grid-cols-2">
+        {/* <JudgesIntro /> */}
         <DisputesSlideshow />
+        <LiveVoting />
       </div>
-      <RenownedJudges />
+      <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-2">
+        <SignedAgreements />
+        <RenownedJudges />
+      </div>
     </div>
   );
 }
@@ -104,61 +99,10 @@ function HeroSection() {
   );
 }
 
-// function CardLinks() {
-//   return (
-//     <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
-//       <Card
-//         title="Agreements"
-//         icon={<FileText className="h-4 w-4" />}
-//         to="/agreements"
-//         color="from-cyan-500/10"
-//         description="Draft, sign, and manage tamper-proof smart agreements."
-//       />
-//       <Card
-//         title="Disputes"
-//         icon={<Scale className="h-4 w-4" />}
-//         to="/disputes"
-//         color="from-cyan-500/10"
-//         description="Resolve conflicts through transparent voting and evidence."
-//       />
-//       <Card
-//         title="Escrow"
-//         icon={<BadgeDollarSign className="h-4 w-4" />}
-//         to="/escrow"
-//         color="from-sky-500/10"
-//         description="Secure funds in trustless, automated escrow vaults."
-//       />
-//       <Card
-//         title="Voting Hub"
-//         icon={<Vote className="h-4 w-4" />}
-//         to="/voting"
-//         color="from-cyan-500/10"
-//         description="Participate in community verdicts and shape case outcomes."
-//       />
-//       <Card
-//         title="Reputation"
-//         icon={<Star className="h-4 w-4" />}
-//         to="/reputation"
-//         color="from-cyan-500/10"
-//         description="Earn credibility as you engage with agreements & disputes."
-//       />
-//       <Card
-//         title="Profile"
-//         icon={<User className="h-4 w-4" />}
-//         to="/profile"
-//         color="from-cyan-500/10"
-//         description="View your activity, reputation, and arbitration history."
-//       />
-//     </section>
-//   );
-// }
-
 function RevenueChart() {
-  type Point = { t: string; revenue: number };
-
-  const daily = useMemo<Point[]>(() => genRevenue(30), []);
-  const weekly = useMemo<Point[]>(() => genRevenue(12, 7), []);
-  const monthly = useMemo<Point[]>(() => genRevenue(12, 30), []);
+  const daily = useMemo(() => genRevenue("daily"), []);
+  const weekly = useMemo(() => genRevenue("weekly"), []);
+  const monthly = useMemo(() => genRevenue("monthly"), []);
 
   const [tab, setTab] = useState("daily");
   const data = tab === "daily" ? daily : tab === "weekly" ? weekly : monthly;
@@ -223,13 +167,46 @@ function RevenueChart() {
 }
 
 // Helper for revenue generation
-function genRevenue(n: number, step = 1): any[] {
+function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
   const out: any[] = [];
-  for (let i = 0; i < n; i++) {
-    out.push({
-      t: `${i * step + 1}`,
-      revenue: 15000 + Math.random() * 4000 + i * 200, // simulates gradual growth
-    });
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  if (type === "daily") {
+    for (let i = 1; i <= 30; i++) {
+      out.push({
+        t: `Day ${i}`,
+        revenue: 15000 + Math.random() * 4000 + i * 200,
+      });
+    }
+  } else if (type === "weekly") {
+    // 4 weeks per month label
+    for (let m = 0; m < 12; m++) {
+      out.push({
+        t: months[m],
+        revenue: 15000 + Math.random() * 4000 + m * 800,
+      });
+    }
+  } else {
+    // monthly view — one bar per month
+    for (let m = 0; m < 12; m++) {
+      out.push({
+        t: months[m],
+        revenue: 20000 + Math.random() * 6000 + m * 1000,
+      });
+    }
   }
   return out;
 }
@@ -249,12 +226,12 @@ function StatsGrid() {
 
   return (
     <section className="glass justify-center gap-8 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-8">
-      <h3 className="space mb-6 font-semibold text-white/90 lg:text-xl">
+      <h3 className="space mb-6 text-center font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
 
       {/* One grid for all stats */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-3 gap-6">
         {stats.map((s) => (
           <div key={s.label} className="flex min-w-[11rem] items-center gap-4">
             <div className="rounded-2xl border p-2 ring-1 ring-white/10">
@@ -279,16 +256,10 @@ function StatsGrid() {
   );
 }
 function KPIChart() {
-  type Point = {
-    t: string;
-    revenue: number;
-    agreements: number;
-    judges: number;
-    voters: number;
-  };
-  const daily = useMemo<Point[]>(() => genSeries(14), []);
-  const weekly = useMemo<Point[]>(() => genSeries(12, 7), []);
-  const monthly = useMemo<Point[]>(() => genSeries(12, 30), []);
+  const daily = useMemo(() => genSeries("daily"), []);
+  const weekly = useMemo(() => genSeries("weekly"), []);
+  const monthly = useMemo(() => genSeries("monthly"), []);
+
   const [tab, setTab] = useState("daily");
   const data = tab === "daily" ? daily : tab === "weekly" ? weekly : monthly;
   return (
@@ -367,16 +338,53 @@ function KPIChart() {
   );
 }
 
-function genSeries(n: number, step = 1): any[] {
-  const out = [] as any[];
-  for (let i = 0; i < n; i++) {
-    out.push({
-      t: `${i * step + 1}`,
-      revenue: 100 + Math.random() * 80 + i * 5,
-      agreements: 40 + Math.random() * 25 + i * 2,
-      judges: 10 + Math.random() * 6 + i * 0.5,
-      voters: 60 + Math.random() * 40 + i * 3,
-    });
+function genSeries(type: "daily" | "weekly" | "monthly"): any[] {
+  const out: any[] = [];
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  if (type === "daily") {
+    for (let i = 1; i <= 14; i++) {
+      out.push({
+        t: `Day ${i}`,
+        revenue: 100 + Math.random() * 80 + i * 5,
+        agreements: 40 + Math.random() * 25 + i * 2,
+        judges: 10 + Math.random() * 6 + i * 0.5,
+        voters: 60 + Math.random() * 40 + i * 3,
+      });
+    }
+  } else if (type === "weekly") {
+    for (let m = 0; m < 12; m++) {
+      out.push({
+        t: months[m],
+        revenue: 120 + Math.random() * 80 + m * 10,
+        agreements: 50 + Math.random() * 25 + m * 3,
+        judges: 12 + Math.random() * 6 + m * 0.5,
+        voters: 70 + Math.random() * 40 + m * 4,
+      });
+    }
+  } else {
+    for (let m = 0; m < 12; m++) {
+      out.push({
+        t: months[m],
+        revenue: 150 + Math.random() * 100 + m * 20,
+        agreements: 60 + Math.random() * 30 + m * 5,
+        judges: 14 + Math.random() * 8 + m,
+        voters: 80 + Math.random() * 50 + m * 6,
+      });
+    }
   }
   return out;
 }
@@ -447,17 +455,24 @@ function DisputesSlideshow() {
 
   return (
     <div className="relative overflow-hidden">
-      <div className="flex items-center justify-between">
-        <h3 className="glow-text space mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Disputes (teaser)
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="space max-w-[20rem] text-[17px] font-semibold text-white/90">
+          Have you been wronged or cheated? Don’t stay silent, start a{" "}
+          <Link to={"/disputes"} className="text-[#0891b2]">
+            dispute
+          </Link>
+          .
         </h3>
-        <div className="flex items-center gap-2">
-          <button onClick={prevSlide} className="">
-            <ChevronLeft />
-          </button>
-          <button onClick={nextSlide} className="">
-            <ChevronRight />
-          </button>
+
+        <div className="mb-3 flex items-center justify-between">
+          {/* <h1 className="text-xl text-white">Disputes</h1> */}
+          <Link
+            to={"/disputes"}
+            className="neon-hover ring-offset-background focus-visible:ring-ring relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-cyan-400/40 bg-cyan-500/15 px-4 py-3 text-sm font-medium whitespace-nowrap text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.35)] transition-colors hover:bg-cyan-500/20 hover:shadow-[0_0_34px_rgba(34,211,238,0.6)] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+          >
+            <Scale className="mr-2 h-4 w-4" />
+            Create Dispute
+          </Link>
         </div>
       </div>
 
@@ -477,7 +492,7 @@ function DisputesSlideshow() {
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
             }}
-            className="glass flex h-[13.5rem] min-w-full flex-col items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 transition"
+            className="glass flex h-[11rem] min-w-full flex-col items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 transition"
           >
             <div className="mt-1 text-lg font-semibold text-[#0891b2]">
               {item.title}
@@ -491,89 +506,6 @@ function DisputesSlideshow() {
   );
 }
 
-function JudgesIntro() {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <section
-      className={`glass rborder to-transparenttransition-all relative col-span-2 overflow-hidden border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 p-6 duration-300 ${
-        expanded ? "h-auto" : "h-[16rem]"
-      }`}
-    >
-      {/* Cyan glow effect */}
-      <div className="absolute top-0 -right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
-
-      {/* Heading */}
-      <h3 className="space text-lg font-semibold text-white/90">
-        Have you been wronged or cheated? Don’t stay silent, start a dispute.
-      </h3>
-
-      {/* Judges info */}
-      <div className="text-muted-foreground mt-3 text-sm">
-        <h3 className="font-semibold text-white/90">Who Judges Your Case?</h3>
-        <p className="text-muted-foreground space mt-1 text-cyan-400">Judges</p>
-        <p>
-          DexCourt’s panel of judges consists of reputable and well-known
-          figures across both Web3 and traditional spaces.
-        </p>
-
-        {/* Always visible part */}
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>Top influencers (e.g., IncomeSharks)</li>
-
-          {/* Hidden part starts here */}
-          {expanded && (
-            <>
-              <li>Leading project founders (e.g., CZ)</li>
-              <li>Experienced blockchain developers</li>
-              <li>Respected degens with strong community reputation</li>
-              <li>Licensed lawyers and real-world judges</li>
-              <li>Prominent Web2 personalities</li>
-            </>
-          )}
-        </ul>
-
-        {/* Hidden explanatory text */}
-        {expanded && (
-          <>
-            <p className="text-muted-foreground mt-2 text-sm">
-              These individuals are selected based on proven{" "}
-              <span className="text-cyan-400">
-                credibility, influence, and integrity
-              </span>{" "}
-              within their respective domains.
-            </p>
-
-            <p className="text-muted-foreground space mt-3 text-cyan-400">
-              The Community
-            </p>
-            <p className="text-muted-foreground text-sm">
-              In addition to the judges, the broader DexCourt community also
-              plays a vital role. Holders of the $LAW token can review cases and
-              cast their votes, ensuring that justice remains decentralized and
-              inclusive.
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* Buttons */}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button variant="neon" className="neon-hover" asChild>
-          <Link to="/disputes">Create Dispute</Link>
-        </Button>
-
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="text-xs text-cyan-300 hover:underline"
-        >
-          {expanded ? "Read Less" : "Read More"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function RenownedJudges() {
   const judges = [
     {
@@ -582,7 +514,7 @@ function RenownedJudges() {
       x: "@nova_xyz",
       bio: "Arbitrator & smart contract auditor",
       href: "/judges/nova",
-      avatar: avatar1,
+      avatar,
     },
     {
       name: "@judgeAres",
@@ -590,7 +522,7 @@ function RenownedJudges() {
       x: "@ares_eth",
       href: "/judges/ares",
       bio: "Founder • DeFi risk analyst",
-      avatar: avatar2,
+      avatar,
     },
     {
       name: "@judgeKai",
@@ -598,7 +530,7 @@ function RenownedJudges() {
       x: "@kai_io",
       href: "/judges/kai",
       bio: "Full-stack dev & L2 researcher",
-      avatar: avatar3,
+      avatar,
     },
     {
       name: "@judgeVera",
@@ -606,7 +538,7 @@ function RenownedJudges() {
       x: "@vera_x",
       href: "/judges/vera",
       bio: "Corporate lawyer • IP",
-      avatar: avatar4,
+      avatar,
     },
     {
       name: "@judgeOrion",
@@ -614,212 +546,266 @@ function RenownedJudges() {
       x: "@orion_xyz",
       href: "/judges/orion",
       bio: "Protocol governance specialist",
-      avatar: avatar5,
+      avatar,
     },
   ];
 
+  const [index, setIndex] = useState(0);
+  const delay = useMemo(() => 4200 + Math.floor(Math.random() * 1000), []);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const next = useCallback(
+    () => setIndex((prev) => (prev + 1) % judges.length),
+    [judges.length],
+  );
+  const prev = useCallback(
+    () => setIndex((prev) => (prev - 1 + judges.length) % judges.length),
+    [judges.length],
+  );
+
+  useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(next, delay);
+    return () => clearTimeout(timeoutRef.current || undefined);
+  }, [index, next, delay]);
+
+  return (
+    <div className="relative overflow-hidden">
+      <div className="flex items-center justify-between">
+        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+          Renowned Judges
+        </h3>
+        <div className="flex items-center gap-2">
+          <button onClick={prev}>
+            <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
+          </button>
+          <button onClick={next}>
+            <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
+          </button>
+        </div>
+      </div>
+
+      <div
+        className="relative flex w-full transition-transform duration-700 ease-in-out"
+        style={{
+          transform: `translateX(-${index * 100}%)`,
+        }}
+      >
+        {judges.map((j, i) => (
+          <Link
+            to={j.href}
+            key={j.name}
+            style={{
+              transform: i === index ? "scale(1)" : "scale(0.9)",
+              opacity: i === index ? 1 : 0.4,
+            }}
+            className="glass flex min-w-full flex-col items-center justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+          >
+            <img
+              src={j.avatar}
+              alt={j.name}
+              className="h-20 w-20 rounded-full border-2 border-cyan-400/40 object-cover shadow-lg"
+            />
+            <div className="text-lg font-semibold text-[#0891b2]">{j.name}</div>
+            <div className="flex justify-center gap-2 text-sm text-white/60">
+              {j.tg && <span>{j.tg}</span>}
+              {j.x && <span>{j.x}</span>}
+            </div>
+            <p className="text-center text-sm text-white/70">{j.bio}</p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LiveVoting() {
   const votes = [
     {
       id: 1,
       title: "Escrow Refund",
       parties: "@0xNova vs @0xVega",
       desc: "Plaintiff requests refund after contractor missed milestones.",
+      href: "/voting",
     },
     {
       id: 2,
       title: "Code Ownership Dispute",
       parties: "@0xLuna vs @0xSol",
       desc: "Clarifying IP rights for jointly developed smart contract.",
+      href: "/voting",
     },
     {
       id: 3,
       title: "Liquidity Pool Compensation",
       parties: "@0xTheta vs @0xDelta",
       desc: "Community voting on compensation after protocol bug exploit.",
+      href: "/voting",
     },
   ];
 
-  // --- Carousel logic (same as DisputesSlideshow) ---
-  const [judgeIndex, setJudgeIndex] = useState(0);
-  const [voteIndex, setVoteIndex] = useState(0);
-  const judgeDelay = useMemo(() => 4200 + Math.floor(Math.random() * 1000), []);
-  const voteDelay = useMemo(() => 5000 + Math.floor(Math.random() * 1200), []);
-
+  const [index, setIndex] = useState(0);
+  const delay = useMemo(() => 5000 + Math.floor(Math.random() * 1200), []);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const timeoutVoteRef = useRef<NodeJS.Timeout | null>(null);
 
-  const nextJudge = useCallback(
-    () => setJudgeIndex((prev) => (prev + 1) % judges.length),
-    [judges.length],
-  );
-  const prevJudge = useCallback(
-    () => setJudgeIndex((prev) => (prev - 1 + judges.length) % judges.length),
-    [judges.length],
-  );
-
-  const nextVote = useCallback(
-    () => setVoteIndex((prev) => (prev + 1) % votes.length),
+  const next = useCallback(
+    () => setIndex((prev) => (prev + 1) % votes.length),
     [votes.length],
   );
-  const prevVote = useCallback(
-    () => setVoteIndex((prev) => (prev - 1 + votes.length) % votes.length),
+  const prev = useCallback(
+    () => setIndex((prev) => (prev - 1 + votes.length) % votes.length),
     [votes.length],
   );
 
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(nextJudge, judgeDelay);
+    timeoutRef.current = setTimeout(next, delay);
     return () => clearTimeout(timeoutRef.current || undefined);
-  }, [judgeIndex, nextJudge, judgeDelay]);
-
-  useEffect(() => {
-    if (timeoutVoteRef.current) clearTimeout(timeoutVoteRef.current);
-    timeoutVoteRef.current = setTimeout(nextVote, voteDelay);
-    return () => clearTimeout(timeoutVoteRef.current || undefined);
-  }, [voteIndex, nextVote, voteDelay]);
+  }, [index, next, delay]);
 
   return (
-    <section className="relative mt-4 grid grid-cols-1 gap-8 lg:grid-cols-2">
-      <div className="absolute top-0 -right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
-
-      {/* --- Renowned Judges --- */}
-      <div className="relative overflow-hidden">
-        <div className="flex items-center justify-between">
-          <h3 className="glow-text space mb-2 font-semibold text-cyan-100 lg:text-xl">
-            Renowned Judges
-          </h3>
-          <div className="flex items-center gap-2">
-            <button onClick={prevJudge}>
-              <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
-            </button>
-            <button onClick={nextJudge}>
-              <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="relative flex w-full transition-transform duration-700 ease-in-out"
-          style={{
-            transform: `translateX(-${judgeIndex * 100}%)`,
-          }}
-        >
-          {judges.map((j, i) => (
-            <Link
-              to={j.href}
-              key={j.name}
-              style={{
-                transform: i === judgeIndex ? "scale(1)" : "scale(0.9)",
-                opacity: i === judgeIndex ? 1 : 0.4,
-              }}
-              className="glass flex min-w-full flex-col items-center justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
-            >
-              <img
-                src={j.avatar}
-                alt={j.name}
-                className="h-20 w-20 rounded-full border-2 border-cyan-400/40 object-cover shadow-lg"
-              />
-              <div className="text-lg font-semibold text-[#0891b2]">
-                {j.name}
-              </div>
-              <div className="flex justify-center gap-2 text-sm text-white/60">
-                {j.tg && <span>{j.tg}</span>}
-                {j.x && <span>{j.x}</span>}
-              </div>
-              <p className="text-center text-sm text-white/70">{j.bio}</p>
-            </Link>
-          ))}
+    <div className="relative h-[15rem] overflow-hidden">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+          Live Voting
+        </h3>
+        <div className="flex items-center gap-2">
+          <button onClick={prev}>
+            <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
+          </button>
+          <button onClick={next}>
+            <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
+          </button>
         </div>
       </div>
 
-      {/* --- Live Voting --- */}
-      <div className="relative h-fit overflow-hidden">
-        <div className="flex items-center justify-between">
-          <h3 className="glow-text space mb-2 font-semibold text-cyan-100 lg:text-xl">
-            Live Voting
-          </h3>
-          <div className="flex items-center gap-2">
-            <button onClick={prevVote}>
-              <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
-            </button>
-            <button onClick={nextVote}>
-              <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="relative flex w-full transition-transform duration-700 ease-in-out"
-          style={{
-            transform: `translateX(-${voteIndex * 100}%)`,
-          }}
-        >
-          {votes.map((v, i) => (
-            <div
-              key={v.id}
-              style={{
-                transform: i === voteIndex ? "scale(1)" : "scale(0.9)",
-                opacity: i === voteIndex ? 1 : 0.4,
-              }}
-              className="glass flex min-w-full flex-col justify-between rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
-            >
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex flex-col gap-4">
-                    <div className="font-semibold text-cyan-300">{v.title}</div>
-                    <div className="text-xs text-white/60">{v.parties}</div>
-                  </div>
-                  <Timer className="h-4 w-4 text-cyan-300" />
+      <div
+        className="relative flex w-full transition-transform duration-700 ease-in-out"
+        style={{
+          transform: `translateX(-${index * 100}%)`,
+        }}
+      >
+        {votes.map((v, i) => (
+          <div
+            key={v.id}
+            style={{
+              transform: i === index ? "scale(1)" : "scale(0.9)",
+              opacity: i === index ? 1 : 0.4,
+            }}
+            className="glass flex min-w-full flex-col items-center justify-between rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex flex-col items-center justify-center gap-4 text-center">
+                <div className="text-lg font-semibold text-[#0891b2]">
+                  {v.title}
                 </div>
-                <p className="text-sm text-white/80">{v.desc}</p>
-              </div>
-              <div className="mt-4 flex gap-3">
-                <button className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/30 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20">
-                  <ThumbsUp className="h-4 w-4" /> Approve
-                </button>
-                <button className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 py-1.5 text-sm text-red-300 transition hover:bg-red-500/20">
-                  <ThumbsDown className="h-4 w-4" /> Reject
-                </button>
+                <div className="text-sm text-white/60">{v.parties}</div>
               </div>
             </div>
-          ))}
-        </div>
+            <p className="text-sm text-white/80">{v.desc}</p>
+
+            {/* Updated button section */}
+            <div className="mt-4 flex justify-center">
+              <Link
+                to={v.href}
+                className="neon-hover flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/20 px-6 py-2 text-sm font-medium text-cyan-200 transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_20px_rgba(34,211,238,0.6)]"
+              >
+                <Scale className="h-4 w-4" />
+                Vote
+              </Link>
+            </div>
+          </div>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-// function Card({
-//   title,
-//   icon,
-//   to,
-//   color,
-//   description,
-// }: {
-//   title: string;
-//   icon: React.ReactNode;
-//   to: string;
-//   color: string;
-//   description: string;
-// }) {
-//   return (
-//     <Link
-//       to={to}
-//       className={
-//         "group glass flex flex-col gap-1 justify-between px-5 py-3 border border-white/10 group-hover:border-cyan-400 transition-all transform hover:scale-[1.04] " +
-//         `bg-gradient-to-br ${color}`
-//       }
-//     >
-//       <div className="flex items-center gap-3">
-//         <div className="grid h-9 w-9 place-items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 text-cyan-200 neon">
-//           {icon}
-//         </div>
-//         <div>
-//           <div className="font-medium text-white/90 space text-lg">{title}</div>
-//           <div className="text-sm text-muted-foreground">{description}</div>
-//         </div>
-//       </div>
-//       <ArrowRight className="h-4 w-4 text-cyan-300 opacity-0 transition group-hover:opacity-100 self-end" />
-//     </Link>
-//   );
-// }
+function SignedAgreements() {
+  const [agreements, setAgreements] = useState<any[]>([]);
+  const [index, setIndex] = useState(0);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const next = useCallback(
+    () => setIndex((prev) => (prev + 1) % agreements.length),
+    [agreements.length],
+  );
+  const prev = useCallback(
+    () =>
+      setIndex((prev) => (prev - 1 + agreements.length) % agreements.length),
+    [agreements.length],
+  );
+
+  useEffect(() => {
+    fetchAgreements().then((data) => {
+      setAgreements(data.filter((a) => a.status === "signed"));
+    });
+  }, []);
+
+  // auto slide
+  useEffect(() => {
+    if (!agreements.length) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(next, 4500);
+    return () => clearTimeout(timeoutRef.current || undefined);
+  }, [index, agreements.length, next]);
+
+  if (!agreements.length) {
+    return (
+      <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 text-white/70">
+        Loading signed agreements...
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden">
+      <div className="flex items-center justify-between">
+        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+          Signed Agreements
+        </h3>
+        <div className="flex items-center gap-2">
+          <button onClick={prev}>
+            <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
+          </button>
+          <button onClick={next}>
+            <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
+          </button>
+        </div>
+      </div>
+
+      <div
+        className="relative flex w-full transition-transform duration-700 ease-in-out"
+        style={{
+          transform: `translateX(-${index * 100}%)`,
+        }}
+      >
+        {agreements.map((a, i) => (
+          <Link
+            key={a.id}
+            to={`/agreements/${a.id}`}
+            style={{
+              transform: i === index ? "scale(1)" : "scale(0.9)",
+              opacity: i === index ? 1 : 0.4,
+            }}
+            className="glass flex h-[15rem] min-w-full flex-col items-start justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+          >
+            <div className="flex items-center gap-3">
+              <Handshake className="h-6 w-6 text-cyan-400" />
+              <h4 className="text-lg font-semibold text-[#0891b2]">
+                {a.title}
+              </h4>
+            </div>
+            <p className="text-sm text-white/70">{a.description}</p>
+            <div className="flex w-full items-center justify-between text-sm text-white/60">
+              <span>{a.counterparty}</span>
+              <span className="text-cyan-300">
+                {a.amount} {a.token}
+              </span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

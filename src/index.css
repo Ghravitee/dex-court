@@ -126,13 +126,23 @@ body {
   overflow: visible !important;
 }
 
-/* global.css */
+/* For horizontal scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 6px; /* vertical scrollbar thickness */
+  height: 4px; /* horizontal scrollbar thickness */
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(34, 211, 238, 0.4);
   border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.6);
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 button {

@@ -8,7 +8,7 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground flex">
+    <div className="bg-background text-foreground flex min-h-screen w-full">
       {/* Desktop Sidebar */}
       <Sidebar expanded={expanded} setExpanded={setExpanded} />
 
@@ -21,13 +21,18 @@ export default function Layout() {
             onClick={() => setMobileOpen(false)}
           />
           {/* Sidebar Drawer */}
-          <Sidebar expanded={true} setExpanded={setExpanded} mobile />
+          <Sidebar
+            expanded={true}
+            setExpanded={setExpanded}
+            mobile
+            setMobileOpen={setMobileOpen}
+          />
         </>
       )}
 
       {/* MAIN CONTENT */}
       <div
-        className={`flex-1 flex flex-col transition-[margin,width] duration-300 ${
+        className={`flex flex-1 flex-col transition-[margin,width] duration-300 ${
           expanded ? "md:ml-64" : "md:ml-16"
         } ml-0`}
       >
@@ -35,7 +40,7 @@ export default function Layout() {
         <Topbar onMenuClick={() => setMobileOpen(!mobileOpen)} />
 
         {/* Page content */}
-        <main className="px-4 pb-10 pt-4 sm:px-6 transition-all duration-300">
+        <main className="px-4 pt-4 pb-10 transition-all duration-300 sm:px-6">
           <Outlet />
         </main>
       </div>

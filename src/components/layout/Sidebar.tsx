@@ -27,30 +27,32 @@ export function Sidebar({
   expanded,
   setExpanded,
   mobile,
+  setMobileOpen,
 }: {
   expanded: boolean;
   setExpanded: (v: boolean) => void;
   mobile?: boolean;
+  setMobileOpen?: (v: boolean) => void;
 }) {
   return (
     <aside
       className={cn(
         mobile ? "flex" : "hidden md:flex",
-        "fixed left-0 top-0 z-40 h-screen border-r border-white/10 sidebar-glass flex-col transition-all duration-300",
-        expanded ? "w-64" : "w-16"
+        "sidebar-glass fixed top-0 left-0 z-40 h-screen flex-col border-r border-white/10 transition-all duration-300",
+        expanded ? "w-64" : "w-16",
       )}
     >
       {/* Glow effect */}
-      <div className="lg:size-[20rem] rounded-full bg-cyan-500/30 absolute top-[300px] right-0 blur-3xl block"></div>
+      <div className="absolute top-[300px] right-0 block rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]"></div>
 
       {/* Header */}
       <div className="flex h-16 items-center justify-between gap-3 px-4">
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="h-8 w-8 flex items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60 neon">
+          <div className="neon flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
             <Scale size={18} />
           </div>
           {expanded && (
-            <div className="text-cyan-300 font-semibold leading-none glow-text transition-opacity duration-300">
+            <div className="glow-text leading-none font-semibold text-cyan-300 transition-opacity duration-300">
               DexCourt
             </div>
           )}
@@ -58,7 +60,7 @@ export function Sidebar({
         {!mobile && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="rounded-md p-1 text-muted-foreground hover:text-white"
+            className="text-muted-foreground rounded-md p-1 hover:text-white"
             aria-label="Toggle sidebar"
           >
             {expanded ? (
@@ -76,20 +78,23 @@ export function Sidebar({
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={() => {
+              if (mobile && setMobileOpen) setMobileOpen(false);
+            }}
             className={({ isActive }) =>
               cn(
                 "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                "hover:bg-white/5 neon-hover",
+                "neon-hover hover:bg-white/5",
                 isActive
                   ? "bg-white/5 text-cyan-200 ring-1 ring-cyan-400/30"
-                  : "text-foreground/80"
+                  : "text-foreground/80",
               )
             }
           >
-            <span className="text-lg relative flex items-center justify-center">
+            <span className="relative flex items-center justify-center text-lg">
               {item.icon}
               {!expanded && (
-                <span className="absolute left-full ml-2 whitespace-nowrap rounded bg-black/80 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-50">
+                <span className="pointer-events-none absolute left-full z-50 ml-2 rounded bg-black/80 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-all duration-200 group-hover:opacity-100">
                   {item.label}
                 </span>
               )}
@@ -99,8 +104,8 @@ export function Sidebar({
               className={cn(
                 "font-medium transition-all duration-300",
                 expanded
-                  ? "opacity-100 translate-x-0"
-                  : "opacity-0 -translate-x-5 w-0 overflow-hidden"
+                  ? "translate-x-0 opacity-100"
+                  : "w-0 -translate-x-5 overflow-hidden opacity-0",
               )}
             >
               {item.label}
@@ -109,7 +114,7 @@ export function Sidebar({
         ))}
       </nav>
       {!expanded && (
-        <div className="h-8 w-8 flex items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60 neon mx-auto mb-10">
+        <div className="neon mx-auto mb-10 flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
           <Scale size={18} />
         </div>
       )}

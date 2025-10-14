@@ -18,21 +18,10 @@ import {
 } from "../components/ui/dialog";
 import { toast } from "sonner";
 import { Search, SortAsc, SortDesc, Eye } from "lucide-react";
+import type { Escrow } from "../types";
+import { Link } from "react-router-dom";
 
 // Types
-type Escrow = {
-  id: string;
-  title: string;
-  from: string; // payer source in record
-  to: string;
-  token: string;
-  amount: number;
-  status: "pending" | "completed" | "frozen";
-  deadline: string; // ISO date
-  type: "public" | "private";
-  description: string;
-  createdAt: number;
-};
 
 export default function Escrow() {
   const initial: Escrow[] = useMemo(
@@ -159,24 +148,61 @@ export default function Escrow() {
         description: "Private NDA with milestone clause.",
         createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
       },
+      {
+        id: "E-110",
+        title: "Web3 Copywriting",
+        from: "@0xPen",
+        to: "@0xInk",
+        token: "USDC",
+        amount: 250,
+        status: "active",
+        deadline: "2025-12-10",
+        type: "public",
+        description: "Ongoing copywriting engagement for Web3 DAO.",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 6,
+      },
+      {
+        id: "E-111",
+        title: "Abandoned Translation Deal",
+        from: "@0xEcho",
+        to: "@0xBeta",
+        token: "DAI",
+        amount: 300,
+        status: "cancelled",
+        deadline: "2025-10-05",
+        type: "public",
+        description: "Cancelled translation project due to inactivity.",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 10,
+      },
     ],
     [],
   );
 
   const [escrows, setEscrows] = useState<Escrow[]>(initial);
-  const [statusTab, setStatusTab] = useState("active"); // active/completed/disputed
+  const [statusTab, setStatusTab] = useState("pending");
+
   const [sortAsc, setSortAsc] = useState(false);
   const [query, setQuery] = useState("");
 
   const listed = escrows
     .filter((e) => e.type === "public")
-    .filter((e) =>
-      statusTab === "active"
-        ? e.status === "pending"
-        : statusTab === "completed"
-          ? e.status === "completed"
-          : e.status === "frozen",
-    )
+    .filter((e) => {
+      switch (statusTab) {
+        case "pending":
+          return e.status === "pending";
+        case "active":
+          return e.status === "active";
+        case "cancelled":
+          return e.status === "cancelled";
+        case "completed":
+          return e.status === "completed";
+        case "disputed":
+          return e.status === "frozen";
+        default:
+          return true;
+      }
+    })
+
     .filter((e) =>
       query.trim()
         ? e.title.toLowerCase().includes(query.toLowerCase()) ||
@@ -191,7 +217,7 @@ export default function Escrow() {
 
   // Modal state
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<Escrow | null>(null);
+  // const [view, setView] = useState<Escrow | null>(null);
   const [form, setForm] = useState({
     title: "",
     type: "public" as "public" | "private",
@@ -252,8 +278,8 @@ export default function Escrow() {
       {/* Main */}
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
-      <div className="space-y-4 lg:col-span-3">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4">
+        <div className="justify-between lg:flex">
           <header className="flex flex-col gap-3">
             <div>
               <h2 className="space mb-4 text-[22px] font-semibold text-white/90">
@@ -498,21 +524,36 @@ export default function Escrow() {
           </header>
 
           <aside className="space-y-4">
-            <div className="rounded-xl border border-b-2 border-white/10 px-4 py-5 ring-1 ring-white/10">
+            <div className="mt-4 rounded-xl border border-b-2 border-white/10 px-4 py-2 ring-1 ring-white/10 lg:mt-0">
               <div className="mb-3 text-sm font-semibold text-white/90">
                 Filter
               </div>
               <Tabs value={statusTab} onValueChange={setStatusTab}>
-                <TabsList className="bg-white/5">
+                <TabsList className="flex flex-wrap gap-1 bg-white/5">
+                  <TabsTrigger value="pending">Pending</TabsTrigger>
                   <TabsTrigger value="active">Active</TabsTrigger>
+                  <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
                   <TabsTrigger value="completed">Completed</TabsTrigger>
                   <TabsTrigger value="disputed">Disputed</TabsTrigger>
                 </TabsList>
+
+                <TabsContent
+                  value="pending"
+                  className="text-muted-foreground mt-3 text-xs"
+                >
+                  Showing pending escrows
+                </TabsContent>
                 <TabsContent
                   value="active"
                   className="text-muted-foreground mt-3 text-xs"
                 >
-                  Showing pending escrows
+                  Showing active escrows
+                </TabsContent>
+                <TabsContent
+                  value="cancelled"
+                  className="text-muted-foreground mt-3 text-xs"
+                >
+                  Showing cancelled escrows
                 </TabsContent>
                 <TabsContent
                   value="completed"
@@ -592,13 +633,14 @@ export default function Escrow() {
                   <div className="text-muted-foreground text-xs">
                     Deadline: {e.deadline}
                   </div>
-                  <Button
-                    variant="outline"
-                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    onClick={() => setView(e)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" /> View
-                  </Button>
+                  <Link to={`/escrow/${e.id}`}>
+                    <Button
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                    >
+                      <Eye className="mr-2 h-4 w-4" /> View
+                    </Button>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -609,7 +651,7 @@ export default function Escrow() {
       {/* Right aside */}
 
       {/* View modal */}
-      <Dialog open={!!view} onOpenChange={(v) => !v && setView(null)}>
+      {/* <Dialog open={!!view} onOpenChange={(v) => !v && setView(null)}>
         <DialogContent className="max-w-xl border-white/20 bg-black/80">
           <DialogHeader>
             <DialogTitle>{view?.title}</DialogTitle>
@@ -660,7 +702,7 @@ export default function Escrow() {
             </div>
           )}
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
     </div>
   );
 }

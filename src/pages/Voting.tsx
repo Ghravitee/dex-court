@@ -253,27 +253,44 @@ export default function Voting() {
       </header>
 
       {/* Custom Tabs */}
-      <div className="flex w-fit rounded-md bg-white/5 p-1">
-        <button
-          onClick={() => setTab("live")}
-          className={`rounded-md px-4 py-1.5 text-sm transition ${
-            tab === "live"
-              ? "bg-cyan-500/20 text-cyan-300"
-              : "text-muted-foreground hover:text-white/80"
-          }`}
-        >
-          LIVE
-        </button>
-        <button
-          onClick={() => setTab("done")}
-          className={`rounded-md px-4 py-1.5 text-sm transition ${
-            tab === "done"
-              ? "bg-cyan-500/20 text-cyan-300"
-              : "text-muted-foreground hover:text-white/80"
-          }`}
-        >
-          CONCLUDED
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex w-fit rounded-md bg-white/5 p-1">
+          <button
+            onClick={() => setTab("live")}
+            className={`rounded-md px-4 py-1.5 text-sm transition ${
+              tab === "live"
+                ? "bg-cyan-500/20 text-cyan-300"
+                : "text-muted-foreground hover:text-white/80"
+            }`}
+          >
+            LIVE
+          </button>
+          <button
+            onClick={() => setTab("done")}
+            className={`rounded-md px-4 py-1.5 text-sm transition ${
+              tab === "done"
+                ? "bg-cyan-500/20 text-cyan-300"
+                : "text-muted-foreground hover:text-white/80"
+            }`}
+          >
+            CONCLUDED
+          </button>
+        </div>
+        {/* Color Legend */}
+        <div className="flex items-center gap-4 text-xs text-white/70">
+          <div className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full bg-cyan-400/80" />
+            <span>Plaintiff</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full bg-pink-400/80" />
+            <span>Defendant</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
+            <span>Dismissed</span>
+          </div>
+        </div>
       </div>
 
       {/* Tab Content */}
@@ -296,9 +313,10 @@ function LiveCaseCard({
   c: LiveCase;
   currentUser: string;
 }) {
-  const [choice, setChoice] = useState<"plaintiff" | "defendant" | "dismissed">(
-    "plaintiff",
-  );
+  const [choice, setChoice] = useState<
+    "plaintiff" | "defendant" | "dismissed" | null
+  >(null);
+
   const [comment, setComment] = useState("");
   const remain = Math.max(0, c.endsAt - now());
 
@@ -408,7 +426,11 @@ function LiveCaseCard({
 
               {/* Vote Button + Info */}
               <div className="mt-3 flex items-center justify-between gap-3">
-                <Button variant="neon" className="neon-hover">
+                <Button
+                  variant="neon"
+                  className="neon-hover"
+                  disabled={!choice}
+                >
                   Cast Vote
                 </Button>
 
@@ -423,7 +445,7 @@ function LiveCaseCard({
               </div>
 
               {/* Participants */}
-              <div className="mt-2 h-fit rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="mt-2 h-fit max-h-[30rem] overflow-y-auto rounded-lg border border-white/10 bg-white/5 p-4">
                 <div className="mb-2 text-sm font-medium text-white/90">
                   Participants
                 </div>
@@ -482,22 +504,40 @@ function VoteOption({
 }
 
 function DoneCaseCard({ c }: { c: DoneCase }) {
+  // Weighted Voting Logic (DexCourt 70/30 model)
   const totalVotes = c.judgeVotes + c.communityVotes;
 
-  // Approximate for demo (you can replace with backend values)
-  const plaintiffVotes = Math.round(
-    (totalVotes * (c.judgePct + c.communityPct)) / 200,
-  );
+  // Judges hold 70% weight, community 30%
+  const judgeWeight = 0.7;
+  const communityWeight = 0.3;
+
+  // Each side’s percentage from its group
+  const plaintiffJudgePct = c.judgePct; // e.g. % of judges who voted for plaintiff
+  const plaintiffCommunityPct = c.communityPct; // e.g. % of community who voted for plaintiff
+
+  // Weighted overall percentage for plaintiff
+  const weightedPlaintiffPct =
+    plaintiffJudgePct * judgeWeight + plaintiffCommunityPct * communityWeight;
+
+  // Defendant percentage is the remainder
+  const weightedDefendantPct = 100 - weightedPlaintiffPct;
+
+  // Approximate actual votes (optional visualization)
+  const plaintiffVotes = Math.round((totalVotes * weightedPlaintiffPct) / 100);
   const defendantVotes = totalVotes - plaintiffVotes;
 
+  // Determine winner
   const winLabel =
-    c.winner === "plaintiff"
-      ? "Plaintiff"
-      : c.winner === "defendant"
-        ? "Defendant"
-        : "Dismissed";
+    c.winner === "dismissed"
+      ? "Dismissed"
+      : weightedPlaintiffPct > 50
+        ? "Plaintiff"
+        : "Defendant";
 
-  const winPct = Math.round(c.judgePct * 0.7 + c.communityPct * 0.3);
+  // Combined weighted win percentage
+  const winPct = Math.round(
+    Math.max(weightedPlaintiffPct, weightedDefendantPct),
+  );
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-white/10">
@@ -543,53 +583,123 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
           <AccordionContent className="mt-3 px-5">
             <div className="space-y-4">
               {/* Unified Voting Breakdown */}
+              {/* Unified Voting Breakdown */}
+              {/* Voting Breakdown */}
               <div className="glass rounded-lg border border-cyan-400/30 bg-white/5 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
                 <div className="mb-2 text-sm font-medium text-white/90">
                   Voting Breakdown
                 </div>
 
-                {/* Plaintiff Bar */}
+                {/* Judges Section */}
                 <div className="mb-3">
-                  <div className="text-muted-foreground mb-1 flex justify-between text-xs">
-                    <span>
-                      Plaintiff ({c.parties.plaintiff}) — {plaintiffVotes} votes
-                    </span>
-                    <span>{c.judgePct}%</span>
+                  <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
+                    <span>Judges — {c.judgeVotes} votes</span>
+                    <span>{c.judgePct}% favor Plaintiff</span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+
+                  {/* Progress Bar */}
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
                     <motion.div
-                      className="h-full rounded-full bg-cyan-400"
+                      className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-800"
                       initial={{ width: 0 }}
                       animate={{ width: `${c.judgePct}%` }}
                       transition={{ duration: 1, ease: "easeOut" }}
                     />
+                    <motion.div
+                      className="absolute top-0 right-0 h-full rounded-r-full bg-pink-600"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${100 - c.judgePct}%` }}
+                      transition={{ duration: 1, ease: "easeOut" }}
+                    />
+                  </div>
+
+                  <div className="mt-1 flex justify-between text-[11px]">
+                    <span className="text-cyan-300">
+                      Plaintiff: {Math.round((c.judgePct / 100) * c.judgeVotes)}{" "}
+                      votes
+                    </span>
+                    <span className="text-pink-300">
+                      Defendant:{" "}
+                      {Math.round(((100 - c.judgePct) / 100) * c.judgeVotes)}{" "}
+                      votes
+                    </span>
                   </div>
                 </div>
 
-                {/* Defendant Bar */}
-                <div>
-                  <div className="text-muted-foreground mb-1 flex justify-between text-xs">
-                    <span>
-                      Defendant ({c.parties.defendant}) — {defendantVotes} votes
-                    </span>
-                    <span>{c.communityPct}%</span>
+                {/* Community Section */}
+                <div className="mb-4">
+                  <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
+                    <span>Community — {c.communityVotes} votes</span>
+                    <span>{c.communityPct}% favor Plaintiff</span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
                     <motion.div
-                      className="h-full rounded-full bg-pink-400"
+                      className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-300"
                       initial={{ width: 0 }}
                       animate={{ width: `${c.communityPct}%` }}
-                      transition={{
-                        duration: 1,
-                        ease: "easeOut",
-                        delay: 0.3,
-                      }}
+                      transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
                     />
+                    <motion.div
+                      className="absolute top-0 right-0 h-full rounded-r-full bg-pink-300/60"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${100 - c.communityPct}%` }}
+                      transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
+                    />
+                  </div>
+
+                  <div className="mt-1 flex justify-between text-[11px]">
+                    <span className="text-cyan-300">
+                      Plaintiff:{" "}
+                      {Math.round((c.communityPct / 100) * c.communityVotes)}{" "}
+                      votes
+                    </span>
+                    <span className="text-pink-300">
+                      Defendant:{" "}
+                      {Math.round(
+                        ((100 - c.communityPct) / 100) * c.communityVotes,
+                      )}{" "}
+                      votes
+                    </span>
+                  </div>
+                </div>
+
+                {/* Weighted Overall Section */}
+                <div>
+                  <div className="text-muted-foreground mb-1 flex justify-between text-xs">
+                    <span>Weighted Total (70% Judges, 30% Community)</span>
+                    <span>
+                      {weightedPlaintiffPct.toFixed(1)}% favor Plaintiff
+                    </span>
+                  </div>
+
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
+                    <motion.div
+                      className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${weightedPlaintiffPct}%` }}
+                      transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
+                    />
+                    <motion.div
+                      className="absolute top-0 right-0 h-full rounded-r-full bg-pink-400/60"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${weightedDefendantPct}%` }}
+                      transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
+                    />
+                  </div>
+
+                  <div className="mt-1 flex justify-between text-[11px]">
+                    <span className="text-cyan-300">
+                      Plaintiff: {plaintiffVotes} votes
+                    </span>
+                    <span className="text-pink-300">
+                      Defendant: {defendantVotes} votes
+                    </span>
                   </div>
                 </div>
 
                 <p className="text-muted-foreground mt-3 text-sm">
-                  {winLabel} wins with a combined {winPct}% majority.
+                  {winLabel} wins with a combined weighted {winPct}% majority.
                 </p>
               </div>
 
