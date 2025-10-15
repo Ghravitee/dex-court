@@ -1,11 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from "react";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -536,37 +531,6 @@ export default function Escrow() {
                   <TabsTrigger value="completed">Completed</TabsTrigger>
                   <TabsTrigger value="disputed">Disputed</TabsTrigger>
                 </TabsList>
-
-                <TabsContent
-                  value="pending"
-                  className="text-muted-foreground mt-3 text-xs"
-                >
-                  Showing pending escrows
-                </TabsContent>
-                <TabsContent
-                  value="active"
-                  className="text-muted-foreground mt-3 text-xs"
-                >
-                  Showing active escrows
-                </TabsContent>
-                <TabsContent
-                  value="cancelled"
-                  className="text-muted-foreground mt-3 text-xs"
-                >
-                  Showing cancelled escrows
-                </TabsContent>
-                <TabsContent
-                  value="completed"
-                  className="text-muted-foreground mt-3 text-xs"
-                >
-                  Showing completed escrows
-                </TabsContent>
-                <TabsContent
-                  value="disputed"
-                  className="text-muted-foreground mt-3 text-xs"
-                >
-                  Showing disputed escrows
-                </TabsContent>
               </Tabs>
             </div>
           </aside>
