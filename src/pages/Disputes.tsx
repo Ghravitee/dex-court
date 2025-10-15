@@ -520,7 +520,10 @@ export default function Disputes() {
           onClick={() => setOpen(false)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
         >
-          <div className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl"
+          >
             {/* Close button */}
             <button
               onClick={() => setOpen(false)}
@@ -546,199 +549,194 @@ export default function Disputes() {
             >
               {/* === All your existing form fields stay the same === */}
               {/* You can paste everything from <form>...</form> inside here */}
-              <form onSubmit={submit} className="space-y-4">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-muted-foreground text-sm">
-                      Title <span className="text-red-500">*</span>
-                    </label>
-                    <div className="group relative cursor-help">
-                      <Info className="h-4 w-4 text-cyan-300" />
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <div className="group relative cursor-help">
+                    <Info className="h-4 w-4 text-cyan-300" />
+                    {/* Tooltip content */}
+                    <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                      Never underestimate the power of a catchy title — it can
+                      grab attention and attract judges to your case faster.
+                    </div>
+                  </div>
+                </div>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                  placeholder="e.g. Payment for Smart Contract Audit"
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">
+                    Request Kind <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="group relative cursor-pointer">
+                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                        Pro Bono
+                      </span>
                       {/* Tooltip content */}
                       <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                        Never underestimate the power of a catchy title — it can
-                        grab attention and attract judges to your case faster.
+                        No payment required. Judges will handle your case pro
+                        bono when available.
                       </div>
                     </div>
-                  </div>
-                  <input
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm({ ...form, title: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                    placeholder="e.g. Payment for Smart Contract Audit"
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-muted-foreground text-sm">
-                      Request Kind <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex items-center gap-3 text-xs">
-                      <div className="group relative cursor-pointer">
-                        <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                          Pro Bono
-                        </span>
-                        {/* Tooltip content */}
-                        <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                          No payment required. Judges will handle your case pro
-                          bono when available.
-                        </div>
-                      </div>
-                      <div className="group relative cursor-pointer">
-                        <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                          Paid
-                        </span>
-                        {/* Tooltip content */}
-                        <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                          A fee of 0.01 ETH is required to initiate your
-                          dispute. This fee helps prioritize your case and
-                          notifies all judges to begin reviewing it immediately.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {(["Pro Bono", "Paid"] as const).map((k) => (
-                      <label
-                        key={k}
-                        className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                          form.kind === k
-                            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                            : "border-white/10 bg-white/5"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="kind"
-                          className="hidden"
-                          checked={form.kind === k}
-                          onChange={() => setForm({ ...form, kind: k })}
-                        />
-                        {k}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-muted-foreground mb-2 block text-sm">
-                    Defendant <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    value={form.defendant}
-                    onChange={(e) =>
-                      setForm({ ...form, defendant: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                    placeholder="@0xHandle or address"
-                  />
-                </div>
-                <div>
-                  <label className="text-muted-foreground mb-2 block text-sm">
-                    Detailed Description <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm({ ...form, description: e.target.value })
-                    }
-                    className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                    placeholder="Describe the situation, milestones, messages, and expectations"
-                  />
-                </div>
-
-                {/* Claim Section */}
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-muted-foreground text-sm">
-                      Claim <span className="text-red-500">*</span>
-                    </label>
-                    <div className="group relative cursor-help">
-                      <Info className="h-4 w-4 text-cyan-300" />
-                      {/* Tooltip */}
-                      <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                        Make sure it’s reasonable, as that might help your case
-                        when the judges look into it.
-                      </div>
-                    </div>
-                  </div>
-                  <textarea
-                    value={form.claim || ""}
-                    onChange={(e) =>
-                      setForm({ ...form, claim: e.target.value })
-                    }
-                    className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                    placeholder="What do you want the court to do for you?"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-muted-foreground mb-2 block text-sm">
-                    Evidence Upload <span className="text-red-500">*</span>
-                  </label>
-                  <label className="group text-muted-foreground flex cursor-pointer items-center justify-between rounded-md border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm hover:border-cyan-400/40">
-                    <div className="flex items-center gap-3">
-                      <Upload className="h-4 w-4 text-cyan-300" />
-                      <span>
-                        {form.evidence.length
-                          ? `${form.evidence.length} file(s) selected`
-                          : "Upload files (images, pdf, txt)"}
+                    <div className="group relative cursor-pointer">
+                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                        Paid
                       </span>
-                    </div>
-                    <input
-                      onChange={onFile}
-                      type="file"
-                      multiple
-                      className="hidden"
-                    />
-                  </label>
-                  {form.evidence.length > 0 && (
-                    <ul className="text-muted-foreground mt-2 list-disc space-y-1 pl-5 text-xs">
-                      {form.evidence.map((f, i) => (
-                        <li key={i}>{f.name}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-muted-foreground text-sm">
-                      Witness list (max 5)
-                    </label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                      onClick={addWitness}
-                      disabled={form.witnesses.length >= 5}
-                    >
-                      Add witness
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {form.witnesses.map((w, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          value={w}
-                          onChange={(e) => updateWitness(i, e.target.value)}
-                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                          placeholder={`@username or address #${i + 1}`}
-                        />
-                        {form.witnesses.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeWitness(i)}
-                            className="text-muted-foreground rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs hover:text-white"
-                          >
-                            Remove
-                          </button>
-                        )}
+                      {/* Tooltip content */}
+                      <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                        A fee of 0.01 ETH is required to initiate your dispute.
+                        This fee helps prioritize your case and notifies all
+                        judges to begin reviewing it immediately.
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
-              </form>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["Pro Bono", "Paid"] as const).map((k) => (
+                    <label
+                      key={k}
+                      className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                        form.kind === k
+                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="kind"
+                        className="hidden"
+                        checked={form.kind === k}
+                        onChange={() => setForm({ ...form, kind: k })}
+                      />
+                      {k}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-muted-foreground mb-2 block text-sm">
+                  Defendant <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={form.defendant}
+                  onChange={(e) =>
+                    setForm({ ...form, defendant: e.target.value })
+                  }
+                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                  placeholder="@0xHandle or address"
+                />
+              </div>
+              <div>
+                <label className="text-muted-foreground mb-2 block text-sm">
+                  Detailed Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
+                  className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                  placeholder="Describe the situation, milestones, messages, and expectations"
+                />
+              </div>
+
+              {/* Claim Section */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">
+                    Claim <span className="text-red-500">*</span>
+                  </label>
+                  <div className="group relative cursor-help">
+                    <Info className="h-4 w-4 text-cyan-300" />
+                    {/* Tooltip */}
+                    <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                      Make sure it’s reasonable, as that might help your case
+                      when the judges look into it.
+                    </div>
+                  </div>
+                </div>
+                <textarea
+                  value={form.claim || ""}
+                  onChange={(e) => setForm({ ...form, claim: e.target.value })}
+                  className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                  placeholder="What do you want the court to do for you?"
+                />
+              </div>
+
+              <div>
+                <label className="text-muted-foreground mb-2 block text-sm">
+                  Evidence Upload <span className="text-red-500">*</span>
+                </label>
+                <label className="group text-muted-foreground flex cursor-pointer items-center justify-between rounded-md border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm hover:border-cyan-400/40">
+                  <div className="flex items-center gap-3">
+                    <Upload className="h-4 w-4 text-cyan-300" />
+                    <span>
+                      {form.evidence.length
+                        ? `${form.evidence.length} file(s) selected`
+                        : "Upload files (images, pdf, txt)"}
+                    </span>
+                  </div>
+                  <input
+                    onChange={onFile}
+                    type="file"
+                    multiple
+                    className="hidden"
+                  />
+                </label>
+                {form.evidence.length > 0 && (
+                  <ul className="text-muted-foreground mt-2 list-disc space-y-1 pl-5 text-xs">
+                    {form.evidence.map((f, i) => (
+                      <li key={i}>{f.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">
+                    Witness list (max 5)
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                    onClick={addWitness}
+                    disabled={form.witnesses.length >= 5}
+                  >
+                    Add witness
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {form.witnesses.map((w, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        value={w}
+                        onChange={(e) => updateWitness(i, e.target.value)}
+                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                        placeholder={`@username or address #${i + 1}`}
+                      />
+                      {form.witnesses.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeWitness(i)}
+                          className="text-muted-foreground rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs hover:text-white"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {/* Buttons */}
               <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">

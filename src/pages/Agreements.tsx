@@ -407,7 +407,10 @@ export default function Agreements() {
             onClick={() => setIsModalOpen(false)}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
-            <form className="relative max-h-[90vh] space-y-5 overflow-y-auto rounded-[0.75rem] border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6">
+            <form
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-h-[90vh] space-y-5 overflow-y-auto rounded-[0.75rem] border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6"
+            >
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="absolute top-3 right-3 text-cyan-300 hover:text-white"
