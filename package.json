@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "gen-api": "npx swagger-typescript-api generate -p https://dev-api.dexcourt.com/api-docs.json -o src/apiClient --modular",
     "lint": "eslint .",
     "preview": "vite preview"
   },

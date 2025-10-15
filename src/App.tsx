@@ -16,36 +16,40 @@ import AgreementDetails from "./pages/AgreementDetails";
 import EscrowDetails from "./pages/EscrowDetails";
 import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
-// import Landing from "./pages/Landing";
+import { AuthProvider } from "./context/AuthContext"; // Import the AuthProvider
 
 const queryClient = new QueryClient();
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <ScrollToTop />
-          <Routes>
-            {/* <Route path="/landing" element={<Landing />} /> */}
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Index />} />
-              <Route path="agreements" element={<Agreements />} />
-              <Route path="agreements/:id" element={<AgreementDetails />} />
-              <Route path="disputes" element={<Disputes />} />
-              <Route path="/disputes/:id" element={<DisputeDetails />} />
-              <Route path="voting" element={<Voting />} />
-              <Route path="escrow" element={<Escrow />} />
-              <Route path="/escrow/:id" element={<EscrowDetails />} />
-              <Route path="reputation" element={<Reputation />} />
-              <Route path="profile" element={<Profile />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <AuthProvider>
+        {" "}
+        {/* Wrap everything with AuthProvider */}
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ScrollToTop />
+            <Routes>
+              {/* <Route path="/landing" element={<Landing />} /> */}
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Index />} />
+                <Route path="agreements" element={<Agreements />} />
+                <Route path="agreements/:id" element={<AgreementDetails />} />
+                <Route path="disputes" element={<Disputes />} />
+                <Route path="/disputes/:id" element={<DisputeDetails />} />
+                <Route path="voting" element={<Voting />} />
+                <Route path="escrow" element={<Escrow />} />
+                <Route path="/escrow/:id" element={<EscrowDetails />} />
+                <Route path="reputation" element={<Reputation />} />
+                <Route path="profile" element={<Profile />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

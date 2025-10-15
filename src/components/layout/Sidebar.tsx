@@ -1,5 +1,5 @@
 // src/layout/Sidebar.tsx
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   BadgeDollarSign,
   FileText,
@@ -10,8 +10,10 @@ import {
   Vote,
   ChevronLeft,
   ChevronRight,
+  LogIn,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useAuth } from "../../context/AuthContext";
 
 const nav = [
   { to: "/", label: "Home", icon: <Home size={18} /> },
@@ -20,7 +22,6 @@ const nav = [
   { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
   { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
   { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
-  { to: "/profile", label: "Profile", icon: <User size={18} /> },
 ];
 
 export function Sidebar({
@@ -28,12 +29,28 @@ export function Sidebar({
   setExpanded,
   mobile,
   setMobileOpen,
+  onLoginClick,
 }: {
   expanded: boolean;
   setExpanded: (v: boolean) => void;
   mobile?: boolean;
   setMobileOpen?: (v: boolean) => void;
+  onLoginClick: () => void;
 }) {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  const handleAuthButtonClick = () => {
+    if (isAuthenticated) {
+      // Navigate to profile when authenticated
+      navigate("/profile");
+      if (mobile && setMobileOpen) setMobileOpen(false);
+    } else {
+      // Show login modal when not authenticated
+      onLoginClick();
+    }
+  };
+
   return (
     <aside
       className={cn(
@@ -112,6 +129,39 @@ export function Sidebar({
             </span>
           </NavLink>
         ))}
+
+        {/* Single Conditional Login/Profile Button */}
+        <button
+          onClick={handleAuthButtonClick}
+          className={cn(
+            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
+            "neon-hover text-foreground/80 hover:bg-white/5",
+            // Add active state styling when on profile page
+            location.pathname === "/profile" && isAuthenticated
+              ? "bg-white/5 text-cyan-200 ring-1 ring-cyan-400/30"
+              : "text-foreground/80",
+          )}
+        >
+          <span className="relative flex items-center justify-center text-lg">
+            {isAuthenticated ? <User size={18} /> : <LogIn size={18} />}
+            {!expanded && (
+              <span className="pointer-events-none absolute left-full z-50 ml-2 rounded bg-black/80 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-all duration-200 group-hover:opacity-100">
+                {isAuthenticated ? "Profile" : "Login"}
+              </span>
+            )}
+          </span>
+
+          <span
+            className={cn(
+              "font-medium transition-all duration-300",
+              expanded
+                ? "translate-x-0 opacity-100"
+                : "w-0 -translate-x-5 overflow-hidden opacity-0",
+            )}
+          >
+            {isAuthenticated ? "Profile" : "Login"}
+          </span>
+        </button>
       </nav>
       {!expanded && (
         <div className="neon mx-auto mb-10 flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">

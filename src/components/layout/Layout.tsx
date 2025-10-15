@@ -2,15 +2,22 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { LoginModal } from "../LoginModal";
 
 export default function Layout() {
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  // const { isAuthenticated } = useAuth();
 
   return (
     <div className="bg-background text-foreground flex min-h-screen w-full">
       {/* Desktop Sidebar */}
-      <Sidebar expanded={expanded} setExpanded={setExpanded} />
+      <Sidebar
+        expanded={expanded}
+        setExpanded={setExpanded}
+        onLoginClick={() => setShowLoginModal(true)}
+      />
 
       {/* Mobile Sidebar (no nested aside) */}
       {mobileOpen && (
@@ -26,6 +33,7 @@ export default function Layout() {
             setExpanded={setExpanded}
             mobile
             setMobileOpen={setMobileOpen}
+            onLoginClick={() => setShowLoginModal(true)}
           />
         </>
       )}
@@ -44,6 +52,11 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   FaUser,
   FaInstagram,
@@ -13,7 +13,8 @@ import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
 import User from "../components/ui/svgcomponents/User";
-// import { toast } from "sonner"; // optional, if you already use toast notifications
+import { useAuth } from "../context/AuthContext";
+import { LoginModal } from "../components/LoginModal";
 
 import { loginTelegram } from "../lib/apiClient";
 
@@ -68,16 +69,8 @@ export default function Profile() {
     community: true,
     user: true,
   });
-
-  // async function handleTelegramLogin() {
-  //   try {
-  //     const { token } = await loginTelegram(otp);
-  //     console.log("✅ Login successful:", token);
-  //     localStorage.setItem("authToken", token);
-  //   } catch (err: any) {
-  //     console.error("❌ Login failed:", err.response?.data || err.message);
-  //   }
-  // }
+  const { isAuthenticated, logout } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   async function handleTelegramLogin() {
     setLoading(true);
@@ -86,7 +79,6 @@ export default function Profile() {
       localStorage.setItem("authToken", token);
       console.log("✅ Login successful:", token);
 
-      setIsVerified(true); // 👈 instantly update the UI
       setShowLoginModal(false);
     } catch (err: any) {
       console.error("❌ Login failed:", err.response?.data || err.message);
@@ -94,23 +86,6 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    // Listen for token changes across tabs or manually removing from localStorage
-    const handleStorageChange = () => {
-      const hasToken = !!localStorage.getItem("authToken");
-      setIsVerified(hasToken);
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
-  function handleLogout() {
-    localStorage.removeItem("authToken");
-    setIsVerified(false);
-    console.log("🚪 Logged out");
   }
 
   const disputes = [
@@ -157,51 +132,13 @@ export default function Profile() {
 
   const [filter, setFilter] = useState("All");
   const [otp, setOtp] = useState("");
-  const [showLoginModal, setShowLoginModal] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [isVerified, setIsVerified] = useState<boolean>(() => {
-    // Check if the user already has a token (persisted login)
-    return !!localStorage.getItem("authToken");
-  });
 
   const filteredDeals =
     filter === "All"
       ? escrowDeals
       : escrowDeals.filter((d) => d.status === filter);
-
-  const verifications = useMemo(
-    () => [
-      {
-        id: "x",
-        name: "Twitter",
-        icon: FaXTwitter,
-        verified: false,
-        handle: "@you_web3",
-      },
-      {
-        id: "telegram",
-        name: "Telegram",
-        icon: FiSend,
-        verified: false,
-        handle: "Not linked",
-      },
-      {
-        id: "instagram",
-        name: "Instagram",
-        icon: FaInstagram,
-        verified: false,
-        handle: "Not linked",
-      },
-      {
-        id: "tiktok",
-        name: "TikTok",
-        icon: FaTiktok,
-        verified: false,
-        handle: "Not linked",
-      },
-    ],
-    [],
-  );
 
   const stats = {
     deals: 24,
@@ -228,6 +165,43 @@ export default function Profile() {
     },
   ];
 
+  // If not authenticated, show login prompt
+  if (!isAuthenticated) {
+    return (
+      <div className="relative space-y-8">
+        <header className="flex items-center justify-between">
+          <h2 className="space text-lg font-semibold text-white/90 lg:text-2xl">
+            Profile
+          </h2>
+        </header>
+
+        <div className="glass card-cyan mx-auto flex max-w-[50rem] flex-col items-center justify-center rounded-2xl border border-cyan-400/30 p-12 text-center">
+          <div className="mb-6 grid h-20 w-20 place-items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+            <FaUser className="h-8 w-8" />
+          </div>
+          <h3 className="mb-2 text-xl font-semibold text-white/90">
+            Please log in to view your profile
+          </h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Connect your wallet or login via Telegram to access your DexCourt
+            profile, view your agreements, disputes, and reputation.
+          </p>
+          <Button
+            onClick={() => setShowLoginModal(true)}
+            className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+          >
+            Login to Continue
+          </Button>
+        </div>
+
+        <LoginModal
+          isOpen={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative space-y-8">
       {/* <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]" /> */}
@@ -246,7 +220,6 @@ export default function Profile() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <div className="font-semibold text-white/90">{handle}</div>
                   {roles.judge && (
                     <Tooltip content="You have the Judge badge">
                       <Judge />
@@ -264,10 +237,13 @@ export default function Profile() {
                   )}
                 </div>
                 <div className="text-muted-foreground mt-2 text-xs">
+                  <div className="font-semibold text-white/90">{handle}</div>
                   {wallet}
                 </div>
               </div>
-              <MiniTrust score={score} />
+              <div className="self-center">
+                <MiniTrust score={score} />
+              </div>
             </div>
           </div>
 
@@ -474,68 +450,115 @@ export default function Profile() {
             </section>
           )}
 
-          <section className="glass h-fit rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+          <section className="glass card-cyan h-fit rounded-2xl p-4 lg:p-6">
             <div className="space text-muted-foreground mb-4 text-lg">
               Verifications
             </div>
             <div className="grid grid-cols-1 gap-6">
-              {verifications.map((v) => (
-                <div
-                  key={v.id}
-                  className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <v.icon
-                      className={`h-5 w-5 ${
-                        v.id === "x"
-                          ? "text-white"
-                          : v.id === "instagram"
-                            ? "text-pink-400"
-                            : v.id === "tiktok"
-                              ? "text-gray-200"
-                              : "text-cyan-300"
-                      }`}
-                    />
-                    <div>
-                      <div className="text-sm text-white/90">{v.name}</div>
-                      <div className="text-muted-foreground text-xs">
-                        {v.handle}
-                      </div>
+              {/* Telegram Verification */}
+              {/* Telegram Verification */}
+              <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center gap-3">
+                  <FiSend className="h-5 w-5 text-cyan-300" />
+                  <div>
+                    <div className="text-sm text-white/90">Telegram</div>
+                    <div className="text-muted-foreground text-xs">
+                      {isAuthenticated ? "Connected" : "Not linked"}
                     </div>
                   </div>
-                  {v.id === "telegram" ? (
-                    isVerified ? (
-                      <div>
-                        <span className="badge badge-green">Verified</span>
-                        <Button
-                          onClick={handleLogout}
-                          variant="ghost"
-                          className="text-xs text-red-400 hover:text-red-300"
-                        >
-                          Logout
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        onClick={() => setShowLoginModal(true)}
-                        variant="outline"
-                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                      >
-                        Connect
-                      </Button>
-                    )
-                  ) : v.verified ? (
-                    <span className="badge badge-green">Verified</span>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    >
-                      Connect
-                    </Button>
-                  )}
                 </div>
-              ))}
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-2">
+                    <span className="badge badge-green">Connected</span>
+                    <Button
+                      onClick={logout}
+                      variant="ghost"
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Logout
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => setShowLoginModal(true)}
+                    variant="outline"
+                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    Connect
+                  </Button>
+                )}
+              </div>
+
+              {/* Twitter Verification */}
+              {/* Twitter Verification */}
+              <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
+                <div className="flex items-center gap-3">
+                  <FaXTwitter className="h-5 w-5 text-white" />
+                  <div>
+                    <div className="text-sm text-white/90">Twitter</div>
+                    <div className="text-muted-foreground text-xs">
+                      @you_web3
+                    </div>
+                  </div>
+                </div>
+                <Tooltip content="Coming soon in v2">
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    Connect
+                  </Button>
+                </Tooltip>
+              </div>
+
+              {/* Instagram Verification */}
+              {/* Instagram Verification */}
+              <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
+                <div className="flex items-center gap-3">
+                  <FaInstagram className="h-5 w-5 text-pink-400" />
+                  <div>
+                    <div className="text-sm text-white/90">Instagram</div>
+                    <div className="text-muted-foreground text-xs">
+                      Not linked
+                    </div>
+                  </div>
+                </div>
+                <Tooltip content="Coming soon in v2">
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    Connect
+                  </Button>
+                </Tooltip>
+              </div>
+
+              {/* TikTok Verification */}
+              {/* TikTok Verification */}
+              <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
+                <div className="flex items-center gap-3">
+                  <FaTiktok className="h-5 w-5 text-gray-200" />
+                  <div>
+                    <div className="text-sm text-white/90">TikTok</div>
+                    <div className="text-muted-foreground text-xs">
+                      Not linked
+                    </div>
+                  </div>
+                </div>
+                <Tooltip content="Coming soon in v2">
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    Connect
+                  </Button>
+                </Tooltip>
+              </div>
+
+              {/* Logout Button */}
             </div>
           </section>
           {showLoginModal && (
