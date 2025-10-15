@@ -136,7 +136,10 @@ function RevenueChart() {
               fontSize={12}
               tickLine={false}
               axisLine={false}
+              interval={3} // one label every 4 bars
+              tickMargin={8}
             />
+
             <YAxis
               stroke="#94a3b8"
               fontSize={12}
@@ -167,7 +170,6 @@ function RevenueChart() {
   );
 }
 
-// Helper for revenue generation
 function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
   const out: any[] = [];
   const months = [
@@ -193,15 +195,16 @@ function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
       });
     }
   } else if (type === "weekly") {
-    // 4 weeks per month label
+    // 4 bars per month, start from January but skip its label
     for (let m = 0; m < 12; m++) {
-      out.push({
-        t: months[m],
-        revenue: 15000 + Math.random() * 4000 + m * 800,
-      });
+      for (let w = 0; w < 4; w++) {
+        out.push({
+          t: m === 0 ? "" : months[m], // no label for January
+          revenue: 15000 + Math.random() * 4000 + (m * 4 + w) * 300,
+        });
+      }
     }
   } else {
-    // monthly view — one bar per month
     for (let m = 0; m < 12; m++) {
       out.push({
         t: months[m],
@@ -209,6 +212,7 @@ function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
       });
     }
   }
+
   return out;
 }
 
