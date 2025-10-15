@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FaUser,
   FaInstagram,
@@ -13,13 +13,9 @@ import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
 import User from "../components/ui/svgcomponents/User";
-import { toast } from "sonner"; // optional, if you already use toast notifications
+// import { toast } from "sonner"; // optional, if you already use toast notifications
 
-import {
-  registerTelegram,
-  getTelegramOtp,
-  loginTelegram,
-} from "../lib/apiClient";
+import { loginTelegram } from "../lib/apiClient";
 
 // Add this component near the top of your file
 const Tooltip = ({
@@ -72,38 +68,49 @@ export default function Profile() {
     community: true,
     user: true,
   });
-  const [otp, setOtp] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [, setLoading] = useState(false);
 
-  async function handleTelegramConnect() {
+  // async function handleTelegramLogin() {
+  //   try {
+  //     const { token } = await loginTelegram(otp);
+  //     console.log("✅ Login successful:", token);
+  //     localStorage.setItem("authToken", token);
+  //   } catch (err: any) {
+  //     console.error("❌ Login failed:", err.response?.data || err.message);
+  //   }
+  // }
+
+  async function handleTelegramLogin() {
+    setLoading(true);
     try {
-      setLoading(true);
-      const telegramId = "7522367627";
-      const username = "@LuminalLink";
-
-      await registerTelegram(telegramId, username);
-      console.log("✅ Registered successfully!");
-
-      const { otp } = await getTelegramOtp(telegramId);
-      console.log("📩 Received OTP:", otp);
-      setOtp(otp);
-
       const { token } = await loginTelegram(otp);
-      console.log("🔐 Received token:", token);
-      setToken(token);
-
       localStorage.setItem("authToken", token);
-      toast.success("Telegram connected successfully!");
+      console.log("✅ Login successful:", token);
+
+      setIsVerified(true); // 👈 instantly update the UI
+      setShowLoginModal(false);
     } catch (err: any) {
-      console.error(
-        "❌ Telegram connection failed:",
-        err.response?.data || err.message,
-      );
-      toast.error("Failed to connect Telegram.");
+      console.error("❌ Login failed:", err.response?.data || err.message);
+      alert("Invalid or expired OTP. Please try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    // Listen for token changes across tabs or manually removing from localStorage
+    const handleStorageChange = () => {
+      const hasToken = !!localStorage.getItem("authToken");
+      setIsVerified(hasToken);
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  function handleLogout() {
+    localStorage.removeItem("authToken");
+    setIsVerified(false);
+    console.log("🚪 Logged out");
   }
 
   const disputes = [
@@ -149,6 +156,13 @@ export default function Profile() {
   ];
 
   const [filter, setFilter] = useState("All");
+  const [otp, setOtp] = useState("");
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isVerified, setIsVerified] = useState<boolean>(() => {
+    // Check if the user already has a token (persisted login)
+    return !!localStorage.getItem("authToken");
+  });
 
   const filteredDeals =
     filter === "All"
@@ -161,7 +175,7 @@ export default function Profile() {
         id: "x",
         name: "Twitter",
         icon: FaXTwitter,
-        verified: true,
+        verified: false,
         handle: "@you_web3",
       },
       {
@@ -489,33 +503,78 @@ export default function Profile() {
                       </div>
                     </div>
                   </div>
-                  {v.verified ? (
+                  {v.id === "telegram" ? (
+                    isVerified ? (
+                      <div>
+                        <span className="badge badge-green">Verified</span>
+                        <Button
+                          onClick={handleLogout}
+                          variant="ghost"
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          Logout
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => setShowLoginModal(true)}
+                        variant="outline"
+                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      >
+                        Connect
+                      </Button>
+                    )
+                  ) : v.verified ? (
                     <span className="badge badge-green">Verified</span>
                   ) : (
                     <Button
-                      onClick={handleTelegramConnect}
                       variant="outline"
                       className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
                     >
                       Connect
                     </Button>
                   )}
-                  {otp && (
-                    <div className="mt-4 hidden rounded-md border border-cyan-400/30 bg-cyan-500/10 p-3 text-sm text-cyan-200">
-                      <div>
-                        <strong>OTP:</strong> {otp}
-                      </div>
-                      {token && (
-                        <div className="mt-2 break-all">
-                          <strong>Token:</strong> {token}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           </section>
+          {showLoginModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+              <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
+                <h3 className="mb-4 text-lg font-semibold">Telegram Login</h3>
+
+                <label className="mb-2 block text-sm text-gray-300">
+                  Enter your OTP from the DexCourt's Telegram bot:
+                </label>
+
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="e.g. 123456"
+                  className="mb-4 w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+                />
+
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowLoginModal(false)}
+                    className="border-gray-500/30 text-gray-300 hover:bg-gray-700/40"
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    onClick={handleTelegramLogin}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+                    disabled={loading}
+                  >
+                    {loading ? "Logging in..." : "Login"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

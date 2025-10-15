@@ -407,3 +407,10 @@ body::after {
 .glow-input:hover {
   border-color: rgba(34, 211, 238, 0.3);
 }
+
+/* src/index.css or src/styles/globals.css */
+@layer components {
+  .card-cyan {
+    @apply border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent;
+  }
+}
