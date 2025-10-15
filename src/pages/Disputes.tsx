@@ -767,8 +767,8 @@ function JudgesIntro() {
 
   return (
     <section
-      className={`glass relative col-span-2 overflow-hidden border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-300 ${
-        expanded ? "h-auto" : "h-[14rem]"
+      className={`glass card-cyan relative col-span-2 overflow-hidden p-6 transition-all duration-300 ${
+        expanded ? "h-auto" : "lg:h-[14rem]"
       }`}
     >
       {/* Cyan glow effect */}

@@ -226,15 +226,15 @@ function StatsGrid() {
   ];
 
   return (
-    <section className="glass justify-center gap-8 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-8">
-      <h3 className="space mb-6 text-center font-semibold text-white/90 lg:text-xl">
+    <section className="glass card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-8">
+      <h3 className="space mb-6 text-center text-lg font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
 
       {/* One grid for all stats */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
         {stats.map((s) => (
-          <div key={s.label} className="flex min-w-[11rem] items-center gap-4">
+          <div key={s.label} className="flex items-center gap-4">
             <div className="rounded-2xl border p-2 ring-1 ring-white/10">
               <s.icon className="h-6 w-6 text-cyan-400" />
             </div>
@@ -247,7 +247,7 @@ function StatsGrid() {
                 delay={0.2}
                 separator={s.value > 1000 ? "," : ""}
                 prefix={s.prefix || ""}
-                className="text-2xl font-bold text-white"
+                className="font-bold text-white lg:text-2xl"
               />
             </div>
           </div>
@@ -433,7 +433,7 @@ function DisputesSlideshow() {
 
   return (
     <div className="relative overflow-hidden">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mt-4 mb-2 flex items-center justify-between md:mt-0">
         <h3 className="space max-w-[20rem] text-[17px] font-semibold text-white/90">
           Have you been wronged or cheated? Don’t stay silent, start a{" "}
           <Link to={"/disputes"} className="text-[#0891b2]">
@@ -642,7 +642,7 @@ function LiveVoting() {
   }, [index, next, delay]);
 
   return (
-    <div className="relative h-[15rem] overflow-hidden">
+    <div className="relative mt-4 overflow-hidden lg:mt-0 lg:h-[15rem]">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
           Live Voting
