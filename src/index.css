@@ -167,27 +167,7 @@ body::after {
   content: "";
   position: fixed;
   inset: 0;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='500'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
-    repeating-linear-gradient(
-      0deg,
-      rgba(34, 211, 238, 0.1) 0px,
-      /* increased from 0.07 */ rgba(34, 211, 238, 0.1) 1px,
-      transparent 1px,
-      transparent 20px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(34, 211, 238, 0.1) 0px,
-      rgba(34, 211, 238, 0.1) 1px,
-      transparent 1px,
-      transparent 20px
-    );
-  background-size:
-    200px 200px,
-    auto,
-    auto;
-  opacity: 0.3; /* make grid a bit more visible */
+
   mix-blend-mode: screen;
   -webkit-mask-image: radial-gradient(
     ellipse at 50% -10%,
@@ -293,7 +273,7 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='10' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+
   border-radius: inherit;
   pointer-events: none;
   mix-blend-mode: overlay;
@@ -408,7 +388,6 @@ body::after {
   border-color: rgba(34, 211, 238, 0.3);
 }
 
-/* src/index.css or src/styles/globals.css */
 @layer components {
   .card-cyan {
     @apply border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent;
