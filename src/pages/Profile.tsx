@@ -457,6 +457,7 @@ export default function Profile() {
             <div className="grid grid-cols-1 gap-6">
               {/* Telegram Verification */}
               {/* Telegram Verification */}
+              {/* Telegram Verification */}
               <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3">
                 <div className="flex items-center gap-3">
                   <FiSend className="h-5 w-5 text-cyan-300" />
@@ -467,26 +468,35 @@ export default function Profile() {
                     </div>
                   </div>
                 </div>
-                {isAuthenticated ? (
-                  <div className="flex items-center gap-2">
-                    <span className="badge badge-green">Connected</span>
+                <div className="flex items-center gap-2">
+                  {isAuthenticated ? (
+                    <>
+                      {/* Connect button for future verification */}
+                      <Button
+                        variant="outline"
+                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      >
+                        Verify
+                      </Button>
+                      {/* Logout button */}
+                      <Button
+                        onClick={logout}
+                        variant="ghost"
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Logout
+                      </Button>
+                    </>
+                  ) : (
                     <Button
-                      onClick={logout}
-                      variant="ghost"
-                      className="text-xs text-red-400 hover:text-red-300"
+                      onClick={() => setShowLoginModal(true)}
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
                     >
-                      Logout
+                      Connect
                     </Button>
-                  </div>
-                ) : (
-                  <Button
-                    onClick={() => setShowLoginModal(true)}
-                    variant="outline"
-                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  >
-                    Connect
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
 
               {/* Twitter Verification */}

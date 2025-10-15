@@ -179,15 +179,6 @@ body::after {
   z-index: 0;
 }
 
-@keyframes aurora-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (max-width: 640px) {
   body::before {
     filter: blur(90px);
