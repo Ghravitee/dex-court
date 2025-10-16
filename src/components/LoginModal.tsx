@@ -69,7 +69,8 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         {activeTab === "wallet" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              Connect your wallet to access DexCourt features
+              Connect your wallet to view your profile and interact with
+              DexCourt
             </p>
             <Button
               onClick={handleWalletConnect}
@@ -81,10 +82,26 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         )}
 
         {/* Telegram Login */}
+        {/* Telegram Login */}
         {activeTab === "telegram" && (
           <div className="space-y-4">
+            <p className="text-sm text-gray-300">
+              To log in with Telegram, open{" "}
+              <a
+                href="https://t.me/DexCourtDVBot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 hover:underline"
+              >
+                @DexCourtDvBot
+              </a>{" "}
+              on Telegram and click on{" "}
+              <span className="font-semibold text-white">Start</span>. You’ll
+              receive a one-time password (OTP) — paste it below to verify.
+            </p>
+
             <label className="block text-sm text-gray-300">
-              Enter your OTP from the DexCourt's Telegram bot:
+              Enter your OTP from DexCourt’s Telegram bot:
             </label>
             <input
               type="text"
