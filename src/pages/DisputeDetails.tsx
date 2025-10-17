@@ -177,7 +177,7 @@ export default function DisputeDetails() {
           );
         case "transaction":
           return (
-            <div className="flex h-full flex-col items-center justify-center space-y-6 p-6">
+            <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
               <ExternalLink className="h-16 w-16 text-cyan-400" />
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-semibold text-white">
@@ -201,7 +201,7 @@ export default function DisputeDetails() {
           );
         case "pdf":
           return (
-            <div className="flex h-full flex-col items-center justify-center space-y-6 p-6">
+            <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
               <div className="h-[80vh] w-full">
                 {pdfLoading && (
                   <div className="flex h-full flex-col items-center justify-center space-y-4">
@@ -268,7 +268,7 @@ export default function DisputeDetails() {
           );
         default:
           return (
-            <div className="flex h-full flex-col items-center justify-center space-y-6 p-6">
+            <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
               <File className="h-16 w-16 text-cyan-400" />
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-semibold text-white">
@@ -351,7 +351,7 @@ export default function DisputeDetails() {
 
   if (!dispute) {
     return (
-      <div className="p-6 text-white">
+      <div className="py-6 text-white">
         <Button
           onClick={() => navigate("/disputes")}
           variant="ghost"
@@ -512,7 +512,7 @@ export default function DisputeDetails() {
                 {getEvidenceIcon(item.type)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium break-all text-white">
                   {item.name}
                 </div>
                 <div className="text-xs text-gray-400 capitalize">
@@ -559,7 +559,7 @@ export default function DisputeDetails() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="space-y-6 p-6 text-white"
+      className="space-y-6 py-6 text-white"
     >
       {/* Back Button */}
       <Button

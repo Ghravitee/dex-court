@@ -344,7 +344,7 @@ export default function Disputes() {
                           <span className="badge badge-red">Dismissed</span>
                         ) : (
                           <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
-                            In Progress
+                            Vote in Progress
                           </span>
                         )}
                       </td>
