@@ -12,7 +12,6 @@ import {
   UserCheck,
   User,
   Shield,
-  Download,
   X,
   ExternalLink,
   Image as ImageIcon,
@@ -23,7 +22,7 @@ import {
 import { Button } from "../components/ui/button";
 import { getDisputeById } from "../lib/mockDisputes";
 import type { DisputeRow } from "../lib/mockDisputes";
-import { toast } from "sonner";
+// import { toast } from "sonner";
 
 // Simplified evidence type definitions - only images and docs
 type EvidenceType = "image" | "pdf" | "transaction" | "chat" | "document";
@@ -141,11 +140,6 @@ export default function DisputeDetails() {
     setEvidenceViewerOpen(true);
     setPdfLoading(evidence.type === "pdf");
     setPdfError(false);
-  };
-
-  // Function to download evidence
-  const handleDownloadEvidence = (evidence: EvidenceItem) => {
-    toast.success(`Downloading ${evidence.name}...`);
   };
 
   // Function to handle PDF load events
@@ -400,7 +394,7 @@ export default function DisputeDetails() {
             return (
               <div
                 key={index}
-                className={`rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4`}
+                className={`relative rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4`}
               >
                 <div className="mb-3 flex items-center gap-3">
                   <div className={`text-${color}-400`}>
@@ -414,7 +408,7 @@ export default function DisputeDetails() {
                       PDF • Inline preview
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="absolute top-8 right-2 sm:top-4">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -425,17 +419,6 @@ export default function DisputeDetails() {
                       className={`h-8 w-8 p-0 text-${color}-400 hover:text-${color}-300`}
                     >
                       <ExternalLink className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadEvidence(item);
-                      }}
-                      className={`h-8 w-8 p-0 text-${color}-400 hover:text-${color}-300`}
-                    >
-                      <Download className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
@@ -505,13 +488,13 @@ export default function DisputeDetails() {
           return (
             <div
               key={index}
-              className={`flex items-center gap-3 rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4 transition-colors hover:bg-${color}-500/10 cursor-pointer`}
+              className={`relative flex items-center gap-2 rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4 transition-colors hover:bg-${color}-500/10 cursor-pointer`}
               onClick={() => handleViewEvidence(item)}
             >
               <div className={`text-${color}-400`}>
                 {getEvidenceIcon(item.type)}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="">
                 <div className="text-sm font-medium break-all text-white">
                   {item.name}
                 </div>
@@ -521,18 +504,7 @@ export default function DisputeDetails() {
                     : "Click to preview"}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownloadEvidence(item);
-                  }}
-                  className={`h-8 w-8 p-0 text-${color}-400 hover:text-${color}-300`}
-                >
-                  <Download className="h-3 w-3" />
-                </Button>
+              <div className="absolute top-2 right-2">
                 {item.type === "transaction" && (
                   <Button
                     variant="ghost"

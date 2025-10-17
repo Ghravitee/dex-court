@@ -31,7 +31,10 @@ import {
 } from "recharts";
 import CountUp from "../components/ui/CountUp";
 import { Link } from "react-router-dom";
-import avatar from "../assets/avatar.webp";
+import avatar1 from "../assets/avatar-1.svg";
+import avatar2 from "../assets/avatar-2.webp";
+import avatar3 from "../assets/avatar-3.webp";
+import avatar4 from "../assets/avatar4.webp";
 import { fetchAgreements } from "../lib/mockApi";
 import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
 
@@ -474,13 +477,39 @@ function DisputesSlideshow() {
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
             }}
-            className="glass flex h-[11rem] min-w-full flex-col items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 transition"
+            className="glass flex min-w-full flex-col items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 transition lg:h-[13.5rem]"
           >
             <div className="mt-1 text-lg font-semibold text-[#0891b2]">
               {item.title}
             </div>
             <div className="mt-2 text-sm text-white/60">{item.parties}</div>
-            <p className="mt-2 text-sm text-white/80">{item.status}</p>
+            <p className="mt-2 text-sm">
+              {item.status === "Settled" ? (
+                <span className="badge badge-blue">Settled</span>
+              ) : item.status === "Pending" ? (
+                <span className="badge badge-orange">Pending</span>
+              ) : item.status === "Dismissed" ? (
+                <span className="badge badge-red">Dismissed</span>
+              ) : (
+                <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
+                  Vote in Progress
+                </span>
+              )}
+            </p>
+
+            {/* 🆕 Optional new info */}
+            <p className="mt-2 line-clamp-2 text-center text-xs text-white/60 italic">
+              “{item.claim}”
+            </p>
+            <div className="mt-1 flex items-center gap-3 text-xs text-white/50">
+              <span>
+                {item.evidence.length}{" "}
+                {item.evidence.length > 1 ? "evidences" : "evidence"}
+              </span>
+              {item.witnesses.length > 0 && (
+                <span>{item.witnesses.length} witnesses</span>
+              )}
+            </div>
           </Link>
         ))}
       </div>
@@ -494,41 +523,41 @@ function RenownedJudges() {
       name: "@judgeNova",
       tg: "@judgeNova",
       x: "@nova_xyz",
-      bio: "Arbitrator & smart contract auditor",
       href: "/judges/nova",
-      avatar,
+      bio: "Lead arbitrator, Solidity auditor, and DAO governance advisor with 5+ years in on-chain dispute resolution. Known for technical fairness and precise smart contract analysis.",
+      avatar: avatar2,
     },
     {
       name: "@judgeAres",
-      tg: "",
+      tg: "@judgeAres",
       x: "@ares_eth",
       href: "/judges/ares",
-      bio: "Founder • DeFi risk analyst",
-      avatar,
+      bio: "Founder of AresLabs • DeFi risk analyst and strategist. Brings deep financial expertise to tokenomics disputes and contract risk assessments.",
+      avatar: avatar1,
     },
     {
       name: "@judgeKai",
       tg: "@kai",
       x: "@kai_io",
       href: "/judges/kai",
-      bio: "Full-stack dev & L2 researcher",
-      avatar,
+      bio: "Full-stack developer and Layer-2 researcher with focus on zk-rollups and protocol efficiency. Mediates technical disputes with balanced reasoning.",
+      avatar: avatar4,
     },
     {
       name: "@judgeVera",
-      tg: "",
+      tg: "@vera_lex",
       x: "@vera_x",
       href: "/judges/vera",
-      bio: "Corporate lawyer • IP",
-      avatar,
+      bio: "Corporate lawyer and IP rights advocate bridging Web2 and Web3 legal frameworks. Oversees intellectual property and compliance-related disputes.",
+      avatar: avatar3,
     },
     {
       name: "@judgeOrion",
-      tg: "@orion",
+      tg: "@orion_xyz",
       x: "@orion_xyz",
       href: "/judges/orion",
-      bio: "Protocol governance specialist",
-      avatar,
+      bio: "Protocol governance specialist and DAO operations consultant. Focuses on collective decision-making ethics and decentralization fairness.",
+      avatar: avatar4,
     },
   ];
 
@@ -568,7 +597,7 @@ function RenownedJudges() {
       </div>
 
       <div
-        className="relative flex w-full transition-transform duration-700 ease-in-out"
+        className="relative flex w-full transition-transform duration-700 ease-in-out lg:h-[15rem]"
         style={{
           transform: `translateX(-${index * 100}%)`,
         }}
@@ -581,19 +610,25 @@ function RenownedJudges() {
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
             }}
-            className="glass flex min-w-full flex-col items-center justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+            className="glass flex min-w-full items-center gap-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
           >
             <img
               src={j.avatar}
               alt={j.name}
-              className="h-20 w-20 rounded-full border-2 border-cyan-400/40 object-cover shadow-lg"
+              className="h-20 w-20 rounded-full border-2 border-cyan-400/40 object-contain shadow-lg"
             />
-            <div className="text-lg font-semibold text-[#0891b2]">{j.name}</div>
-            <div className="flex justify-center gap-2 text-sm text-white/60">
-              {j.tg && <span>{j.tg}</span>}
-              {j.x && <span>{j.x}</span>}
+            <div className="flex flex-col text-left">
+              <div className="text-lg font-semibold text-[#0891b2]">
+                {j.name}
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm text-white/60">
+                {j.tg && <span>{j.tg}</span>}
+                {j.x && <span>{j.x}</span>}
+              </div>
+              <p className="mt-2 max-w-[25rem] text-sm leading-relaxed text-white/70">
+                {j.bio}
+              </p>
             </div>
-            <p className="text-center text-sm text-white/70">{j.bio}</p>
           </Link>
         ))}
       </div>
@@ -605,24 +640,45 @@ function LiveVoting() {
   const votes = [
     {
       id: 1,
-      title: "Escrow Refund",
+      title: "Escrow Refund Request",
       parties: "@0xNova vs @0xVega",
-      desc: "Plaintiff requests refund after contractor missed milestones.",
-      href: "/voting",
+      desc: "The plaintiff seeks a full refund after the developer missed two key delivery milestones in a freelance contract. Community members are voting on whether the escrow should be released or refunded.",
+      href: "/voting/escrow-refund",
     },
     {
       id: 2,
       title: "Code Ownership Dispute",
       parties: "@0xLuna vs @0xSol",
-      desc: "Clarifying IP rights for jointly developed smart contract.",
-      href: "/voting",
+      desc: "A disagreement over authorship of a jointly developed smart contract for an NFT minting protocol. Voters must decide if both parties share IP rights or if one contributor holds exclusive control.",
+      href: "/voting/code-ownership",
     },
     {
       id: 3,
-      title: "Liquidity Pool Compensation",
+      title: "Liquidity Pool Compensation Proposal",
       parties: "@0xTheta vs @0xDelta",
-      desc: "Community voting on compensation after protocol bug exploit.",
-      href: "/voting",
+      desc: "Following a governance bug exploit that drained 12% of the liquidity pool, the DAO proposes a partial reimbursement to affected users. Voters decide whether compensation should be approved or rejected.",
+      href: "/voting/liquidity-compensation",
+    },
+    {
+      id: 4,
+      title: "NFT Royalties Dispute",
+      parties: "@0xAria vs @0xMaven",
+      desc: "An artist claims unpaid royalties from a secondary marketplace smart contract. The defendant argues the royalties were waived under a previous governance proposal. The vote determines if compensation is due.",
+      href: "/voting/nft-royalties",
+    },
+    {
+      id: 5,
+      title: "Protocol Exploit Responsibility",
+      parties: "@0xEcho vs @0xPrime",
+      desc: "A protocol contributor is accused of negligence after a critical vulnerability went unpatched. The community votes to determine accountability and potential penalties.",
+      href: "/voting/protocol-liability",
+    },
+    {
+      id: 6,
+      title: "DAO Fund Misallocation",
+      parties: "@0xAtlas vs @0xCoreDAO",
+      desc: "A member alleges that DAO funds were misused for personal gain by a multisig signer. Voters must decide whether to initiate a treasury audit and revoke privileges.",
+      href: "/voting/dao-fund-misuse",
     },
   ];
 
@@ -646,7 +702,7 @@ function LiveVoting() {
   }, [index, next, delay]);
 
   return (
-    <div className="relative mt-4 overflow-hidden lg:mt-0 lg:h-[15rem]">
+    <div className="relative mt-4 overflow-hidden lg:mt-0 lg:h-[18rem]">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
           Live Voting
@@ -684,7 +740,9 @@ function LiveVoting() {
                 <div className="text-sm text-white/60">{v.parties}</div>
               </div>
             </div>
-            <p className="text-sm text-white/80">{v.desc}</p>
+            <p className="mx-auto max-w-[30rem] text-center text-sm text-white/80">
+              {v.desc}
+            </p>
 
             {/* Updated button section */}
             <div className="mt-4 flex justify-center">
