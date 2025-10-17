@@ -247,209 +247,6 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* ===== Escrow Deals ===== */}
-          <BentoCard
-            title="Escrow Deals"
-            icon={<FaHandshake />}
-            color="cyan"
-            count={escrowDeals.length}
-            scrollable
-            maxHeight="260px"
-          >
-            {/* Filter Tabs */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {["All", "Pending", "Completed", "Cancelled", "Disputed"].map(
-                (status) => {
-                  // Assign consistent colors for each status
-                  const colorMap: Record<string, string> = {
-                    All: "bg-white/5 text-white/70 hover:text-cyan-300",
-                    Pending:
-                      filter === "Pending"
-                        ? "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-400/30"
-                        : "bg-white/5 text-yellow-200/60 hover:text-yellow-300",
-                    Completed:
-                      filter === "Completed"
-                        ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
-                        : "bg-white/5 text-emerald-200/60 hover:text-emerald-300",
-                    Cancelled:
-                      filter === "Cancelled"
-                        ? "bg-gray-500/20 text-gray-300 ring-1 ring-gray-400/30"
-                        : "bg-white/5 text-gray-300/60 hover:text-gray-300",
-                    Disputed:
-                      filter === "Disputed"
-                        ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30"
-                        : "bg-white/5 text-rose-200/60 hover:text-rose-300",
-                  };
-
-                  return (
-                    <button
-                      key={status}
-                      onClick={() => setFilter(status)}
-                      className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[status]}`}
-                    >
-                      {status}
-                    </button>
-                  );
-                },
-              )}
-            </div>
-
-            {/* Escrow Deals List */}
-            <ul className="space-y-2">
-              {filteredDeals.length > 0 ? (
-                filteredDeals.map((deal) => (
-                  <li
-                    key={deal.id}
-                    className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium text-white/90">
-                        {deal.title}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        {deal.parties}
-                      </span>
-                    </div>
-                    <span
-                      className={`rounded px-2 py-1 text-xs font-medium ${
-                        deal.status === "Completed"
-                          ? "bg-emerald-500/20 text-emerald-300"
-                          : deal.status === "Pending"
-                            ? "bg-yellow-500/20 text-yellow-300"
-                            : deal.status === "Cancelled"
-                              ? "bg-gray-500/20 text-gray-300"
-                              : "bg-rose-500/20 text-rose-300"
-                      }`}
-                    >
-                      {deal.status}
-                    </span>
-                  </li>
-                ))
-              ) : (
-                <div className="text-muted-foreground py-6 text-center text-sm">
-                  No deals found for this category.
-                </div>
-              )}
-            </ul>
-          </BentoCard>
-        </div>
-
-        {/* Escrow Stats */}
-
-        {/* Revenue Stats */}
-        <div className="space-y-4">
-          <div className="glass flex flex-col justify-between rounded-2xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-2xl font-semibold text-white/90">
-                Revenue Earned
-              </h3>
-              <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-sm text-cyan-300/80">
-                Updated 1h ago
-              </span>
-            </div>
-
-            <div className="space-y-3 text-lg">
-              {Object.entries(stats.revenue).map(([period, amount]) => (
-                <div key={period} className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {period.toUpperCase()}
-                  </span>
-                  <span className="text-xl font-semibold text-cyan-300">
-                    ${amount.toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-8 flex flex-col items-center space-y-3">
-              <div className="text-muted-foreground text-sm">
-                Unclaimed Reward
-              </div>
-              <div className="text-3xl font-bold text-emerald-400">($132)</div>
-              <Button
-                variant="neon"
-                className="mt-2 w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.5)] transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_30px_rgba(34,211,238,0.6)]"
-              >
-                Claim Revenue
-              </Button>
-            </div>
-          </div>
-
-          {/* Reputation History */}
-          <BentoCard
-            title="My Reputation History"
-            icon={<RiShieldCheckFill />}
-            color="cyan"
-            scrollable
-            maxHeight="260px"
-          >
-            <ul className="mt-4 space-y-2">
-              {reputation.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
-                >
-                  <span>{r.event}</span>
-                  <span className="text-xs text-cyan-300">{r.impact}</span>
-                </li>
-              ))}
-            </ul>
-          </BentoCard>
-        </div>
-
-        {/* ===== Verifications ===== */}
-        {/* ===== Judged Disputes Leaderboard ===== */}
-        <div className="flex flex-col gap-4">
-          {roles.judge && (
-            <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-              <h3 className="mb-4 text-lg font-semibold text-white/90">
-                Judged Disputes
-              </h3>
-
-              {/* ✅ Added horizontal scroll container */}
-              <div className="overflow-x-auto">
-                {/* ✅ Added min-w-max so table overflows */}
-                <table className="min-w-max text-left text-sm text-white/80">
-                  <thead className="border-b border-cyan-500/20 text-xs text-cyan-300 uppercase">
-                    <tr>
-                      <th className="px-3 py-2 whitespace-nowrap">Title</th>
-                      <th className="px-3 py-2 whitespace-nowrap">Parties</th>
-                      <th className="px-3 py-2 text-right whitespace-nowrap">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {judgedDisputes.map((d, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-white/5 transition hover:bg-white/5"
-                      >
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {d.title}
-                        </td>
-                        <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
-                          {d.parties}
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          <span
-                            className={`rounded px-2 py-1 text-xs ${
-                              d.status === "Resolved"
-                                ? "bg-emerald-500/20 text-emerald-300"
-                                : "bg-yellow-500/20 text-yellow-300"
-                            }`}
-                          >
-                            {d.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
           <section className="glass card-cyan h-fit rounded-2xl p-4 lg:p-6">
             <div className="space text-muted-foreground mb-4 text-lg">
               Verifications
@@ -571,6 +368,103 @@ export default function Profile() {
               {/* Logout Button */}
             </div>
           </section>
+        </div>
+
+        {/* Escrow Stats */}
+
+        {/* Revenue Stats */}
+        <div className="space-y-4">
+          <div className="glass flex flex-col justify-between rounded-2xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-2xl font-semibold text-white/90">
+                Revenue Earned
+              </h3>
+              <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-sm text-cyan-300/80">
+                Updated 1h ago
+              </span>
+            </div>
+
+            <div className="space-y-3 text-lg">
+              {Object.entries(stats.revenue).map(([period, amount]) => (
+                <div key={period} className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {period.toUpperCase()}
+                  </span>
+                  <span className="text-xl font-semibold text-cyan-300">
+                    ${amount.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex flex-col items-center space-y-3">
+              <div className="text-muted-foreground text-sm">
+                Unclaimed Reward
+              </div>
+              <div className="text-3xl font-bold text-emerald-400">($132)</div>
+              <Button
+                variant="neon"
+                className="mt-2 w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.5)] transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_30px_rgba(34,211,238,0.6)]"
+              >
+                Claim Revenue
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* ===== Verifications ===== */}
+        {/* ===== Judged Disputes Leaderboard ===== */}
+        <div className="flex flex-col gap-4">
+          {roles.judge && (
+            <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white/90">
+                Judged Disputes
+              </h3>
+
+              {/* ✅ Added horizontal scroll container */}
+              <div className="overflow-x-auto">
+                {/* ✅ Added min-w-max so table overflows */}
+                <table className="min-w-max text-left text-sm text-white/80">
+                  <thead className="border-b border-cyan-500/20 text-xs text-cyan-300 uppercase">
+                    <tr>
+                      <th className="px-3 py-2 whitespace-nowrap">Title</th>
+                      <th className="px-3 py-2 whitespace-nowrap">Parties</th>
+                      <th className="px-3 py-2 text-right whitespace-nowrap">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {judgedDisputes.map((d, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-white/5 transition hover:bg-white/5"
+                      >
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {d.title}
+                        </td>
+                        <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
+                          {d.parties}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <span
+                            className={`rounded px-2 py-1 text-xs ${
+                              d.status === "Resolved"
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-yellow-500/20 text-yellow-300"
+                            }`}
+                          >
+                            {d.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {showLoginModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
@@ -608,6 +502,27 @@ export default function Profile() {
               </div>
             </div>
           )}
+
+          {/* Reputation History */}
+          <BentoCard
+            title="My Reputation History"
+            icon={<RiShieldCheckFill />}
+            color="cyan"
+            scrollable
+            maxHeight="260px"
+          >
+            <ul className="mt-4 space-y-2">
+              {reputation.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
+                >
+                  <span>{r.event}</span>
+                  <span className="text-xs text-cyan-300">{r.impact}</span>
+                </li>
+              ))}
+            </ul>
+          </BentoCard>
         </div>
       </section>
 
@@ -661,6 +576,92 @@ export default function Profile() {
                 <span className="text-muted-foreground text-xs">{a.date}</span>
               </li>
             ))}
+          </ul>
+        </BentoCard>
+
+        {/* ===== Escrow Deals ===== */}
+        <BentoCard
+          title="Escrow Deals"
+          icon={<FaHandshake />}
+          color="cyan"
+          count={escrowDeals.length}
+          scrollable
+          maxHeight="260px"
+        >
+          {/* Filter Tabs */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {["All", "Pending", "Completed", "Cancelled", "Disputed"].map(
+              (status) => {
+                // Assign consistent colors for each status
+                const colorMap: Record<string, string> = {
+                  All: "bg-white/5 text-white/70 hover:text-cyan-300",
+                  Pending:
+                    filter === "Pending"
+                      ? "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-400/30"
+                      : "bg-white/5 text-yellow-200/60 hover:text-yellow-300",
+                  Completed:
+                    filter === "Completed"
+                      ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+                      : "bg-white/5 text-emerald-200/60 hover:text-emerald-300",
+                  Cancelled:
+                    filter === "Cancelled"
+                      ? "bg-gray-500/20 text-gray-300 ring-1 ring-gray-400/30"
+                      : "bg-white/5 text-gray-300/60 hover:text-gray-300",
+                  Disputed:
+                    filter === "Disputed"
+                      ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30"
+                      : "bg-white/5 text-rose-200/60 hover:text-rose-300",
+                };
+
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setFilter(status)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[status]}`}
+                  >
+                    {status}
+                  </button>
+                );
+              },
+            )}
+          </div>
+
+          {/* Escrow Deals List */}
+          <ul className="space-y-2">
+            {filteredDeals.length > 0 ? (
+              filteredDeals.map((deal) => (
+                <li
+                  key={deal.id}
+                  className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-medium text-white/90">
+                      {deal.title}
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      {deal.parties}
+                    </span>
+                  </div>
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-medium ${
+                      deal.status === "Completed"
+                        ? "bg-emerald-500/20 text-emerald-300"
+                        : deal.status === "Pending"
+                          ? "bg-yellow-500/20 text-yellow-300"
+                          : deal.status === "Cancelled"
+                            ? "bg-gray-500/20 text-gray-300"
+                            : "bg-rose-500/20 text-rose-300"
+                    }`}
+                  >
+                    {deal.status}
+                  </span>
+                </li>
+              ))
+            ) : (
+              <div className="text-muted-foreground py-6 text-center text-sm">
+                No deals found for this category.
+              </div>
+            )}
           </ul>
         </BentoCard>
       </section>
