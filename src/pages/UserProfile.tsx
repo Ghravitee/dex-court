@@ -12,12 +12,14 @@ import Community from "../components/ui/svgcomponents/Community";
 import UserIcon from "../components/ui/svgcomponents/UserIcon";
 import { MiniTrust } from "../components/MiniTrust";
 import { BentoCard } from "./Profile";
+import { LoginModal } from "../components/LoginModal";
 
 export default function UserProfile() {
   const { handle } = useParams<{ handle: string }>();
-  const { user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const isOwnProfile = currentUser?.handle === user?.handle;
 
@@ -35,10 +37,10 @@ export default function UserProfile() {
       }
     };
 
-    if (handle) {
+    if (handle && isAuthenticated) {
       loadUserData();
     }
-  }, [handle]);
+  }, [handle, isAuthenticated]);
 
   // Calculate total volume safely
   const totalVolume = user
@@ -47,6 +49,43 @@ export default function UserProfile() {
         0,
       )
     : 0;
+
+  // If not authenticated, show login prompt
+  if (!isAuthenticated) {
+    return (
+      <div className="relative space-y-8">
+        <header className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white/90 lg:text-2xl">
+            User Profile
+          </h2>
+        </header>
+
+        <div className="glass card-cyan mx-auto flex max-w-[50rem] flex-col items-center justify-center rounded-2xl border border-cyan-400/30 p-12 text-center">
+          <div className="mb-6 grid h-20 w-20 place-items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
+            <FaUser className="h-8 w-8" />
+          </div>
+          <h3 className="mb-2 text-xl font-semibold text-white/90">
+            Please log in to view user profiles
+          </h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Connect your wallet or login via Telegram to access DexCourt
+            profiles, view user agreements, disputes, and reputation scores.
+          </p>
+          <Button
+            onClick={() => setShowLoginModal(true)}
+            className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+          >
+            Login to Continue
+          </Button>
+        </div>
+
+        <LoginModal
+          isOpen={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -86,7 +125,7 @@ export default function UserProfile() {
           </div>
         </div>
 
-        <div className="hidden gap-3">
+        <div className="flex gap-3">
           {!isOwnProfile && (
             <>
               <Button
