@@ -18,6 +18,8 @@ import {
   Paperclip,
   Trash2,
   Loader2,
+  User,
+  Users,
 } from "lucide-react";
 import "react-datepicker/dist/react-datepicker.css";
 import ReactDatePicker from "react-datepicker";
@@ -34,6 +36,9 @@ interface UploadedFile {
   type: "image" | "document";
   size: string;
 }
+
+// Agreement type options
+type AgreementType = "myself" | "others";
 
 export default function Agreements() {
   const navigate = useNavigate();
@@ -59,10 +64,17 @@ export default function Agreements() {
   const recentFilterRef = useRef<HTMLDivElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Form state
+  // New state for agreement type selection
+  const [agreementType, setAgreementType] = useState<AgreementType>("myself");
+
+  // Enhanced Form state
   const [form, setForm] = useState({
     title: "",
+    // For "myself" type
     counterparty: "",
+    // For "others" type
+    partyA: "",
+    partyB: "",
     description: "",
     images: [] as UploadedFile[],
   });
@@ -141,17 +153,9 @@ export default function Agreements() {
   const [recentFilter, setRecentFilter] = useState<
     "all" | "active" | "completed" | "disputed"
   >("all");
-  // Add these with your existing state variables
   const [searchQuery, setSearchQuery] = useState("");
-
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  // Example agreements data (you can replace this with fetched data)
-
-  // Apply filtering for main table
-  // Enhanced filtering and sorting logic
-  // Replace the search filter in filteredTableAgreements:
-  // Update the search filter to handle optional amount
   const filteredTableAgreements: Agreement[] = agreements
     .filter((a) => {
       // Status filter
@@ -197,9 +201,6 @@ export default function Agreements() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
-
-    const newFiles: UploadedFile[] = [];
-    console.log(newFiles);
 
     Array.from(selectedFiles).forEach((file) => {
       const fileType = file.type.startsWith("image/") ? "image" : "document";
@@ -260,26 +261,23 @@ export default function Agreements() {
     input.type = "file";
     input.multiple = true;
     input.accept = "image/*,.pdf,.doc,.docx,.txt";
-    // Create a DataTransfer to set files
     const dataTransfer = new DataTransfer();
     Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
     input.files = dataTransfer.files;
 
-    // Trigger the file input change event
     const event = new Event("change", { bubbles: true });
     input.dispatchEvent(event);
 
-    // Use our existing file handler
     handleFileSelect({
       target: { files: dataTransfer.files },
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // Form submission handler
+  // Enhanced Form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Form validation
+    // Form validation based on agreement type
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -288,8 +286,15 @@ export default function Agreements() {
       toast.error("Please select agreement type");
       return;
     }
-    if (!form.counterparty.trim()) {
+    if (agreementType === "myself" && !form.counterparty.trim()) {
       toast.error("Please enter counterparty information");
+      return;
+    }
+    if (
+      agreementType === "others" &&
+      (!form.partyA.trim() || !form.partyB.trim())
+    ) {
+      toast.error("Please enter both parties' information");
       return;
     }
     if (!form.description.trim()) {
@@ -304,14 +309,20 @@ export default function Agreements() {
     setIsSubmitting(true);
 
     try {
+      // Determine parties based on agreement type
+      const parties =
+        agreementType === "myself"
+          ? { createdBy: "@You", counterparty: form.counterparty }
+          : { createdBy: form.partyA, counterparty: form.partyB };
+
       // Prepare agreement data for the API
       const agreementData = {
         title: form.title,
         type: typeValue as "Public" | "Private",
-        counterparty: form.counterparty,
+        counterparty: parties.counterparty,
         description: form.description,
-        images: form.images.map((file) => file.file.name), // Store file names
-        deadline: deadline.toISOString().split("T")[0], // Format as YYYY-MM-DD
+        images: form.images.map((file) => file.file.name),
+        deadline: deadline.toISOString().split("T")[0],
         includeFunds: includeFunds as "yes" | "no",
         useEscrow: secureWithEscrow === "yes",
         token:
@@ -321,9 +332,11 @@ export default function Agreements() {
         amount:
           includeFunds === "yes" && secureWithEscrow === "yes"
             ? "1000"
-            : undefined, // You'd want to capture this from a form field
+            : undefined,
         status: "pending" as AgreementStatus,
-        createdBy: "@You", // In a real app, this would come from user context
+        createdBy: parties.createdBy,
+        // Add agreement type for tracking
+        agreementType: agreementType,
       };
 
       // Use the mock API to create the agreement
@@ -332,8 +345,14 @@ export default function Agreements() {
       // Update local state to include the new agreement
       setAgreements((prev) => [newAgreement, ...prev]);
 
+      // Success message based on agreement type
+      const successMessage =
+        agreementType === "myself"
+          ? `Agreement created between you and ${form.counterparty}`
+          : `Agreement created between ${form.partyA} and ${form.partyB}`;
+
       toast.success("Agreement created successfully", {
-        description: `${form.title} • ${typeValue} • ${form.images.length} files uploaded`,
+        description: `${successMessage} • ${typeValue} • ${form.images.length} files uploaded`,
       });
 
       setIsModalOpen(false);
@@ -341,6 +360,8 @@ export default function Agreements() {
       setForm({
         title: "",
         counterparty: "",
+        partyA: "",
+        partyB: "",
         description: "",
         images: [],
       });
@@ -350,6 +371,7 @@ export default function Agreements() {
       setSecureWithEscrow("");
       setSelectedToken("");
       setCustomTokenAddress("");
+      setAgreementType("myself"); // Reset to default
     } catch (error) {
       console.error("Failed to create agreement:", error);
       toast.error("Failed to create agreement", {
@@ -491,14 +513,12 @@ export default function Agreements() {
                             {a.title}
                           </td>
                           <td className="px-5 py-4 text-white/90">
-                            {a.createdBy} ↔ {a.counterparty}{" "}
-                            {/* Show both creator and counterparty */}
+                            {a.createdBy} ↔ {a.counterparty}
                           </td>
                           <td className="px-5 py-4 text-white/90">
                             {a.amount
                               ? `${a.amount} ${a.token || ""}`
-                              : "No amount"}{" "}
-                            {/* Handle optional amount */}
+                              : "No amount"}
                           </td>
                           <td className="px-5 py-4 text-white/90">
                             {a.deadline}
@@ -621,6 +641,50 @@ export default function Agreements() {
                 </p>
               </div>
 
+              {/* Agreement Type Selection */}
+              <div>
+                <label className="text-muted-foreground mb-3 block text-sm font-semibold">
+                  Who is this agreement for?{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setAgreementType("myself")}
+                    className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                      agreementType === "myself"
+                        ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                        : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                    }`}
+                  >
+                    <User className="mb-2 h-6 w-6" />
+                    <span className="text-sm font-medium">
+                      Myself & Counterparty
+                    </span>
+                    <span className="mt-1 text-xs opacity-70">
+                      Agreement between you and someone else
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAgreementType("others")}
+                    className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                      agreementType === "others"
+                        ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                        : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                    }`}
+                  >
+                    <Users className="mb-2 h-6 w-6" />
+                    <span className="text-sm font-medium">
+                      Two Other Parties
+                    </span>
+                    <span className="mt-1 text-xs opacity-70">
+                      Agreement between two other users
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               {/* Title */}
               <div>
                 <label className="space mb-2 block font-semibold text-white">
@@ -634,7 +698,7 @@ export default function Agreements() {
                 />
               </div>
 
-              {/* Type + Counterparty */}
+              {/* Type + Parties */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {/* Type */}
                 <div
@@ -672,20 +736,52 @@ export default function Agreements() {
                     </div>
                   )}
                 </div>
-                {/* Counterparty */}
-                <div>
-                  <label className="text-muted-foreground mb-2 block text-sm">
-                    Counterparty <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    value={form.counterparty}
-                    onChange={(e) =>
-                      setForm({ ...form, counterparty: e.target.value })
-                    }
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                    placeholder="@0xHandle or address"
-                  />
-                </div>
+
+                {/* Parties based on agreement type */}
+                {agreementType === "myself" ? (
+                  <div>
+                    <label className="text-muted-foreground mb-2 block text-sm">
+                      Counterparty <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      value={form.counterparty}
+                      onChange={(e) =>
+                        setForm({ ...form, counterparty: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                      placeholder="@0xHandle or address"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-muted-foreground mb-2 block text-sm">
+                        First Party <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.partyA}
+                        onChange={(e) =>
+                          setForm({ ...form, partyA: e.target.value })
+                        }
+                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                        placeholder="@0xHandle or address"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-muted-foreground mb-2 block text-sm">
+                        Second Party <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.partyB}
+                        onChange={(e) =>
+                          setForm({ ...form, partyB: e.target.value })
+                        }
+                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                        placeholder="@0xHandle or address"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Description + Helper */}
@@ -956,7 +1052,7 @@ export default function Agreements() {
                 </div>
               )}
               {/* Buttons */}
-              <div className="flex items-center gap-3 pt-4">
+              <div className="flex items-center justify-end gap-3 pt-4">
                 <Button
                   type="button"
                   variant="outline"

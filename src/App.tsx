@@ -14,6 +14,7 @@ import Reputation from "./pages/Reputation";
 import Profile from "./pages/Profile";
 import AgreementDetails from "./pages/AgreementDetails";
 import EscrowDetails from "./pages/EscrowDetails";
+import UserProfile from "./pages/UserProfile";
 import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext"; // Import the AuthProvider
@@ -44,6 +45,7 @@ export default function App() {
                 <Route path="/escrow/:id" element={<EscrowDetails />} />
                 <Route path="reputation" element={<Reputation />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="profile/:handle" element={<UserProfile />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

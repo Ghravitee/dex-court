@@ -46,3 +46,8 @@ export type Escrow = {
   description: string;
   createdAt: number;
 };
+
+// Local type extension at the top of your Escrow component file
+export type ExtendedEscrow = Escrow & {
+  escrowType?: "myself" | "others";
+};

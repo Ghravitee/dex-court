@@ -355,11 +355,17 @@ function LiveCaseCard({
               <div className="font-semibold text-white/90">{c.title}</div>
               <div className="text-muted-foreground text-xs">
                 <span className="font-medium text-cyan-300">
-                  Plaintiff: {c.parties.plaintiff}
+                  Plaintiff:{" "}
+                  <Link to={`/profile/${c.parties.plaintiff.replace("@", "")}`}>
+                    {c.parties.plaintiff}
+                  </Link>
                 </span>{" "}
                 vs{" "}
                 <span className="font-medium text-pink-300">
-                  Defendant: {c.parties.defendant}
+                  Defendant:{" "}
+                  <Link to={`/profile/${c.parties.defendant.replace("@", "")}`}>
+                    {c.parties.defendant}
+                  </Link>
                 </span>
               </div>
             </div>

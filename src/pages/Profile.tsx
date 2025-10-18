@@ -12,7 +12,7 @@ import { RiShieldCheckFill } from "react-icons/ri";
 import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
-import User from "../components/ui/svgcomponents/User";
+import User from "../components/ui/svgcomponents/UserIcon";
 import { useAuth } from "../context/AuthContext";
 import { LoginModal } from "../components/LoginModal";
 
@@ -91,16 +91,36 @@ export default function Profile() {
   const disputes = [
     { id: 1, title: "Escrow breach – CryptoSwap", status: "Resolved" },
     { id: 2, title: "NFT delivery delay", status: "Pending" },
+    { id: 3, title: "Smart contract audit dispute", status: "Resolved" },
+    {
+      id: 4,
+      title: "Payment delay for development work",
+      status: "In Progress",
+    },
   ];
 
   const agreements = [
     { id: 1, name: "Marketing deal with @alice", date: "Sep 10, 2025" },
     { id: 2, name: "NFT collaboration with @bob", date: "Oct 2, 2025" },
+    {
+      id: 3,
+      name: "Smart contract development with @charlie",
+      date: "Nov 15, 2025",
+    },
+    {
+      id: 4,
+      name: "DAO consulting agreement with @diana",
+      date: "Dec 5, 2025",
+    },
   ];
 
   const reputation = [
     { id: 1, event: "Completed dispute as Judge", impact: "+5 trust" },
     { id: 2, event: "Agreement completed successfully", impact: "+2 trust" },
+    { id: 3, event: "Failed to deliver on time", impact: "-3 trust" },
+    { id: 4, event: "Successful escrow completion", impact: "+4 trust" },
+    { id: 5, event: "Lost dispute as Defendant", impact: "-6 trust" },
+    { id: 6, event: "Helped resolve community issue", impact: "+3 trust" },
   ];
 
   const escrowDeals = [
@@ -130,15 +150,38 @@ export default function Profile() {
     },
   ];
 
-  const [filter, setFilter] = useState("All");
+  // Filter states
+  const [escrowFilter, setEscrowFilter] = useState("All");
+  const [disputesFilter, setDisputesFilter] = useState("All");
+  const [agreementsFilter, setAgreementsFilter] = useState("All");
+  const [reputationFilter, setReputationFilter] = useState("All");
   const [otp, setOtp] = useState("");
-
   const [loading, setLoading] = useState(false);
 
+  // Filter functions
   const filteredDeals =
-    filter === "All"
+    escrowFilter === "All"
       ? escrowDeals
-      : escrowDeals.filter((d) => d.status === filter);
+      : escrowDeals.filter((d) => d.status === escrowFilter);
+
+  const filteredDisputes =
+    disputesFilter === "All"
+      ? disputes
+      : disputes.filter((d) => d.status === disputesFilter);
+
+  const filteredAgreements =
+    agreementsFilter === "All"
+      ? agreements
+      : agreementsFilter === "Recent"
+        ? agreements.slice(0, 2) // Show only recent 2 for demo
+        : agreements;
+
+  const filteredReputation =
+    reputationFilter === "All"
+      ? reputation
+      : reputationFilter === "Positive"
+        ? reputation.filter((r) => r.impact.includes("+"))
+        : reputation.filter((r) => r.impact.includes("-"));
 
   const stats = {
     deals: 24,
@@ -162,6 +205,11 @@ export default function Profile() {
       title: "DAO treasury misuse",
       parties: "Liam vs Noah",
       status: "Resolved",
+    },
+    {
+      title: "Smart contract bug dispute",
+      parties: "Zoe vs Ethan",
+      status: "In Review",
     },
   ];
 
@@ -204,7 +252,6 @@ export default function Profile() {
 
   return (
     <div className="relative space-y-8">
-      {/* <div className="absolute inset-0 bg-cyan-500/15 blur-3xl -z-[50]" /> */}
       <header className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
       </header>
@@ -213,7 +260,7 @@ export default function Profile() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
-          <div className="glass row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-3 ring-1 ring-white/10">
+          <div className="glass card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
             <div className="flex items-center gap-2">
               <div className="grid h-14 w-14 place-items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200">
                 <FaUser className="h-6 w-6" />
@@ -253,8 +300,6 @@ export default function Profile() {
             </div>
             <div className="grid grid-cols-1 gap-6">
               {/* Telegram Verification */}
-              {/* Telegram Verification */}
-              {/* Telegram Verification */}
               <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3">
                 <div className="flex items-center gap-3">
                   <FiSend className="h-5 w-5 text-cyan-300" />
@@ -268,14 +313,12 @@ export default function Profile() {
                 <div className="flex items-center gap-2">
                   {isAuthenticated ? (
                     <>
-                      {/* Connect button for future verification */}
                       <Button
                         variant="outline"
                         className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
                       >
                         Verify
                       </Button>
-                      {/* Logout button */}
                       <Button
                         onClick={logout}
                         variant="ghost"
@@ -296,7 +339,6 @@ export default function Profile() {
                 </div>
               </div>
 
-              {/* Twitter Verification */}
               {/* Twitter Verification */}
               <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
                 <div className="flex items-center gap-3">
@@ -320,7 +362,6 @@ export default function Profile() {
               </div>
 
               {/* Instagram Verification */}
-              {/* Instagram Verification */}
               <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
                 <div className="flex items-center gap-3">
                   <FaInstagram className="h-5 w-5 text-pink-400" />
@@ -343,7 +384,6 @@ export default function Profile() {
               </div>
 
               {/* TikTok Verification */}
-              {/* TikTok Verification */}
               <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
                 <div className="flex items-center gap-3">
                   <FaTiktok className="h-5 w-5 text-gray-200" />
@@ -364,13 +404,9 @@ export default function Profile() {
                   </Button>
                 </Tooltip>
               </div>
-
-              {/* Logout Button */}
             </div>
           </section>
         </div>
-
-        {/* Escrow Stats */}
 
         {/* Revenue Stats */}
         <div className="space-y-4">
@@ -412,8 +448,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* ===== Verifications ===== */}
-        {/* ===== Judged Disputes Leaderboard ===== */}
+        {/* Judged Disputes & Reputation */}
         <div className="flex flex-col gap-4">
           {roles.judge && (
             <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -421,9 +456,7 @@ export default function Profile() {
                 Judged Disputes
               </h3>
 
-              {/* ✅ Added horizontal scroll container */}
               <div className="overflow-x-auto">
-                {/* ✅ Added min-w-max so table overflows */}
                 <table className="min-w-max text-left text-sm text-white/80">
                   <thead className="border-b border-cyan-500/20 text-xs text-cyan-300 uppercase">
                     <tr>
@@ -451,7 +484,9 @@ export default function Profile() {
                             className={`rounded px-2 py-1 text-xs ${
                               d.status === "Resolved"
                                 ? "bg-emerald-500/20 text-emerald-300"
-                                : "bg-yellow-500/20 text-yellow-300"
+                                : d.status === "Pending"
+                                  ? "bg-yellow-500/20 text-yellow-300"
+                                  : "bg-cyan-500/20 text-cyan-300"
                             }`}
                           >
                             {d.status}
@@ -464,6 +499,68 @@ export default function Profile() {
               </div>
             </section>
           )}
+
+          {/* Reputation History with Filter */}
+          <BentoCard
+            title="My Reputation History"
+            icon={<RiShieldCheckFill />}
+            color="cyan"
+            scrollable
+            maxHeight="260px"
+          >
+            {/* Reputation Filter Tabs */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {["All", "Positive", "Negative"].map((filterType) => {
+                const colorMap: Record<string, string> = {
+                  All: "bg-white/5 text-white/70 hover:text-cyan-300",
+                  Positive:
+                    reputationFilter === "Positive"
+                      ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+                      : "bg-white/5 text-emerald-200/60 hover:text-emerald-300",
+                  Negative:
+                    reputationFilter === "Negative"
+                      ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30"
+                      : "bg-white/5 text-rose-200/60 hover:text-rose-300",
+                };
+
+                return (
+                  <button
+                    key={filterType}
+                    onClick={() => setReputationFilter(filterType)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[filterType]}`}
+                  >
+                    {filterType}
+                  </button>
+                );
+              })}
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {filteredReputation.map((r) => {
+                const isPositive = r.impact.includes("+");
+                return (
+                  <li
+                    key={r.id}
+                    className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
+                  >
+                    <span>{r.event}</span>
+                    <span
+                      className={`text-xs font-medium ${
+                        isPositive ? "text-emerald-300" : "text-rose-300"
+                      }`}
+                    >
+                      {r.impact}
+                    </span>
+                  </li>
+                );
+              })}
+              {filteredReputation.length === 0 && (
+                <div className="py-4 text-center text-sm text-white/50">
+                  No reputation events found for this filter.
+                </div>
+              )}
+            </ul>
+          </BentoCard>
 
           {showLoginModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -502,113 +599,160 @@ export default function Profile() {
               </div>
             </div>
           )}
-
-          {/* Reputation History */}
-          <BentoCard
-            title="My Reputation History"
-            icon={<RiShieldCheckFill />}
-            color="cyan"
-            scrollable
-            maxHeight="260px"
-          >
-            <ul className="mt-4 space-y-2">
-              {reputation.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
-                >
-                  <span>{r.event}</span>
-                  <span className="text-xs text-cyan-300">{r.impact}</span>
-                </li>
-              ))}
-            </ul>
-          </BentoCard>
         </div>
       </section>
 
       {/* ===== Bento Grid Section ===== */}
-      {/* Bento Grid */}
       <section className="mt-6 grid gap-6 md:grid-cols-3">
-        {/* My Disputes */}
+        {/* My Disputes with Filter */}
         <BentoCard
           title="My Disputes"
           icon={<FiAlertCircle />}
           color="cyan"
-          count={disputes.length}
+          count={filteredDisputes.length}
           scrollable
           maxHeight="260px"
         >
+          {/* Disputes Filter Tabs */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {["All", "Resolved", "Pending", "In Progress"].map((status) => {
+              const colorMap: Record<string, string> = {
+                All: "bg-white/5 text-white/70 hover:text-cyan-300",
+                Resolved:
+                  disputesFilter === "Resolved"
+                    ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+                    : "bg-white/5 text-emerald-200/60 hover:text-emerald-300",
+                Pending:
+                  disputesFilter === "Pending"
+                    ? "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-400/30"
+                    : "bg-white/5 text-yellow-200/60 hover:text-yellow-300",
+                "In Progress":
+                  disputesFilter === "In Progress"
+                    ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/30"
+                    : "bg-white/5 text-cyan-200/60 hover:text-cyan-300",
+              };
+
+              return (
+                <button
+                  key={status}
+                  onClick={() => setDisputesFilter(status)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[status]}`}
+                >
+                  {status}
+                </button>
+              );
+            })}
+          </div>
+
           <ul className="mt-4 space-y-2">
-            {disputes.map((d) => (
+            {filteredDisputes.map((d) => (
               <li
                 key={d.id}
                 className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
               >
-                <span>{d.title}</span>
+                <span className="flex-1 pr-2">{d.title}</span>
                 <span
-                  className={`rounded px-2 py-1 text-xs ${
+                  className={`rounded px-2 py-1 text-xs font-medium ${
                     d.status === "Resolved"
                       ? "bg-emerald-500/20 text-emerald-300"
-                      : "bg-yellow-500/20 text-yellow-300"
+                      : d.status === "Pending"
+                        ? "bg-yellow-500/20 text-yellow-300"
+                        : "bg-cyan-500/20 text-cyan-300"
                   }`}
                 >
                   {d.status}
                 </span>
               </li>
             ))}
+            {filteredDisputes.length === 0 && (
+              <div className="py-4 text-center text-sm text-white/50">
+                No disputes found for this filter.
+              </div>
+            )}
           </ul>
         </BentoCard>
 
-        {/* My Agreements */}
+        {/* My Agreements with Filter */}
         <BentoCard
           title="My Agreements"
           icon={<FaHandshake />}
           color="cyan"
-          count={agreements.length}
+          count={filteredAgreements.length}
+          scrollable
+          maxHeight="260px"
         >
+          {/* Agreements Filter Tabs */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {["All", "Recent"].map((filterType) => {
+              const colorMap: Record<string, string> = {
+                All: "bg-white/5 text-white/70 hover:text-cyan-300",
+                Recent:
+                  agreementsFilter === "Recent"
+                    ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/30"
+                    : "bg-white/5 text-cyan-200/60 hover:text-cyan-300",
+              };
+
+              return (
+                <button
+                  key={filterType}
+                  onClick={() => setAgreementsFilter(filterType)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[filterType]}`}
+                >
+                  {filterType}
+                </button>
+              );
+            })}
+          </div>
+
           <ul className="mt-4 space-y-2">
-            {agreements.map((a) => (
+            {filteredAgreements.map((a) => (
               <li
                 key={a.id}
                 className="flex justify-between rounded-md border border-white/10 bg-white/5 p-3 text-sm"
               >
-                <span>{a.name}</span>
-                <span className="text-muted-foreground text-xs">{a.date}</span>
+                <div className="flex-1">
+                  <div className="font-medium text-white/90">{a.name}</div>
+                  <div className="text-muted-foreground text-xs">{a.date}</div>
+                </div>
               </li>
             ))}
+            {filteredAgreements.length === 0 && (
+              <div className="py-4 text-center text-sm text-white/50">
+                No agreements found for this filter.
+              </div>
+            )}
           </ul>
         </BentoCard>
 
-        {/* ===== Escrow Deals ===== */}
+        {/* Escrow Deals with Filter */}
         <BentoCard
           title="Escrow Deals"
           icon={<FaHandshake />}
           color="cyan"
-          count={escrowDeals.length}
+          count={filteredDeals.length}
           scrollable
           maxHeight="260px"
         >
-          {/* Filter Tabs */}
+          {/* Escrow Filter Tabs */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {["All", "Pending", "Completed", "Cancelled", "Disputed"].map(
               (status) => {
-                // Assign consistent colors for each status
                 const colorMap: Record<string, string> = {
                   All: "bg-white/5 text-white/70 hover:text-cyan-300",
                   Pending:
-                    filter === "Pending"
+                    escrowFilter === "Pending"
                       ? "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-400/30"
                       : "bg-white/5 text-yellow-200/60 hover:text-yellow-300",
                   Completed:
-                    filter === "Completed"
+                    escrowFilter === "Completed"
                       ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
                       : "bg-white/5 text-emerald-200/60 hover:text-emerald-300",
                   Cancelled:
-                    filter === "Cancelled"
+                    escrowFilter === "Cancelled"
                       ? "bg-gray-500/20 text-gray-300 ring-1 ring-gray-400/30"
                       : "bg-white/5 text-gray-300/60 hover:text-gray-300",
                   Disputed:
-                    filter === "Disputed"
+                    escrowFilter === "Disputed"
                       ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30"
                       : "bg-white/5 text-rose-200/60 hover:text-rose-300",
                 };
@@ -616,7 +760,7 @@ export default function Profile() {
                 return (
                   <button
                     key={status}
-                    onClick={() => setFilter(status)}
+                    onClick={() => setEscrowFilter(status)}
                     className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${colorMap[status]}`}
                   >
                     {status}
@@ -626,7 +770,6 @@ export default function Profile() {
             )}
           </div>
 
-          {/* Escrow Deals List */}
           <ul className="space-y-2">
             {filteredDeals.length > 0 ? (
               filteredDeals.map((deal) => (
@@ -669,14 +812,14 @@ export default function Profile() {
   );
 }
 
-function BentoCard({
+export function BentoCard({
   title,
   icon,
   color,
   count,
   children,
-  scrollable = false, // 👈 optional
-  maxHeight = "250px", // 👈 adjustable height cap
+  scrollable = false,
+  maxHeight = "250px",
 }: {
   title: string;
   icon: React.ReactNode;
@@ -696,7 +839,6 @@ function BentoCard({
     <div
       className={`glass rounded-2xl border p-6 ring-1 ring-white/10 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
     >
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-lg font-semibold text-white/90">
           {icon}
@@ -707,7 +849,6 @@ function BentoCard({
         )}
       </div>
 
-      {/* Scrollable content if needed */}
       <div
         className={`mt-4 ${
           scrollable
