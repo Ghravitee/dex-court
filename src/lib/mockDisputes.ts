@@ -4,7 +4,19 @@ export type DisputeStatus =
   | "Vote in Progress"
   | "Settled"
   | "Dismissed";
+
 export type RequestKind = "Pro Bono" | "Paid";
+
+// Add vote outcome type
+export type VoteOutcome = {
+  result: "Plaintiff Wins" | "Defendant Wins" | "Compromise";
+  plaintiffVotes: number;
+  defendantVotes: number;
+  compromiseVotes: number;
+  totalVotes: number;
+  settlementDetails?: string;
+  resolvedAt: string;
+};
 
 export type DisputeRow = {
   id: string;
@@ -30,6 +42,8 @@ export type DisputeRow = {
     evidence: string[];
     createdAt: string;
   };
+  // Add vote outcome for settled disputes
+  voteOutcome?: VoteOutcome;
 };
 
 // Enhanced mock data with realistic disputes following the same pattern
@@ -119,8 +133,18 @@ const disputesData: DisputeRow[] = [
     plaintiffReply: {
       description:
         "This wasn't a misunderstanding - I have clear messages stating these were my proprietary designs. The server rules explicitly say all shared content remains creator property. Full revenue transfer is the minimum acceptable resolution.",
-      evidence: ["server_rules_screenshot.png", "original_dm_conversation.pdf"],
+      evidence: ["server_rules_screenshot.png", "/placeholder_evidence.pdf"],
       createdAt: "2025-10-20",
+    },
+    voteOutcome: {
+      result: "Plaintiff Wins",
+      plaintiffVotes: 8,
+      defendantVotes: 2,
+      compromiseVotes: 1,
+      totalVotes: 11,
+      settlementDetails:
+        "Defendant ordered to transfer 2.0 ETH to plaintiff and issue public apology. NFT collection permanently delisted.",
+      resolvedAt: "2025-10-25",
     },
   },
   {

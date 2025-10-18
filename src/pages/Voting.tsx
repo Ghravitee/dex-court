@@ -219,12 +219,33 @@ export default function Voting() {
         parties: { plaintiff: "@0xIon", defendant: "@0xZed" },
         description: "Contract ambiguous; recommendation to dismiss.",
         winner: "dismissed",
-        judgeVotes: 5,
-        communityVotes: 82,
-        judgePct: 55,
-        communityPct: 53,
+        judgeVotes: 8,
+        communityVotes: 95,
+        judgePct: 45, // 55% voted to dismiss
+        communityPct: 47, // 53% voted to dismiss
         comments: [
           { handle: "@judgeKai", text: "Insufficient grounds; dismiss." },
+          {
+            handle: "@judgeNova",
+            text: "Contract terms were unclear from the start.",
+          },
+        ],
+      },
+      {
+        id: "D-205",
+        title: "Payment dispute with mixed outcome",
+        parties: { plaintiff: "@0xAlpha", defendant: "@0xBeta" },
+        description: "Complex payment terms led to confusion.",
+        winner: "defendant",
+        judgeVotes: 12,
+        communityVotes: 150,
+        judgePct: 35, // 65% for defendant
+        communityPct: 42, // 58% for defendant
+        comments: [
+          {
+            handle: "@judgeOrion",
+            text: "Defendant followed the agreed terms.",
+          },
         ],
       },
     ],
@@ -511,20 +532,46 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
   const judgeWeight = 0.7;
   const communityWeight = 0.3;
 
-  // Each side’s percentage from its group
-  const plaintiffJudgePct = c.judgePct; // e.g. % of judges who voted for plaintiff
-  const plaintiffCommunityPct = c.communityPct; // e.g. % of community who voted for plaintiff
+  // Each side's percentage from its group
+  const plaintiffJudgePct = c.judgePct; // % of judges who voted for plaintiff
+  const plaintiffCommunityPct = c.communityPct; // % of community who voted for plaintiff
+
+  // Calculate dismiss votes based on the winner
+  const getDismissVotes = () => {
+    if (c.winner === "dismissed") {
+      // If case was dismissed, calculate dismiss votes from both groups
+      const judgeDismissVotes = Math.round(
+        ((100 - c.judgePct) / 100) * c.judgeVotes,
+      );
+      const communityDismissVotes = Math.round(
+        ((100 - c.communityPct) / 100) * c.communityVotes,
+      );
+      return judgeDismissVotes + communityDismissVotes;
+    } else {
+      // For non-dismissed cases, calculate dismiss votes as the minority votes
+      const plaintiffVotes =
+        Math.round((c.judgePct / 100) * c.judgeVotes) +
+        Math.round((c.communityPct / 100) * c.communityVotes);
+      const defendantVotes = totalVotes - plaintiffVotes;
+      return totalVotes - plaintiffVotes - defendantVotes;
+    }
+  };
+
+  const dismissVotes = getDismissVotes();
 
   // Weighted overall percentage for plaintiff
   const weightedPlaintiffPct =
     plaintiffJudgePct * judgeWeight + plaintiffCommunityPct * communityWeight;
 
-  // Defendant percentage is the remainder
+  // Defendant percentage is the remainder (excluding dismiss votes)
   const weightedDefendantPct = 100 - weightedPlaintiffPct;
 
-  // Approximate actual votes (optional visualization)
-  const plaintiffVotes = Math.round((totalVotes * weightedPlaintiffPct) / 100);
-  const defendantVotes = totalVotes - plaintiffVotes;
+  // Approximate actual votes (excluding dismiss votes)
+  const effectiveTotalVotes = totalVotes - dismissVotes;
+  const plaintiffVotes = Math.round(
+    (effectiveTotalVotes * weightedPlaintiffPct) / 100,
+  );
+  const defendantVotes = effectiveTotalVotes - plaintiffVotes;
 
   // Determine winner
   const winLabel =
@@ -574,6 +621,11 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
               </div>
               <div className="text-muted-foreground text-xs">
                 Total votes: {totalVotes}
+                {dismissVotes > 0 && (
+                  <div className="text-yellow-400">
+                    Dismiss: {dismissVotes} votes
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -582,13 +634,29 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
 
           <AccordionContent className="mt-3 px-5">
             <div className="space-y-4">
-              {/* Unified Voting Breakdown */}
-              {/* Unified Voting Breakdown */}
               {/* Voting Breakdown */}
               <div className="glass rounded-lg border border-cyan-400/30 bg-white/5 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
                 <div className="mb-2 text-sm font-medium text-white/90">
                   Voting Breakdown
                 </div>
+
+                {/* Dismiss Votes Display */}
+                {dismissVotes > 0 && (
+                  <div className="mb-4 rounded-md border border-yellow-400/30 bg-yellow-500/10 p-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-yellow-300">
+                        Dismiss Case
+                      </span>
+                      <span className="font-mono text-yellow-300">
+                        {dismissVotes} votes
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-yellow-200/80">
+                      {Math.round((dismissVotes / totalVotes) * 100)}% of total
+                      votes
+                    </div>
+                  </div>
+                )}
 
                 {/* Judges Section */}
                 <div className="mb-3">
@@ -698,15 +766,24 @@ function DoneCaseCard({ c }: { c: DoneCase }) {
                   </div>
                 </div>
 
-                <p className="text-muted-foreground mt-3 text-sm">
-                  {winLabel} wins with a combined weighted {winPct}% majority.
-                </p>
+                {/* Final Verdict */}
+                <div className="mt-4 rounded-md border border-cyan-400/30 bg-cyan-500/10 p-3">
+                  <div className="text-center text-sm font-medium text-cyan-200">
+                    Final Verdict:{" "}
+                    <span className="text-lg font-bold">{winLabel}</span>
+                  </div>
+                  <div className="text-muted-foreground mt-1 text-center text-xs">
+                    {winLabel === "Dismissed"
+                      ? "Case dismissed with no winner"
+                      : `${winLabel} wins with ${winPct}% weighted majority`}
+                  </div>
+                </div>
               </div>
 
-              {/* Judges’ Comments */}
+              {/* Judges' Comments */}
               <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
                 <div className="mb-2 text-sm font-medium text-white/90">
-                  Judges’ Comments
+                  Judges' Comments
                 </div>
                 <ul className="space-y-2 text-sm">
                   {c.comments.map((cm, i) => (

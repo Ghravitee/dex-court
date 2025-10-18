@@ -2,7 +2,17 @@ import { Button } from "../components/ui/button";
 import { ChevronDown } from "lucide-react";
 import { useMemo, useRef, useState, useEffect } from "react";
 
-import { Info, Search, SortAsc, SortDesc, Upload, Scale } from "lucide-react";
+import {
+  Info,
+  Search,
+  SortAsc,
+  SortDesc,
+  Upload,
+  Scale,
+  Paperclip,
+  Trash2,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { getDisputes } from "../lib/mockDisputes";
 import { useNavigate } from "react-router-dom";
@@ -17,6 +27,15 @@ type DisputeRow = {
   status: "Pending" | "Vote in Progress" | "Settled" | "Dismissed";
   claim: string;
 };
+
+// File upload types
+interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "document";
+  size: string;
+}
 
 export default function Disputes() {
   const navigate = useNavigate();
@@ -43,9 +62,10 @@ export default function Disputes() {
     defendant: "",
     description: "",
     claim: "",
-    evidence: [] as File[],
+    evidence: [] as UploadedFile[],
     witnesses: [""] as string[],
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentDisputesFilter, setRecentDisputesFilter] =
     useState<string>("All");
   const [isRecentDisputesFilterOpen, setIsRecentDisputesFilterOpen] =
@@ -127,12 +147,89 @@ export default function Disputes() {
       );
   }, [data, recentDisputesFilter]);
 
-  // Modal state for create
+  // File upload handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
-    setForm((f) => ({ ...f, evidence: files }));
-  }
+    const newFiles: UploadedFile[] = [];
+    console.log(newFiles);
+
+    Array.from(selectedFiles).forEach((file) => {
+      const fileType = file.type.startsWith("image/") ? "image" : "document";
+      const fileSize = (file.size / 1024 / 1024).toFixed(2) + " MB";
+      const newFile: UploadedFile = {
+        id: Math.random().toString(36).substr(2, 9),
+        file,
+        type: fileType,
+        size: fileSize,
+      };
+
+      // Create preview for images
+      if (fileType === "image") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newFile.preview = e.target?.result as string;
+          setForm((prev) => ({
+            ...prev,
+            evidence: [...prev.evidence, newFile],
+          }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          evidence: [...prev.evidence, newFile],
+        }));
+      }
+    });
+  };
+
+  const removeFile = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      evidence: prev.evidence.filter((file) => file.id !== id),
+    }));
+  };
+
+  // Drag and drop handlers
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = "image/*,.pdf,.doc,.docx,.txt";
+    // Create a DataTransfer to set files
+    const dataTransfer = new DataTransfer();
+    Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
+    input.files = dataTransfer.files;
+
+    // Trigger the file input change event
+    const event = new Event("change", { bubbles: true });
+    input.dispatchEvent(event);
+
+    // Use our existing file handler
+    handleFileSelect({
+      target: { files: dataTransfer.files },
+    } as React.ChangeEvent<HTMLInputElement>);
+  };
 
   function addWitness() {
     setForm((f) =>
@@ -154,21 +251,59 @@ export default function Disputes() {
     }));
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    toast.success("Dispute submitted", {
-      description: `${form.title || "Untitled"} • ${form.kind}`,
-    });
-    setOpen(false);
-    setForm({
-      title: "",
-      kind: "Pro Bono",
-      defendant: "",
-      description: "",
-      claim: "",
-      evidence: [],
-      witnesses: [""],
-    });
+
+    // Form validation
+    if (!form.title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    if (!form.defendant.trim()) {
+      toast.error("Please enter defendant information");
+      return;
+    }
+    if (!form.description.trim()) {
+      toast.error("Please enter a description");
+      return;
+    }
+    if (!form.claim.trim()) {
+      toast.error("Please enter your claim");
+      return;
+    }
+    if (form.evidence.length === 0) {
+      toast.error("Please upload at least one evidence file");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Mock file upload simulation
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      toast.success("Dispute submitted successfully", {
+        description: `${form.title} • ${form.kind} • ${form.evidence.length} files uploaded`,
+      });
+
+      setOpen(false);
+      setForm({
+        title: "",
+        kind: "Pro Bono",
+        defendant: "",
+        description: "",
+        claim: "",
+        evidence: [],
+        witnesses: [""],
+      });
+    } catch (error) {
+      toast.error("Failed to submit dispute", {
+        description: "Please try again later",
+      });
+      console.error("Failed to submit dispute:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -606,34 +741,91 @@ export default function Disputes() {
                 />
               </div>
 
+              {/* Enhanced Evidence Upload Section */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Evidence Upload <span className="text-red-500">*</span>
                 </label>
-                <label className="group text-muted-foreground flex cursor-pointer items-center justify-between rounded-md border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm hover:border-cyan-400/40">
-                  <div className="flex items-center gap-3">
-                    <Upload className="h-4 w-4 text-cyan-300" />
-                    <span>
-                      {form.evidence.length
-                        ? `${form.evidence.length} file(s) selected`
-                        : "Upload files (images, pdf, txt)"}
-                    </span>
-                  </div>
+
+                {/* Drag and Drop Area */}
+                <div
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                    isDragOver
+                      ? "border-cyan-400/60 bg-cyan-500/20"
+                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
                   <input
-                    onChange={onFile}
+                    onChange={handleFileSelect}
                     type="file"
                     multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt"
                     className="hidden"
+                    id="evidence-upload"
                   />
-                </label>
+                  <label
+                    htmlFor="evidence-upload"
+                    className="flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center"
+                  >
+                    <Upload className="mb-3 h-8 w-8 text-cyan-400" />
+                    <div className="text-sm text-cyan-300">
+                      {isDragOver
+                        ? "Drop files here"
+                        : "Click to upload or drag and drop"}
+                    </div>
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      Supports images, PDFs, and documents
+                    </div>
+                  </label>
+                </div>
+
+                {/* File List with Previews */}
                 {form.evidence.length > 0 && (
-                  <ul className="text-muted-foreground mt-2 list-disc space-y-1 pl-5 text-xs">
-                    {form.evidence.map((f, i) => (
-                      <li key={i}>{f.name}</li>
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-cyan-200">
+                      Selected Files ({form.evidence.length})
+                    </h4>
+                    {form.evidence.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          {file.type === "image" && file.preview ? (
+                            <img
+                              src={file.preview}
+                              alt={file.file.name}
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <Paperclip className="h-5 w-5 text-cyan-400" />
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-white">
+                              {file.file.name}
+                            </div>
+                            <div className="text-xs text-cyan-200/70">
+                              {file.size} • {file.type}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(file.id)}
+                          className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
+
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <label className="text-muted-foreground text-sm">
@@ -678,12 +870,33 @@ export default function Disputes() {
                   type="button"
                   variant="outline"
                   className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  onClick={() => toast.message("Draft saved")}
+                  onClick={() => {
+                    toast.message("Draft saved", {
+                      description: "Your dispute has been saved as draft",
+                    });
+                    setOpen(false);
+                  }}
+                  disabled={isSubmitting}
                 >
                   Save Draft
                 </Button>
-                <Button type="submit" variant="neon" className="neon-hover">
-                  Submit
+                <Button
+                  type="submit"
+                  variant="neon"
+                  className="neon-hover"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Submit Dispute
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

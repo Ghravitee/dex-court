@@ -14,12 +14,26 @@ import {
   SortAsc,
   SortDesc,
   X,
+  Upload,
+  Paperclip,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import "react-datepicker/dist/react-datepicker.css";
 import ReactDatePicker from "react-datepicker";
 import { useNavigate } from "react-router-dom";
 import type { Agreement, AgreementStatus } from "../types";
-import { fetchAgreements } from "../lib/mockApi";
+import { fetchAgreements, createAgreement } from "../lib/mockApi";
+import { toast } from "sonner";
+
+// File upload types
+interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "document";
+  size: string;
+}
 
 export default function Agreements() {
   const navigate = useNavigate();
@@ -44,6 +58,18 @@ export default function Agreements() {
   const tableFilterRef = useRef<HTMLDivElement>(null);
   const recentFilterRef = useRef<HTMLDivElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Form state
+  const [form, setForm] = useState({
+    title: "",
+    counterparty: "",
+    description: "",
+    images: [] as UploadedFile[],
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Drag and drop state
+  const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -153,7 +179,7 @@ export default function Agreements() {
   const filteredRecentAgreements: Agreement[] = agreements
     .filter((a) => a.status === "disputed")
     .sort(() => Math.random() - 0.5) // shuffle for randomness
-    .slice(0, 5); // show up to 5 “sour” agreements
+    .slice(0, 5); // show up to 5 "sour" agreements
 
   const typeOptions = [
     { value: "Public", label: "Public" },
@@ -166,6 +192,173 @@ export default function Agreements() {
     { value: "ETH", label: "ETH" },
     { value: "custom", label: "Custom Token" },
   ];
+
+  // File upload handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+
+    const newFiles: UploadedFile[] = [];
+    console.log(newFiles);
+
+    Array.from(selectedFiles).forEach((file) => {
+      const fileType = file.type.startsWith("image/") ? "image" : "document";
+      const fileSize = (file.size / 1024 / 1024).toFixed(2) + " MB";
+      const newFile: UploadedFile = {
+        id: Math.random().toString(36).substr(2, 9),
+        file,
+        type: fileType,
+        size: fileSize,
+      };
+
+      // Create preview for images
+      if (fileType === "image") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newFile.preview = e.target?.result as string;
+          setForm((prev) => ({
+            ...prev,
+            images: [...prev.images, newFile],
+          }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          images: [...prev.images, newFile],
+        }));
+      }
+    });
+  };
+
+  const removeFile = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      images: prev.images.filter((file) => file.id !== id),
+    }));
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = "image/*,.pdf,.doc,.docx,.txt";
+    // Create a DataTransfer to set files
+    const dataTransfer = new DataTransfer();
+    Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
+    input.files = dataTransfer.files;
+
+    // Trigger the file input change event
+    const event = new Event("change", { bubbles: true });
+    input.dispatchEvent(event);
+
+    // Use our existing file handler
+    handleFileSelect({
+      target: { files: dataTransfer.files },
+    } as React.ChangeEvent<HTMLInputElement>);
+  };
+
+  // Form submission handler
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Form validation
+    if (!form.title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    if (!typeValue) {
+      toast.error("Please select agreement type");
+      return;
+    }
+    if (!form.counterparty.trim()) {
+      toast.error("Please enter counterparty information");
+      return;
+    }
+    if (!form.description.trim()) {
+      toast.error("Please enter a description");
+      return;
+    }
+    if (!deadline) {
+      toast.error("Please select a deadline");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Prepare agreement data for the API
+      const agreementData = {
+        title: form.title,
+        type: typeValue as "Public" | "Private",
+        counterparty: form.counterparty,
+        description: form.description,
+        images: form.images.map((file) => file.file.name), // Store file names
+        deadline: deadline.toISOString().split("T")[0], // Format as YYYY-MM-DD
+        includeFunds: includeFunds as "yes" | "no",
+        useEscrow: secureWithEscrow === "yes",
+        token:
+          includeFunds === "yes" && secureWithEscrow === "yes"
+            ? selectedToken
+            : undefined,
+        amount:
+          includeFunds === "yes" && secureWithEscrow === "yes"
+            ? "1000"
+            : undefined, // You'd want to capture this from a form field
+        status: "pending" as AgreementStatus,
+        createdBy: "@You", // In a real app, this would come from user context
+      };
+
+      // Use the mock API to create the agreement
+      const newAgreement = await createAgreement(agreementData);
+
+      // Update local state to include the new agreement
+      setAgreements((prev) => [newAgreement, ...prev]);
+
+      toast.success("Agreement created successfully", {
+        description: `${form.title} • ${typeValue} • ${form.images.length} files uploaded`,
+      });
+
+      setIsModalOpen(false);
+      // Reset form
+      setForm({
+        title: "",
+        counterparty: "",
+        description: "",
+        images: [],
+      });
+      setTypeValue("");
+      setDeadline(null);
+      setIncludeFunds("");
+      setSecureWithEscrow("");
+      setSelectedToken("");
+      setCustomTokenAddress("");
+    } catch (error) {
+      console.error("Failed to create agreement:", error);
+      toast.error("Failed to create agreement", {
+        description: "Please try again later",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="relative">
@@ -241,8 +434,6 @@ export default function Agreements() {
 
             {/* Sort Controls */}
             <div className="ml-auto flex items-center gap-2">
-              {/* Sort By Dropdown */}
-
               {/* Sort Order Button */}
               <Button
                 variant="outline"
@@ -408,25 +599,41 @@ export default function Agreements() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
             <form
+              onSubmit={handleSubmit}
               onClick={(e) => e.stopPropagation()}
-              className="relative max-h-[90vh] space-y-5 overflow-y-auto rounded-[0.75rem] border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6"
+              className="relative max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-[0.75rem] border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6"
             >
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="absolute top-3 right-3 text-cyan-300 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
+
+              {/* Modal Header */}
+              <div className="border-b border-white/10 pb-3">
+                <h2 className="text-lg font-semibold text-white/90">
+                  Create New Agreement
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Provide agreement details and supporting documents
+                </p>
+              </div>
+
               {/* Title */}
               <div>
                 <label className="space mb-2 block font-semibold text-white">
                   Title <span className="text-red-500">*</span>
                 </label>
                 <input
-                  className="w-full rounded-md border bg-white/5 px-3 py-2 ring-cyan-400 outline-none focus:ring-1"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="e.g. Design Sprint Phase 1"
                 />
               </div>
+
               {/* Type + Counterparty */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {/* Type */}
@@ -439,7 +646,7 @@ export default function Agreements() {
                   </label>
                   <div
                     onClick={() => setIsTypeOpen((prev) => !prev)}
-                    className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white ring-cyan-400 focus:ring-1"
+                    className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-cyan-400/40"
                   >
                     <span>{typeValue || "Select Type"}</span>
                     <ChevronDown
@@ -449,7 +656,7 @@ export default function Agreements() {
                     />
                   </div>
                   {isTypeOpen && (
-                    <div className="absolute top-[110%] z-50 w-full rounded-xl bg-cyan-800 shadow-md">
+                    <div className="absolute top-[110%] z-50 w-full rounded-xl border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
                       {typeOptions.map((option) => (
                         <div
                           key={option.value}
@@ -457,7 +664,7 @@ export default function Agreements() {
                             setTypeValue(option.value as "Public" | "Private");
                             setIsTypeOpen(false);
                           }}
-                          className="cursor-pointer px-4 py-2 transition-colors hover:bg-cyan-300 hover:text-white"
+                          className="cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white"
                         >
                           {option.label}
                         </div>
@@ -471,18 +678,27 @@ export default function Agreements() {
                     Counterparty <span className="text-red-500">*</span>
                   </label>
                   <input
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 ring-cyan-400 outline-none focus:ring-1"
+                    value={form.counterparty}
+                    onChange={(e) =>
+                      setForm({ ...form, counterparty: e.target.value })
+                    }
+                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                     placeholder="@0xHandle or address"
                   />
                 </div>
               </div>
+
               {/* Description + Helper */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Description <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 ring-cyan-400 outline-none focus:ring-1"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
+                  className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="Scope, deliverables, timelines..."
                 />
                 <div className="mt-1 flex items-center gap-1">
@@ -494,20 +710,94 @@ export default function Agreements() {
                   </p>
                 </div>
               </div>
-              {/* Image Upload */}
+
+              {/* Enhanced File Upload Section */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
-                  Upload Images <span className="text-red-500">*</span>
+                  Upload Supporting Documents{" "}
+                  <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  className="block w-full cursor-pointer text-sm text-white file:mr-4 file:rounded-md file:border-0 file:bg-cyan-600 file:px-4 file:py-2 file:text-sm file:font-semibold hover:file:bg-cyan-700"
-                />
-              </div>
-              {/* Deadline */}
 
+                {/* Drag and Drop Area */}
+                <div
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                    isDragOver
+                      ? "border-cyan-400/60 bg-cyan-500/20"
+                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <input
+                    onChange={handleFileSelect}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    id="agreement-upload"
+                  />
+                  <label
+                    htmlFor="agreement-upload"
+                    className="flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center"
+                  >
+                    <Upload className="mb-3 h-8 w-8 text-cyan-400" />
+                    <div className="text-sm text-cyan-300">
+                      {isDragOver
+                        ? "Drop files here"
+                        : "Click to upload or drag and drop"}
+                    </div>
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      Supports images, PDFs, and documents
+                    </div>
+                  </label>
+                </div>
+
+                {/* File List with Previews */}
+                {form.images.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-cyan-200">
+                      Selected Files ({form.images.length})
+                    </h4>
+                    {form.images.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          {file.type === "image" && file.preview ? (
+                            <img
+                              src={file.preview}
+                              alt={file.file.name}
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <Paperclip className="h-5 w-5 text-cyan-400" />
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-white">
+                              {file.file.name}
+                            </div>
+                            <div className="text-xs text-cyan-200/70">
+                              {file.size} • {file.type}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(file.id)}
+                          className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Deadline */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Deadline <span className="text-red-500">*</span>
@@ -540,10 +830,10 @@ export default function Agreements() {
                   <button
                     type="button"
                     onClick={() => setIncludeFunds("yes")}
-                    className={`rounded-md border px-4 py-2 ${
+                    className={`rounded-md border px-4 py-2 transition-colors ${
                       includeFunds === "yes"
-                        ? "border-cyan-400 bg-cyan-500/30"
-                        : "border-white/10"
+                        ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
+                        : "border-white/10 text-white/70 hover:border-cyan-400/40"
                     }`}
                   >
                     Yes
@@ -551,10 +841,10 @@ export default function Agreements() {
                   <button
                     type="button"
                     onClick={() => setIncludeFunds("no")}
-                    className={`rounded-md border px-4 py-2 ${
+                    className={`rounded-md border px-4 py-2 transition-colors ${
                       includeFunds === "no"
-                        ? "border-cyan-400 bg-cyan-500/30"
-                        : "border-white/10"
+                        ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
+                        : "border-white/10 text-white/70 hover:border-cyan-400/40"
                     }`}
                   >
                     No
@@ -573,10 +863,10 @@ export default function Agreements() {
                     <button
                       type="button"
                       onClick={() => setSecureWithEscrow("yes")}
-                      className={`rounded-md border px-4 py-2 ${
+                      className={`rounded-md border px-4 py-2 transition-colors ${
                         secureWithEscrow === "yes"
-                          ? "border-cyan-400 bg-cyan-500/30"
-                          : "border-white/10"
+                          ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
+                          : "border-white/10 text-white/70 hover:border-cyan-400/40"
                       }`}
                     >
                       Yes
@@ -584,10 +874,10 @@ export default function Agreements() {
                     <button
                       type="button"
                       onClick={() => setSecureWithEscrow("no")}
-                      className={`rounded-md border px-4 py-2 ${
+                      className={`rounded-md border px-4 py-2 transition-colors ${
                         secureWithEscrow === "no"
-                          ? "border-cyan-400 bg-cyan-500/30"
-                          : "border-white/10"
+                          ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
+                          : "border-white/10 text-white/70 hover:border-cyan-400/40"
                       }`}
                     >
                       No
@@ -605,7 +895,7 @@ export default function Agreements() {
                         </label>
                         <div
                           onClick={() => setIsTokenOpen((prev) => !prev)}
-                          className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                          className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-cyan-400/40"
                         >
                           <span>{selectedToken || "Select Token"}</span>
                           <ChevronDown
@@ -615,7 +905,7 @@ export default function Agreements() {
                           />
                         </div>
                         {isTokenOpen && (
-                          <div className="absolute top-[110%] z-50 w-full rounded-xl bg-cyan-800 shadow-md">
+                          <div className="absolute top-[110%] z-50 w-full rounded-xl border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
                             {tokenOptions.map((option) => (
                               <div
                                 key={option.value}
@@ -626,7 +916,7 @@ export default function Agreements() {
                                     setCustomTokenAddress("");
                                   }
                                 }}
-                                className="cursor-pointer px-4 py-2 transition-colors hover:bg-cyan-300 hover:text-white"
+                                className="cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white"
                               >
                                 {option.label}
                               </div>
@@ -646,7 +936,7 @@ export default function Agreements() {
                                 setCustomTokenAddress(e.target.value)
                               }
                               placeholder="0x..."
-                              className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 ring-cyan-400 outline-none focus:ring-1"
+                              className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                             />
                           </div>
                         )}
@@ -657,7 +947,7 @@ export default function Agreements() {
                           Amount <span className="text-red-500">*</span>
                         </label>
                         <input
-                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                           placeholder="1000"
                         />
                       </div>
@@ -666,15 +956,38 @@ export default function Agreements() {
                 </div>
               )}
               {/* Buttons */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 pt-4">
                 <Button
+                  type="button"
                   variant="outline"
                   className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  onClick={() => {
+                    toast.message("Draft saved", {
+                      description: "Your agreement has been saved as draft",
+                    });
+                    setIsModalOpen(false);
+                  }}
+                  disabled={isSubmitting}
                 >
                   Save Draft
                 </Button>
-                <Button variant="neon" className="neon-hover">
-                  Submit & Sign
+                <Button
+                  type="submit"
+                  variant="neon"
+                  className="neon-hover"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Create Agreement
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
@@ -762,7 +1075,7 @@ function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
             </div>
             {agreement.reason && (
               <p className="text-xs text-white/70 italic">
-                “{agreement.reason}”
+                "{agreement.reason}"
               </p>
             )}
           </div>
