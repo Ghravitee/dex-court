@@ -13,8 +13,8 @@ import {
   Clock,
   ExternalLink,
   // MessageSquare,
-  // ThumbsDown,
-  // ThumbsUp,
+  ThumbsDown,
+  ThumbsUp,
   // Minus,
 } from "lucide-react";
 // import { Switch } from "../components/ui/switch";
@@ -350,6 +350,7 @@ function LiveCaseCard({
       <Accordion type="single" collapsible>
         <AccordionItem value="item-1">
           {/* Header */}
+          {/* Header */}
           <div className="flex items-center justify-between px-4 pt-4">
             <div>
               <div className="font-semibold text-white/90">{c.title}</div>
@@ -393,6 +394,7 @@ function LiveCaseCard({
 
               {/* Voting Options */}
               {/* Voting Section */}
+              {/* Voting Section */}
               <div className="mt-2">
                 <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                   Who is your vote for?
@@ -403,16 +405,22 @@ function LiveCaseCard({
                     label={`Plaintiff (${c.parties.plaintiff})`}
                     active={choice === "plaintiff"}
                     onClick={() => setChoice("plaintiff")}
+                    choice={choice}
+                    optionType="plaintiff"
                   />
                   <VoteOption
                     label={`Defendant (${c.parties.defendant})`}
                     active={choice === "defendant"}
                     onClick={() => setChoice("defendant")}
+                    choice={choice}
+                    optionType="defendant"
                   />
                   <VoteOption
                     label="Dismiss Case"
                     active={choice === "dismissed"}
                     onClick={() => setChoice("dismissed")}
+                    choice={choice}
+                    optionType="dismissed"
                   />
                 </div>
               </div>
@@ -465,7 +473,7 @@ function LiveCaseCard({
                   <Info className="h-4 w-4 text-cyan-300/70 transition group-hover:text-cyan-300" />
                   <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
                     Your vote remains private until the voting period ends.
-                    During this time, only your participation status (“voted”)
+                    During this time, only your participation status ("voted")
                     is visible — not your decision.
                   </div>
                 </div>
@@ -511,11 +519,22 @@ function VoteOption({
   label,
   active,
   onClick,
+  choice,
+  optionType,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  choice: "plaintiff" | "defendant" | "dismissed" | null;
+  optionType: "plaintiff" | "defendant" | "dismissed";
 }) {
+  const showThumbsUp = active && choice === optionType;
+  const showThumbsDown =
+    choice &&
+    choice !== optionType &&
+    choice !== "dismissed" &&
+    optionType !== "dismissed";
+
   return (
     <button
       onClick={onClick}
@@ -525,6 +544,8 @@ function VoteOption({
           : "border-white/10 bg-white/5 hover:border-cyan-400/30"
       }`}
     >
+      {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
+      {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
       {label}
     </button>
   );

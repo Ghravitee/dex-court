@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -20,8 +21,45 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { fetchAgreementById } from "../lib/mockApi";
+import { agreementService } from "../services/agreementServices";
 import type { Agreement } from "../types";
+import { toast } from "sonner";
+import { UserAvatar } from "../components/UserAvatar";
+
+// API Enum Mappings
+const AgreementVisibilityEnum = {
+  PRIVATE: 1,
+  PUBLIC: 2,
+  AUTO_PUBLIC: 3,
+} as const;
+
+const AgreementStatusEnum = {
+  PENDING_ACCEPTANCE: 1,
+  ACTIVE: 2,
+  COMPLETED: 3,
+  DISPUTED: 4,
+  CANCELLED: 5,
+  EXPIRED: 6,
+} as const;
+
+// Helper function to convert API status to frontend status
+const apiStatusToFrontend = (status: number): Agreement["status"] => {
+  switch (status) {
+    case AgreementStatusEnum.PENDING_ACCEPTANCE:
+      return "pending";
+    case AgreementStatusEnum.ACTIVE:
+      return "signed";
+    case AgreementStatusEnum.COMPLETED:
+      return "completed";
+    case AgreementStatusEnum.DISPUTED:
+      return "disputed";
+    case AgreementStatusEnum.CANCELLED:
+    case AgreementStatusEnum.EXPIRED:
+      return "cancelled";
+    default:
+      return "pending";
+  }
+};
 
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
@@ -30,22 +68,111 @@ export default function AgreementDetails() {
   const [loading, setLoading] = useState(true);
   const [showEscrowAddress, setShowEscrowAddress] = useState(false);
 
+  // In AgreementDetails.tsx - Update the useEffect data transformation
   useEffect(() => {
     const fetchAgreement = async () => {
       setLoading(true);
       try {
-        const agreementData = await fetchAgreementById(parseInt(id || "0"));
-        setAgreement(agreementData || null);
+        if (!id) {
+          throw new Error("No agreement ID provided");
+        }
+
+        const agreementId = parseInt(id);
+        const response =
+          await agreementService.getAgreementDetails(agreementId);
+        const agreementData = response.data;
+
+        console.log("📋 AgreementDetails API Response:", agreementData);
+
+        // Helper function to extract avatar ID from party data and convert to number
+        const getAvatarIdFromParty = (party: any): number | null => {
+          const avatarId = party?.avatarId || party?.avatar?.id;
+          // Convert to number if it exists, otherwise return null
+          return avatarId ? Number(avatarId) : null;
+        };
+
+        // Helper function to get username from party data
+        const getUsernameFromParty = (party: any) => {
+          return party?.username || party?.handle || "Unknown";
+        };
+
+        // Helper function to get user ID from party data
+        const getUserIdFromParty = (party: any) => {
+          return party?.id?.toString();
+        };
+
+        const firstPartyUsername = getUsernameFromParty(
+          agreementData.firstParty,
+        );
+        const counterPartyUsername = getUsernameFromParty(
+          agreementData.counterParty,
+        );
+        const creatorUsername = getUsernameFromParty(agreementData.creator);
+
+        console.log("🔄 Party mapping:", {
+          firstParty: firstPartyUsername,
+          counterParty: counterPartyUsername,
+          creator: creatorUsername,
+          agreementType: agreementData.type,
+        });
+
+        // Transform API data to frontend format
+        const transformedAgreement: Agreement = {
+          id: agreementData.id.toString(),
+          title: agreementData.title,
+          description: agreementData.description,
+          type:
+            agreementData.visibility === AgreementVisibilityEnum.PRIVATE
+              ? "Private"
+              : "Public",
+          // 🚨 CRITICAL: Use the actual parties, not the creator
+          counterparty: counterPartyUsername,
+          createdBy: firstPartyUsername, // Show first party as "createdBy" for consistency
+          status: apiStatusToFrontend(agreementData.status),
+          dateCreated: agreementData.createdAt,
+          deadline: agreementData.deadline,
+          amount: agreementData.amount
+            ? agreementData.amount.toString()
+            : undefined,
+          token: agreementData.tokenSymbol || undefined,
+          includeFunds: agreementData.type === 2 ? "yes" : "no",
+          useEscrow: agreementData.type === 2,
+          escrowAddress: agreementData.escrowContract || undefined,
+          files: agreementData.files?.length || 0,
+          images: agreementData.files?.map((file) => file.fileName) || [],
+
+          // 🚨 CRITICAL FIX: Use actual parties' avatars for the agreement parties
+          createdByAvatarId: getAvatarIdFromParty(agreementData.firstParty),
+          counterpartyAvatarId: getAvatarIdFromParty(
+            agreementData.counterParty,
+          ),
+          createdByUserId: getUserIdFromParty(agreementData.firstParty),
+          counterpartyUserId: getUserIdFromParty(agreementData.counterParty),
+
+          // 🚨 CRITICAL FIX: Add creator information separately with avatar
+          creator: creatorUsername,
+          creatorUserId: getUserIdFromParty(agreementData.creator),
+          creatorAvatarId: getAvatarIdFromParty(agreementData.creator), // Add creator avatar ID
+        };
+
+        console.log("✅ Transformed Agreement:", {
+          parties: `${transformedAgreement.createdBy} ↔ ${transformedAgreement.counterparty}`,
+          creator: transformedAgreement.creator,
+          creatorAvatarId: transformedAgreement.creatorAvatarId,
+          firstPartyAvatarId: transformedAgreement.createdByAvatarId,
+        });
+
+        setAgreement(transformedAgreement);
       } catch (error) {
         console.error("Failed to fetch agreement:", error);
+        toast.error("Failed to load agreement details");
+        setAgreement(null);
       } finally {
         setLoading(false);
       }
     };
 
-    if (id) {
-      fetchAgreement();
-    }
+    fetchAgreement();
   }, [id]);
 
   const getStatusIcon = (status: Agreement["status"]) => {
@@ -90,10 +217,77 @@ export default function AgreementDetails() {
     });
   };
 
+  const handleSignAgreement = async () => {
+    if (!id || !agreement) return;
+
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.signAgreement(agreementId, true);
+
+      // Refresh agreement data
+      const response = await agreementService.getAgreementDetails(agreementId);
+      const updatedAgreementData = response.data;
+
+      const updatedAgreement: Agreement = {
+        ...agreement,
+        status: apiStatusToFrontend(updatedAgreementData.status),
+      };
+
+      setAgreement(updatedAgreement);
+
+      // Show success message
+      alert("Agreement signed successfully!");
+    } catch (error) {
+      console.error("Failed to sign agreement:", error);
+      alert("Failed to sign agreement. Please try again.");
+    }
+  };
+
+  const handleDownloadFile = async (fileId: number) => {
+    if (!id) return;
+
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.downloadFile(agreementId, fileId);
+      // Note: The download endpoint should return the file blob
+      // You might need to handle the file download response appropriately
+    } catch (error) {
+      console.error("Failed to download file:", error);
+      alert("Failed to download file. Please try again.");
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-cyan-900/20 to-purple-900/20">
-        <div className="text-lg text-white">Loading agreement details...</div>
+      <div className="relative flex min-h-screen items-center justify-center">
+        <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
+        <div className="text-center">
+          {/* Pulsing gradient ring */}
+          <div className="relative mx-auto mb-8">
+            <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
+            <div className="absolute inset-0 mx-auto size-32 animate-ping rounded-full border-2 border-cyan-400/40"></div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-cyan-300">
+              Loading Agreement
+            </h3>
+            <p className="text-sm text-cyan-200/70">
+              Preparing your agreement details...
+            </p>
+          </div>
+
+          {/* Progress dots */}
+          <div className="mt-4 flex justify-center space-x-1">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -103,7 +297,10 @@ export default function AgreementDetails() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-cyan-900/20 to-purple-900/20">
         <div className="text-center">
           <div className="mb-4 text-lg text-white">Agreement not found</div>
-          <Button onClick={() => navigate("/agreements")}>
+          <Button
+            onClick={() => navigate("/agreements")}
+            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+          >
             Back to Agreements
           </Button>
         </div>
@@ -161,10 +358,31 @@ export default function AgreementDetails() {
                     )}
                   </div>
                 </div>
+
                 <div className="text-right">
                   <div className="text-sm text-cyan-300">Created by</div>
-                  <div className="font-medium text-white">
-                    {agreement.createdBy}
+                  <div className="flex items-center justify-end gap-2 font-medium text-white">
+                    <UserAvatar
+                      userId={
+                        agreement.creatorUserId || agreement.creator || ""
+                      }
+                      avatarId={agreement.creatorAvatarId || null}
+                      username={agreement.creator || ""}
+                      size="sm"
+                    />
+
+                    <button
+                      onClick={() => {
+                        const cleanUsername = (agreement.creator || "").replace(
+                          /^@/,
+                          "",
+                        );
+                        navigate(`/profile/${cleanUsername}`);
+                      }}
+                      className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                    >
+                      {agreement.creator}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -176,12 +394,58 @@ export default function AgreementDetails() {
                     <Users className="h-5 w-5 text-cyan-400" />
                     <div>
                       <div className="text-sm text-cyan-300">Parties</div>
-                      <div className="text-white">
-                        {agreement.createdBy} ↔ {agreement.counterparty}
+                      <div className="flex items-center gap-2 text-white">
+                        <div className="flex items-center gap-1">
+                          <UserAvatar
+                            userId={
+                              agreement.createdByUserId || agreement.createdBy
+                            }
+                            avatarId={agreement.createdByAvatarId || null}
+                            username={agreement.createdBy}
+                            size="sm"
+                          />
+                          <button
+                            onClick={() => {
+                              const cleanUsername = agreement.createdBy.replace(
+                                /^@/,
+                                "",
+                              );
+                              const encodedUsername =
+                                encodeURIComponent(cleanUsername);
+                              navigate(`/profile/${encodedUsername}`);
+                            }}
+                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                          >
+                            {agreement.createdBy}
+                          </button>
+                        </div>
+                        <span className="text-cyan-400">↔</span>
+                        <div className="flex items-center gap-1">
+                          <UserAvatar
+                            userId={
+                              agreement.counterpartyUserId ||
+                              agreement.counterparty
+                            }
+                            avatarId={agreement.counterpartyAvatarId || null}
+                            username={agreement.counterparty}
+                            size="sm"
+                          />
+                          <button
+                            onClick={() => {
+                              const cleanUsername =
+                                agreement.counterparty.replace(/^@/, "");
+                              const encodedUsername =
+                                encodeURIComponent(cleanUsername);
+                              navigate(`/profile/${encodedUsername}`);
+                            }}
+                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                          >
+                            {agreement.counterparty}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-
                   <div className="flex items-center space-x-3">
                     <Calendar className="h-5 w-5 text-purple-400" />
                     <div>
@@ -191,7 +455,6 @@ export default function AgreementDetails() {
                       </div>
                     </div>
                   </div>
-
                   {agreement.includeFunds === "yes" && (
                     <div className="flex items-center space-x-3">
                       <DollarSign className="h-5 w-5 text-emerald-400" />
@@ -276,6 +539,7 @@ export default function AgreementDetails() {
                           variant="outline"
                           size="sm"
                           className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          onClick={() => handleDownloadFile(index)}
                         >
                           <Upload className="mr-2 h-4 w-4" />
                           Download
@@ -365,7 +629,18 @@ export default function AgreementDetails() {
                     {formatDate(agreement.dateCreated)}
                   </div>
                   <div className="mt-1 text-xs text-cyan-400/70">
-                    by {agreement.createdBy}
+                    <div className="flex items-center gap-2">
+                      {" "}
+                      <UserAvatar
+                        userId={
+                          agreement.creatorUserId || agreement.creator || ""
+                        }
+                        avatarId={agreement.creatorAvatarId || null}
+                        username={agreement.creator || ""}
+                        size="sm"
+                      />
+                      {agreement.creator}
+                    </div>
                   </div>
                   <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-cyan-400/50"></div>
                 </div>
@@ -504,7 +779,11 @@ export default function AgreementDetails() {
                   Share Agreement
                 </Button>
                 {agreement.status === "pending" && (
-                  <Button variant="neon" className="neon-hover w-full">
+                  <Button
+                    variant="neon"
+                    className="neon-hover w-full"
+                    onClick={handleSignAgreement}
+                  >
                     <FileText className="mr-2 h-4 w-4" />
                     Sign Agreement
                   </Button>

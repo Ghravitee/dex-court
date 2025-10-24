@@ -23,6 +23,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
       setOtp("");
     } catch (error) {
       console.error("Login failed:", error);
+      // You might want to show a more user-friendly error message here
       alert("Invalid or expired OTP. Please try again.");
     }
   };
@@ -30,6 +31,14 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const handleWalletConnect = () => {
     // Implement wallet connection logic here
     console.log("Connect wallet clicked");
+    // For now, we'll show a message since wallet login isn't implemented
+    alert("Wallet connection coming soon!");
+  };
+
+  // Reset form when modal closes
+  const handleClose = () => {
+    setOtp("");
+    onClose();
   };
 
   return (
@@ -37,10 +46,14 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
       <div className="card-cyan relative w-[90%] max-w-md rounded-xl p-6 text-white shadow-lg">
         <div className="flex items-center justify-between">
           <h3 className="mb-4 text-lg font-semibold">Login to DexCourt</h3>
-          <button onClick={onClose} className="text-cyan-300 hover:text-white">
+          <button
+            onClick={handleClose}
+            className="text-cyan-300 hover:text-white"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
+
         {/* Tab Navigation */}
         <div className="mb-4 flex border-b border-white/10">
           <button
@@ -82,7 +95,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         )}
 
         {/* Telegram Login */}
-        {/* Telegram Login */}
         {activeTab === "telegram" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
@@ -96,12 +108,12 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 @DexCourtDvBot
               </a>{" "}
               on Telegram and click on{" "}
-              <span className="font-semibold text-white">Start</span>. You’ll
+              <span className="font-semibold text-white">Start</span>. You'll
               receive a one-time password (OTP) — paste it below to verify.
             </p>
 
             <label className="block text-sm text-gray-300">
-              Enter your OTP from DexCourt’s Telegram bot:
+              Enter your OTP from DexCourt's Telegram bot:
             </label>
             <input
               type="text"
@@ -109,12 +121,17 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
               onChange={(e) => setOtp(e.target.value)}
               placeholder="e.g. xxxxxxxx-wmqDPP"
               className="w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && otp.trim()) {
+                  handleTelegramLogin();
+                }
+              }}
             />
 
             <div className="flex items-center justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={onClose}
+                onClick={handleClose}
                 className="border-gray-500/30 text-gray-300 hover:bg-gray-700/40"
               >
                 Cancel

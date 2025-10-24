@@ -35,12 +35,14 @@ import avatar1 from "../assets/avatar-1.svg";
 import avatar2 from "../assets/avatar-2.webp";
 import avatar3 from "../assets/avatar-3.webp";
 import avatar4 from "../assets/avatar4.webp";
-import { fetchAgreements } from "../lib/mockApi";
+
 import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
+import { agreementService } from "../services/agreementServices";
+import { UserAvatar } from "../components/UserAvatar";
 
 export default function Index() {
   return (
-    <div className="relative overflow-hidden">
+    <main style={{ display: "block" }} className="relative overflow-hidden">
       <div className="absolute top-[10px] left-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute top-[300px] right-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute inset-0 -z-[50] bg-cyan-300/1 blur-3xl"></div>
@@ -65,7 +67,7 @@ export default function Index() {
         <SignedAgreements />
         <RenownedJudges />
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -139,7 +141,6 @@ function RevenueChart() {
               fontSize={12}
               tickLine={false}
               axisLine={false}
-              interval={3} // one label every 4 bars
               tickMargin={8}
             />
 
@@ -193,7 +194,7 @@ function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
   if (type === "daily") {
     for (let i = 1; i <= 30; i++) {
       out.push({
-        t: `Day ${i}`,
+        t: i, // Changed from "Day ${i}" to just the number
         revenue: 15000 + Math.random() * 4000 + i * 200,
       });
     }
@@ -763,6 +764,7 @@ function LiveVoting() {
 
 function SignedAgreements() {
   const [agreements, setAgreements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -777,12 +779,65 @@ function SignedAgreements() {
   );
 
   useEffect(() => {
-    fetchAgreements().then((data) => {
-      setAgreements(data.filter((a) => a.status === "signed"));
-    });
+    const loadSignedAgreements = async () => {
+      try {
+        setLoading(true);
+
+        // Fetch both public agreements and user's agreements to get all signed ones
+        const [publicAgreements, myAgreements] = await Promise.all([
+          agreementService.getAgreements(),
+          agreementService.getMyAgreements(),
+        ]);
+
+        console.log("📋 Public agreements for signed:", publicAgreements);
+        console.log("👤 My agreements for signed:", myAgreements);
+
+        // Handle the response structure properly
+        const publicAgreementsList = publicAgreements.results || [];
+        const myAgreementsList = myAgreements.results || [];
+
+        // Combine and transform all agreements
+        const allAgreements = [...publicAgreementsList, ...myAgreementsList];
+
+        // Filter for ACTIVE status (status = 2) which means signed agreements
+        const signedAgreements = allAgreements
+          .filter((agreement: any) => agreement.status === 2) // ACTIVE status
+          .map((agreement: any) => ({
+            id: agreement.id.toString(),
+            title: agreement.title || "Untitled Agreement",
+            description: agreement.description || "No description provided",
+            counterparty: agreement.counterParty?.username || "Unknown",
+            createdBy: agreement.firstParty?.username || "Unknown",
+            status: "signed", // Since we're filtering for status 2
+            dateCreated: agreement.dateCreated
+              ? new Date(agreement.dateCreated).toLocaleDateString()
+              : "Unknown date",
+            deadline: agreement.deadline
+              ? new Date(agreement.deadline).toLocaleDateString()
+              : "No deadline",
+            amount: agreement.amount ? agreement.amount.toString() : undefined,
+            token: agreement.tokenSymbol || undefined,
+            // Add avatar information if available
+            createdByAvatarId: agreement.firstParty?.avatarId || null,
+            counterpartyAvatarId: agreement.counterParty?.avatarId || null,
+            createdByUserId: agreement.firstParty?.id?.toString(),
+            counterpartyUserId: agreement.counterParty?.id?.toString(),
+          }));
+
+        console.log("✅ Signed agreements found:", signedAgreements.length);
+        setAgreements(signedAgreements);
+      } catch (error) {
+        console.error("Failed to fetch signed agreements:", error);
+        setAgreements([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSignedAgreements();
   }, []);
 
-  // auto slide
+  // Auto slide
   useEffect(() => {
     if (!agreements.length) return;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -790,10 +845,37 @@ function SignedAgreements() {
     return () => clearTimeout(timeoutRef.current || undefined);
   }, [index, agreements.length, next]);
 
+  if (loading) {
+    return (
+      <div className="">
+        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+          Signed Agreements
+        </h3>
+        <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+          <div className="flex items-center gap-2 text-cyan-300">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+            <span>Loading signed agreements...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!agreements.length) {
     return (
-      <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 text-white/70">
-        Loading signed agreements...
+      <div className="">
+        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+          Signed Agreements
+        </h3>
+        <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+          <div className="text-center">
+            <Handshake className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
+            <p className="text-white/70">No signed agreements found</p>
+            <p className="mt-1 text-sm text-white/50">
+              Agreements that are signed and active will appear here
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -828,20 +910,57 @@ function SignedAgreements() {
               transform: i === index ? "scale(1)" : "scale(0.9)",
               opacity: i === index ? 1 : 0.4,
             }}
-            className="glass flex h-[14.6rem] min-w-full flex-col items-start justify-center gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+            className="glass flex h-[14.6rem] min-w-full flex-col items-start justify-between rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
           >
-            <div className="flex items-center gap-3">
-              <Handshake className="h-6 w-6 text-cyan-400" />
-              <h4 className="text-lg font-semibold text-[#0891b2]">
-                {a.title}
-              </h4>
+            <div className="w-full">
+              <div className="mb-3 flex items-center gap-3">
+                <Handshake className="h-6 w-6 text-cyan-400" />
+                <h4 className="line-clamp-1 text-lg font-semibold text-[#0891b2]">
+                  {a.title}
+                </h4>
+              </div>
+              <p className="mb-4 line-clamp-2 text-sm text-white/70">
+                {a.description}
+              </p>
+
+              {/* Parties with avatars */}
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <UserAvatar
+                    userId={a.createdByUserId || a.createdBy}
+                    avatarId={a.createdByAvatarId || null}
+                    username={a.createdBy}
+                    size="sm"
+                  />
+                  <span className="text-sm text-white/80">{a.createdBy}</span>
+                </div>
+                <span className="text-xs text-cyan-400">↔</span>
+                <div className="flex items-center gap-1">
+                  <UserAvatar
+                    userId={a.counterpartyUserId || a.counterparty}
+                    avatarId={a.counterpartyAvatarId || null}
+                    username={a.counterparty}
+                    size="sm"
+                  />
+                  <span className="text-sm text-white/80">
+                    {a.counterparty}
+                  </span>
+                </div>
+              </div>
             </div>
-            <p className="text-sm text-white/70">{a.description}</p>
-            <div className="flex w-full items-center justify-between text-sm text-white/60">
-              <span>{a.counterparty}</span>
-              <span className="text-cyan-300">
-                {a.amount} {a.token}
-              </span>
+
+            <div className="flex w-full items-center justify-between text-sm">
+              <div className="flex items-center gap-4">
+                {a.amount && (
+                  <span className="font-medium text-cyan-300">
+                    {a.amount} {a.token}
+                  </span>
+                )}
+                <span className="badge badge-blue">Signed</span>
+              </div>
+              <div className="text-xs text-white/40">
+                Created: {a.dateCreated}
+              </div>
             </div>
           </Link>
         ))}

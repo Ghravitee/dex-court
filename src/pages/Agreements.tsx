@@ -1,8 +1,7 @@
+// Agreements.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from "react";
-
 import { Button } from "../components/ui/button";
-
 import {
   Calendar,
   ChevronDown,
@@ -24,9 +23,21 @@ import {
 import "react-datepicker/dist/react-datepicker.css";
 import ReactDatePicker from "react-datepicker";
 import { useNavigate } from "react-router-dom";
-import type { Agreement, AgreementStatus } from "../types";
-import { fetchAgreements, createAgreement } from "../lib/mockApi";
+import type {
+  Agreement,
+  AgreementStatus,
+  AgreementStatusFilter,
+} from "../types";
 import { toast } from "sonner";
+import { agreementService } from "../services/agreementServices";
+import { useAuth } from "../context/AuthContext";
+import { UserAvatar } from "../components/UserAvatar";
+// Add imports at the top
+import {
+  cleanTelegramUsername,
+  getCurrentUserTelegram,
+  isValidTelegramUsername,
+} from "../lib/usernameUtils";
 
 // File upload types
 interface UploadedFile {
@@ -40,6 +51,88 @@ interface UploadedFile {
 // Agreement type options
 type AgreementType = "myself" | "others";
 
+// API Enum Mappings
+const AgreementTypeEnum = {
+  REPUTATION: 1,
+  ESCROW: 2,
+} as const;
+
+const AgreementVisibilityEnum = {
+  PRIVATE: 1,
+  PUBLIC: 2,
+  AUTO_PUBLIC: 3,
+} as const;
+
+const AgreementStatusEnum = {
+  PENDING_ACCEPTANCE: 1,
+  ACTIVE: 2,
+  COMPLETED: 3,
+  DISPUTED: 4,
+  CANCELLED: 5,
+  EXPIRED: 6,
+} as const;
+
+// Helper function to convert API status to frontend status
+const apiStatusToFrontend = (status: number): AgreementStatus => {
+  switch (status) {
+    case AgreementStatusEnum.PENDING_ACCEPTANCE:
+      return "pending";
+    case AgreementStatusEnum.ACTIVE:
+      return "signed";
+    case AgreementStatusEnum.COMPLETED:
+      return "completed";
+    case AgreementStatusEnum.DISPUTED:
+      return "disputed";
+    case AgreementStatusEnum.CANCELLED:
+      return "cancelled";
+    case AgreementStatusEnum.EXPIRED:
+      return "cancelled";
+    default:
+      return "pending";
+  }
+};
+
+// UserSearchResult component
+// Update the UserSearchResult component to use consistent username handling
+// In Agreements.tsx - update UserSearchResult to handle no search results
+const UserSearchResult = ({
+  user,
+  onSelect,
+}: {
+  user: any;
+  onSelect: (username: string) => void;
+}) => {
+  // Use consistent Telegram username extraction
+  const telegramUsername = cleanTelegramUsername(
+    user.telegram?.username ||
+      user.telegramUsername ||
+      user.username ||
+      user.handle,
+  );
+  const displayName = user.displayName || user.username || telegramUsername;
+
+  return (
+    <div
+      onClick={() => onSelect(telegramUsername)}
+      className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-cyan-500/30"
+    >
+      <UserAvatar
+        userId={user.id}
+        avatarId={user.avatarId || user.avatar?.id}
+        username={telegramUsername}
+        size="sm"
+      />
+      <div className="flex-1">
+        <div className="text-sm font-medium text-white">{displayName}</div>
+        {telegramUsername && (
+          <div className="text-xs text-cyan-300">@{telegramUsername}</div>
+        )}
+      </div>
+      <ChevronRight className="h-4 w-4 text-cyan-400" />
+    </div>
+  );
+};
+
 export default function Agreements() {
   const navigate = useNavigate();
   const [typeValue, setTypeValue] = useState<"Public" | "Private" | "">("");
@@ -50,9 +143,14 @@ export default function Agreements() {
   );
   const [customTokenAddress, setCustomTokenAddress] = useState("");
   const [agreements, setAgreements] = useState<Agreement[]>([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
+  const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
+  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
+  const userSearchRef = useRef<HTMLDivElement>(null);
 
   const [isTokenOpen, setIsTokenOpen] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string>("");
@@ -63,6 +161,7 @@ export default function Agreements() {
   const tableFilterRef = useRef<HTMLDivElement>(null);
   const recentFilterRef = useRef<HTMLDivElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { isAuthenticated, user } = useAuth();
 
   // New state for agreement type selection
   const [agreementType, setAgreementType] = useState<AgreementType>("myself");
@@ -76,13 +175,35 @@ export default function Agreements() {
     partyA: "",
     partyB: "",
     description: "",
+    amount: "",
     images: [] as UploadedFile[],
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Debounce hook
+  const useDebounce = (value: string, delay: number) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+
+      return () => {
+        clearTimeout(handler);
+      };
+    }, [value, delay]);
+
+    return debouncedValue;
+  };
+
+  const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (typeRef.current && !typeRef.current.contains(event.target as Node)) {
@@ -109,6 +230,13 @@ export default function Agreements() {
       ) {
         setIsRecentFilterOpen(false);
       }
+
+      if (
+        userSearchRef.current &&
+        !userSearchRef.current.contains(event.target as Node)
+      ) {
+        setShowUserSuggestions(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -117,14 +245,68 @@ export default function Agreements() {
     };
   }, []);
 
+  // Sync authentication with agreement service
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (token && isAuthenticated) {
+      agreementService.setAuthToken(token);
+      console.log("🔐 Agreement service authenticated");
+    } else {
+      agreementService.clearAuthToken();
+      console.log("🔓 Agreement service not authenticated");
+    }
+  }, [isAuthenticated]);
+
+  // Load agreements
   useEffect(() => {
     const loadAgreements = async () => {
       try {
         setLoading(true);
-        const data = await fetchAgreements();
-        setAgreements(data);
-      } catch (error) {
+
+        // Load both public agreements and user's agreements
+        const [publicAgreements, myAgreements] = await Promise.all([
+          agreementService.getAgreements(),
+          agreementService.getMyAgreements(),
+        ]);
+
+        console.log("📋 Public agreements response:", publicAgreements);
+        console.log("👤 My agreements response:", myAgreements);
+
+        // Handle the response structure properly
+        const publicAgreementsList = publicAgreements.results || [];
+        const myAgreementsList = myAgreements.results || [];
+
+        const transformedAgreements = [
+          ...publicAgreementsList.map(transformApiAgreement),
+          ...myAgreementsList.map(transformApiAgreement),
+        ];
+
+        console.log("🔄 Transformed agreements:", transformedAgreements);
+
+        // Remove duplicates by ID
+        const uniqueAgreements = transformedAgreements.filter(
+          (agreement, index, self) =>
+            index === self.findIndex((a) => a.id === agreement.id),
+        );
+
+        setAgreements(uniqueAgreements);
+        console.log("✅ Final agreements:", uniqueAgreements);
+      } catch (error: any) {
         console.error("Failed to fetch agreements:", error);
+
+        // Show user-friendly error message
+        if (error.message.includes("Network error")) {
+          toast.error(
+            "Network error: Unable to connect to server. Please check your internet connection.",
+          );
+        } else if (error.message.includes("Authentication required")) {
+          toast.error("Please log in to view agreements");
+        } else {
+          toast.error("Failed to load agreements: " + error.message);
+        }
+
+        // Set empty array to prevent further errors
+        setAgreements([]);
       } finally {
         setLoading(false);
       }
@@ -132,6 +314,91 @@ export default function Agreements() {
 
     loadAgreements();
   }, []);
+
+  // Helper function to transform API agreement to frontend format
+  // In Agreements.tsx - Update the transformApiAgreement function
+  // Helper function to transform API agreement to frontend format
+  const transformApiAgreement = (apiAgreement: any): Agreement => {
+    console.log("🔄 Transforming API agreement - Full object:", apiAgreement);
+
+    // Handle date conversion safely
+    const formatDateSafely = (dateString: string) => {
+      try {
+        return new Date(dateString).toLocaleDateString();
+      } catch (error) {
+        console.warn("Invalid date:", dateString, error);
+        return "Invalid Date";
+      }
+    };
+
+    console.log("FirstParty object:", apiAgreement.firstParty);
+    console.log("CounterParty object:", apiAgreement.counterParty);
+
+    // Helper function to extract avatar ID and convert to number
+    const getAvatarIdFromParty = (party: any): number | null => {
+      const avatarId = party?.avatarId || party?.avatar?.id;
+      return avatarId ? Number(avatarId) : null;
+    };
+
+    // Get the creator/createdBy - check multiple possible fields
+    const createdBy =
+      apiAgreement.firstParty?.username ||
+      apiAgreement.firstParty?.handle ||
+      apiAgreement.creator?.username ||
+      "Unknown";
+
+    const createdByUserId =
+      apiAgreement.firstParty?.id?.toString() ||
+      apiAgreement.creator?.id?.toString();
+
+    // Check for avatar in multiple possible fields
+    const createdByAvatarId =
+      getAvatarIdFromParty(apiAgreement.firstParty) ||
+      getAvatarIdFromParty(apiAgreement.creator);
+
+    // Get counterparty - check multiple possible fields
+    const counterparty =
+      apiAgreement.counterParty?.username ||
+      apiAgreement.counterParty?.handle ||
+      "Unknown";
+
+    const counterpartyUserId = apiAgreement.counterParty?.id?.toString();
+
+    // Check for avatar in multiple possible fields
+    const counterpartyAvatarId = getAvatarIdFromParty(
+      apiAgreement.counterParty,
+    );
+
+    console.log(
+      `Avatar info - CreatedBy: ${createdBy}, AvatarId: ${createdByAvatarId}`,
+    );
+    console.log(
+      `Avatar info - Counterparty: ${counterparty}, AvatarId: ${counterpartyAvatarId}`,
+    );
+
+    return {
+      id: apiAgreement.id.toString(),
+      title: apiAgreement.title || "Untitled Agreement",
+      description: apiAgreement.description || "",
+      type: "Public",
+      counterparty: counterparty,
+      createdBy: createdBy,
+      status: apiStatusToFrontend(apiAgreement.status),
+      dateCreated: formatDateSafely(
+        apiAgreement.dateCreated || apiAgreement.createdAt,
+      ),
+      deadline: formatDateSafely(apiAgreement.deadline),
+      amount: apiAgreement.amount ? apiAgreement.amount.toString() : undefined,
+      token: apiAgreement.tokenSymbol || undefined,
+      files: 0,
+
+      // Add avatar information
+      createdByAvatarId: createdByAvatarId,
+      counterpartyAvatarId: counterpartyAvatarId,
+      createdByUserId: createdByUserId,
+      counterpartyUserId: counterpartyUserId,
+    };
+  };
 
   const tableFilterOptions = [
     { value: "all", label: "All" },
@@ -149,16 +416,17 @@ export default function Agreements() {
     { value: "disputed", label: "Disputed" },
   ];
 
-  const [tableFilter, setTableFilter] = useState<AgreementStatus>("all");
+  const [tableFilter, setTableFilter] = useState<AgreementStatusFilter>("all");
   const [recentFilter, setRecentFilter] = useState<
     "all" | "active" | "completed" | "disputed"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
+  // Update the filter logic
   const filteredTableAgreements: Agreement[] = agreements
     .filter((a) => {
-      // Status filter
+      // Status filter - "all" means no filtering
       if (tableFilter !== "all" && a.status !== tableFilter) return false;
 
       // Search filter
@@ -167,7 +435,7 @@ export default function Agreements() {
         return (
           a.title.toLowerCase().includes(query) ||
           a.counterparty.toLowerCase().includes(query) ||
-          (a.amount && a.amount.toLowerCase().includes(query)) // Safe check for amount
+          (a.amount && a.amount.toLowerCase().includes(query))
         );
       }
       return true;
@@ -182,8 +450,8 @@ export default function Agreements() {
 
   const filteredRecentAgreements: Agreement[] = agreements
     .filter((a) => a.status === "disputed")
-    .sort(() => Math.random() - 0.5) // shuffle for randomness
-    .slice(0, 5); // show up to 5 "sour" agreements
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 5);
 
   const typeOptions = [
     { value: "Public", label: "Public" },
@@ -273,11 +541,18 @@ export default function Agreements() {
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // Enhanced Form submission handler
+  // In Agreements.tsx - replace the handleSubmit function with this updated version
+  // In Agreements.tsx - revert handleSubmit to the working version without validation
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Form validation based on agreement type
+    // Check authentication first
+    if (!isAuthenticated) {
+      toast.error("Please log in to create agreements");
+      return;
+    }
+
+    // Form validation
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -305,47 +580,118 @@ export default function Agreements() {
       toast.error("Please select a deadline");
       return;
     }
+    if (form.images.length === 0) {
+      toast.error("Please upload at least one supporting document");
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
-      // Determine parties based on agreement type
-      const parties =
-        agreementType === "myself"
-          ? { createdBy: "@You", counterparty: form.counterparty }
-          : { createdBy: form.partyA, counterparty: form.partyB };
+      // 🚨 CRITICAL FIX: Use consistent username cleaning for all parties
+      const cleanCounterparty = cleanTelegramUsername(form.counterparty);
+      const cleanPartyA = cleanTelegramUsername(form.partyA);
+      const cleanPartyB = cleanTelegramUsername(form.partyB);
 
-      // Prepare agreement data for the API
-      const agreementData = {
+      // 🚨 CRITICAL FIX: Get current user's Telegram username with consistent formatting
+      const currentUserTelegram = getCurrentUserTelegram(user);
+      const cleanUserTelegram = currentUserTelegram;
+
+      console.log("🔍 DEBUG - Standardized Telegram usernames:", {
+        currentUserTelegram: cleanUserTelegram,
+        userTelegramObject: user?.telegram,
+        counterparty: cleanCounterparty,
+        partyA: cleanPartyA,
+        partyB: cleanPartyB,
+      });
+
+      // 🚨 CRITICAL FIX: Validate that we have valid Telegram usernames
+      if (
+        agreementType === "myself" &&
+        !isValidTelegramUsername(currentUserTelegram)
+      ) {
+        toast.error(
+          "Unable to identify your Telegram account. Please ensure your profile is properly connected.",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (
+        agreementType === "myself" &&
+        !isValidTelegramUsername(form.counterparty)
+      ) {
+        toast.error("Please enter a valid counterparty Telegram username");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (
+        agreementType === "others" &&
+        (!isValidTelegramUsername(form.partyA) ||
+          !isValidTelegramUsername(form.partyB))
+      ) {
+        toast.error("Please enter valid Telegram usernames for both parties");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validation with cleaned usernames
+      if (
+        agreementType === "myself" &&
+        cleanCounterparty === cleanUserTelegram
+      ) {
+        toast.error("Counterparty cannot be yourself");
+        return;
+      }
+
+      if (agreementType === "others" && cleanPartyA === cleanPartyB) {
+        toast.error("First party and second party cannot be the same");
+        return;
+      }
+
+      // Prepare agreement data with consistently formatted usernames
+      const agreementData: any = {
         title: form.title,
-        type: typeValue as "Public" | "Private",
-        counterparty: parties.counterparty,
         description: form.description,
-        images: form.images.map((file) => file.file.name),
-        deadline: deadline.toISOString().split("T")[0],
-        includeFunds: includeFunds as "yes" | "no",
-        useEscrow: secureWithEscrow === "yes",
-        token:
-          includeFunds === "yes" && secureWithEscrow === "yes"
-            ? selectedToken
-            : undefined,
-        amount:
-          includeFunds === "yes" && secureWithEscrow === "yes"
-            ? "1000"
-            : undefined,
-        status: "pending" as AgreementStatus,
-        createdBy: parties.createdBy,
-        // Add agreement type for tracking
-        agreementType: agreementType,
+        type:
+          includeFunds === "yes"
+            ? AgreementTypeEnum.ESCROW
+            : AgreementTypeEnum.REPUTATION,
+        visibility:
+          typeValue === "Public"
+            ? AgreementVisibilityEnum.PUBLIC
+            : AgreementVisibilityEnum.PRIVATE,
+        // 🚨 CRITICAL: Use consistently cleaned Telegram usernames
+        firstParty:
+          agreementType === "myself" ? cleanUserTelegram : cleanPartyA,
+        counterParty:
+          agreementType === "myself" ? cleanCounterparty : cleanPartyB,
+        deadline: deadline.toISOString(),
       };
 
-      // Use the mock API to create the agreement
-      const newAgreement = await createAgreement(agreementData);
+      console.log("🔍 DEBUG - Final agreement data:", agreementData);
 
-      // Update local state to include the new agreement
-      setAgreements((prev) => [newAgreement, ...prev]);
+      // Add optional fields only if they have values
+      if (includeFunds === "yes" && secureWithEscrow === "yes") {
+        if (selectedToken && selectedToken !== "custom") {
+          agreementData.tokenSymbol = selectedToken;
+        }
+        if (selectedToken === "custom" && customTokenAddress) {
+          agreementData.contractAddress = customTokenAddress;
+        }
+        if (form.amount) {
+          agreementData.amount = parseFloat(form.amount);
+        }
+      }
 
-      // Success message based on agreement type
+      // Use the real API to create the agreement - let the API handle user validation
+      await agreementService.createAgreement(
+        agreementData,
+        form.images.map((f) => f.file),
+      );
+
+      // Success message
       const successMessage =
         agreementType === "myself"
           ? `Agreement created between you and ${form.counterparty}`
@@ -356,6 +702,7 @@ export default function Agreements() {
       });
 
       setIsModalOpen(false);
+
       // Reset form
       setForm({
         title: "",
@@ -363,6 +710,7 @@ export default function Agreements() {
         partyA: "",
         partyB: "",
         description: "",
+        amount: "",
         images: [],
       });
       setTypeValue("");
@@ -371,14 +719,156 @@ export default function Agreements() {
       setSecureWithEscrow("");
       setSelectedToken("");
       setCustomTokenAddress("");
-      setAgreementType("myself"); // Reset to default
-    } catch (error) {
-      console.error("Failed to create agreement:", error);
-      toast.error("Failed to create agreement", {
-        description: "Please try again later",
-      });
+      setAgreementType("myself");
+    } catch (error: any) {
+      console.error("❌ Failed to create agreement:", error);
+      console.error("📋 Error response:", error.response?.data);
+
+      // Enhanced error handling based on Swagger docs
+      const errorCode = error.response?.data?.error;
+      const errorMessage = error.response?.data?.message;
+
+      switch (errorCode) {
+        case 1: // MissingData - Missing required fields
+          toast.error("Missing required information", {
+            description:
+              "Please check all required fields including title, parties, deadline, and files",
+          });
+          break;
+
+        case 13: // InvalidEnum - Invalid Type or Visibility value
+          toast.error("Invalid agreement settings", {
+            description: "Please check agreement type and visibility settings",
+          });
+          break;
+
+        case 12: // MissingWallet - Escrow requires a wallet but user has none
+          toast.error("Wallet required", {
+            description:
+              "You need a connected wallet to create escrow agreements",
+          });
+          break;
+
+        case 5: // InvalidDate - Deadline invalid or not after today
+          toast.error("Invalid deadline", {
+            description: "Deadline must be a future date",
+          });
+          break;
+
+        case 7: // AccountNotFound - One or both parties not found
+          toast.error("User not found", {
+            description:
+              "One or both parties could not be found. Please check the Telegram usernames and try different formats (with or without @).",
+          });
+          break;
+
+        case 11: // SameAccount - Creator and counterparty are the same
+          toast.error("Same user error", {
+            description: "First party and counterparty cannot be the same user",
+          });
+          break;
+
+        case 17: // Forbidden - Creator is banned from creating agreements
+          toast.error("Account restricted", {
+            description:
+              "Your account is currently restricted from creating new agreements",
+          });
+          break;
+
+        case 10: // InternalServerError - Unexpected validation error
+          toast.error("Server error", {
+            description:
+              "An unexpected error occurred. Please try again later.",
+          });
+          break;
+
+        default:
+          // Handle network errors and other unexpected errors
+          if (error.message?.includes("Network Error")) {
+            toast.error("Network error", {
+              description:
+                "Unable to connect to server. Please check your internet connection.",
+            });
+          } else if (errorMessage) {
+            toast.error("Creation failed", {
+              description: errorMessage,
+            });
+          } else {
+            toast.error("Failed to create agreement", {
+              description: "Please check your information and try again.",
+            });
+          }
+          break;
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // User search handler
+  const handleUserSearch = useCallback(
+    async (query: string, field: "counterparty" | "partyA" | "partyB") => {
+      setUserSearchQuery(query);
+      console.log("🔍 Searching users for", field, "with query:", query);
+
+      if (query.length < 2) {
+        setUserSearchResults([]);
+        setShowUserSuggestions(false);
+        return;
+      }
+
+      setIsUserSearchLoading(true);
+      setShowUserSuggestions(true);
+
+      try {
+        const results = await agreementService.searchUsers(query);
+        console.log("🔍 RAW SEARCH RESULTS:", results);
+        setUserSearchResults(results);
+      } catch (error) {
+        console.error("User search failed:", error);
+        setUserSearchResults([]);
+
+        if (query.length >= 2) {
+          toast.error("User search temporarily unavailable");
+        }
+      } finally {
+        setIsUserSearchLoading(false);
+      }
+    },
+    [],
+  );
+
+  // Debounced search effect
+  useEffect(() => {
+    if (debouncedSearchQuery.length >= 2) {
+      handleUserSearch(debouncedSearchQuery, "counterparty");
+    }
+  }, [debouncedSearchQuery, handleUserSearch]);
+
+  // Test function with known users - EXACTLY as provided
+  // Update the test function to bypass validation
+  const testWithKnownUsers = async () => {
+    // Test with the format that we know works from your logs
+    const testData = {
+      title: "Test Agreement - Known Users",
+      description: "Testing with users we know exist",
+      type: 1,
+      visibility: 2,
+      firstParty: "Ghravitee",
+      counterParty: "@LuminalLink", // Use the format that worked
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    const testFiles = [new File(["test"], "test.txt", { type: "text/plain" })];
+
+    try {
+      console.log("🧪 Testing with known users (bypassing validation)");
+      await agreementService.createAgreement(testData, testFiles);
+      console.log("✅ TEST SUCCESS: Agreement created with known users");
+      toast.success("Test agreement created successfully");
+    } catch (error) {
+      console.error("❌ TEST FAILED:", error);
+      toast.error("Test failed - check console");
     }
   };
 
@@ -402,8 +892,30 @@ export default function Agreements() {
                 <FileText className="mr-2 h-4 w-4" />
                 Create Agreement
               </Button>
+
+              {isAuthenticated ? (
+                <div className="flex items-center gap-2 text-sm text-cyan-300">
+                  <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                  <span>Authenticated as {user?.handle}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-orange-300">
+                  <div className="h-2 w-2 rounded-full bg-orange-400"></div>
+                  <span>Not authenticated</span>
+                </div>
+              )}
+
+              {/* Test button */}
+              <button
+                onClick={testWithKnownUsers}
+                className="ml-4 rounded-md border border-cyan-400/40 bg-cyan-600/20 px-3 py-1 text-sm text-cyan-100 hover:bg-cyan-500/30"
+              >
+                Test with known users
+              </button>
             </div>
           </div>
+
+          {/* Rest of your JSX remains the same */}
           <div className="mt-10 mb-5 flex flex-wrap items-center gap-3">
             {/* Search Input */}
             <div className="relative grow sm:max-w-xs">
@@ -438,7 +950,7 @@ export default function Agreements() {
                     <div
                       key={option.value}
                       onClick={() => {
-                        setTableFilter(option.value as AgreementStatus);
+                        setTableFilter(option.value as AgreementStatusFilter);
                         setIsTableFilterOpen(false);
                       }}
                       className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${
@@ -456,7 +968,6 @@ export default function Agreements() {
 
             {/* Sort Controls */}
             <div className="ml-auto flex items-center gap-2">
-              {/* Sort Order Button */}
               <Button
                 variant="outline"
                 className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
@@ -472,6 +983,7 @@ export default function Agreements() {
                 Sort
               </Button>
             </div>
+
             {/* Agreements Table */}
             <div className="w-full overflow-x-auto rounded-xl border border-b-2 border-white/10 ring-1 ring-white/10">
               <div className="flex items-center justify-between border-b border-white/10 p-5">
@@ -490,7 +1002,18 @@ export default function Agreements() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTableAgreements.length === 0 ? (
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="px-5 py-8 text-center">
+                          <div className="flex items-center justify-center">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin text-cyan-400" />
+                            <span className="text-cyan-300">
+                              Loading agreements...
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredTableAgreements.length === 0 ? (
                       <tr>
                         <td
                           colSpan={6}
@@ -513,7 +1036,55 @@ export default function Agreements() {
                             {a.title}
                           </td>
                           <td className="px-5 py-4 text-white/90">
-                            {a.createdBy} ↔ {a.counterparty}
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <UserAvatar
+                                  userId={a.createdByUserId || a.createdBy}
+                                  avatarId={a.createdByAvatarId || null}
+                                  username={a.createdBy}
+                                  size="sm"
+                                />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cleanUsername = a.createdBy.replace(
+                                      /^@/,
+                                      "",
+                                    );
+                                    const encodedUsername =
+                                      encodeURIComponent(cleanUsername);
+                                    navigate(`/profile/${encodedUsername}`);
+                                  }}
+                                  className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                >
+                                  {a.createdBy}
+                                </button>
+                              </div>
+                              <span className="text-cyan-400">↔</span>
+                              <div className="flex items-center gap-1">
+                                <UserAvatar
+                                  userId={
+                                    a.counterpartyUserId || a.counterparty
+                                  }
+                                  avatarId={a.counterpartyAvatarId || null}
+                                  username={a.counterparty}
+                                  size="sm"
+                                />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cleanUsername =
+                                      a.counterparty.replace(/^@/, "");
+                                    const encodedUsername =
+                                      encodeURIComponent(cleanUsername);
+                                    navigate(`/profile/${encodedUsername}`);
+                                  }}
+                                  className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                >
+                                  {a.counterparty}
+                                </button>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-5 py-4 text-white/90">
                             {a.amount
@@ -551,13 +1122,14 @@ export default function Agreements() {
             </div>
           </div>
         </div>
+
         <aside className="col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h1 className="space mb-2 text-xl text-white">
               Agreements Turned Sour 😬
             </h1>
 
-            {/* --- Filter Dropdown --- */}
+            {/* Filter Dropdown */}
             <div className="group relative hidden w-36" ref={recentFilterRef}>
               <div
                 onClick={() => setIsRecentFilterOpen((prev) => !prev)}
@@ -601,11 +1173,16 @@ export default function Agreements() {
             </div>
           </div>
 
-          {/* --- Swiping Card Section --- */}
+          {/* Swiping Card Section */}
           <div className="glass relative overflow-hidden border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
-            {filteredRecentAgreements.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin text-cyan-400" />
+                <span className="text-xs text-cyan-300">Loading...</span>
+              </div>
+            ) : filteredRecentAgreements.length === 0 ? (
               <div className="text-muted-foreground py-8 text-center text-xs">
-                No agreements found.
+                No sour agreements found.
               </div>
             ) : (
               <SourAgreementsSwiper agreements={filteredRecentAgreements} />
@@ -613,6 +1190,7 @@ export default function Agreements() {
           </div>
         </aside>
 
+        {/* Create Agreement Modal */}
         {isModalOpen && (
           <div
             onClick={() => setIsModalOpen(false)}
@@ -695,6 +1273,7 @@ export default function Agreements() {
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="e.g. Design Sprint Phase 1"
+                  required
                 />
               </div>
 
@@ -739,52 +1318,102 @@ export default function Agreements() {
 
                 {/* Parties based on agreement type */}
                 {agreementType === "myself" ? (
-                  <div>
+                  <div className="relative" ref={userSearchRef}>
                     <label className="text-muted-foreground mb-2 block text-sm">
                       Counterparty <span className="text-red-500">*</span>
+                      <span className="ml-2 text-xs text-cyan-400">
+                        (Start typing to search users)
+                      </span>
                     </label>
-                    <input
-                      value={form.counterparty}
-                      onChange={(e) =>
-                        setForm({ ...form, counterparty: e.target.value })
-                      }
-                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                      placeholder="@0xHandle or address"
-                    />
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                      <input
+                        value={form.counterparty}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setForm({ ...form, counterparty: value });
+                          setUserSearchQuery(value);
+                        }}
+                        onFocus={() =>
+                          form.counterparty.length >= 2 &&
+                          setShowUserSuggestions(true)
+                        }
+                        className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                        placeholder="Type username (min 2 characters)..."
+                        required
+                      />
+                      {isUserSearchLoading && (
+                        <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                      )}
+                    </div>
+
+                    {/* User Suggestions */}
+                    {showUserSuggestions && (
+                      <div className="absolute top-full z-50 mt-1 w-full rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                        {userSearchResults.length > 0 ? (
+                          userSearchResults.map((user) => (
+                            <UserSearchResult
+                              key={user.id}
+                              user={user}
+                              onSelect={(username) => {
+                                setForm({ ...form, counterparty: username });
+                                setShowUserSuggestions(false);
+                              }}
+                            />
+                          ))
+                        ) : userSearchQuery.length >= 2 &&
+                          !isUserSearchLoading ? (
+                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                            No users found for "{userSearchQuery}"
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
-                    <div>
+                    <div className="relative">
                       <label className="text-muted-foreground mb-2 block text-sm">
                         First Party <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        value={form.partyA}
-                        onChange={(e) =>
-                          setForm({ ...form, partyA: e.target.value })
-                        }
-                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                        placeholder="@0xHandle or address"
-                      />
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                        <input
+                          value={form.partyA}
+                          onChange={(e) => {
+                            setForm({ ...form, partyA: e.target.value });
+                            handleUserSearch(e.target.value, "partyA");
+                          }}
+                          className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                          placeholder="Type username (min 2 characters)..."
+                          required
+                        />
+                      </div>
                     </div>
-                    <div>
+
+                    <div className="relative">
                       <label className="text-muted-foreground mb-2 block text-sm">
                         Second Party <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        value={form.partyB}
-                        onChange={(e) =>
-                          setForm({ ...form, partyB: e.target.value })
-                        }
-                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                        placeholder="@0xHandle or address"
-                      />
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                        <input
+                          value={form.partyB}
+                          onChange={(e) => {
+                            setForm({ ...form, partyB: e.target.value });
+                            handleUserSearch(e.target.value, "partyB");
+                          }}
+                          className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                          placeholder="Type username (min 2 characters)..."
+                          required
+                        />
+                      </div>
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Description + Helper */}
+              {/* Description */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Description <span className="text-red-500">*</span>
@@ -796,6 +1425,7 @@ export default function Agreements() {
                   }
                   className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="Scope, deliverables, timelines..."
+                  required
                 />
                 <div className="mt-1 flex items-center gap-1">
                   <Info className="size-4 text-cyan-300" />
@@ -807,14 +1437,13 @@ export default function Agreements() {
                 </div>
               </div>
 
-              {/* Enhanced File Upload Section */}
+              {/* File Upload Section */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Upload Supporting Documents{" "}
                   <span className="text-red-500">*</span>
                 </label>
 
-                {/* Drag and Drop Area */}
                 <div
                   className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
                     isDragOver
@@ -849,7 +1478,7 @@ export default function Agreements() {
                   </label>
                 </div>
 
-                {/* File List with Previews */}
+                {/* File List */}
                 {form.images.length > 0 && (
                   <div className="mt-4 space-y-3">
                     <h4 className="text-sm font-medium text-cyan-200">
@@ -898,11 +1527,8 @@ export default function Agreements() {
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Deadline <span className="text-red-500">*</span>
                 </label>
-
                 <div className="relative">
-                  {/* 📅 Calendar Icon */}
                   <Calendar className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-
                   <ReactDatePicker
                     selected={deadline}
                     onChange={(date) => setDeadline(date)}
@@ -912,6 +1538,7 @@ export default function Agreements() {
                     calendarClassName="!bg-cyan-700 !text-white rounded-lg border border-white/10"
                     popperClassName="z-50"
                     minDate={new Date()}
+                    required
                   />
                 </div>
               </div>
@@ -987,7 +1614,8 @@ export default function Agreements() {
                         ref={tokenRef}
                       >
                         <label className="text-sm font-semibold text-white">
-                          Token <span className="text-red-500">*</span>
+                          Token{" "}
+                          <span className="text-cyan-400">(Optional)</span>
                         </label>
                         <div
                           onClick={() => setIsTokenOpen((prev) => !prev)}
@@ -1023,7 +1651,7 @@ export default function Agreements() {
                           <div className="mt-3">
                             <label className="text-muted-foreground mb-2 block text-sm">
                               Paste Contract Address{" "}
-                              <span className="text-red-500">*</span>
+                              <span className="text-cyan-400">(Optional)</span>
                             </label>
                             <input
                               type="text"
@@ -1040,17 +1668,24 @@ export default function Agreements() {
                       {/* Amount */}
                       <div>
                         <label className="text-muted-foreground mb-2 block text-sm">
-                          Amount <span className="text-red-500">*</span>
+                          Amount{" "}
+                          <span className="text-cyan-400">(Optional)</span>
                         </label>
                         <input
+                          value={form.amount}
+                          onChange={(e) =>
+                            setForm({ ...form, amount: e.target.value })
+                          }
                           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                           placeholder="1000"
+                          type="number"
                         />
                       </div>
                     </div>
                   )}
                 </div>
               )}
+
               {/* Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4">
                 <Button
@@ -1094,7 +1729,9 @@ export default function Agreements() {
   );
 }
 
+// SourAgreementsSwiper component (unchanged)
 function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
+  const navigate = useNavigate();
   const [index, setIndex] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const delay = 4800; // ms
@@ -1115,6 +1752,12 @@ function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
     timeoutRef.current = setTimeout(next, delay);
     return () => clearTimeout(timeoutRef.current || undefined);
   }, [index, agreements.length, next]);
+
+  const handleUsernameClick = (username: string) => {
+    const cleanUsername = username.replace(/^@/, "");
+    const encodedUsername = encodeURIComponent(cleanUsername);
+    navigate(`/profile/${encodedUsername}`);
+  };
 
   return (
     <div className="relative">
@@ -1148,7 +1791,19 @@ function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
               <div>
                 <div className="font-medium text-white">{agreement.title}</div>
                 <div className="text-muted-foreground text-xs">
-                  {agreement.createdBy} ↔ {agreement.counterparty}
+                  <button
+                    onClick={() => handleUsernameClick(agreement.createdBy)}
+                    className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                  >
+                    {agreement.createdBy}
+                  </button>
+                  {" ↔ "}
+                  <button
+                    onClick={() => handleUsernameClick(agreement.counterparty)}
+                    className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                  >
+                    {agreement.counterparty}
+                  </button>
                 </div>
               </div>
               <span

@@ -18,6 +18,7 @@ import UserProfile from "./pages/UserProfile";
 import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext"; // Import the AuthProvider
+// import DebugAuth from "./pages/DebugAuth";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ export default function App() {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          {/* <DebugAuth /> */}
           <BrowserRouter>
             <ScrollToTop />
             <Routes>

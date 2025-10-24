@@ -23,7 +23,7 @@ import {
   Minus,
   Info,
   BarChart3,
-  Paperclip,
+  Send,
   Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -46,6 +46,14 @@ interface VoteData {
   comment: string;
 }
 
+// File upload types
+interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "document";
+}
+
 // Mock vote outcome data
 const mockVoteOutcome = {
   winner: "plaintiff" as const,
@@ -65,14 +73,7 @@ const mockVoteOutcome = {
   ],
 };
 
-// File upload types
-interface UploadedFile {
-  id: string;
-  file: File;
-  preview?: string;
-  type: "image" | "document";
-}
-
+// Reply Modal Component
 // Reply Modal Component
 const ReplyModal = ({
   isOpen,
@@ -85,10 +86,16 @@ const ReplyModal = ({
   onClose: () => void;
   type: "plaintiff" | "defendant";
   dispute: DisputeRow | null;
-  onSubmit: (description: string, files: UploadedFile[]) => void;
+  onSubmit: (
+    description: string,
+    files: UploadedFile[],
+    witnesses: string[],
+  ) => void;
 }) => {
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [witnesses, setWitnesses] = useState<string[]>([]);
+  const [witnessInput, setWitnessInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleModalClick = useCallback((e: React.MouseEvent) => {
@@ -128,14 +135,34 @@ const ReplyModal = ({
     setFiles((prev) => prev.filter((file) => file.id !== id));
   };
 
+  const handleWitnessInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setWitnessInput(e.target.value);
+  };
+
+  const addWitness = () => {
+    const witness = witnessInput.trim();
+    if (witness && !witnesses.includes(witness)) {
+      setWitnesses((prev) => [...prev, witness]);
+      setWitnessInput("");
+    }
+  };
+
+  const removeWitness = (witnessToRemove: string) => {
+    setWitnesses((prev) =>
+      prev.filter((witness) => witness !== witnessToRemove),
+    );
+  };
+
   const handleSubmit = async () => {
     if (!description.trim()) return;
 
     setIsSubmitting(true);
     try {
-      await onSubmit(description, files);
+      await onSubmit(description, files, witnesses);
       setDescription("");
       setFiles([]);
+      setWitnesses([]);
+      setWitnessInput("");
       onClose();
     } catch (error) {
       console.error("Error submitting reply:", error);
@@ -186,7 +213,7 @@ const ReplyModal = ({
         >
           {/* Header */}
           <div
-            className={`flex items-center justify-between border-b border-${config.color}-400/30 bg-${config.color}-500/10 p-6`}
+            className={`flex items-center justify-between border-b border-${config.color}-400/30 p-6`}
           >
             <div className="flex items-center gap-3">
               {config.icon}
@@ -233,6 +260,65 @@ const ReplyModal = ({
                   rows={5}
                 />
               </div>
+
+              {/* Witnesses Section - Only for Defendant */}
+              {type === "defendant" && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-cyan-200">
+                    Witnesses (Optional)
+                  </label>
+
+                  {/* Witness Input with Button */}
+                  <div className="mb-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={witnessInput}
+                      onChange={handleWitnessInputChange}
+                      placeholder="Add witness handle"
+                      className="flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40"
+                    />
+                    <Button
+                      type="button"
+                      onClick={addWitness}
+                      disabled={!witnessInput.trim()}
+                      variant="outline"
+                      className="border-yellow-400/30 text-yellow-300 hover:bg-yellow-500/10 disabled:opacity-50"
+                    >
+                      <UserCheck className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs text-cyan-200/70">
+                    Add @handles of witnesses who can support your defense
+                  </p>
+
+                  {/* Witness Tags */}
+                  {witnesses.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {witnesses.map((witness, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-1 rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300"
+                          >
+                            <UserCheck className="h-3 w-3" />
+                            {witness}
+                            <button
+                              type="button"
+                              onClick={() => removeWitness(witness)}
+                              className="ml-1 rounded-full hover:bg-yellow-500/30"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-cyan-200/70">
+                        {witnesses.length} witness(es) added
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* File Upload */}
               <div>
@@ -308,6 +394,13 @@ const ReplyModal = ({
 
               {/* Submit Button */}
               <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-cyan-200/70">
+                  {files.length} file(s) selected
+                  {type === "defendant" &&
+                    witnesses.length > 0 &&
+                    ` • ${witnesses.length} witness(es)`}
+                </div>
+
                 <Button
                   variant="neon"
                   className="neon-hover"
@@ -321,14 +414,11 @@ const ReplyModal = ({
                     </>
                   ) : (
                     <>
-                      <Paperclip className="mr-2 h-4 w-4" />
+                      <Send className="mr-2 h-4 w-4" />
                       Submit Response
                     </>
                   )}
                 </Button>
-                <div className="text-xs text-cyan-200/70">
-                  {files.length} file(s) selected
-                </div>
               </div>
             </div>
           </div>
@@ -338,7 +428,7 @@ const ReplyModal = ({
   );
 };
 
-// Vote Option Component - Moved outside
+// Vote Option Component
 const VoteOption = ({
   label,
   active,
@@ -365,7 +455,7 @@ const VoteOption = ({
   );
 };
 
-// Vote Modal Component - Moved outside
+// Vote Modal Component
 const VoteModal = ({
   isOpen,
   onClose,
@@ -555,7 +645,7 @@ const VoteModal = ({
   );
 };
 
-// Vote Outcome Modal Component - Moved outside
+// Vote Outcome Modal Component
 const VoteOutcomeModal = ({
   isOpen,
   onClose,
@@ -804,7 +894,7 @@ const VoteOutcomeModal = ({
   );
 };
 
-// Evidence Viewer Component - Moved outside
+// Evidence Viewer Component
 const EvidenceViewer = ({
   isOpen,
   onClose,
@@ -1009,7 +1099,7 @@ const EvidenceViewer = ({
   );
 };
 
-// Evidence Display Component - Moved outside
+// Evidence Display Component
 const EvidenceDisplay = ({
   evidence,
   color,
@@ -1337,21 +1427,24 @@ export default function DisputeDetails() {
     setVoteData({ choice: null, comment: "" });
   }, []);
 
-  // Reply handlers
+  // Reply handlers with witnesses
   const handleDefendantReply = useCallback(
-    async (description: string, files: UploadedFile[]) => {
-      console.log("Defendant reply:", { description, files });
-      // In a real app, you would upload files and submit the response
+    async (description: string, files: UploadedFile[], witnesses: string[]) => {
+      console.log("Defendant reply:", { description, files, witnesses });
+      // In a real app, you would upload files and submit the response with witnesses
       // Mock implementation
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      console.log("Defendant response submitted successfully");
+      console.log(
+        "Defendant response submitted successfully with witnesses:",
+        witnesses,
+      );
     },
     [],
   );
 
   const handlePlaintiffReply = useCallback(
-    async (description: string, files: UploadedFile[]) => {
-      console.log("Plaintiff reply:", { description, files });
+    async (description: string, files: UploadedFile[], witnesses: string[]) => {
+      console.log("Plaintiff reply:", { description, files, witnesses });
       // In a real app, you would upload files and submit the response
       // Mock implementation
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1393,15 +1486,39 @@ export default function DisputeDetails() {
       transition={{ duration: 0.4 }}
       className="space-y-6 py-6 text-white"
     >
-      {/* Back Button */}
-      <Button
-        onClick={() => navigate("/disputes")}
-        variant="ghost"
-        className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to Disputes
-      </Button>
+      <div className="flex items-center justify-between">
+        {/* Back Button */}
+        <Button
+          onClick={() => navigate("/disputes")}
+          variant="ghost"
+          className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to Disputes
+        </Button>
+        {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
+          <div className="">
+            <Button
+              variant="neon"
+              className="neon-hover"
+              onClick={() => setVoteOutcomeModalOpen(true)}
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              See Vote Outcome
+            </Button>
+          </div>
+        )}
 
+        {dispute.status === "Vote in Progress" && (
+          <Button
+            variant="neon"
+            className="neon-hover ml-auto"
+            onClick={handleOpenVoteModal}
+          >
+            <Scale className="mr-2 h-4 w-4" />
+            Cast Vote
+          </Button>
+        )}
+      </div>
       {/* Header Card */}
       <div className="max-w-xl rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg">
         <div className="flex items-start justify-between">
@@ -1436,7 +1553,6 @@ export default function DisputeDetails() {
           </div>
         </div>
       </div>
-
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Plaintiff Column */}
@@ -1639,7 +1755,7 @@ export default function DisputeDetails() {
           )}
         </div>
       </div>
-
+      {/* Action Buttons */}
       {/* Action Buttons */}
       <div className="flex gap-3 border-t border-white/10 pt-6">
         {!dispute.defendantResponse && (
@@ -1663,8 +1779,8 @@ export default function DisputeDetails() {
           </Button>
         )}
 
-        {/* Show See Vote Outcome button for settled disputes */}
-        {dispute.status === "Settled" && (
+        {/* Show See Vote Outcome button for settled OR dismissed disputes */}
+        {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
           <Button
             variant="neon"
             className="neon-hover ml-auto"
@@ -1675,7 +1791,7 @@ export default function DisputeDetails() {
           </Button>
         )}
 
-        {/* Show Cast Vote button for Vote in Progress disputes */}
+        {/* Show Cast Vote button ONLY for Vote in Progress disputes */}
         {dispute.status === "Vote in Progress" && (
           <Button
             variant="neon"
@@ -1686,17 +1802,7 @@ export default function DisputeDetails() {
             Cast Vote
           </Button>
         )}
-
-        {/* Show Cast Vote button for other statuses */}
-        {dispute.status !== "Vote in Progress" &&
-          dispute.status !== "Settled" && (
-            <Button variant="neon" className="neon-hover ml-auto">
-              <Scale className="mr-2 h-4 w-4" />
-              Cast Vote
-            </Button>
-          )}
       </div>
-
       {/* Evidence Viewer Modal */}
       <EvidenceViewer
         isOpen={evidenceViewerOpen}
@@ -1711,13 +1817,11 @@ export default function DisputeDetails() {
         pdfLoading={pdfLoading}
         pdfError={pdfError}
       />
-
       {/* Vote Outcome Modal */}
       <VoteOutcomeModal
         isOpen={voteOutcomeModalOpen}
         onClose={() => setVoteOutcomeModalOpen(false)}
       />
-
       {/* Vote Modal */}
       <VoteModal
         isOpen={voteModalOpen}
@@ -1728,7 +1832,6 @@ export default function DisputeDetails() {
         onCastVote={handleCastVote}
         hasVoted={hasVoted}
       />
-
       {/* Defendant Reply Modal */}
       <ReplyModal
         isOpen={defendantReplyModalOpen}
@@ -1737,7 +1840,6 @@ export default function DisputeDetails() {
         dispute={dispute}
         onSubmit={handleDefendantReply}
       />
-
       {/* Plaintiff Reply Modal */}
       <ReplyModal
         isOpen={plaintiffReplyModalOpen}
