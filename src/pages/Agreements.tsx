@@ -92,29 +92,34 @@ const apiStatusToFrontend = (status: number): AgreementStatus => {
   }
 };
 
-// UserSearchResult component
-// Update the UserSearchResult component to use consistent username handling
-// In Agreements.tsx - update UserSearchResult to handle no search results
 const UserSearchResult = ({
   user,
   onSelect,
 }: {
   user: any;
   onSelect: (username: string) => void;
+  field: "counterparty" | "partyA" | "partyB";
 }) => {
   // Use consistent Telegram username extraction
   const telegramUsername = cleanTelegramUsername(
     user.telegram?.username ||
       user.telegramUsername ||
+      user.telegramInfo ||
       user.username ||
       user.handle,
   );
-  const displayName = user.displayName || user.username || telegramUsername;
+
+  // Add @ prefix for display
+  const displayUsername = telegramUsername ? `@${telegramUsername}` : "Unknown";
+  const displayName = user.displayName || displayUsername;
+  const isCurrentUser = user.id === user?.id;
 
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-cyan-500/30"
+      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-cyan-500/30 ${
+        isCurrentUser ? "opacity-50" : ""
+      }`}
     >
       <UserAvatar
         userId={user.id}
@@ -122,13 +127,27 @@ const UserSearchResult = ({
         username={telegramUsername}
         size="sm"
       />
-      <div className="flex-1">
-        <div className="text-sm font-medium text-white">{displayName}</div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-white">
+          {displayName}
+        </div>
         {telegramUsername && (
-          <div className="text-xs text-cyan-300">@{telegramUsername}</div>
+          <div className="truncate text-xs text-cyan-300">
+            @{telegramUsername}
+          </div>
+        )}
+        {user.bio && (
+          <div className="mt-1 truncate text-xs text-cyan-200/70">
+            {user.bio}
+          </div>
         )}
       </div>
-      <ChevronRight className="h-4 w-4 text-cyan-400" />
+      {isCurrentUser && (
+        <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-400">
+          You
+        </span>
+      )}
+      <ChevronRight className="h-4 w-4 flex-shrink-0 text-cyan-400" />
     </div>
   );
 };
@@ -146,10 +165,14 @@ export default function Agreements() {
   const [loading, setLoading] = useState(true);
 
   const [deadline, setDeadline] = useState<Date | null>(null);
+  // In Agreements.tsx - Replace the current user search implementation
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
   const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
   const [showUserSuggestions, setShowUserSuggestions] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<
+    "counterparty" | "partyA" | "partyB"
+  >("counterparty");
   const userSearchRef = useRef<HTMLDivElement>(null);
 
   const [isTokenOpen, setIsTokenOpen] = useState(false);
@@ -316,8 +339,6 @@ export default function Agreements() {
   }, []);
 
   // Helper function to transform API agreement to frontend format
-  // In Agreements.tsx - Update the transformApiAgreement function
-  // Helper function to transform API agreement to frontend format
   const transformApiAgreement = (apiAgreement: any): Agreement => {
     console.log("🔄 Transforming API agreement - Full object:", apiAgreement);
 
@@ -341,11 +362,16 @@ export default function Agreements() {
     };
 
     // Get the creator/createdBy - check multiple possible fields
-    const createdBy =
+    const rawCreatedBy =
       apiAgreement.firstParty?.username ||
       apiAgreement.firstParty?.handle ||
       apiAgreement.creator?.username ||
       "Unknown";
+
+    // Add @ prefix for display
+    const createdBy = rawCreatedBy.startsWith("@")
+      ? rawCreatedBy
+      : `@${rawCreatedBy}`;
 
     const createdByUserId =
       apiAgreement.firstParty?.id?.toString() ||
@@ -357,10 +383,15 @@ export default function Agreements() {
       getAvatarIdFromParty(apiAgreement.creator);
 
     // Get counterparty - check multiple possible fields
-    const counterparty =
+    const rawCounterparty =
       apiAgreement.counterParty?.username ||
       apiAgreement.counterParty?.handle ||
       "Unknown";
+
+    // Add @ prefix for display
+    const counterparty = rawCounterparty.startsWith("@")
+      ? rawCounterparty
+      : `@${rawCounterparty}`;
 
     const counterpartyUserId = apiAgreement.counterParty?.id?.toString();
 
@@ -407,8 +438,8 @@ export default function Agreements() {
     { value: "cancelled", label: "Cancelled" },
     { value: "completed", label: "Completed" },
     { value: "disputed", label: "Disputed" },
+    { value: "pending_approval", label: "Pending Approval" },
   ];
-
   const recentFilterOptions = [
     { value: "all", label: "All" },
     { value: "active", label: "Active" },
@@ -694,8 +725,8 @@ export default function Agreements() {
       // Success message
       const successMessage =
         agreementType === "myself"
-          ? `Agreement created between you and ${form.counterparty}`
-          : `Agreement created between ${form.partyA} and ${form.partyB}`;
+          ? `Agreement created between you and @${form.counterparty}`
+          : `Agreement created between @${form.partyA} and @${form.partyB}`;
 
       toast.success("Agreement created successfully", {
         description: `${successMessage} • ${typeValue} • ${form.images.length} files uploaded`,
@@ -720,6 +751,12 @@ export default function Agreements() {
       setSelectedToken("");
       setCustomTokenAddress("");
       setAgreementType("myself");
+
+      // 🚨 NEW: Refresh agreements list to include the new one
+      setTimeout(() => {
+        // Reload agreements to get the new one
+        window.location.reload(); // Or use your existing loadAgreements function
+      }, 1000);
     } catch (error: any) {
       console.error("❌ Failed to create agreement:", error);
       console.error("📋 Error response:", error.response?.data);
@@ -805,10 +842,11 @@ export default function Agreements() {
     }
   };
 
-  // User search handler
   const handleUserSearch = useCallback(
     async (query: string, field: "counterparty" | "partyA" | "partyB") => {
       setUserSearchQuery(query);
+      setActiveSearchField(field);
+
       console.log("🔍 Searching users for", field, "with query:", query);
 
       if (query.length < 2) {
@@ -823,7 +861,20 @@ export default function Agreements() {
       try {
         const results = await agreementService.searchUsers(query);
         console.log("🔍 RAW SEARCH RESULTS:", results);
-        setUserSearchResults(results);
+
+        // Filter out current user from results to prevent self-agreements
+        const currentUserTelegram = getCurrentUserTelegram(user);
+        const filteredResults = results.filter((resultUser) => {
+          const resultTelegram = cleanTelegramUsername(
+            resultUser.telegram?.username ||
+              resultUser.telegramUsername ||
+              resultUser.telegramInfo ||
+              resultUser.username,
+          );
+          return resultTelegram !== currentUserTelegram;
+        });
+
+        setUserSearchResults(filteredResults);
       } catch (error) {
         console.error("User search failed:", error);
         setUserSearchResults([]);
@@ -835,42 +886,40 @@ export default function Agreements() {
         setIsUserSearchLoading(false);
       }
     },
-    [],
+    [user],
   );
 
   // Debounced search effect
   useEffect(() => {
     if (debouncedSearchQuery.length >= 2) {
-      handleUserSearch(debouncedSearchQuery, "counterparty");
+      handleUserSearch(debouncedSearchQuery, activeSearchField);
     }
-  }, [debouncedSearchQuery, handleUserSearch]);
+  }, [debouncedSearchQuery, activeSearchField, handleUserSearch]);
 
-  // Test function with known users - EXACTLY as provided
-  // Update the test function to bypass validation
-  const testWithKnownUsers = async () => {
-    // Test with the format that we know works from your logs
-    const testData = {
-      title: "Test Agreement - Known Users",
-      description: "Testing with users we know exist",
-      type: 1,
-      visibility: 2,
-      firstParty: "Ghravitee",
-      counterParty: "@LuminalLink", // Use the format that worked
-      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    };
+  // const testWithKnownUsers = async () => {
 
-    const testFiles = [new File(["test"], "test.txt", { type: "text/plain" })];
+  //   const testData = {
+  //     title: "Test Agreement - Known Users",
+  //     description: "Testing with users we know exist",
+  //     type: 1,
+  //     visibility: 2,
+  //     firstParty: "Ghravitee",
+  //     counterParty: "@LuminalLink",
+  //     deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  //   };
 
-    try {
-      console.log("🧪 Testing with known users (bypassing validation)");
-      await agreementService.createAgreement(testData, testFiles);
-      console.log("✅ TEST SUCCESS: Agreement created with known users");
-      toast.success("Test agreement created successfully");
-    } catch (error) {
-      console.error("❌ TEST FAILED:", error);
-      toast.error("Test failed - check console");
-    }
-  };
+  //   const testFiles = [new File(["test"], "test.txt", { type: "text/plain" })];
+
+  //   try {
+  //     console.log("🧪 Testing with known users (bypassing validation)");
+  //     await agreementService.createAgreement(testData, testFiles);
+  //     console.log("✅ TEST SUCCESS: Agreement created with known users");
+  //     toast.success("Test agreement created successfully");
+  //   } catch (error) {
+  //     console.error("❌ TEST FAILED:", error);
+  //     toast.error("Test failed - check console");
+  //   }
+  // };
 
   return (
     <div className="relative">
@@ -906,12 +955,12 @@ export default function Agreements() {
               )}
 
               {/* Test button */}
-              <button
+              {/* <button
                 onClick={testWithKnownUsers}
                 className="ml-4 rounded-md border border-cyan-400/40 bg-cyan-600/20 px-3 py-1 text-sm text-cyan-100 hover:bg-cyan-500/30"
               >
                 Test with known users
-              </button>
+              </button> */}
             </div>
           </div>
 
@@ -1039,9 +1088,12 @@ export default function Agreements() {
                             <div className="flex items-center gap-2">
                               <div className="flex items-center gap-1">
                                 <UserAvatar
-                                  userId={a.createdByUserId || a.createdBy}
+                                  userId={
+                                    a.createdByUserId ||
+                                    a.createdBy.replace(/^@/, "")
+                                  }
                                   avatarId={a.createdByAvatarId || null}
-                                  username={a.createdBy}
+                                  username={a.createdBy.replace(/^@/, "")}
                                   size="sm"
                                 />
                                 <button
@@ -1064,10 +1116,11 @@ export default function Agreements() {
                               <div className="flex items-center gap-1">
                                 <UserAvatar
                                   userId={
-                                    a.counterpartyUserId || a.counterparty
+                                    a.counterpartyUserId ||
+                                    a.counterparty.replace(/^@/, "")
                                   }
                                   avatarId={a.counterpartyAvatarId || null}
-                                  username={a.counterparty}
+                                  username={a.counterparty.replace(/^@/, "")}
                                   size="sm"
                                 />
                                 <button
@@ -1318,6 +1371,7 @@ export default function Agreements() {
 
                 {/* Parties based on agreement type */}
                 {agreementType === "myself" ? (
+                  // In your modal form - Update the counterparty field
                   <div className="relative" ref={userSearchRef}>
                     <label className="text-muted-foreground mb-2 block text-sm">
                       Counterparty <span className="text-red-500">*</span>
@@ -1332,12 +1386,13 @@ export default function Agreements() {
                         onChange={(e) => {
                           const value = e.target.value;
                           setForm({ ...form, counterparty: value });
-                          setUserSearchQuery(value);
+                          handleUserSearch(value, "counterparty");
                         }}
-                        onFocus={() =>
-                          form.counterparty.length >= 2 &&
-                          setShowUserSuggestions(true)
-                        }
+                        onFocus={() => {
+                          if (form.counterparty.length >= 2) {
+                            setShowUserSuggestions(true);
+                          }
+                        }}
                         className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                         placeholder="Type username (min 2 characters)..."
                         required
@@ -1347,67 +1402,178 @@ export default function Agreements() {
                       )}
                     </div>
 
-                    {/* User Suggestions */}
-                    {showUserSuggestions && (
-                      <div className="absolute top-full z-50 mt-1 w-full rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                        {userSearchResults.length > 0 ? (
-                          userSearchResults.map((user) => (
-                            <UserSearchResult
-                              key={user.id}
-                              user={user}
-                              onSelect={(username) => {
-                                setForm({ ...form, counterparty: username });
-                                setShowUserSuggestions(false);
-                              }}
-                            />
-                          ))
-                        ) : userSearchQuery.length >= 2 &&
-                          !isUserSearchLoading ? (
-                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                            No users found for "{userSearchQuery}"
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
+                    {/* User Suggestions Dropdown */}
+                    {showUserSuggestions &&
+                      activeSearchField === "counterparty" && (
+                        <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                          {userSearchResults.length > 0 ? (
+                            userSearchResults.map((user) => (
+                              <UserSearchResult
+                                key={user.id}
+                                user={user}
+                                onSelect={(username) => {
+                                  setForm({ ...form, counterparty: username });
+                                  setShowUserSuggestions(false);
+                                  setUserSearchQuery(""); // Clear search query
+                                }}
+                                field="counterparty"
+                              />
+                            ))
+                          ) : userSearchQuery.length >= 2 &&
+                            !isUserSearchLoading ? (
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                              No users found for "{userSearchQuery}"
+                              <div className="mt-1 text-xs text-cyan-400">
+                                Make sure the user exists and has a Telegram
+                                username
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {userSearchQuery.length < 2 && (
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                              Type at least 2 characters to search
+                            </div>
+                          )}
+                        </div>
+                      )}
                   </div>
                 ) : (
                   <>
-                    <div className="relative">
+                    <div className="relative" ref={userSearchRef}>
                       <label className="text-muted-foreground mb-2 block text-sm">
                         First Party <span className="text-red-500">*</span>
+                        <span className="ml-2 text-xs text-cyan-400">
+                          (Start typing to search users)
+                        </span>
                       </label>
                       <div className="relative">
                         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                         <input
                           value={form.partyA}
                           onChange={(e) => {
-                            setForm({ ...form, partyA: e.target.value });
-                            handleUserSearch(e.target.value, "partyA");
+                            const value = e.target.value;
+                            setForm({ ...form, partyA: value });
+                            handleUserSearch(value, "partyA");
+                          }}
+                          onFocus={() => {
+                            if (form.partyA.length >= 2) {
+                              setShowUserSuggestions(true);
+                            }
                           }}
                           className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                           placeholder="Type username (min 2 characters)..."
                           required
                         />
+                        {isUserSearchLoading &&
+                          activeSearchField === "partyA" && (
+                            <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                          )}
                       </div>
+
+                      {/* User Suggestions Dropdown for Party A */}
+                      {showUserSuggestions &&
+                        activeSearchField === "partyA" && (
+                          <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                            {userSearchResults.length > 0 ? (
+                              userSearchResults.map((user) => (
+                                <UserSearchResult
+                                  key={user.id}
+                                  user={user}
+                                  onSelect={(username) => {
+                                    setForm({ ...form, partyA: username });
+                                    setShowUserSuggestions(false);
+                                    setUserSearchQuery(""); // Clear search query
+                                  }}
+                                  field="partyA"
+                                />
+                              ))
+                            ) : userSearchQuery.length >= 2 &&
+                              !isUserSearchLoading ? (
+                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                No users found for "{userSearchQuery}"
+                                <div className="mt-1 text-xs text-cyan-400">
+                                  Make sure the user exists and has a Telegram
+                                  username
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {userSearchQuery.length < 2 && (
+                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                Type at least 2 characters to search
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
 
-                    <div className="relative">
+                    <div className="relative" ref={userSearchRef}>
                       <label className="text-muted-foreground mb-2 block text-sm">
                         Second Party <span className="text-red-500">*</span>
+                        <span className="ml-2 text-xs text-cyan-400">
+                          (Start typing to search users)
+                        </span>
                       </label>
                       <div className="relative">
                         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                         <input
                           value={form.partyB}
                           onChange={(e) => {
-                            setForm({ ...form, partyB: e.target.value });
-                            handleUserSearch(e.target.value, "partyB");
+                            const value = e.target.value;
+                            setForm({ ...form, partyB: value });
+                            handleUserSearch(value, "partyB");
+                          }}
+                          onFocus={() => {
+                            if (form.partyB.length >= 2) {
+                              setShowUserSuggestions(true);
+                            }
                           }}
                           className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                           placeholder="Type username (min 2 characters)..."
                           required
                         />
+                        {isUserSearchLoading &&
+                          activeSearchField === "partyB" && (
+                            <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                          )}
                       </div>
+
+                      {/* User Suggestions Dropdown for Party B */}
+                      {showUserSuggestions &&
+                        activeSearchField === "partyB" && (
+                          <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                            {userSearchResults.length > 0 ? (
+                              userSearchResults.map((user) => (
+                                <UserSearchResult
+                                  key={user.id}
+                                  user={user}
+                                  onSelect={(username) => {
+                                    setForm({ ...form, partyB: username });
+                                    setShowUserSuggestions(false);
+                                    setUserSearchQuery(""); // Clear search query
+                                  }}
+                                  field="partyB"
+                                />
+                              ))
+                            ) : userSearchQuery.length >= 2 &&
+                              !isUserSearchLoading ? (
+                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                No users found for "{userSearchQuery}"
+                                <div className="mt-1 text-xs text-cyan-400">
+                                  Make sure the user exists and has a Telegram
+                                  username
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {userSearchQuery.length < 2 && (
+                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                Type at least 2 characters to search
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </>
                 )}
@@ -1730,6 +1896,7 @@ export default function Agreements() {
 }
 
 // SourAgreementsSwiper component (unchanged)
+// SourAgreementsSwiper component
 function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
   const navigate = useNavigate();
   const [index, setIndex] = useState(0);

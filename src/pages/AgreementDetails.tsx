@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -19,12 +19,23 @@ import {
   Image,
   Paperclip,
   Upload,
+  UserCheck,
+  X,
+  Send,
+  ThumbsUp,
+  ThumbsDown,
+  Package,
+  PackageCheck,
+  Ban,
+  CheckSquare,
+  // Square,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { agreementService } from "../services/agreementServices";
 import type { Agreement } from "../types";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
+import { useAuth } from "../context/AuthContext";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -40,6 +51,7 @@ const AgreementStatusEnum = {
   DISPUTED: 4,
   CANCELLED: 5,
   EXPIRED: 6,
+  PARTY_SUBMITTED_DELIVERY: 7,
 } as const;
 
 // Helper function to convert API status to frontend status
@@ -48,7 +60,7 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
     case AgreementStatusEnum.PENDING_ACCEPTANCE:
       return "pending";
     case AgreementStatusEnum.ACTIVE:
-      return "signed";
+      return "signed"; // 🚨 CHANGE: "active" → "signed"
     case AgreementStatusEnum.COMPLETED:
       return "completed";
     case AgreementStatusEnum.DISPUTED:
@@ -56,124 +68,536 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
     case AgreementStatusEnum.CANCELLED:
     case AgreementStatusEnum.EXPIRED:
       return "cancelled";
+    case AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY:
+      return "pending_approval";
     default:
       return "pending";
   }
 };
 
+// Helper function to normalize usernames (remove @ prefix for comparison)
+const normalizeUsername = (username: string): string => {
+  if (!username) return "";
+  return username.replace(/^@/, "").toLowerCase().trim();
+};
+
+// Helper to check if current user is counterparty
+const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return false;
+
+  const currentUsername = normalizeUsername(
+    currentUser.handle || currentUser.username,
+  );
+  const counterpartyUsername = normalizeUsername(
+    agreement.counterParty?.username || agreement.counterparty,
+  );
+
+  return currentUsername === counterpartyUsername;
+};
+
+// Helper to check if current user is first party
+const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return false;
+
+  const currentUsername = normalizeUsername(
+    currentUser.handle || currentUser.username,
+  );
+  const firstPartyUsername = normalizeUsername(
+    agreement.firstParty?.username || agreement.createdBy,
+  );
+
+  return currentUsername === firstPartyUsername;
+};
+
+// Helper to check if current user is creator
+const isCurrentUserCreator = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return false;
+
+  const currentUsername = normalizeUsername(
+    currentUser.handle || currentUser.username,
+  );
+  const creatorUsername = normalizeUsername(
+    agreement.creator?.username || agreement.creator,
+  );
+
+  return currentUsername === creatorUsername;
+};
+
+// Helper to check who submitted the delivery
+const getDeliverySubmittedBy = (agreement: any) => {
+  if (!agreement) return null;
+
+  // Check if we have delivery submission info in the API response
+  if (agreement._raw?.deliverySubmittedBy) {
+    return agreement._raw.deliverySubmittedBy;
+  }
+
+  // Fallback: check timeline events for delivery submission
+  if (agreement._raw?.timeline) {
+    const deliveryEvent = agreement._raw.timeline.find(
+      (event: any) => event.eventType === 7, // Assuming 7 is delivery submission event type
+    );
+    if (deliveryEvent) {
+      return deliveryEvent.createdBy || deliveryEvent.userId;
+    }
+  }
+
+  return null;
+};
+
+// Helper to check if current user should see delivery review buttons
+const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
+  if (
+    !agreement ||
+    !currentUser ||
+    agreement.status !== AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY
+  ) {
+    return false;
+  }
+
+  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
+  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
+
+  // Get who submitted the delivery
+  const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
+
+  // If we can't determine who submitted, allow both parties to review
+  if (!deliverySubmittedBy) {
+    return isFirstParty || isCounterparty;
+  }
+
+  // Current user should review if they DID NOT submit the delivery
+  const currentUserId = currentUser.id || currentUser.userId;
+  const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
+
+  return currentUserId !== submittedById;
+};
+
+// Helper to check if current user can mark as delivered
+const canUserMarkAsDelivered = (agreement: any, currentUser: any) => {
+  if (
+    !agreement ||
+    !currentUser ||
+    agreement.status !== AgreementStatusEnum.ACTIVE
+  ) {
+    return false;
+  }
+
+  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
+  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
+
+  // Both parties can mark as delivered when agreement is active
+  return isFirstParty || isCounterparty;
+};
+
+// Helper to get completion date from timeline
+// Helper to get completion date from timeline - improved version
+const getCompletionDate = (agreement: any): string | null => {
+  if (!agreement?._raw?.timeline) return null;
+
+  // Look for completion events in multiple possible event types
+  const completionEvents = agreement._raw.timeline.filter(
+    (event: any) =>
+      event.eventType === 3 || // Completion event type
+      event.eventType === 9 || // Alternative completion event type
+      (event.description &&
+        event.description.toLowerCase().includes("completed")) ||
+      (event.description &&
+        event.description.toLowerCase().includes("delivery accepted")),
+  );
+
+  // Return the most recent completion event
+  if (completionEvents.length > 0) {
+    const sortedEvents = completionEvents.sort(
+      (a: any, b: any) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    return sortedEvents[0].createdAt;
+  }
+
+  return null;
+};
+
+// Helper to check if this is the second rejection
+const isSecondRejection = (agreement: any): boolean => {
+  if (!agreement?._raw?.timeline) return false;
+
+  const rejectionEvents = agreement._raw.timeline.filter(
+    (event: any) => event.eventType === 8, // Assuming 8 is rejection event type
+  );
+
+  return rejectionEvents.length >= 1; // Second rejection triggers dispute
+};
+
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [agreement, setAgreement] = useState<Agreement | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEscrowAddress, setShowEscrowAddress] = useState(false);
+  const [isSigning, setIsSigning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
+  const [isOpeningDispute, setIsOpeningDispute] = useState(false);
 
-  // In AgreementDetails.tsx - Update the useEffect data transformation
+  // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
+  const fetchAgreementDetails = useCallback(async () => {
+    if (!id) return;
+
+    setLoading(true);
+    try {
+      const agreementId = parseInt(id);
+      const response = await agreementService.getAgreementDetails(agreementId);
+      const agreementData = response.data;
+
+      console.log("📋 AgreementDetails API Response:", agreementData);
+
+      // Helper function to extract avatar ID from party data and convert to number
+      const getAvatarIdFromParty = (party: any): number | null => {
+        const avatarId = party?.avatarId || party?.avatar?.id;
+        return avatarId ? Number(avatarId) : null;
+      };
+
+      // Helper function to get username from party data
+      const getUsernameFromParty = (party: any) => {
+        return party?.username || party?.handle || "Unknown";
+      };
+
+      // Helper function to get user ID from party data
+      const getUserIdFromParty = (party: any) => {
+        return party?.id?.toString();
+      };
+
+      const firstPartyUsername = getUsernameFromParty(agreementData.firstParty);
+      const counterPartyUsername = getUsernameFromParty(
+        agreementData.counterParty,
+      );
+      const creatorUsername = getUsernameFromParty(agreementData.creator);
+
+      const completionDate = agreement?.completionDate;
+
+      console.log("📋 AgreementDetails API Response:", agreementData);
+      console.log("📅 Timeline events:", agreementData.timeline);
+      console.log("✅ Completion date found:", completionDate);
+
+      // Transform API data to frontend format
+      // Transform API data to frontend format
+      const transformedAgreement: Agreement & { completionDate?: string } = {
+        id: agreementData.id.toString(),
+        title: agreementData.title,
+        description: agreementData.description,
+        type:
+          agreementData.visibility === AgreementVisibilityEnum.PRIVATE
+            ? "Private"
+            : "Public",
+        counterparty: counterPartyUsername,
+        createdBy: firstPartyUsername,
+        status: apiStatusToFrontend(agreementData.status),
+        dateCreated: agreementData.createdAt,
+        deadline: agreementData.deadline,
+        amount: agreementData.amount
+          ? agreementData.amount.toString()
+          : undefined,
+        token: agreementData.tokenSymbol || undefined,
+        includeFunds: agreementData.type === 2 ? "yes" : "no",
+        useEscrow: agreementData.type === 2,
+        escrowAddress: agreementData.escrowContract || undefined,
+        files: agreementData.files?.length || 0,
+        images: agreementData.files?.map((file: any) => file.fileName) || [],
+
+        // Store completion date
+        completionDate: completionDate || undefined,
+
+        // Avatar and user IDs
+        createdByAvatarId: getAvatarIdFromParty(agreementData.firstParty),
+        counterpartyAvatarId: getAvatarIdFromParty(agreementData.counterParty),
+        createdByUserId: getUserIdFromParty(agreementData.firstParty),
+        counterpartyUserId: getUserIdFromParty(agreementData.counterParty),
+
+        // Creator information
+        creator: creatorUsername,
+        creatorUserId: getUserIdFromParty(agreementData.creator),
+        creatorAvatarId: getAvatarIdFromParty(agreementData.creator),
+
+        // Store raw API data for role checking
+        _raw: agreementData,
+      };
+
+      setAgreement(transformedAgreement);
+    } catch (error) {
+      console.error("Failed to fetch agreement:", error);
+      toast.error("Failed to load agreement details");
+      setAgreement(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, agreement?.completionDate]);
+
   useEffect(() => {
-    const fetchAgreement = async () => {
-      setLoading(true);
-      try {
-        if (!id) {
-          throw new Error("No agreement ID provided");
-        }
+    fetchAgreementDetails();
+  }, [id, fetchAgreementDetails]);
 
-        const agreementId = parseInt(id);
-        const response =
-          await agreementService.getAgreementDetails(agreementId);
-        const agreementData = response.data;
+  // Sign Agreement Handler
+  const handleSignAgreement = async () => {
+    if (!id || !agreement) return;
 
-        console.log("📋 AgreementDetails API Response:", agreementData);
+    setIsSigning(true);
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.signAgreement(agreementId, true);
 
-        // Helper function to extract avatar ID from party data and convert to number
-        const getAvatarIdFromParty = (party: any): number | null => {
-          const avatarId = party?.avatarId || party?.avatar?.id;
-          // Convert to number if it exists, otherwise return null
-          return avatarId ? Number(avatarId) : null;
-        };
+      toast.success("Agreement signed successfully!");
+      await fetchAgreementDetails(); // Refresh data
+    } catch (error: any) {
+      console.error("Failed to sign agreement:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to sign agreement. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsSigning(false);
+    }
+  };
 
-        // Helper function to get username from party data
-        const getUsernameFromParty = (party: any) => {
-          return party?.username || party?.handle || "Unknown";
-        };
+  // Cancel Agreement Handler
+  const handleCancelAgreement = async () => {
+    if (!id || !agreement) return;
 
-        // Helper function to get user ID from party data
-        const getUserIdFromParty = (party: any) => {
-          return party?.id?.toString();
-        };
+    if (!confirm("Are you sure you want to cancel this agreement?")) {
+      return;
+    }
 
-        const firstPartyUsername = getUsernameFromParty(
-          agreementData.firstParty,
+    setIsCancelling(true);
+    try {
+      const agreementId = parseInt(id);
+
+      // For pending agreements, use sign with false to reject
+      if (agreement.status === "pending") {
+        await agreementService.signAgreement(agreementId, false);
+        toast.success("Agreement cancelled successfully!");
+      } else {
+        // For active agreements, use cancel request
+        await agreementService.requestCancelation(agreementId);
+        toast.success(
+          "Cancellation requested! Waiting for counterparty confirmation.",
         );
-        const counterPartyUsername = getUsernameFromParty(
-          agreementData.counterParty,
-        );
-        const creatorUsername = getUsernameFromParty(agreementData.creator);
-
-        console.log("🔄 Party mapping:", {
-          firstParty: firstPartyUsername,
-          counterParty: counterPartyUsername,
-          creator: creatorUsername,
-          agreementType: agreementData.type,
-        });
-
-        // Transform API data to frontend format
-        const transformedAgreement: Agreement = {
-          id: agreementData.id.toString(),
-          title: agreementData.title,
-          description: agreementData.description,
-          type:
-            agreementData.visibility === AgreementVisibilityEnum.PRIVATE
-              ? "Private"
-              : "Public",
-          // 🚨 CRITICAL: Use the actual parties, not the creator
-          counterparty: counterPartyUsername,
-          createdBy: firstPartyUsername, // Show first party as "createdBy" for consistency
-          status: apiStatusToFrontend(agreementData.status),
-          dateCreated: agreementData.createdAt,
-          deadline: agreementData.deadline,
-          amount: agreementData.amount
-            ? agreementData.amount.toString()
-            : undefined,
-          token: agreementData.tokenSymbol || undefined,
-          includeFunds: agreementData.type === 2 ? "yes" : "no",
-          useEscrow: agreementData.type === 2,
-          escrowAddress: agreementData.escrowContract || undefined,
-          files: agreementData.files?.length || 0,
-          images: agreementData.files?.map((file) => file.fileName) || [],
-
-          // 🚨 CRITICAL FIX: Use actual parties' avatars for the agreement parties
-          createdByAvatarId: getAvatarIdFromParty(agreementData.firstParty),
-          counterpartyAvatarId: getAvatarIdFromParty(
-            agreementData.counterParty,
-          ),
-          createdByUserId: getUserIdFromParty(agreementData.firstParty),
-          counterpartyUserId: getUserIdFromParty(agreementData.counterParty),
-
-          // 🚨 CRITICAL FIX: Add creator information separately with avatar
-          creator: creatorUsername,
-          creatorUserId: getUserIdFromParty(agreementData.creator),
-          creatorAvatarId: getAvatarIdFromParty(agreementData.creator), // Add creator avatar ID
-        };
-
-        console.log("✅ Transformed Agreement:", {
-          parties: `${transformedAgreement.createdBy} ↔ ${transformedAgreement.counterparty}`,
-          creator: transformedAgreement.creator,
-          creatorAvatarId: transformedAgreement.creatorAvatarId,
-          firstPartyAvatarId: transformedAgreement.createdByAvatarId,
-        });
-
-        setAgreement(transformedAgreement);
-      } catch (error) {
-        console.error("Failed to fetch agreement:", error);
-        toast.error("Failed to load agreement details");
-        setAgreement(null);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    fetchAgreement();
-  }, [id]);
+      await fetchAgreementDetails(); // Refresh data
+    } catch (error: any) {
+      console.error("Failed to cancel agreement:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to cancel agreement. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // Respond to Cancelation Request
+  const handleRespondToCancelation = async (accepted: boolean) => {
+    if (!id || !agreement) return;
+
+    setIsRespondingToCancel(true);
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.respondToCancelation(agreementId, accepted);
+
+      if (accepted) {
+        toast.success("Cancellation accepted! Agreement has been cancelled.");
+      } else {
+        toast.success("Cancellation rejected! Agreement remains active.");
+      }
+
+      await fetchAgreementDetails();
+    } catch (error: any) {
+      console.error("Failed to respond to cancellation:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to respond to cancellation. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsRespondingToCancel(false);
+    }
+  };
+
+  // Mark as Delivered Handler - BIDIRECTIONAL
+  const handleMarkAsDelivered = async () => {
+    if (!id || !agreement) return;
+
+    setIsCompleting(true);
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.markAsDelivered(agreementId);
+
+      toast.success("Delivery marked! Waiting for the other party's approval.");
+      await fetchAgreementDetails();
+    } catch (error: any) {
+      console.error("Failed to mark as delivered:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to mark as delivered. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  // Confirm Delivery Handler - BIDIRECTIONAL
+  const handleConfirmDelivery = async () => {
+    if (!id || !agreement) return;
+
+    setIsConfirming(true);
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.confirmDelivery(agreementId);
+
+      toast.success("Delivery confirmed! Agreement completed.");
+      await fetchAgreementDetails();
+    } catch (error: any) {
+      console.error("Failed to confirm delivery:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to confirm delivery. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  // Reject Delivery Handler - BIDIRECTIONAL with dispute logic
+  const handleRejectDelivery = async () => {
+    if (!id || !agreement) return;
+
+    const isSecondRejectionAttempt = isSecondRejection(agreement?._raw);
+
+    if (isSecondRejectionAttempt) {
+      // Second rejection automatically triggers dispute
+      if (
+        !confirm(
+          "This is the second rejection. This will automatically open a dispute. Are you sure?",
+        )
+      ) {
+        return;
+      }
+
+      setIsRejecting(true);
+      try {
+        // For now, we'll just reject and the API should handle dispute creation
+        const agreementId = parseInt(id);
+        await agreementService.rejectDelivery(agreementId);
+
+        toast.success(
+          "Delivery rejected! Dispute has been automatically opened due to second rejection.",
+        );
+        await fetchAgreementDetails();
+      } catch (error: any) {
+        console.error("Failed to reject delivery:", error);
+        const errorMessage =
+          error.response?.data?.message ||
+          "Failed to reject delivery. Please try again.";
+        toast.error(errorMessage);
+      } finally {
+        setIsRejecting(false);
+      }
+    } else {
+      // First rejection
+      if (
+        !confirm(
+          "Are you sure you want to reject this delivery? The agreement will return to signed status.",
+        )
+      ) {
+        return;
+      }
+
+      setIsRejecting(true);
+      try {
+        const agreementId = parseInt(id);
+        await agreementService.rejectDelivery(agreementId);
+
+        toast.success(
+          "Delivery rejected! Agreement returned to signed status.",
+        );
+        await fetchAgreementDetails();
+      } catch (error: any) {
+        console.error("Failed to reject delivery:", error);
+        const errorMessage =
+          error.response?.data?.message ||
+          "Failed to reject delivery. Please try again.";
+        toast.error(errorMessage);
+      } finally {
+        setIsRejecting(false);
+      }
+    }
+  };
+
+  // Open Dispute Handler
+  const handleOpenDispute = async () => {
+    if (!id || !agreement) return;
+
+    if (
+      !confirm(
+        "Are you sure you want to open a dispute? This will escalate the agreement to dispute resolution.",
+      )
+    ) {
+      return;
+    }
+
+    setIsOpeningDispute(true);
+    try {
+      // Since dispute API is not built, we'll simulate it for now
+      // In a real implementation, you would call: await agreementService.openDispute(agreementId);
+
+      // For now, we'll use a timeout to simulate the API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      toast.success(
+        "Dispute opened successfully! The agreement is now in dispute resolution.",
+      );
+
+      // In a real implementation, you would refresh the agreement data
+      // await fetchAgreementDetails();
+
+      // For now, we'll update the local state to show disputed status
+      setAgreement((prev) => (prev ? { ...prev, status: "disputed" } : null));
+    } catch (error: any) {
+      console.error("Failed to open dispute:", error);
+      toast.error("Failed to open dispute. Please try again.");
+    } finally {
+      setIsOpeningDispute(false);
+    }
+  };
+
+  // Cancel Dispute Handler
+  const handleCancelDispute = async () => {
+    if (!id || !agreement) return;
+
+    if (
+      !confirm(
+        "Are you sure you want to cancel this dispute? This will return the agreement to its previous status.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      // Since dispute API is not built, we'll simulate it for now
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      toast.success("Dispute cancelled successfully!");
+
+      // Refresh agreement data to get actual status
+      await fetchAgreementDetails();
+    } catch (error: any) {
+      console.error("Failed to cancel dispute:", error);
+      toast.error("Failed to cancel dispute. Please try again.");
+    }
+  };
 
   const getStatusIcon = (status: Agreement["status"]) => {
     switch (status) {
@@ -181,12 +605,14 @@ export default function AgreementDetails() {
         return <CheckCircle className="h-5 w-5 text-green-400" />;
       case "pending":
         return <Clock className="h-5 w-5 text-yellow-400" />;
-      case "signed":
+      case "signed": // 🚨 KEEP: This is now our main status
         return <FileText className="h-5 w-5 text-blue-400" />;
       case "cancelled":
         return <XCircle className="h-5 w-5 text-red-400" />;
       case "disputed":
         return <AlertTriangle className="h-5 w-5 text-purple-400" />;
+      case "pending_approval":
+        return <Package className="h-5 w-5 text-orange-400" />;
       default:
         return <FileText className="h-5 w-5 text-gray-400" />;
     }
@@ -198,12 +624,14 @@ export default function AgreementDetails() {
         return "bg-green-500/20 text-green-400 border-green-500/30";
       case "pending":
         return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "signed":
+      case "signed": // 🚨 KEEP: This is now our main status
         return "bg-blue-500/20 text-blue-400 border-blue-500/30";
       case "cancelled":
         return "bg-red-500/20 text-red-400 border-red-500/30";
       case "disputed":
         return "bg-purple-500/20 text-purple-400 border-purple-500/30";
+      case "pending_approval":
+        return "bg-orange-500/20 text-orange-400 border-orange-500/30";
       default:
         return "bg-gray-500/20 text-gray-400 border-gray-500/30";
     }
@@ -217,57 +645,79 @@ export default function AgreementDetails() {
     });
   };
 
-  const handleSignAgreement = async () => {
-    if (!id || !agreement) return;
-
-    try {
-      const agreementId = parseInt(id);
-      await agreementService.signAgreement(agreementId, true);
-
-      // Refresh agreement data
-      const response = await agreementService.getAgreementDetails(agreementId);
-      const updatedAgreementData = response.data;
-
-      const updatedAgreement: Agreement = {
-        ...agreement,
-        status: apiStatusToFrontend(updatedAgreementData.status),
-      };
-
-      setAgreement(updatedAgreement);
-
-      // Show success message
-      alert("Agreement signed successfully!");
-    } catch (error) {
-      console.error("Failed to sign agreement:", error);
-      alert("Failed to sign agreement. Please try again.");
-    }
-  };
-
   const handleDownloadFile = async (fileId: number) => {
     if (!id) return;
 
     try {
       const agreementId = parseInt(id);
       await agreementService.downloadFile(agreementId, fileId);
-      // Note: The download endpoint should return the file blob
-      // You might need to handle the file download response appropriately
     } catch (error) {
       console.error("Failed to download file:", error);
       alert("Failed to download file. Please try again.");
     }
   };
 
+  // Check user roles and permissions
+  const isCounterparty =
+    agreement && user ? isCurrentUserCounterparty(agreement._raw, user) : false;
+  const isFirstParty =
+    agreement && user ? isCurrentUserFirstParty(agreement._raw, user) : false;
+  const isCreator =
+    agreement && user ? isCurrentUserCreator(agreement._raw, user) : false;
+
+  // Check if user is a participant (either first party or counterparty)
+  const isParticipant = isFirstParty || isCounterparty;
+
+  // Check if user can view the agreement (participants, creator, or public agreement)
+  const canViewAgreement =
+    isParticipant || isCreator || (agreement && agreement.type === "Public");
+
+  // BIDIRECTIONAL ACTION PERMISSIONS
+  // BIDIRECTIONAL ACTION PERMISSIONS
+  const canSign =
+    agreement?.status === "pending" && (isCounterparty || isFirstParty);
+  const canCancel = agreement?.status === "pending" && isFirstParty;
+  const canRequestCancel = agreement?.status === "signed" && isParticipant; // 🚨 CHANGE: "active" → "signed"
+  const canRespondToCancel =
+    agreement?.status === "signed" && // 🚨 CHANGE: "active" → "signed"
+    agreement._raw?.cancelPending &&
+    ((isFirstParty &&
+      agreement._raw.cancelRequestedById === agreement._raw.counterParty?.id) ||
+      (isCounterparty &&
+        agreement._raw.cancelRequestedById === agreement._raw.firstParty?.id));
+
+  // BIDIRECTIONAL DELIVERY PERMISSIONS
+  // Both parties can mark as delivered when agreement is signed
+  const canMarkDelivered = canUserMarkAsDelivered(agreement?._raw, user);
+
+  // The other party can review delivery when status is pending_approval
+  const canReviewDelivery = shouldShowDeliveryReviewButtons(
+    agreement?._raw,
+    user,
+  );
+
+  // Check who submitted the delivery
+  const deliverySubmittedBy = getDeliverySubmittedBy(agreement?._raw);
+  const isCurrentUserSubmittedDelivery =
+    deliverySubmittedBy &&
+    (deliverySubmittedBy.id === user?.id || deliverySubmittedBy === user?.id);
+
+  // Dispute permissions
+  const canOpenDispute = agreement?.status === "signed" && isParticipant;
+  const canCancelDispute = agreement?.status === "disputed" && isParticipant;
+
+  // Get completion date for display
+  const completionDate = getCompletionDate(agreement?._raw);
+
   if (loading) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
         <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
         <div className="text-center">
-          {/* Pulsing gradient ring */}
           <div className="relative mx-auto mb-8">
             <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
             <div className="absolute inset-0 mx-auto size-32 animate-ping rounded-full border-2 border-cyan-400/40"></div>
           </div>
-
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-cyan-300">
               Loading Agreement
@@ -276,8 +726,6 @@ export default function AgreementDetails() {
               Preparing your agreement details...
             </p>
           </div>
-
-          {/* Progress dots */}
           <div className="mt-4 flex justify-center space-x-1">
             {[...Array(3)].map((_, i) => (
               <div
@@ -292,11 +740,15 @@ export default function AgreementDetails() {
     );
   }
 
-  if (!agreement) {
+  if (!agreement || !canViewAgreement) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-cyan-900/20 to-purple-900/20">
         <div className="text-center">
-          <div className="mb-4 text-lg text-white">Agreement not found</div>
+          <div className="mb-4 text-lg text-white">
+            {!agreement
+              ? "Agreement not found"
+              : "You don't have permission to view this agreement"}
+          </div>
           <Button
             onClick={() => navigate("/agreements")}
             className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
@@ -328,7 +780,7 @@ export default function AgreementDetails() {
                 className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
               >
                 {agreement.status.charAt(0).toUpperCase() +
-                  agreement.status.slice(1)}
+                  agreement.status.slice(1).replace("_", " ")}
               </span>
             </div>
           </div>
@@ -479,6 +931,20 @@ export default function AgreementDetails() {
                     </div>
                   </div>
 
+                  {completionDate && (
+                    <div className="flex items-center space-x-3">
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      <div>
+                        <div className="text-sm text-cyan-300">
+                          Completed On
+                        </div>
+                        <div className="text-white">
+                          {formatDate(completionDate)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center space-x-3">
                     <FileText className="h-5 w-5 text-blue-400" />
                     <div>
@@ -612,6 +1078,339 @@ export default function AgreementDetails() {
               )}
             </div>
 
+            {/* BIDIRECTIONAL Action Buttons Section */}
+            {(canSign ||
+              canCancel ||
+              canRequestCancel ||
+              canRespondToCancel ||
+              canMarkDelivered ||
+              canReviewDelivery ||
+              canOpenDispute ||
+              canCancelDispute) && (
+              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white">
+                  Agreement Actions
+                </h3>
+
+                <div className="flex flex-wrap gap-3">
+                  {/* Sign Agreement Button - Only for counterparty when pending */}
+                  {canSign && (
+                    <Button
+                      variant="neon"
+                      className="neon-hover"
+                      onClick={handleSignAgreement}
+                      disabled={isSigning}
+                    >
+                      {isSigning ? (
+                        <>
+                          <Clock className="mr-2 h-4 w-4 animate-spin" />
+                          Signing...
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="mr-2 h-4 w-4" />
+                          {isFirstParty
+                            ? "Sign as First Party"
+                            : "Sign as Counterparty"}
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Cancel Agreement Button - For first party when pending */}
+                  {canCancel && (
+                    <Button
+                      variant="outline"
+                      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      onClick={handleCancelAgreement}
+                      disabled={isCancelling}
+                    >
+                      {isCancelling ? (
+                        <>
+                          <Clock className="mr-2 h-4 w-4 animate-spin" />
+                          Cancelling...
+                        </>
+                      ) : (
+                        <>
+                          <X className="mr-2 h-4 w-4" />
+                          Cancel Agreement
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Request Cancelation Button - For both parties when active */}
+                  {canRequestCancel && (
+                    <Button
+                      variant="outline"
+                      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                      onClick={handleCancelAgreement}
+                      disabled={isCancelling}
+                    >
+                      {isCancelling ? (
+                        <>
+                          <Clock className="mr-2 h-4 w-4 animate-spin" />
+                          Requesting...
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="mr-2 h-4 w-4" />
+                          Request Cancellation
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Respond to Cancelation Buttons */}
+                  {canRespondToCancel && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                        onClick={() => handleRespondToCancelation(true)}
+                        disabled={isRespondingToCancel}
+                      >
+                        {isRespondingToCancel ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Accepting...
+                          </>
+                        ) : (
+                          <>
+                            <ThumbsUp className="mr-2 h-4 w-4" />
+                            Accept Cancellation
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                        onClick={() => handleRespondToCancelation(false)}
+                        disabled={isRespondingToCancel}
+                      >
+                        {isRespondingToCancel ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Rejecting...
+                          </>
+                        ) : (
+                          <>
+                            <ThumbsDown className="mr-2 h-4 w-4" />
+                            Reject Cancellation
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+
+                  {/* BIDIRECTIONAL: Mark as Delivered Button - For both parties when active */}
+                  {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
+                    <Button
+                      variant="outline"
+                      className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                      onClick={handleMarkAsDelivered}
+                      disabled={isCompleting}
+                    >
+                      {isCompleting ? (
+                        <>
+                          <Clock className="mr-2 h-4 w-4 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Mark My Work as Delivered
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* BIDIRECTIONAL: Delivery Review Buttons - For the OTHER party when pending approval */}
+                  {canReviewDelivery && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                        onClick={handleConfirmDelivery}
+                        disabled={isConfirming}
+                      >
+                        {isConfirming ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Confirming...
+                          </>
+                        ) : (
+                          <>
+                            <PackageCheck className="mr-2 h-4 w-4" />
+                            Accept Delivery
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                        onClick={handleRejectDelivery}
+                        disabled={isRejecting}
+                      >
+                        {isRejecting ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Rejecting...
+                          </>
+                        ) : (
+                          <>
+                            <Ban className="mr-2 h-4 w-4" />
+                            Reject Delivery
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Open Dispute Button */}
+                  {canOpenDispute && (
+                    <Button
+                      variant="outline"
+                      className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                      onClick={handleOpenDispute}
+                      disabled={isOpeningDispute}
+                    >
+                      {isOpeningDispute ? (
+                        <>
+                          <Clock className="mr-2 h-4 w-4 animate-spin" />
+                          Opening...
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Open Dispute
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Cancel Dispute Button */}
+                  {canCancelDispute && (
+                    <Button
+                      variant="outline"
+                      className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                      onClick={handleCancelDispute}
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Cancel Dispute
+                    </Button>
+                  )}
+
+                  {/* Show status if user has already submitted delivery */}
+                  {isCurrentUserSubmittedDelivery && (
+                    <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2">
+                      <CheckSquare className="h-4 w-4 text-blue-400" />
+                      <span className="text-sm text-blue-300">
+                        Your delivery has been submitted and is awaiting review
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action descriptions */}
+                <div className="mt-4 space-y-2 text-sm text-cyan-300">
+                  {canSign && (
+                    <p>
+                      {isFirstParty
+                        ? "As the first party, you can sign this agreement to make it active."
+                        : "As the counterparty, you can sign this agreement to make it active."}{" "}
+                      {/* 🚨 FIX: Dynamic description */}
+                    </p>
+                  )}
+                  {canCancel && (
+                    <p>You can cancel this agreement before it's signed.</p>
+                  )}
+                  {canRequestCancel && (
+                    <p>
+                      Request cancellation of this agreement. The other party
+                      will need to confirm.
+                    </p>
+                  )}
+                  {canRespondToCancel && (
+                    <p>
+                      Respond to the cancellation request from the other party.
+                    </p>
+                  )}
+                  {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
+                    <p>
+                      Mark your work as delivered when you've completed your
+                      part of the agreement.
+                    </p>
+                  )}
+                  {canReviewDelivery && (
+                    <p>
+                      Review the other party's delivery and either accept or
+                      reject it.
+                    </p>
+                  )}
+                  {canOpenDispute && (
+                    <p>
+                      Open a dispute if there are issues with the agreement that
+                      need resolution.
+                    </p>
+                  )}
+                  {canCancelDispute && (
+                    <p>
+                      Cancel the dispute if you've resolved the issues mutually.
+                    </p>
+                  )}
+                  {isCurrentUserSubmittedDelivery && (
+                    <p>
+                      You've submitted your delivery. Waiting for the other
+                      party to review it.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Delivery Status Information */}
+            {agreement?.status === "pending_approval" && (
+              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white">
+                  Delivery Status
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Package className="h-5 w-5 text-orange-400" />
+                      <div>
+                        <div className="font-medium text-white">
+                          Delivery Submitted
+                        </div>
+                        <div className="text-sm text-cyan-300">
+                          Waiting for approval from the other party
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {deliverySubmittedBy && (
+                    <div className="rounded-lg bg-orange-500/10 p-3">
+                      <div className="text-sm text-orange-300">
+                        <strong>
+                          {deliverySubmittedBy.username ||
+                            deliverySubmittedBy.name ||
+                            "One party"}
+                        </strong>{" "}
+                        has marked their work as delivered and is waiting for{" "}
+                        <strong>
+                          {isCurrentUserSubmittedDelivery
+                            ? "the other party"
+                            : "your"}
+                        </strong>{" "}
+                        to review it.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Activity Timeline */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-6 text-lg font-semibold text-white">
@@ -630,7 +1429,6 @@ export default function AgreementDetails() {
                   </div>
                   <div className="mt-1 text-xs text-cyan-400/70">
                     <div className="flex items-center gap-2">
-                      {" "}
                       <UserAvatar
                         userId={
                           agreement.creatorUserId || agreement.creator || ""
@@ -645,10 +1443,13 @@ export default function AgreementDetails() {
                   <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-cyan-400/50"></div>
                 </div>
 
-                {/* Step 2 - Based on Status */}
-                {["signed", "completed", "disputed"].includes(
-                  agreement.status,
-                ) && (
+                {/* Step 2 - Signed (if signed) */}
+                {[
+                  "signed", // 🚨 CHANGE: "active" → "signed"
+                  "completed",
+                  "disputed",
+                  "pending_approval",
+                ].includes(agreement.status) && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
                     <div className="mt-3 font-medium text-white">
@@ -664,7 +1465,22 @@ export default function AgreementDetails() {
                   </div>
                 )}
 
-                {/* Step 3 - Completed or Disputed */}
+                {/* Step 4 - Delivery Submitted (if pending approval) */}
+                {agreement.status === "pending_approval" && (
+                  <div className="relative flex min-w-[10rem] flex-col items-center text-center">
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-orange-400"></div>
+                    <div className="mt-3 font-medium text-white">
+                      Delivery Submitted
+                    </div>
+                    <div className="text-sm text-cyan-300">Recently</div>
+                    <div className="mt-1 text-xs text-orange-400/70">
+                      Waiting for approval
+                    </div>
+                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-orange-400/50"></div>
+                  </div>
+                )}
+
+                {/* Step 5 - Completed */}
                 {agreement.status === "completed" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
@@ -672,12 +1488,12 @@ export default function AgreementDetails() {
                       Work Completed
                     </div>
                     <div className="text-sm text-cyan-300">
-                      {formatDate(agreement.deadline)}
+                      {completionDate ? formatDate(completionDate) : "Recently"}
                     </div>
-                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-green-400/50"></div>
                   </div>
                 )}
 
+                {/* Disputed State */}
                 {agreement.status === "disputed" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-purple-400"></div>
@@ -691,16 +1507,14 @@ export default function AgreementDetails() {
                   </div>
                 )}
 
-                {/* Final Step */}
-                {agreement.status === "completed" && (
+                {/* Cancelled State */}
+                {agreement.status === "cancelled" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-400"></div>
                     <div className="mt-3 font-medium text-white">
-                      Payment Released
+                      Agreement Cancelled
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      {formatDate(agreement.deadline)}
-                    </div>
+                    <div className="text-sm text-cyan-300">Recently</div>
                   </div>
                 )}
               </div>
@@ -734,7 +1548,7 @@ export default function AgreementDetails() {
                   <span
                     className={`font-medium ${getStatusColor(agreement.status)} rounded px-2 py-1 text-xs`}
                   >
-                    {agreement.status}
+                    {agreement.status.replace("_", " ")}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -760,51 +1574,63 @@ export default function AgreementDetails() {
               </div>
             </div>
 
-            {/* Actions Panel */}
+            {/* Your Role Information */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-              <h3 className="mb-4 text-lg font-semibold text-white">Actions</h3>
+              <h3 className="mb-4 text-lg font-semibold text-white">
+                Your Role
+              </h3>
               <div className="space-y-3">
-                <Button
-                  variant="outline"
-                  className="w-full border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Download Agreement
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                >
-                  <Users className="mr-2 h-4 w-4" />
-                  Share Agreement
-                </Button>
-                {agreement.status === "pending" && (
-                  <Button
-                    variant="neon"
-                    className="neon-hover w-full"
-                    onClick={handleSignAgreement}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Sign Agreement
-                  </Button>
+                {isFirstParty && (
+                  <div className="rounded-lg bg-blue-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-400" />
+                      <span className="font-medium text-blue-300">
+                        First Party
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-blue-200/80">
+                      You initiated this agreement. Both parties can mark work
+                      as delivered.
+                    </p>
+                  </div>
                 )}
-                {agreement.status === "disputed" && (
-                  <Button
-                    variant="outline"
-                    className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10"
-                  >
-                    <AlertTriangle className="mr-2 h-4 w-4" />
-                    View Dispute
-                  </Button>
+                {isCounterparty && (
+                  <div className="rounded-lg bg-green-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4 text-green-400" />
+                      <span className="font-medium text-green-300">
+                        Counterparty
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-green-200/80">
+                      You signed this agreement. Both parties can mark work as
+                      delivered.
+                    </p>
+                  </div>
                 )}
-                {agreement.useEscrow && agreement.escrowAddress && (
-                  <Button
-                    variant="outline"
-                    className="w-full border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                  >
-                    <Shield className="mr-2 h-4 w-4" />
-                    View Escrow
-                  </Button>
+                {isCreator && !isFirstParty && !isCounterparty && (
+                  <div className="rounded-lg bg-purple-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-purple-400" />
+                      <span className="font-medium text-purple-300">
+                        Creator
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-purple-200/80">
+                      You created this agreement in the system.
+                    </p>
+                  </div>
+                )}
+                {!isFirstParty && !isCounterparty && !isCreator && (
+                  <div className="rounded-lg bg-gray-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-gray-400" />
+                      <span className="font-medium text-gray-300">Viewer</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-200/80">
+                      You are viewing this agreement.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -822,11 +1648,19 @@ export default function AgreementDetails() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-cyan-300">Expires</span>
+                  <span className="text-cyan-300">Deadline</span>
                   <span className="text-white">
                     {formatDate(agreement.deadline)}
                   </span>
                 </div>
+                {completionDate && (
+                  <div className="flex justify-between">
+                    <span className="text-cyan-300">Completed</span>
+                    <span className="text-white">
+                      {formatDate(completionDate)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

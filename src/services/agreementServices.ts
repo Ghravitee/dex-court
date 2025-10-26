@@ -191,17 +191,44 @@ class AgreementService {
 
   // User search methods
   // In agreementServices.ts - update searchUsers to return empty array
+  // User search methods
   async searchUsers(query: string): Promise<any[]> {
-    if (!query.trim() || query.length < 2) {
-      return [];
+    try {
+      console.log(`🔍 [AgreementService] Searching users with query: ${query}`);
+
+      // Use the api instance instead of this.request()
+      const response = await api.get<any[]>(
+        `/accounts/search?query=${encodeURIComponent(query)}`,
+      );
+
+      console.log(`🔍 [AgreementService] Search results:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error("🔍 [AgreementService] User search failed:", error);
+
+      // Fallback: if search endpoint doesn't exist, use getAllUsers and filter locally
+      console.log("🔍 [AgreementService] Using fallback search method");
+      const allUsers = await this.getAllUsers();
+      const filteredUsers = allUsers.filter(
+        (user) =>
+          user.username?.toLowerCase().includes(query.toLowerCase()) ||
+          user.telegramInfo?.toLowerCase().includes(query.toLowerCase()) ||
+          user.telegram?.username?.toLowerCase().includes(query.toLowerCase()),
+      );
+      return filteredUsers;
     }
-
-    console.log("🔍 User search not available - /accounts endpoint not found");
-
-    // Return empty array since we can't search users
-    return [];
   }
 
+  // Also update getAllUsers method to use api instance
+  async getAllUsers(): Promise<any[]> {
+    try {
+      const response = await api.get<any[]>("/accounts");
+      return response.data;
+    } catch (error) {
+      console.error("🔍 [AgreementService] Failed to get all users:", error);
+      return [];
+    }
+  }
   async getUserByUsername(username: string): Promise<any> {
     try {
       const cleanUsername = username.replace(/^@/, "");
@@ -305,6 +332,7 @@ class AgreementService {
   }
 
   // Delivery actions
+  // Delivery actions
   async markAsDelivered(agreementId: number): Promise<void> {
     const response = await api.patch(`/agreement/${agreementId}/delivery/send`);
     return response.data;
@@ -344,5 +372,4 @@ class AgreementService {
     return response.data;
   }
 }
-
 export const agreementService = new AgreementService();
