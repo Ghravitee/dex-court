@@ -36,6 +36,7 @@ import type { Agreement } from "../types";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/apiClient";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -658,16 +659,165 @@ export default function AgreementDetails() {
     });
   };
 
-  const handleDownloadFile = async (fileId: number) => {
-    if (!id) return;
+  const handleDownloadFile = async (fileIndex: number) => {
+    if (!id || !agreement) return;
 
     try {
       const agreementId = parseInt(id);
-      await agreementService.downloadFile(agreementId, fileId);
-    } catch (error) {
+
+      // Show loading state
+      toast.info("Downloading file...");
+
+      // Get file information from agreement data
+      const files = agreement._raw?.files || [];
+      if (files.length === 0 || fileIndex >= files.length) {
+        toast.error("File not found in agreement data");
+        return;
+      }
+
+      const file = files[fileIndex];
+      const fileId = file.id;
+
+      if (!fileId) {
+        toast.error("File ID not found");
+        return;
+      }
+
+      console.log(`📥 Downloading file:`, {
+        agreementId,
+        fileId,
+        originalFileName: file.fileName,
+        fileIndex,
+        mimeType: file.mimeType,
+      });
+
+      // Create a custom download function that preserves the original filename
+      await downloadFileWithOriginalName(agreementId, fileId, file.fileName);
+      toast.success("File downloaded successfully!");
+    } catch (error: any) {
       console.error("Failed to download file:", error);
-      alert("Failed to download file. Please try again.");
+
+      // Use the specific error message from the service
+      const errorMessage =
+        error.message || "Failed to download file. Please try again.";
+      toast.error(errorMessage);
     }
+  };
+
+  // Enhanced download function that preserves original filename
+  const downloadFileWithOriginalName = async (
+    agreementId: number,
+    fileId: number,
+    originalFileName: string,
+  ) => {
+    try {
+      const response = await api.get(
+        `/agreement/${agreementId}/file/${fileId}`,
+        {
+          responseType: "blob",
+        },
+      );
+
+      // Use the original filename from the file data
+      let filename = originalFileName;
+
+      // If the original filename doesn't have an extension, try to get it from headers
+      if (!filename.includes(".")) {
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1];
+          }
+        }
+      }
+
+      console.log("📁 Final filename for download:", filename);
+
+      // Create blob with proper MIME type
+      const contentType = response.headers["content-type"];
+      const blob = contentType
+        ? new Blob([response.data], { type: contentType })
+        : new Blob([response.data]);
+
+      // Create and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed:", error);
+      throw error;
+    }
+  };
+
+  // Helper function to determine file type
+  const getFileType = (filename: string): string => {
+    if (!filename) return "document";
+
+    const ext = filename.toLowerCase().split(".").pop();
+    switch (ext) {
+      case "pdf":
+        return "pdf";
+      case "jpg":
+      case "jpeg":
+      case "png":
+      case "gif":
+      case "webp":
+      case "svg":
+        return "image";
+      case "doc":
+      case "docx":
+        return "word";
+      case "xls":
+      case "xlsx":
+        return "excel";
+      case "zip":
+      case "rar":
+      case "7z":
+        return "archive";
+      case "txt":
+        return "text";
+      default:
+        return "document";
+    }
+  };
+
+  // Helper function to get appropriate file icon
+  const getFileIcon = (fileType: string) => {
+    const className = "h-5 w-5";
+
+    switch (fileType) {
+      case "pdf":
+        return <FileText className={`${className} text-red-400`} />;
+      case "image":
+        return <Image className={`${className} text-green-400`} />;
+      case "word":
+        return <FileText className={`${className} text-blue-400`} />;
+      case "excel":
+        return <FileText className={`${className} text-green-500`} />;
+      case "archive":
+        return <Paperclip className={`${className} text-yellow-400`} />;
+      case "text":
+        return <FileText className={`${className} text-gray-400`} />;
+      default:
+        return <Paperclip className={`${className} text-cyan-400`} />;
+    }
+  };
+
+  // Helper function to format file size
+  const getFileSizeDisplay = (fileSize?: number): string => {
+    if (!fileSize) return "Unknown size";
+
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(fileSize) / Math.log(1024));
+    return (
+      Math.round((fileSize / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
+    );
   };
 
   // Check user roles and permissions
@@ -1017,30 +1167,42 @@ export default function AgreementDetails() {
                     Supporting Documents
                   </h3>
                   <div className="space-y-2">
-                    {agreement.images.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center space-x-3 rounded-lg border border-white/10 bg-white/5 p-3"
-                      >
-                        {file.toLowerCase().endsWith(".pdf") ? (
-                          <FileText className="h-5 w-5 text-red-400" />
-                        ) : /\.(jpg|jpeg|png|gif|webp)$/i.test(file) ? (
-                          <Image className="h-5 w-5 text-green-400" />
-                        ) : (
-                          <Paperclip className="h-5 w-5 text-cyan-400" />
-                        )}
-                        <span className="flex-1 text-white">{file}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          onClick={() => handleDownloadFile(index)}
+                    {agreement.images.map((file, index) => {
+                      // Get file type for better icon display
+                      const fileType = getFileType(file);
+                      const fileIcon = getFileIcon(fileType);
+
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3 transition-colors duration-200 hover:bg-white/10"
                         >
-                          <Upload className="mr-2 h-4 w-4" />
-                          Download
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex min-w-0 flex-1 items-center space-x-3">
+                            {fileIcon}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-white">
+                                {file}
+                              </span>
+                              <span className="text-xs text-cyan-300/70 capitalize">
+                                {fileType} •{" "}
+                                {getFileSizeDisplay(
+                                  agreement._raw?.files?.[index]?.fileSize,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
+                            onClick={() => handleDownloadFile(index)}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Download
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1376,7 +1538,7 @@ export default function AgreementDetails() {
                         Review the other party's delivery and either accept or
                         reject it. Please keep in mind that if you marked work
                         as delivered, you won't be able to accpet or reject
-                        delivery. Only the other party can
+                        delivery. Only the other party can.
                       </p>
                     </div>
                   )}
