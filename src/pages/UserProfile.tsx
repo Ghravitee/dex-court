@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // pages/UserProfile.tsx
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiService } from "../services/apiService";
@@ -16,8 +16,56 @@ import UserIcon from "../components/ui/svgcomponents/UserIcon";
 import { BentoCard } from "./Profile";
 import { LoginModal } from "../components/LoginModal";
 import { UserAvatar } from "../components/UserAvatar";
+import { usePublicAgreementsApi } from "../hooks/usePublicAgreementsApi";
+import type { AgreementSummaryDTO } from "../services/agreementServices";
+import { Loader2 } from "lucide-react";
 
-// Add these components to UserProfile.tsx
+// Add AgreementStatusBadge component (same as in Profile)
+const AgreementStatusBadge = ({ status }: { status: number }) => {
+  const statusConfig = {
+    1: {
+      label: "Pending",
+      color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
+    },
+    2: {
+      label: "Signed",
+      color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
+    },
+    3: {
+      label: "Completed",
+      color: "bg-green-500/20 text-green-300 border-green-400/30",
+    },
+    4: {
+      label: "Disputed",
+      color: "bg-red-800/20 text-red-800 border-red-800/30",
+    },
+    5: {
+      label: "Cancelled",
+      color: "bg-red-500/20 text-red-300 border-red-400/30",
+    },
+    6: {
+      label: "Expired",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    },
+    7: {
+      label: "Delivery Submitted",
+      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+    },
+  };
+
+  const config = statusConfig[status as keyof typeof statusConfig] || {
+    label: "Unknown",
+    color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+    >
+      {config.label}
+    </span>
+  );
+};
 
 // Role Badge Component
 const RoleBadge = ({
@@ -127,6 +175,14 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const {
+    agreements,
+    agreementDetails,
+    loading: agreementsLoading,
+    error: agreementsError,
+  } = usePublicAgreementsApi(user?.id);
 
   // Decode the URL parameter to handle spaces and special characters
   const decodedHandle = useMemo(() => {
@@ -134,6 +190,32 @@ export default function UserProfile() {
     // Decode URL-encoded characters (like %20 for spaces)
     return decodeURIComponent(handle);
   }, [handle]);
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  // Helper function to get agreement title with fallbacks
+  const getAgreementTitle = (agreement: AgreementSummaryDTO) => {
+    const detailedAgreement = agreementDetails[agreement.id];
+    if (detailedAgreement?.title) {
+      return detailedAgreement.title;
+    }
+    if (agreement.title) {
+      return agreement.title;
+    }
+    return `Agreement #${agreement.id}`;
+  };
+
+  // Handle agreement click to navigate to details
+  const handleAgreementClick = (agreementId: number) => {
+    navigate(`/agreements/${agreementId}`);
+  };
 
   // Check if this is the current user's profile
   const isOwnProfile = useMemo(() => {
@@ -216,6 +298,14 @@ export default function UserProfile() {
       setLoading(false);
     }
   }, [decodedHandle, isAuthenticated, isOwnProfile, currentUser]);
+
+  // Calculate agreement stats from real data
+  const agreementStats = {
+    total: agreements.length,
+    active: agreements.filter((agreement) => agreement.status === 2).length,
+    completed: agreements.filter((agreement) => agreement.status === 3).length,
+    disputed: agreements.filter((agreement) => agreement.status === 4).length,
+  };
 
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
@@ -407,7 +497,7 @@ export default function UserProfile() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Agreements</span>
                 <span className="font-semibold text-cyan-300">
-                  {safeStats.agreements}
+                  {agreementStats.total}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -429,7 +519,7 @@ export default function UserProfile() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total Volume</span>
-                <span className="font-semibold text-cyan-300">
+                <span className="text-lg font-semibold text-green-500">
                   $
                   {safeStats.revenue
                     ? Object.values(safeStats.revenue)
@@ -479,27 +569,79 @@ export default function UserProfile() {
           </div>
         </BentoCard>
 
-        {/* User's Public Agreements */}
+        {/* User's Public Agreements - UPDATED WITH REAL DATA */}
         <BentoCard
-          title={`${user.handle}'s Agreements`}
+          title={`${user.handle}'s Public Agreements`}
           icon={<FaHandshake />}
           color="cyan"
-          count={safeStats.agreements}
+          count={agreementStats.total}
           scrollable
           maxHeight="260px"
         >
-          <div className="py-8 text-center">
-            <div className="mb-2 text-lg text-cyan-300">
-              {safeStats.agreements > 0
-                ? `${safeStats.agreements} agreements`
-                : "No agreements yet"}
+          {agreementsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+              <span className="ml-2 text-cyan-300">Loading agreements...</span>
             </div>
-            <div className="text-sm text-white/50">
-              {isOwnProfile
-                ? "Create your first agreement to get started"
-                : `${user.handle}'s agreement history`}
+          ) : agreementsError ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-red-300">
+                Error loading agreements
+              </div>
+              <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          </div>
+          ) : agreements.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-cyan-300">
+                No public agreements yet
+              </div>
+              <div className="text-sm text-white/50">
+                {isOwnProfile
+                  ? "Your public agreements will appear here"
+                  : `${user.handle} has no public agreements yet`}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agreements.map((agreement) => (
+                <div
+                  key={agreement.id}
+                  onClick={() => handleAgreementClick(agreement.id)}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <h4 className="truncate text-sm font-medium text-white/90">
+                          {getAgreementTitle(agreement)}
+                        </h4>
+                        <AgreementStatusBadge status={agreement.status} />
+                      </div>
+
+                      <div className="mb-2 text-xs text-white/70">
+                        Created: {formatDate(agreement.dateCreated)}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-white/60">
+                        <div className="flex justify-between">
+                          <span>First Party:</span>
+                          <span className="text-white/80">
+                            {agreement.firstParty.username}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Counter Party:</span>
+                          <span className="text-white/80">
+                            {agreement.counterParty.username}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </BentoCard>
 
         {/* Trust Assessment */}

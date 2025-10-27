@@ -182,6 +182,10 @@ export default function Agreements() {
   const recentFilterRef = useRef<HTMLDivElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { isAuthenticated, user } = useAuth();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // Default page size
+  const [totalAgreements, setTotalAgreements] = useState(0);
+  const [, setTotalResults] = useState(0);
 
   // New state for agreement type selection
   const [agreementType, setAgreementType] = useState<AgreementType>("myself");
@@ -278,79 +282,102 @@ export default function Agreements() {
   }, [isAuthenticated]);
 
   // Load agreements
-  useEffect(() => {
-    const loadAgreements = async () => {
+
+  // FIXED: Use only the main agreements endpoint
+
+  const loadAgreements = useCallback(
+    async (page: number = currentPage, size: number = pageSize) => {
       try {
         setLoading(true);
 
-        // Load both public agreements and user's agreements
-        const [publicAgreements, myAgreements] = await Promise.all([
-          agreementService.getAgreements(),
-          agreementService.getMyAgreements(),
-        ]);
+        const skip = (page - 1) * size;
 
-        console.log("📋 Public agreements response:", publicAgreements);
-        console.log("👤 My agreements response:", myAgreements);
+        const allAgreements = await agreementService.getAgreements({
+          top: size,
+          skip: skip,
+        });
 
-        // Handle the response structure properly
-        const publicAgreementsList = publicAgreements.results || [];
-        const myAgreementsList = myAgreements.results || [];
+        console.log("📋 Agreements response:", allAgreements);
 
-        const transformedAgreements = [
-          ...publicAgreementsList.map(transformApiAgreement),
-          ...myAgreementsList.map(transformApiAgreement),
-        ];
+        setTotalAgreements(allAgreements.totalAgreements || 0);
+        setTotalResults(allAgreements.totalResults || 0);
 
-        console.log("🔄 Transformed agreements:", transformedAgreements);
+        const agreementsList = allAgreements.results || [];
+        const transformedAgreements = agreementsList.map(transformApiAgreement);
 
-        // Remove duplicates by ID
-        const uniqueAgreements = transformedAgreements.filter(
-          (agreement, index, self) =>
-            index === self.findIndex((a) => a.id === agreement.id),
-        );
-
-        setAgreements(uniqueAgreements);
-        console.log("✅ Final agreements:", uniqueAgreements);
+        setAgreements(transformedAgreements);
       } catch (error: any) {
         console.error("Failed to fetch agreements:", error);
 
-        // Show user-friendly error message
-        if (error.message.includes("Network error")) {
-          toast.error(
-            "Network error: Unable to connect to server. Please check your internet connection.",
-          );
-        } else if (error.message.includes("Authentication required")) {
-          toast.error("Please log in to view agreements");
-        } else {
-          toast.error("Failed to load agreements: " + error.message);
-        }
-
-        // Set empty array to prevent further errors
+        toast.error(error.message || "Failed to load agreements");
         setAgreements([]);
+        setTotalAgreements(0);
+        setTotalResults(0);
       } finally {
         setLoading(false);
       }
+    },
+    [currentPage, pageSize], // dependencies
+  );
+
+  useEffect(() => {
+    loadAgreements();
+  }, [loadAgreements]);
+
+  // Add pagination handlers
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    loadAgreements(newPage, pageSize);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // Reset to first page when changing page size
+    loadAgreements(1, newSize);
+  };
+
+  // Calculate pagination info
+  const totalPages = Math.ceil(totalAgreements / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalAgreements);
+
+  const transformApiAgreement = (apiAgreement: any): Agreement => {
+    const getAgreementType = (visibility: number) => {
+      switch (visibility) {
+        case AgreementVisibilityEnum.PRIVATE:
+          return "Private";
+        case AgreementVisibilityEnum.PUBLIC:
+          return "Public";
+        case AgreementVisibilityEnum.AUTO_PUBLIC:
+          return "Public";
+        default:
+          return "Public";
+      }
     };
 
-    loadAgreements();
-  }, []);
-
-  // Helper function to transform API agreement to frontend format
-  const transformApiAgreement = (apiAgreement: any): Agreement => {
     console.log("🔄 Transforming API agreement - Full object:", apiAgreement);
+    console.log("🔍 Visibility value:", apiAgreement.visibility);
+    console.log(
+      "🔍 Agreement type (calculated):",
+      getAgreementType(apiAgreement.visibility),
+    );
 
-    // Handle date conversion safely
+    // Handle date conversion safely with better validation
     const formatDateSafely = (dateString: string) => {
+      if (!dateString) return "No deadline";
+
       try {
-        return new Date(dateString).toLocaleDateString();
+        const date = new Date(dateString);
+        return isNaN(date.getTime())
+          ? "Invalid Date"
+          : date.toLocaleDateString();
       } catch (error) {
         console.warn("Invalid date:", dateString, error);
         return "Invalid Date";
       }
     };
 
-    console.log("FirstParty object:", apiAgreement.firstParty);
-    console.log("CounterParty object:", apiAgreement.counterParty);
+    // Determine agreement type based on visibility
 
     // Helper function to extract avatar ID and convert to number
     const getAvatarIdFromParty = (party: any): number | null => {
@@ -397,18 +424,11 @@ export default function Agreements() {
       apiAgreement.counterParty,
     );
 
-    console.log(
-      `Avatar info - CreatedBy: ${createdBy}, AvatarId: ${createdByAvatarId}`,
-    );
-    console.log(
-      `Avatar info - Counterparty: ${counterparty}, AvatarId: ${counterpartyAvatarId}`,
-    );
-
     return {
       id: apiAgreement.id.toString(),
-      title: apiAgreement.title || "Untitled Agreement",
+      title: apiAgreement.title || "Untitled Agreement", // Only use fallback if truly missing
       description: apiAgreement.description || "",
-      type: "Public",
+      type: getAgreementType(apiAgreement.visibility), // ✅ Use actual visibility
       counterparty: counterparty,
       createdBy: createdBy,
       status: apiStatusToFrontend(apiAgreement.status),
@@ -418,7 +438,7 @@ export default function Agreements() {
       deadline: formatDateSafely(apiAgreement.deadline),
       amount: apiAgreement.amount ? apiAgreement.amount.toString() : undefined,
       token: apiAgreement.tokenSymbol || undefined,
-      files: 0,
+      files: apiAgreement.files?.length || 0,
 
       // Add avatar information
       createdByAvatarId: createdByAvatarId,
@@ -1040,8 +1060,33 @@ export default function Agreements() {
 
             {/* Agreements Table */}
             <div className="w-full overflow-x-auto rounded-xl border border-b-2 border-white/10 ring-1 ring-white/10">
-              <div className="flex items-center justify-between border-b border-white/10 p-5">
-                <h3 className="font-semibold text-white/90">All Agreements</h3>
+              <div className="p-5">
+                {/* <h3 className="font-semibold text-white/90">All Agreements</h3> */}
+                {/* Page Size Selector */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-cyan-300">Show:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) =>
+                      handlePageSizeChange(Number(e.target.value))
+                    }
+                    className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
+                  >
+                    <option className="text-black" value={5}>
+                      5
+                    </option>
+                    <option className="text-black" value={10}>
+                      10
+                    </option>
+                    <option className="text-black" value={20}>
+                      20
+                    </option>
+                    <option className="text-black" value={50}>
+                      50
+                    </option>
+                  </select>
+                  <span className="text-sm text-cyan-300">per page</span>
+                </div>
               </div>
               <div className="min-w-max">
                 <table className="w-full text-sm md:min-w-full">
@@ -1180,6 +1225,74 @@ export default function Agreements() {
                 </table>
               </div>
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && totalAgreements > 0 && (
+              <div className="flex items-center justify-between px-5 py-4">
+                <div className="text-sm text-cyan-300">
+                  Showing {startItem} to {endItem} of {totalAgreements}{" "}
+                  agreements
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Previous Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "neon" : "outline"}
+                          size="sm"
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`${
+                            currentPage === pageNum
+                              ? "neon-hover"
+                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          } min-w-[2.5rem]`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Next Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

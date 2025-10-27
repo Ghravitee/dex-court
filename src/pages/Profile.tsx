@@ -15,6 +15,56 @@ import { useAccountUpdate, useAvatarUpload } from "../hooks/useAccountApi";
 import type { AccountUpdateRequest } from "../services/apiService";
 import { UserAvatar } from "../components/UserAvatar";
 import { Loader2, UploadCloud } from "lucide-react";
+import { useAgreementsApi } from "../hooks/useAgreementsApi";
+import type { AgreementSummaryDTO } from "../services/agreementServices";
+import { useNavigate } from "react-router-dom";
+
+// Add AgreementStatusBadge component
+const AgreementStatusBadge = ({ status }: { status: number }) => {
+  const statusConfig = {
+    1: {
+      label: "Pending",
+      color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
+    },
+    2: {
+      label: "Signed",
+      color: "bg-bkue-500/20 text-blue-300 border-blue-400/30",
+    },
+    3: {
+      label: "Completed",
+      color: "bg-green-500/20 text-green-300 border-green-400/30",
+    },
+    4: {
+      label: "Disputed",
+      color: "bg-red-800/20 text-red-800 border-red-800/30",
+    },
+    5: {
+      label: "Cancelled",
+      color: "bg-red-500/20 text-red-300 border-red-400/30",
+    },
+    6: {
+      label: "Expired",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    },
+    7: {
+      label: "Delivery Submitted",
+      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+    },
+  };
+
+  const config = statusConfig[status as keyof typeof statusConfig] || {
+    label: "Unknown",
+    color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+    >
+      {config.label}
+    </span>
+  );
+};
 
 // Toaster Component
 const Toaster = ({
@@ -303,6 +353,64 @@ export default function Profile() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
 
+  const navigate = useNavigate();
+
+  const {
+    agreements,
+    agreementDetails,
+    loading: agreementsLoading,
+    error: agreementsError,
+  } = useAgreementsApi();
+
+  // Calculate agreement stats from real data
+  const agreementStats = {
+    total: agreements.length,
+    active: agreements.filter((agreement) => agreement.status === 2).length,
+    completed: agreements.filter((agreement) => agreement.status === 3).length,
+    disputed: agreements.filter((agreement) => agreement.status === 4).length,
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  // Check if user is involved in agreement as first party or counter party
+  const getUserRoleInAgreement = (agreement: AgreementSummaryDTO) => {
+    const userId = user?.id;
+    if (!userId) return "Unknown";
+
+    // Convert both to numbers for comparison to ensure type safety
+    const userIdNum = Number(userId);
+    const firstPartyId = Number(agreement.firstParty.id);
+    const counterPartyId = Number(agreement.counterParty.id);
+
+    if (firstPartyId === userIdNum) return "First Party";
+    if (counterPartyId === userIdNum) return "Counter Party";
+    return "Creator"; // Assuming creator is different from parties
+  };
+
+  // Helper function to get agreement title with fallbacks
+  const getAgreementTitle = (agreement: AgreementSummaryDTO) => {
+    // First try to get title from detailed agreement data
+    const detailedAgreement = agreementDetails[agreement.id];
+    if (detailedAgreement?.title) {
+      return detailedAgreement.title;
+    }
+
+    // Fallback to summary title if available
+    if (agreement.title) {
+      return agreement.title;
+    }
+
+    // Final fallback
+    return `Agreement #${agreement.id}`;
+  };
+
   // Toaster states
   const [toaster, setToaster] = useState<{
     message: string;
@@ -397,6 +505,10 @@ export default function Profile() {
     if (file) {
       await uploadAvatar(file);
     }
+  };
+
+  const handleAgreementClick = (agreementId: number) => {
+    navigate(`/agreements/${agreementId}`);
   };
 
   const handleLogin = async () => {
@@ -843,22 +955,139 @@ export default function Profile() {
           </div>
         </BentoCard>
 
-        {/* My Agreements */}
         <BentoCard
           title="My Agreements"
           icon={<FaHandshake />}
           color="cyan"
-          count={0}
+          count={agreementStats.total}
           scrollable
           maxHeight="260px"
         >
-          <div className="py-8 text-center">
-            <div className="mb-2 text-lg text-cyan-300">No agreements yet</div>
-            <div className="text-sm text-white/50">
-              Create your first agreement to get started with secure deals.
+          {agreementsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+              <span className="ml-2 text-cyan-300">Loading agreements...</span>
             </div>
-          </div>
+          ) : agreementsError ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-red-300">
+                Error loading agreements
+              </div>
+              <div className="text-sm text-white/50">{agreementsError}</div>
+            </div>
+          ) : agreements.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-cyan-300">
+                No agreements yet
+              </div>
+              <div className="text-sm text-white/50">
+                Create your first agreement to get started with secure deals.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agreements.map((agreement) => (
+                <div
+                  key={agreement.id}
+                  onClick={() => handleAgreementClick(agreement.id)}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <h4 className="truncate text-sm font-medium text-white/90">
+                          {getAgreementTitle(agreement)}
+                        </h4>
+                        <AgreementStatusBadge status={agreement.status} />
+                      </div>
+
+                      <div className="mb-2 text-xs text-white/70">
+                        Created: {formatDate(agreement.dateCreated)}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-white/60">
+                        <div className="flex justify-between">
+                          <span>First Party:</span>
+                          <span className="text-white/80">
+                            {agreement.firstParty.username}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Counter Party:</span>
+                          <span className="text-white/80">
+                            {agreement.counterParty.username}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Your Role:</span>
+                          <span className="text-cyan-300">
+                            {getUserRoleInAgreement(agreement)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </BentoCard>
+
+        {/* Active Agreements */}
+        {/* Active Agreements */}
+        {/* Active Agreements */}
+        {/* <BentoCard
+          title="Active Agreements"
+          icon={<FaHandshake />}
+          color="emerald"
+          count={agreementStats.active}
+          scrollable
+          maxHeight="260px"
+        >
+          {agreementsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
+              <span className="ml-2 text-emerald-300">
+                Loading active agreements...
+              </span>
+            </div>
+          ) : agreementStats.active === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-emerald-300">
+                No active agreements
+              </div>
+              <div className="text-sm text-white/50">
+                Your active agreements will appear here once accepted by both
+                parties.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agreements
+                .filter((agreement) => agreement.status === 2) // Active status
+                .map((agreement) => (
+                  <div
+                    key={agreement.id}
+                    className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <h4 className="truncate text-sm font-medium text-white/90">
+                        {agreement.title || `Agreement #${agreement.id}`}
+                      </h4>
+                      <AgreementStatusBadge status={agreement.status} />
+                    </div>
+                    <div className="space-y-1 text-xs text-white/70">
+                      <div>
+                        Between: {agreement.firstParty.username} &{" "}
+                        {agreement.counterParty.username}
+                      </div>
+                      <div>Created: {formatDate(agreement.dateCreated)}</div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </BentoCard> */}
 
         {/* Escrow Deals */}
         <BentoCard
