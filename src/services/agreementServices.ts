@@ -125,7 +125,26 @@ export interface AgreementCancelRespondRequest {
   accepted: boolean;
 }
 
+export interface UserDTO {
+  id: number;
+  username: string;
+  bio: string;
+  isVerified: boolean;
+  telegram: {
+    username?: string;
+    id?: string;
+  };
+  walletAddress: string;
+  role: number;
+  avatarId: number;
+}
+
 class AgreementService {
+  private userCache: {
+    users: any[];
+    timestamp: number;
+  } | null = null;
+  private readonly CACHE_DURATION = 60000;
   setAuthToken(token: string) {
     console.log("🔐 Agreement service token set", token);
   }
@@ -190,44 +209,103 @@ class AgreementService {
   }
 
   // User search methods
-  // In agreementServices.ts - update searchUsers to return empty array
-  // User search methods
+  // User search methods - client-side only since no search endpoint exists
   async searchUsers(query: string): Promise<any[]> {
     try {
-      console.log(`🔍 [AgreementService] Searching users with query: ${query}`);
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `🔍 [AgreementService] Searching users with query: ${query}`,
+        );
+      }
 
-      // Use the api instance instead of this.request()
-      const response = await api.get<any[]>(
-        `/accounts/search?query=${encodeURIComponent(query)}`,
-      );
+      if (!query || query.trim().length === 0) {
+        return [];
+      }
 
-      console.log(`🔍 [AgreementService] Search results:`, response.data);
-      return response.data;
-    } catch (error) {
-      console.error("🔍 [AgreementService] User search failed:", error);
-
-      // Fallback: if search endpoint doesn't exist, use getAllUsers and filter locally
-      console.log("🔍 [AgreementService] Using fallback search method");
       const allUsers = await this.getAllUsers();
+
+      if (!Array.isArray(allUsers)) {
+        console.error(
+          "🔍 [AgreementService] getAllUsers did not return an array:",
+          allUsers,
+        );
+        return [];
+      }
+
       const filteredUsers = allUsers.filter(
         (user) =>
-          user.username?.toLowerCase().includes(query.toLowerCase()) ||
-          user.telegramInfo?.toLowerCase().includes(query.toLowerCase()) ||
-          user.telegram?.username?.toLowerCase().includes(query.toLowerCase()),
+          user?.username?.toLowerCase().includes(query.toLowerCase()) ||
+          user?.telegram?.username
+            ?.toLowerCase()
+            .includes(query.toLowerCase()) ||
+          user?.telegramInfo?.toLowerCase().includes(query.toLowerCase()) ||
+          user?.walletAddress?.toLowerCase().includes(query.toLowerCase()),
       );
+
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `🔍 [AgreementService] Found ${filteredUsers.length} users matching "${query}"`,
+        );
+      }
+
       return filteredUsers;
+    } catch (error) {
+      console.error("🔍 [AgreementService] User search failed:", error);
+      return [];
     }
   }
 
-  // Also update getAllUsers method to use api instance
   async getAllUsers(): Promise<any[]> {
+    // Return cached users if available and not expired
+    if (
+      this.userCache &&
+      Date.now() - this.userCache.timestamp < this.CACHE_DURATION
+    ) {
+      console.log("🔍 [AgreementService] Returning cached users");
+      return this.userCache.users;
+    }
+
     try {
-      const response = await api.get<any[]>("/accounts");
-      return response.data;
+      const response = await api.get<any>("/accounts");
+
+      console.log("🔍 [AgreementService] /accounts response:", response.data);
+
+      let users: any[] = [];
+
+      // The response has { accounts: [...] } structure based on your logs
+      if (response.data && Array.isArray(response.data.accounts)) {
+        users = response.data.accounts;
+      } else if (response.data && Array.isArray(response.data.results)) {
+        users = response.data.results;
+      } else if (Array.isArray(response.data)) {
+        users = response.data;
+      } else {
+        console.warn(
+          "🔍 [AgreementService] Unexpected response format:",
+          response.data,
+        );
+        users = [];
+      }
+
+      // Cache the results
+      this.userCache = {
+        users,
+        timestamp: Date.now(),
+      };
+
+      return users;
     } catch (error) {
       console.error("🔍 [AgreementService] Failed to get all users:", error);
       return [];
     }
+  }
+
+  // Clear cache when needed (e.g., after creating a new agreement)
+  clearUserCache() {
+    this.userCache = null;
+    console.log("🔍 [AgreementService] User cache cleared");
   }
   async getUserByUsername(username: string): Promise<any> {
     try {

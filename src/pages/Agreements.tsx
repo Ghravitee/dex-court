@@ -38,6 +38,7 @@ import {
   getCurrentUserTelegram,
   isValidTelegramUsername,
 } from "../lib/usernameUtils";
+import { FaArrowRightArrowLeft } from "react-icons/fa6";
 
 // File upload types
 interface UploadedFile {
@@ -117,8 +118,8 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-cyan-500/30 ${
-        isCurrentUser ? "opacity-50" : ""
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
+        isCurrentUser ? "opacity-80" : ""
       }`}
     >
       <UserAvatar
@@ -142,11 +143,7 @@ const UserSearchResult = ({
           </div>
         )}
       </div>
-      {isCurrentUser && (
-        <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-400">
-          You
-        </span>
-      )}
+
       <ChevronRight className="h-4 w-4 flex-shrink-0 text-cyan-400" />
     </div>
   );
@@ -438,7 +435,6 @@ export default function Agreements() {
     { value: "cancelled", label: "Cancelled" },
     { value: "completed", label: "Completed" },
     { value: "disputed", label: "Disputed" },
-    { value: "pending_approval", label: "Pending Approval" },
   ];
   const recentFilterOptions = [
     { value: "all", label: "All" },
@@ -472,10 +468,14 @@ export default function Agreements() {
       return true;
     })
     .sort((a, b) => {
+      // Convert date strings to Date objects for comparison
+      const dateA = new Date(a.dateCreated);
+      const dateB = new Date(b.dateCreated);
+
       if (sortOrder === "asc") {
-        return a.title.localeCompare(b.title);
+        return dateA.getTime() - dateB.getTime(); // Oldest first
       } else {
-        return b.title.localeCompare(a.title);
+        return dateB.getTime() - dateA.getTime(); // Newest first (most recent first)
       }
     });
 
@@ -573,7 +573,6 @@ export default function Agreements() {
   };
 
   // In Agreements.tsx - replace the handleSubmit function with this updated version
-  // In Agreements.tsx - revert handleSubmit to the working version without validation
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -722,6 +721,9 @@ export default function Agreements() {
         form.images.map((f) => f.file),
       );
 
+      // Clear user cache since we might have new users or updated user data
+      agreementService.clearUserCache();
+
       // Success message
       const successMessage =
         agreementType === "myself"
@@ -847,7 +849,10 @@ export default function Agreements() {
       setUserSearchQuery(query);
       setActiveSearchField(field);
 
-      console.log("🔍 Searching users for", field, "with query:", query);
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.log("🔍 Searching users for", field, "with query:", query);
+      }
 
       if (query.length < 2) {
         setUserSearchResults([]);
@@ -860,7 +865,11 @@ export default function Agreements() {
 
       try {
         const results = await agreementService.searchUsers(query);
-        console.log("🔍 RAW SEARCH RESULTS:", results);
+
+        // Only log in development
+        if (process.env.NODE_ENV === "development") {
+          console.log("🔍 RAW SEARCH RESULTS:", results);
+        }
 
         // Filter out current user from results to prevent self-agreements
         const currentUserTelegram = getCurrentUserTelegram(user);
@@ -878,10 +887,6 @@ export default function Agreements() {
       } catch (error) {
         console.error("User search failed:", error);
         setUserSearchResults([]);
-
-        if (query.length >= 2) {
-          toast.error("User search temporarily unavailable");
-        }
       } finally {
         setIsUserSearchLoading(false);
       }
@@ -1112,7 +1117,9 @@ export default function Agreements() {
                                   {a.createdBy}
                                 </button>
                               </div>
-                              <span className="text-cyan-400">↔</span>
+                              <span className="text-cyan-400">
+                                <FaArrowRightArrowLeft />
+                              </span>
                               <div className="flex items-center gap-1">
                                 <UserAvatar
                                   userId={

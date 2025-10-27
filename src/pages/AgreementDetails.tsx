@@ -54,13 +54,28 @@ const AgreementStatusEnum = {
   PARTY_SUBMITTED_DELIVERY: 7,
 } as const;
 
+// Event Timeline Enum (from backend)
+const AgreementEventTypeEnum = {
+  CREATED: 1,
+  SIGNED: 2,
+  REJECTED: 3,
+  DELIVERED: 4,
+  DELIVERY_CONFIRMED: 5,
+  DELIVERY_REJECTED: 6,
+  CANCEL_REQUESTED: 7,
+  CANCEL_CONFIRMED: 8,
+  CANCEL_REJECTED: 9,
+  EXPIRED: 10,
+  AUTO_CANCELLED: 11,
+} as const;
+
 // Helper function to convert API status to frontend status
 const apiStatusToFrontend = (status: number): Agreement["status"] => {
   switch (status) {
     case AgreementStatusEnum.PENDING_ACCEPTANCE:
       return "pending";
     case AgreementStatusEnum.ACTIVE:
-      return "signed"; // 🚨 CHANGE: "active" → "signed"
+      return "signed";
     case AgreementStatusEnum.COMPLETED:
       return "completed";
     case AgreementStatusEnum.DISPUTED:
@@ -123,19 +138,24 @@ const isCurrentUserCreator = (agreement: any, currentUser: any) => {
   return currentUsername === creatorUsername;
 };
 
-// Helper to check who submitted the delivery
+// Helper to check who submitted the delivery (FIXED with correct event type)
 const getDeliverySubmittedBy = (agreement: any) => {
   if (!agreement) return null;
 
   // Check if we have delivery submission info in the API response
+  if (agreement.deliverySubmittedBy) {
+    return agreement.deliverySubmittedBy;
+  }
+
+  // Check in _raw data
   if (agreement._raw?.deliverySubmittedBy) {
     return agreement._raw.deliverySubmittedBy;
   }
 
-  // Fallback: check timeline events for delivery submission
+  // Fallback: check timeline events for delivery submission (FIXED: using DELIVERED = 4)
   if (agreement._raw?.timeline) {
     const deliveryEvent = agreement._raw.timeline.find(
-      (event: any) => event.eventType === 7, // Assuming 7 is delivery submission event type
+      (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
     );
     if (deliveryEvent) {
       return deliveryEvent.createdBy || deliveryEvent.userId;
@@ -145,7 +165,7 @@ const getDeliverySubmittedBy = (agreement: any) => {
   return null;
 };
 
-// Helper to check if current user should see delivery review buttons
+// Helper to check if current user should see delivery review buttons (FIXED)
 const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   if (
     !agreement ||
@@ -161,16 +181,21 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   // Get who submitted the delivery
   const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
 
-  // If we can't determine who submitted, allow both parties to review
+  // If we can't determine who submitted, show review buttons to BOTH parties
+  // This ensures that at least someone can review the delivery
   if (!deliverySubmittedBy) {
+    console.warn(
+      "⚠️ Could not determine who submitted delivery - showing review buttons to both parties",
+    );
     return isFirstParty || isCounterparty;
   }
 
-  // Current user should review if they DID NOT submit the delivery
+  // Current user should ONLY review if they DID NOT submit the delivery
   const currentUserId = currentUser.id || currentUser.userId;
   const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
 
-  return currentUserId !== submittedById;
+  // Only show review buttons to the party who did NOT submit the delivery
+  return currentUserId !== submittedById && (isFirstParty || isCounterparty);
 };
 
 // Helper to check if current user can mark as delivered
@@ -190,20 +215,14 @@ const canUserMarkAsDelivered = (agreement: any, currentUser: any) => {
   return isFirstParty || isCounterparty;
 };
 
-// Helper to get completion date from timeline
-// Helper to get completion date from timeline - improved version
+// Helper to get completion date from timeline (FIXED with correct event types)
 const getCompletionDate = (agreement: any): string | null => {
   if (!agreement?._raw?.timeline) return null;
 
-  // Look for completion events in multiple possible event types
+  // Look for completion events - use DELIVERY_CONFIRMED = 5
   const completionEvents = agreement._raw.timeline.filter(
     (event: any) =>
-      event.eventType === 3 || // Completion event type
-      event.eventType === 9 || // Alternative completion event type
-      (event.description &&
-        event.description.toLowerCase().includes("completed")) ||
-      (event.description &&
-        event.description.toLowerCase().includes("delivery accepted")),
+      event.eventType === AgreementEventTypeEnum.DELIVERY_CONFIRMED,
   );
 
   // Return the most recent completion event
@@ -218,12 +237,13 @@ const getCompletionDate = (agreement: any): string | null => {
   return null;
 };
 
-// Helper to check if this is the second rejection
+// Helper to check if this is the second rejection (FIXED with correct event type)
 const isSecondRejection = (agreement: any): boolean => {
   if (!agreement?._raw?.timeline) return false;
 
   const rejectionEvents = agreement._raw.timeline.filter(
-    (event: any) => event.eventType === 8, // Assuming 8 is rejection event type
+    (event: any) =>
+      event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED,
   );
 
   return rejectionEvents.length >= 1; // Second rejection triggers dispute
@@ -262,9 +282,11 @@ export default function AgreementDetails() {
         return avatarId ? Number(avatarId) : null;
       };
 
-      // Helper function to get username from party data
+      // Helper function to get username from party data with @ prefix
       const getUsernameFromParty = (party: any) => {
-        return party?.username || party?.handle || "Unknown";
+        const username = party?.username || party?.handle || "Unknown";
+        // Add @ prefix if it doesn't already have one
+        return username.startsWith("@") ? username : `@${username}`;
       };
 
       // Helper function to get user ID from party data
@@ -278,13 +300,12 @@ export default function AgreementDetails() {
       );
       const creatorUsername = getUsernameFromParty(agreementData.creator);
 
-      const completionDate = agreement?.completionDate;
+      const completionDate = getCompletionDate(agreementData);
 
       console.log("📋 AgreementDetails API Response:", agreementData);
       console.log("📅 Timeline events:", agreementData.timeline);
       console.log("✅ Completion date found:", completionDate);
 
-      // Transform API data to frontend format
       // Transform API data to frontend format
       const transformedAgreement: Agreement & { completionDate?: string } = {
         id: agreementData.id.toString(),
@@ -335,7 +356,7 @@ export default function AgreementDetails() {
     } finally {
       setLoading(false);
     }
-  }, [id, agreement?.completionDate]);
+  }, [id]);
 
   useEffect(() => {
     fetchAgreementDetails();
@@ -488,7 +509,6 @@ export default function AgreementDetails() {
 
       setIsRejecting(true);
       try {
-        // For now, we'll just reject and the API should handle dispute creation
         const agreementId = parseInt(id);
         await agreementService.rejectDelivery(agreementId);
 
@@ -551,19 +571,12 @@ export default function AgreementDetails() {
     setIsOpeningDispute(true);
     try {
       // Since dispute API is not built, we'll simulate it for now
-      // In a real implementation, you would call: await agreementService.openDispute(agreementId);
-
-      // For now, we'll use a timeout to simulate the API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       toast.success(
         "Dispute opened successfully! The agreement is now in dispute resolution.",
       );
 
-      // In a real implementation, you would refresh the agreement data
-      // await fetchAgreementDetails();
-
-      // For now, we'll update the local state to show disputed status
       setAgreement((prev) => (prev ? { ...prev, status: "disputed" } : null));
     } catch (error: any) {
       console.error("Failed to open dispute:", error);
@@ -605,7 +618,7 @@ export default function AgreementDetails() {
         return <CheckCircle className="h-5 w-5 text-green-400" />;
       case "pending":
         return <Clock className="h-5 w-5 text-yellow-400" />;
-      case "signed": // 🚨 KEEP: This is now our main status
+      case "signed":
         return <FileText className="h-5 w-5 text-blue-400" />;
       case "cancelled":
         return <XCircle className="h-5 w-5 text-red-400" />;
@@ -624,7 +637,7 @@ export default function AgreementDetails() {
         return "bg-green-500/20 text-green-400 border-green-500/30";
       case "pending":
         return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "signed": // 🚨 KEEP: This is now our main status
+      case "signed":
         return "bg-blue-500/20 text-blue-400 border-blue-500/30";
       case "cancelled":
         return "bg-red-500/20 text-red-400 border-red-500/30";
@@ -673,13 +686,13 @@ export default function AgreementDetails() {
     isParticipant || isCreator || (agreement && agreement.type === "Public");
 
   // BIDIRECTIONAL ACTION PERMISSIONS
-  // BIDIRECTIONAL ACTION PERMISSIONS
   const canSign =
-    agreement?.status === "pending" && (isCounterparty || isFirstParty);
+    agreement?.status === "pending" &&
+    (isCounterparty || (isFirstParty && !isCreator));
   const canCancel = agreement?.status === "pending" && isFirstParty;
-  const canRequestCancel = agreement?.status === "signed" && isParticipant; // 🚨 CHANGE: "active" → "signed"
+  const canRequestCancel = agreement?.status === "signed" && isParticipant;
   const canRespondToCancel =
-    agreement?.status === "signed" && // 🚨 CHANGE: "active" → "signed"
+    agreement?.status === "signed" &&
     agreement._raw?.cancelPending &&
     ((isFirstParty &&
       agreement._raw.cancelRequestedById === agreement._raw.counterParty?.id) ||
@@ -690,7 +703,7 @@ export default function AgreementDetails() {
   // Both parties can mark as delivered when agreement is signed
   const canMarkDelivered = canUserMarkAsDelivered(agreement?._raw, user);
 
-  // The other party can review delivery when status is pending_approval
+  // The other party can review delivery when status is pending_approval (FIXED)
   const canReviewDelivery = shouldShowDeliveryReviewButtons(
     agreement?._raw,
     user,
@@ -700,7 +713,8 @@ export default function AgreementDetails() {
   const deliverySubmittedBy = getDeliverySubmittedBy(agreement?._raw);
   const isCurrentUserSubmittedDelivery =
     deliverySubmittedBy &&
-    (deliverySubmittedBy.id === user?.id || deliverySubmittedBy === user?.id);
+    ((deliverySubmittedBy.id && deliverySubmittedBy.id === user?.id) ||
+      deliverySubmittedBy === user?.id);
 
   // Dispute permissions
   const canOpenDispute = agreement?.status === "signed" && isParticipant;
@@ -835,6 +849,11 @@ export default function AgreementDetails() {
                     >
                       {agreement.creator}
                     </button>
+                    {isCreator && (
+                      <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
+                        you
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -870,6 +889,11 @@ export default function AgreementDetails() {
                           >
                             {agreement.createdBy}
                           </button>
+                          {isFirstParty && (
+                            <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
+                              you
+                            </span>
+                          )}
                         </div>
                         <span className="text-cyan-400">↔</span>
                         <div className="flex items-center gap-1">
@@ -894,6 +918,11 @@ export default function AgreementDetails() {
                           >
                             {agreement.counterparty}
                           </button>
+                          {isCounterparty && (
+                            <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
+                              you
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1109,7 +1138,7 @@ export default function AgreementDetails() {
                       ) : (
                         <>
                           <UserCheck className="mr-2 h-4 w-4" />
-                          {isFirstParty
+                          {isFirstParty && !isCreator
                             ? "Sign as First Party"
                             : "Sign as Counterparty"}
                         </>
@@ -1316,10 +1345,9 @@ export default function AgreementDetails() {
                 <div className="mt-4 space-y-2 text-sm text-cyan-300">
                   {canSign && (
                     <p>
-                      {isFirstParty
-                        ? "As the first party, you can sign this agreement to make it active."
-                        : "As the counterparty, you can sign this agreement to make it active."}{" "}
-                      {/* 🚨 FIX: Dynamic description */}
+                      {isFirstParty && !isCreator
+                        ? "As the first party (but not the creator), you need to sign this agreement."
+                        : "As the counterparty, you need to sign this agreement to make it active."}
                     </p>
                   )}
                   {canCancel && (
@@ -1343,10 +1371,14 @@ export default function AgreementDetails() {
                     </p>
                   )}
                   {canReviewDelivery && (
-                    <p>
-                      Review the other party's delivery and either accept or
-                      reject it.
-                    </p>
+                    <div>
+                      <p>
+                        Review the other party's delivery and either accept or
+                        reject it. Please keep in mind that if you marked work
+                        as delivered, you won't be able to accpet or reject
+                        delivery. Only the other party can
+                      </p>
+                    </div>
                   )}
                   {canOpenDispute && (
                     <p>
@@ -1383,27 +1415,40 @@ export default function AgreementDetails() {
                         <div className="font-medium text-white">
                           Delivery Submitted
                         </div>
-                        <div className="text-sm text-cyan-300">
-                          Waiting for approval from the other party
-                        </div>
                       </div>
                     </div>
                   </div>
-                  {deliverySubmittedBy && (
+
+                  {deliverySubmittedBy ? (
                     <div className="rounded-lg bg-orange-500/10 p-3">
                       <div className="text-sm text-orange-300">
-                        <strong>
-                          {deliverySubmittedBy.username ||
-                            deliverySubmittedBy.name ||
-                            "One party"}
-                        </strong>{" "}
-                        has marked their work as delivered and is waiting for{" "}
-                        <strong>
-                          {isCurrentUserSubmittedDelivery
-                            ? "the other party"
-                            : "your"}
-                        </strong>{" "}
-                        to review it.
+                        {isCurrentUserSubmittedDelivery ? (
+                          <>
+                            <strong>You</strong> have marked your work as
+                            delivered and are waiting for{" "}
+                            <strong>the other party</strong> to review it.
+                          </>
+                        ) : (
+                          <>
+                            <strong>
+                              {deliverySubmittedBy.username
+                                ? deliverySubmittedBy.username.startsWith("@")
+                                  ? deliverySubmittedBy.username
+                                  : `@${deliverySubmittedBy.username}`
+                                : deliverySubmittedBy.name || "The other party"}
+                            </strong>{" "}
+                            {isCounterparty || isFirstParty ? "(you)" : ""} has
+                            marked their work as delivered and is waiting for{" "}
+                            <strong>your</strong> review.
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-orange-500/10 p-3">
+                      <div className="text-sm text-orange-300">
+                        <strong>Work has been marked as delivered.</strong>{" "}
+                        Please review and accept or reject the delivery.
                       </div>
                     </div>
                   )}
@@ -1420,14 +1465,14 @@ export default function AgreementDetails() {
               <div className="flex items-start space-x-8 overflow-x-auto pb-4">
                 {/* Step 1 - Agreement Created */}
                 <div className="relative flex min-w-[10rem] flex-col items-center text-center">
-                  <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400"></div>
+                  <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-300"></div>
                   <div className="mt-3 font-medium text-white">
                     Agreement Created
                   </div>
                   <div className="text-sm text-cyan-300">
                     {formatDate(agreement.dateCreated)}
                   </div>
-                  <div className="mt-1 text-xs text-cyan-400/70">
+                  <div className="mt-1 text-xs text-blue-400/70">
                     <div className="flex items-center gap-2">
                       <UserAvatar
                         userId={
@@ -1438,34 +1483,39 @@ export default function AgreementDetails() {
                         size="sm"
                       />
                       {agreement.creator}
+                      {isCreator && (
+                        <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300">
+                          you
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-cyan-400/50"></div>
+                  <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-blue-400/50"></div>
                 </div>
 
                 {/* Step 2 - Signed (if signed) */}
                 {[
-                  "signed", // 🚨 CHANGE: "active" → "signed"
+                  "signed",
                   "completed",
                   "disputed",
                   "pending_approval",
                 ].includes(agreement.status) && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
                     <div className="mt-3 font-medium text-white">
                       Agreement Signed
                     </div>
                     <div className="text-sm text-cyan-300">
                       {formatDate(agreement.dateCreated)}
                     </div>
-                    <div className="mt-1 text-xs text-cyan-400/70">
+                    <div className="mt-1 text-xs text-emerald-400/70">
                       by both parties
                     </div>
-                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-green-400/50"></div>
+                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
                   </div>
                 )}
 
-                {/* Step 4 - Delivery Submitted (if pending approval) */}
+                {/* Step 3 - Delivery Submitted (if pending approval) */}
                 {agreement.status === "pending_approval" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-orange-400"></div>
@@ -1473,14 +1523,14 @@ export default function AgreementDetails() {
                       Delivery Submitted
                     </div>
                     <div className="text-sm text-cyan-300">Recently</div>
-                    <div className="mt-1 text-xs text-orange-400/70">
+                    <div className="mt-1 text-xs text-amber-400/70">
                       Waiting for approval
                     </div>
-                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-orange-400/50"></div>
+                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-amber-400/50"></div>
                   </div>
                 )}
 
-                {/* Step 5 - Completed */}
+                {/* Step 4 - Completed */}
                 {agreement.status === "completed" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
@@ -1496,12 +1546,12 @@ export default function AgreementDetails() {
                 {/* Disputed State */}
                 {agreement.status === "disputed" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-purple-400"></div>
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-violet-400"></div>
                     <div className="mt-3 font-medium text-white">
                       Dispute Filed
                     </div>
                     <div className="text-sm text-cyan-300">Recently</div>
-                    <div className="mt-1 text-xs text-purple-400/70">
+                    <div className="mt-1 text-xs text-violet-400/70">
                       Under review
                     </div>
                   </div>
@@ -1590,7 +1640,7 @@ export default function AgreementDetails() {
                     </div>
                     <p className="mt-1 text-xs text-blue-200/80">
                       You initiated this agreement. Both parties can mark work
-                      as delivered.
+                      as delivered if the agreement warrants it.
                     </p>
                   </div>
                 )}
@@ -1603,8 +1653,8 @@ export default function AgreementDetails() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-green-200/80">
-                      You signed this agreement. Both parties can mark work as
-                      delivered.
+                      Both parties can mark work as delivered if the agreement
+                      warrants it.
                     </p>
                   </div>
                 )}
