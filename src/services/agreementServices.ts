@@ -81,6 +81,19 @@ export interface AgreementDetailsDTO {
   counterParty: PartyDTO;
   files: FileDTO[];
   timeline: TimelineEventDTO[];
+
+  // 🆕 ADD THESE CANCELLATION PROPERTIES
+  cancelPending?: boolean;
+  cancelRequestedById?: number | null;
+  cancelRequestedBy?: PartyDTO | null;
+
+  // 🆕 ADD DELIVERY PROPERTIES
+  deliverySubmittedBy?: PartyDTO | null;
+  deliverySubmittedById?: number | null;
+
+  // 🆕 ADD DATE PROPERTIES
+  completedAt?: string;
+  updatedAt?: string;
 }
 
 export interface PartyDTO {
@@ -495,24 +508,49 @@ class AgreementService {
     return response.data;
   }
 
-  // Cancelation actions
   async requestCancelation(agreementId: number): Promise<void> {
-    const response = await api.patch(
-      `/agreement/${agreementId}/cancel/request`,
-    );
-    return response.data;
+    try {
+      console.log(`🔄 Requesting cancellation for agreement ${agreementId}`);
+      const response = await api.patch(
+        `/agreement/${agreementId}/cancel/request`,
+      );
+      console.log("✅ Cancellation request successful:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Cancellation request failed:", error);
+      if (error.response?.data?.error === 16) {
+        throw new Error(
+          "Cannot request cancellation: Agreement may already have a pending cancellation or invalid state.",
+        );
+      }
+      throw error;
+    }
   }
 
   async respondToCancelation(
     agreementId: number,
     accepted: boolean,
   ): Promise<void> {
-    const data: AgreementCancelRespondRequest = { accepted };
-    const response = await api.patch(
-      `/agreement/${agreementId}/cancel/response`,
-      data,
-    );
-    return response.data;
+    try {
+      console.log(
+        `🔄 Responding to cancellation for agreement ${agreementId}, accepted: ${accepted}`,
+      );
+      const data: AgreementCancelRespondRequest = { accepted };
+      const response = await api.patch(
+        `/agreement/${agreementId}/cancel/response`,
+        data,
+      );
+      console.log("✅ Cancellation response successful:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Cancellation response failed:", error);
+      if (error.response?.data?.error === 16) {
+        throw new Error(
+          "Cannot respond to cancellation: Invalid agreement state or no pending cancellation.",
+        );
+      }
+      throw error;
+    }
   }
 }
 export const agreementService = new AgreementService();

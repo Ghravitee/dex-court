@@ -10,12 +10,25 @@ export type AgreementStatusFilter =
 
 export type AgreementStatus =
   | "pending"
-  | "signed" // Keep for backward compatibility
+  | "signed"
   | "cancelled"
   | "completed"
   | "disputed"
   | "pending_approval";
 
+// Add this TimelineEvent interface
+export interface TimelineEvent {
+  id: number;
+  eventType: number;
+  type?: number; // Some events might use 'type' instead of 'eventType'
+  createdAt: string;
+  description?: string;
+  actor?: any;
+  createdBy?: any;
+  userId?: number;
+}
+
+// Then update the Agreement interface
 export interface Agreement {
   id: string;
   title: string;
@@ -26,6 +39,9 @@ export interface Agreement {
   status: AgreementStatus;
   dateCreated: string;
   completionDate?: string;
+  deliverySubmittedDate?: string;
+  signingDate?: string;
+  cancellationDate?: string;
   deadline: string;
   amount?: string;
   token?: string;
@@ -34,6 +50,9 @@ export interface Agreement {
   escrowAddress?: string;
   files: number;
   images?: string[];
+
+  // 🆕 ADD PROPERLY TYPED TIMELINE PROPERTY
+  timeline?: TimelineEvent[];
 
   // Avatar IDs as numbers
   createdByAvatarId?: number | null;
@@ -45,6 +64,12 @@ export interface Agreement {
   creator?: string;
   creatorUserId?: string;
   creatorAvatarId?: number | null;
+
+  // Cancellation properties
+  cancelPending?: boolean;
+  cancelRequestedById?: string | null;
+  cancelInitiatedByUser?: boolean;
+  cancelInitiatedByOther?: boolean;
 
   // Raw API data for role checking
   _raw?: any;

@@ -355,12 +355,16 @@ export default function Agreements() {
       }
     };
 
-    console.log("🔄 Transforming API agreement - Full object:", apiAgreement);
-    console.log("🔍 Visibility value:", apiAgreement.visibility);
-    console.log(
-      "🔍 Agreement type (calculated):",
-      getAgreementType(apiAgreement.visibility),
-    );
+    // Determine if funds are included and if escrow is used
+    const includeFunds =
+      apiAgreement.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
+
+    // CRITICAL FIX: Escrow is only considered "used" if there's an escrow contract or financial details
+    const useEscrow =
+      apiAgreement.type === AgreementTypeEnum.ESCROW &&
+      (apiAgreement.escrowContract ||
+        apiAgreement.tokenSymbol ||
+        apiAgreement.amount);
 
     // Handle date conversion safely with better validation
     const formatDateSafely = (dateString: string) => {
@@ -376,8 +380,6 @@ export default function Agreements() {
         return "Invalid Date";
       }
     };
-
-    // Determine agreement type based on visibility
 
     // Helper function to extract avatar ID and convert to number
     const getAvatarIdFromParty = (party: any): number | null => {
@@ -426,12 +428,12 @@ export default function Agreements() {
 
     return {
       id: apiAgreement.id.toString(),
-      title: apiAgreement.title || "Untitled Agreement", // Only use fallback if truly missing
+      title: apiAgreement.title || "Untitled Agreement",
       description: apiAgreement.description || "",
-      type: getAgreementType(apiAgreement.visibility), // ✅ Use actual visibility
+      type: getAgreementType(apiAgreement.visibility),
       counterparty: counterparty,
       createdBy: createdBy,
-      status: apiStatusToFrontend(apiAgreement.status),
+      status: apiStatusToFrontend(apiAgreement.status), // CRITICAL FIX: Use the correct status mapping
       dateCreated: formatDateSafely(
         apiAgreement.dateCreated || apiAgreement.createdAt,
       ),
@@ -440,11 +442,19 @@ export default function Agreements() {
       token: apiAgreement.tokenSymbol || undefined,
       files: apiAgreement.files?.length || 0,
 
+      // Add funds and escrow information
+      includeFunds: includeFunds,
+      useEscrow: useEscrow,
+      escrowAddress: apiAgreement.escrowContract || undefined,
       // Add avatar information
       createdByAvatarId: createdByAvatarId,
       counterpartyAvatarId: counterpartyAvatarId,
       createdByUserId: createdByUserId,
       counterpartyUserId: counterpartyUserId,
+
+      // Add cancellation properties
+      cancelPending: apiAgreement.cancelPending || false,
+      cancelRequestedById: apiAgreement.cancelRequestedById?.toString() || null,
     };
   };
 
@@ -953,8 +963,8 @@ export default function Agreements() {
       <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div>
 
       {/* Agreements Filter */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="col-span-3">
+      <div className="grid grid-cols-1 gap-6">
+        <div className="col-span-3 w-[80%]">
           <div className="">
             <div className="mb-3 flex items-center justify-between">
               <h1 className="text-xl text-white">Agreements</h1>
@@ -1192,8 +1202,10 @@ export default function Agreements() {
                             </div>
                           </td>
                           <td className="px-5 py-4 text-white/90">
-                            {a.amount
-                              ? `${a.amount} ${a.token || ""}`
+                            {a.includeFunds === "yes"
+                              ? a.useEscrow
+                                ? `${a.amount || "0"} ${a.token || ""}`
+                                : "Funds involved (no escrow)"
                               : "No amount"}
                           </td>
                           <td className="px-5 py-4 text-white/90">
@@ -1296,10 +1308,10 @@ export default function Agreements() {
           </div>
         </div>
 
-        <aside className="col-span-2 space-y-4">
+        <aside className="w-full space-y-4 lg:w-[50%]">
           <div className="flex items-center justify-between">
             <h1 className="space mb-2 text-xl text-white">
-              Agreements Turned Sour 😬
+              Agreements Turned Sour
             </h1>
 
             {/* Filter Dropdown */}

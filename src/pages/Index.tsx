@@ -39,6 +39,7 @@ import avatar4 from "../assets/avatar4.webp";
 import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
 import { agreementService } from "../services/agreementServices";
 import { UserAvatar } from "../components/UserAvatar";
+import { useAllAgreementsCount } from "../hooks/useAllAgreementsCount";
 
 export default function Index() {
   return (
@@ -221,11 +222,17 @@ function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
 }
 
 function StatsGrid() {
+  const { agreementsCount, loading } = useAllAgreementsCount();
+
   const stats = [
     { label: "Settled Disputes", value: 342, icon: Trophy },
     { label: "Judges", value: 28, icon: Scale },
     { label: "Eligible Voters", value: 12400, icon: Users },
-    { label: "Agreements", value: 5312, icon: Handshake },
+    {
+      label: "Agreements",
+      value: loading ? 5312 : agreementsCount, // Show fallback while loading
+      icon: Handshake,
+    },
     { label: "Platform Revenue", value: 214000, icon: Landmark, prefix: "$" },
     { label: "Escrow TVL", value: 3100000, icon: Banknote, prefix: "$" },
     { label: "Active Users", value: 7902, icon: User },
