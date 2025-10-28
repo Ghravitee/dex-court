@@ -783,25 +783,23 @@ function SignedAgreements() {
       try {
         setLoading(true);
 
-        // Fetch both public agreements and user's agreements to get all signed ones
-        const [publicAgreements, myAgreements] = await Promise.all([
-          agreementService.getAgreements(),
-          agreementService.getMyAgreements(),
-        ]);
+        // Fetch only public agreements (visibility = 2 or 3)
+        const publicAgreements = await agreementService.getAgreements();
 
         console.log("📋 Public agreements for signed:", publicAgreements);
-        console.log("👤 My agreements for signed:", myAgreements);
 
         // Handle the response structure properly
         const publicAgreementsList = publicAgreements.results || [];
-        const myAgreementsList = myAgreements.results || [];
 
-        // Combine and transform all agreements
-        const allAgreements = [...publicAgreementsList, ...myAgreementsList];
-
-        // Filter for ACTIVE status (status = 2) which means signed agreements
-        const signedAgreements = allAgreements
-          .filter((agreement: any) => agreement.status === 2) // ACTIVE status
+        // Filter for:
+        // 1. ACTIVE status (status = 2) - signed agreements
+        // 2. PUBLIC or AUTO_PUBLIC visibility (visibility = 2 or 3)
+        const signedPublicAgreements = publicAgreementsList
+          .filter(
+            (agreement: any) =>
+              agreement.status === 2 && // ACTIVE status (signed)
+              (agreement.visibility === 2 || agreement.visibility === 3), // PUBLIC or AUTO_PUBLIC
+          )
           .map((agreement: any) => ({
             id: agreement.id.toString(),
             title: agreement.title || "Untitled Agreement",
@@ -824,8 +822,11 @@ function SignedAgreements() {
             counterpartyUserId: agreement.counterParty?.id?.toString(),
           }));
 
-        console.log("✅ Signed agreements found:", signedAgreements.length);
-        setAgreements(signedAgreements);
+        console.log(
+          "✅ Signed PUBLIC agreements found:",
+          signedPublicAgreements.length,
+        );
+        setAgreements(signedPublicAgreements);
       } catch (error) {
         console.error("Failed to fetch signed agreements:", error);
         setAgreements([]);
