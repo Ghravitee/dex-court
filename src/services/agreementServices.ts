@@ -81,6 +81,19 @@ export interface AgreementDetailsDTO {
   counterParty: PartyDTO;
   files: FileDTO[];
   timeline: TimelineEventDTO[];
+
+  // 🆕 ADD THESE CANCELLATION PROPERTIES
+  cancelPending?: boolean;
+  cancelRequestedById?: number | null;
+  cancelRequestedBy?: PartyDTO | null;
+
+  // 🆕 ADD DELIVERY PROPERTIES
+  deliverySubmittedBy?: PartyDTO | null;
+  deliverySubmittedById?: number | null;
+
+  // 🆕 ADD DATE PROPERTIES
+  completedAt?: string;
+  updatedAt?: string;
 }
 
 export interface PartyDTO {
@@ -394,12 +407,77 @@ class AgreementService {
   }
 
   // Download file
-  async downloadFile(agreementId: number, fileId: number): Promise<Blob> {
-    const response = await api.get(`/agreement/${agreementId}/file/${fileId}`, {
-      responseType: "blob",
-    });
-    return response.data;
-  }
+  // In your agreementServices.ts file, add this method if it doesn't exist:
+
+  // Enhanced downloadFile method with proper TypeScript error handling
+  downloadFile = async (agreementId: number, fileId: number): Promise<void> => {
+    try {
+      const response = await api.get(
+        `/agreement/${agreementId}/file/${fileId}`,
+        {
+          responseType: "blob", // Important for file downloads
+        },
+      );
+
+      // Get the original filename from the file data or response headers
+      let filename = `document-${fileId}`;
+
+      // First, try to get filename from Content-Disposition header
+      const contentDisposition = response.headers["content-disposition"];
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      console.log("📥 Download details:", {
+        contentDisposition,
+        filename,
+        contentType: response.headers["content-type"],
+      });
+
+      // Create blob with proper MIME type if available
+      const contentType = response.headers["content-type"];
+      const blob = contentType
+        ? new Blob([response.data], { type: contentType })
+        : new Blob([response.data]);
+
+      // Create and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename; // This should preserve the original extension
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      console.log(`✅ File downloaded successfully: ${filename}`);
+    } catch (error: unknown) {
+      console.error("Download failed:", error);
+
+      // Type-safe error handling
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as { response?: { status?: number } };
+
+        if (axiosError.response?.status === 404) {
+          throw new Error(
+            "File not found on server. The file may have been deleted or the ID is incorrect.",
+          );
+        } else if (axiosError.response?.status === 403) {
+          throw new Error("You don't have permission to download this file.");
+        } else if (axiosError.response?.status === 400) {
+          throw new Error(
+            "Invalid request. Please check the agreement and file IDs.",
+          );
+        }
+      }
+
+      // Generic error for all other cases
+      throw new Error("Failed to download file. Please try again.");
+    }
+  };
 
   // Delete file
   async deleteFile(agreementId: number, fileId: number): Promise<void> {
@@ -430,24 +508,49 @@ class AgreementService {
     return response.data;
   }
 
-  // Cancelation actions
   async requestCancelation(agreementId: number): Promise<void> {
-    const response = await api.patch(
-      `/agreement/${agreementId}/cancel/request`,
-    );
-    return response.data;
+    try {
+      console.log(`🔄 Requesting cancellation for agreement ${agreementId}`);
+      const response = await api.patch(
+        `/agreement/${agreementId}/cancel/request`,
+      );
+      console.log("✅ Cancellation request successful:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Cancellation request failed:", error);
+      if (error.response?.data?.error === 16) {
+        throw new Error(
+          "Cannot request cancellation: Agreement may already have a pending cancellation or invalid state.",
+        );
+      }
+      throw error;
+    }
   }
 
   async respondToCancelation(
     agreementId: number,
     accepted: boolean,
   ): Promise<void> {
-    const data: AgreementCancelRespondRequest = { accepted };
-    const response = await api.patch(
-      `/agreement/${agreementId}/cancel/response`,
-      data,
-    );
-    return response.data;
+    try {
+      console.log(
+        `🔄 Responding to cancellation for agreement ${agreementId}, accepted: ${accepted}`,
+      );
+      const data: AgreementCancelRespondRequest = { accepted };
+      const response = await api.patch(
+        `/agreement/${agreementId}/cancel/response`,
+        data,
+      );
+      console.log("✅ Cancellation response successful:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Cancellation response failed:", error);
+      if (error.response?.data?.error === 16) {
+        throw new Error(
+          "Cannot respond to cancellation: Invalid agreement state or no pending cancellation.",
+        );
+      }
+      throw error;
+    }
   }
 }
 export const agreementService = new AgreementService();

@@ -18,6 +18,7 @@ import UserProfile from "./pages/UserProfile";
 import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext"; // Import the AuthProvider
+import Web3Int from "./pages/Web3Int";
 // import DebugAuth from "./pages/DebugAuth";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ export default function App() {
                 <Route index element={<Index />} />
                 <Route path="agreements" element={<Agreements />} />
                 <Route path="agreements/:id" element={<AgreementDetails />} />
+                <Route path="web3" element={<Web3Int />} />
                 <Route path="disputes" element={<Disputes />} />
                 <Route path="/disputes/:id" element={<DisputeDetails />} />
                 <Route path="voting" element={<Voting />} />

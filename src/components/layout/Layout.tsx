@@ -11,7 +11,10 @@ export default function Layout() {
   // const { isAuthenticated } = useAuth();
 
   return (
-    <div className="bg-background text-foreground flex min-h-screen w-full">
+    <main
+      style={{ display: "block" }}
+      className="text-foreground flex min-h-screen w-full bg-black"
+    >
       {/* Desktop Sidebar */}
       <Sidebar
         expanded={expanded}
@@ -57,6 +60,6 @@ export default function Layout() {
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
       />
-    </div>
+    </main>
   );
 }

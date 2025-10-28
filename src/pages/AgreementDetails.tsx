@@ -28,14 +28,19 @@ import {
   PackageCheck,
   Ban,
   CheckSquare,
-  // Square,
 } from "lucide-react";
+import { VscVerifiedFilled } from "react-icons/vsc";
 import { Button } from "../components/ui/button";
-import { agreementService } from "../services/agreementServices";
+import {
+  agreementService,
+  AgreementTypeEnum,
+} from "../services/agreementServices";
 import type { Agreement } from "../types";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/apiClient";
+import { FaArrowRightArrowLeft } from "react-icons/fa6";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -67,6 +72,7 @@ const AgreementEventTypeEnum = {
   CANCEL_REJECTED: 9,
   EXPIRED: 10,
   AUTO_CANCELLED: 11,
+  CANCELLED: 12,
 } as const;
 
 // Helper function to convert API status to frontend status
@@ -89,6 +95,38 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
       return "pending";
   }
 };
+
+// CORRECTED Helper to get event type names for debugging
+// const getEventTypeName = (eventType: number): string => {
+//   switch (eventType) {
+//     case 1:
+//       return "CREATED";
+//     case 2:
+//       return "SIGNED";
+//     case 3:
+//       return "REJECTED";
+//     case 4:
+//       return "DELIVERED";
+//     case 5:
+//       return "DELIVERY_CONFIRMED";
+//     case 6:
+//       return "DELIVERY_REJECTED";
+//     case 7:
+//       return "CANCEL_REQUESTED";
+//     case 8:
+//       return "CANCEL_CONFIRMED";
+//     case 9:
+//       return "CANCEL_REJECTED";
+//     case 10:
+//       return "EXPIRED";
+//     case 11:
+//       return "AUTO_CANCELLED";
+//     case 12:
+//       return "CANCELLED";
+//     default:
+//       return `UNKNOWN (${eventType})`;
+//   }
+// };
 
 // Helper function to normalize usernames (remove @ prefix for comparison)
 const normalizeUsername = (username: string): string => {
@@ -138,7 +176,7 @@ const isCurrentUserCreator = (agreement: any, currentUser: any) => {
   return currentUsername === creatorUsername;
 };
 
-// Helper to check who submitted the delivery (FIXED with correct event type)
+// Helper to check who submitted the delivery
 const getDeliverySubmittedBy = (agreement: any) => {
   if (!agreement) return null;
 
@@ -152,7 +190,7 @@ const getDeliverySubmittedBy = (agreement: any) => {
     return agreement._raw.deliverySubmittedBy;
   }
 
-  // Fallback: check timeline events for delivery submission (FIXED: using DELIVERED = 4)
+  // Fallback: check timeline events for delivery submission
   if (agreement._raw?.timeline) {
     const deliveryEvent = agreement._raw.timeline.find(
       (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
@@ -165,7 +203,97 @@ const getDeliverySubmittedBy = (agreement: any) => {
   return null;
 };
 
-// Helper to check if current user should see delivery review buttons (FIXED)
+// Enhanced helper to check who requested cancellation with fallbacks
+// Enhanced helper to check who requested cancellation with fallbacks
+const getCancellationRequestedBy = (agreement: any) => {
+  if (!agreement) return null;
+
+  console.log("🔍 DEBUG getCancellationRequestedBy:", {
+    cancelRequestedById: agreement.cancelRequestedById,
+    rawCancelRequestedById: agreement._raw?.cancelRequestedById,
+    cancelRequestedBy: agreement.cancelRequestedBy,
+    rawCancelRequestedBy: agreement._raw?.cancelRequestedBy,
+    timeline: agreement.timeline || agreement._raw?.timeline,
+  });
+
+  // Priority 1: Check if we have cancellation request info in the API response
+  if (agreement.cancelRequestedBy) {
+    return agreement.cancelRequestedBy;
+  }
+
+  // Priority 2: Check cancelRequestedById (THIS IS THE KEY FIELD!)
+  if (agreement.cancelRequestedById) {
+    return { id: agreement.cancelRequestedById };
+  }
+
+  // Priority 3: Check in _raw data
+  if (agreement._raw?.cancelRequestedBy) {
+    return agreement._raw.cancelRequestedBy;
+  }
+
+  if (agreement._raw?.cancelRequestedById) {
+    return { id: agreement._raw.cancelRequestedById };
+  }
+
+  // Priority 4: Fallback: check timeline events for cancellation request
+  const timeline = agreement.timeline || agreement._raw?.timeline || [];
+  const cancelEvent = timeline.find(
+    (event: any) =>
+      event.eventType === AgreementEventTypeEnum.CANCEL_REQUESTED ||
+      event.type === 7,
+  );
+
+  if (cancelEvent) {
+    return (
+      cancelEvent.actor || cancelEvent.createdBy || { id: cancelEvent.userId }
+    );
+  }
+
+  return null;
+};
+
+// Enhanced helper to check if cancellation is pending using multiple methods
+// Enhanced helper to check if cancellation is pending using multiple methods
+const isCancellationPending = (agreement: any): boolean => {
+  if (!agreement) return false;
+
+  // Method 1: Direct flag from API
+  if (agreement.cancelPending) {
+    return true;
+  }
+
+  // Method 2: Check _raw data
+  if (agreement._raw?.cancelPending) {
+    return true;
+  }
+
+  // Method 3: Check if there's a cancelRequestedById (this is crucial!)
+  if (agreement.cancelRequestedById || agreement._raw?.cancelRequestedById) {
+    return true;
+  }
+
+  // Method 4: Check timeline for pending cancellation request (as fallback)
+  const timeline = agreement.timeline || agreement._raw?.timeline || [];
+
+  const hasPendingCancellation = timeline.some(
+    (event: any) =>
+      (event.eventType === AgreementEventTypeEnum.CANCEL_REQUESTED ||
+        event.type === 7) &&
+      // Check if there's no corresponding confirm/reject event yet
+      !timeline.some(
+        (followup: any) =>
+          (followup.eventType === AgreementEventTypeEnum.CANCEL_CONFIRMED ||
+            followup.eventType === AgreementEventTypeEnum.CANCEL_REJECTED ||
+            followup.type === 8 || // CANCEL_CONFIRMED
+            followup.type === 9) && // CANCEL_REJECTED
+          new Date(followup.createdAt) > new Date(event.createdAt),
+      ),
+  );
+
+  return hasPendingCancellation;
+};
+
+// Helper to check if current user should see delivery review buttons
 const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   if (
     !agreement ||
@@ -182,11 +310,7 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
 
   // If we can't determine who submitted, show review buttons to BOTH parties
-  // This ensures that at least someone can review the delivery
   if (!deliverySubmittedBy) {
-    console.warn(
-      "⚠️ Could not determine who submitted delivery - showing review buttons to both parties",
-    );
     return isFirstParty || isCounterparty;
   }
 
@@ -196,6 +320,58 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
 
   // Only show review buttons to the party who did NOT submit the delivery
   return currentUserId !== submittedById && (isFirstParty || isCounterparty);
+};
+
+// Enhanced helper to check if current user should see cancellation response buttons
+// CORRECTED Helper to check if current user should see cancellation response buttons
+const shouldShowCancellationResponseButtons = (
+  agreement: any,
+  currentUser: any,
+) => {
+  if (!agreement || !currentUser) {
+    return false;
+  }
+
+  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
+  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
+
+  // Check if there's a pending cancellation request
+  const isPendingCancellation = isCancellationPending(agreement);
+
+  console.log("🔍 ULTRA-SIMPLE RESPONSE CHECK:", {
+    isPendingCancellation,
+    currentUser: currentUser.id,
+    isFirstParty,
+    isCounterparty,
+    cancelPending: agreement.cancelPending,
+    cancelRequestedById: agreement.cancelRequestedById,
+  });
+
+  if (!isPendingCancellation) {
+    return false;
+  }
+
+  // Get who requested cancellation
+  const cancellationRequestedBy = getCancellationRequestedBy(agreement);
+
+  if (!cancellationRequestedBy) {
+    console.log("❌ No cancellation requester found");
+    return false;
+  }
+
+  // Get IDs for comparison
+  const currentUserId = currentUser.id;
+  const requestedById = cancellationRequestedBy.id || cancellationRequestedBy;
+
+  console.log("🔍 USER COMPARISON:", {
+    currentUserId,
+    requestedById,
+    shouldShow:
+      currentUserId !== requestedById && (isFirstParty || isCounterparty),
+  });
+
+  // Only show response buttons to the OTHER party (the one who didn't request cancellation)
+  return currentUserId !== requestedById && (isFirstParty || isCounterparty);
 };
 
 // Helper to check if current user can mark as delivered
@@ -215,29 +391,210 @@ const canUserMarkAsDelivered = (agreement: any, currentUser: any) => {
   return isFirstParty || isCounterparty;
 };
 
-// Helper to get completion date from timeline (FIXED with correct event types)
+// Enhanced helper to check if current user can request cancellation
+const canUserRequestCancellation = (agreement: any, currentUser: any) => {
+  if (
+    !agreement ||
+    !currentUser ||
+    agreement.status !== AgreementStatusEnum.ACTIVE
+  ) {
+    return false;
+  }
+
+  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
+  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
+
+  // Check timeline for CANCEL_REQUESTED (type 7) events - look at top level timeline
+  const hasCancelRequest =
+    agreement.timeline?.some(
+      (event: any) => event.type === 7, // CANCEL_REQUESTED
+    ) ?? false;
+
+  console.log("🔍 FINAL REQUEST CHECK:", {
+    hasCancelRequest,
+    isFirstParty,
+    isCounterparty,
+    currentUser: currentUser.id,
+    timeline: agreement.timeline?.map((e: any) => ({
+      type: e.type,
+      actor: e.actor?.id,
+    })),
+  });
+
+  // Both parties can request cancellation ONLY if no cancellation request exists
+  return (isFirstParty || isCounterparty) && !hasCancelRequest;
+};
+
+// Helper to get completion date from timeline
 const getCompletionDate = (agreement: any): string | null => {
-  if (!agreement?._raw?.timeline) return null;
+  if (!agreement) return null;
 
-  // Look for completion events - use DELIVERY_CONFIRMED = 5
-  const completionEvents = agreement._raw.timeline.filter(
-    (event: any) =>
-      event.eventType === AgreementEventTypeEnum.DELIVERY_CONFIRMED,
-  );
+  // Priority 1: Direct completion date field
+  if (agreement.completedAt) {
+    return agreement.completedAt;
+  }
 
-  // Return the most recent completion event
-  if (completionEvents.length > 0) {
-    const sortedEvents = completionEvents.sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  // Priority 2: Check if status is completed and use logic based on timeline
+  if (agreement.status === AgreementStatusEnum.COMPLETED) {
+    // Use the most recent timeline event
+    if (agreement.timeline && agreement.timeline.length > 0) {
+      const sortedTimeline = [...agreement.timeline].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedTimeline[0].createdAt;
+    }
+
+    // Fallback to updatedAt
+    if (agreement.updatedAt) {
+      return agreement.updatedAt;
+    }
+  }
+
+  // Priority 3: Look for specific event types
+  if (agreement.timeline) {
+    const completionEvents = agreement.timeline.filter(
+      (event: any) =>
+        event.eventType === AgreementEventTypeEnum.DELIVERY_CONFIRMED,
     );
-    return sortedEvents[0].createdAt;
+
+    if (completionEvents.length > 0) {
+      const sortedEvents = completionEvents.sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedEvents[0].createdAt;
+    }
   }
 
   return null;
 };
 
-// Helper to check if this is the second rejection (FIXED with correct event type)
+// Helper to get agreement signing date from timeline
+const getSigningDate = (agreement: any): string | null => {
+  if (!agreement) return null;
+
+  // Priority 1: Look for signing events (SIGNED = 2)
+  if (agreement.timeline) {
+    const signingEvents = agreement.timeline.filter(
+      (event: any) => event.eventType === AgreementEventTypeEnum.SIGNED,
+    );
+
+    if (signingEvents.length > 0) {
+      // Get the most recent signing event (when both parties have signed)
+      const sortedEvents = signingEvents.sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedEvents[0].createdAt;
+    }
+  }
+
+  // Priority 2: If status is active/signed but no specific event, use timeline logic
+  if (agreement.status === AgreementStatusEnum.ACTIVE) {
+    // Use the most recent timeline event date as signing date
+    if (agreement.timeline && agreement.timeline.length > 0) {
+      const sortedTimeline = [...agreement.timeline].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedTimeline[0].createdAt;
+    }
+  }
+
+  return null;
+};
+
+// Helper to get cancellation date from timeline
+const getCancellationDate = (agreement: any): string | null => {
+  if (!agreement) return null;
+
+  // Priority 1: Look for cancellation events
+  if (agreement.timeline) {
+    const cancellationEvents = agreement.timeline.filter(
+      (event: any) =>
+        event.eventType === AgreementEventTypeEnum.CANCELLED ||
+        event.eventType === AgreementEventTypeEnum.CANCEL_CONFIRMED ||
+        event.eventType === AgreementEventTypeEnum.REJECTED ||
+        event.eventType === AgreementEventTypeEnum.EXPIRED ||
+        event.eventType === AgreementEventTypeEnum.AUTO_CANCELLED,
+    );
+
+    if (cancellationEvents.length > 0) {
+      // Get the most recent cancellation event
+      const sortedEvents = cancellationEvents.sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedEvents[0].createdAt;
+    }
+  }
+
+  // Priority 2: If status is cancelled but no specific event, use timeline logic
+  if (
+    agreement.status === AgreementStatusEnum.CANCELLED ||
+    agreement.status === AgreementStatusEnum.EXPIRED
+  ) {
+    // Use the most recent timeline event date as cancellation date
+    if (agreement.timeline && agreement.timeline.length > 0) {
+      const sortedTimeline = [...agreement.timeline].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedTimeline[0].createdAt;
+    }
+  }
+
+  return null;
+};
+
+// Helper to get delivery submission date from timeline
+const getDeliverySubmittedDate = (agreement: any): string | null => {
+  if (!agreement) return null;
+
+  // Priority 1: Look for delivery submission event (DELIVERED = 4)
+  if (agreement.timeline) {
+    const deliveryEvents = agreement.timeline.filter(
+      (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
+    );
+
+    if (deliveryEvents.length > 0) {
+      const sortedEvents = deliveryEvents.sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedEvents[0].createdAt;
+    }
+  }
+
+  // Priority 2: If status is pending approval but no specific event, use timeline logic
+  if (agreement.status === AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY) {
+    // Use the most recent timeline event date as delivery submission date
+    if (agreement.timeline && agreement.timeline.length > 0) {
+      const sortedTimeline = [...agreement.timeline].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return sortedTimeline[0].createdAt;
+    }
+  }
+
+  return null;
+};
+
+// Enhanced date formatting with time for all displays
+const formatDateWithTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+// Helper to check if this is the second rejection
 const isSecondRejection = (agreement: any): boolean => {
   if (!agreement?._raw?.timeline) return false;
 
@@ -246,7 +603,7 @@ const isSecondRejection = (agreement: any): boolean => {
       event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED,
   );
 
-  return rejectionEvents.length >= 1; // Second rejection triggers dispute
+  return rejectionEvents.length >= 1;
 };
 
 export default function AgreementDetails() {
@@ -294,6 +651,16 @@ export default function AgreementDetails() {
         return party?.id?.toString();
       };
 
+      // Escrow is considered "used" only if:
+      // 1. Funds are included (type = 2) AND
+      // 2. There's an escrow contract address OR token/amount specified
+      const useEscrow = Boolean(
+        agreementData.type === AgreementTypeEnum.ESCROW &&
+          (agreementData.escrowContract ||
+            agreementData.tokenSymbol ||
+            agreementData.amount),
+      );
+
       const firstPartyUsername = getUsernameFromParty(agreementData.firstParty);
       const counterPartyUsername = getUsernameFromParty(
         agreementData.counterParty,
@@ -301,13 +668,12 @@ export default function AgreementDetails() {
       const creatorUsername = getUsernameFromParty(agreementData.creator);
 
       const completionDate = getCompletionDate(agreementData);
-
-      console.log("📋 AgreementDetails API Response:", agreementData);
-      console.log("📅 Timeline events:", agreementData.timeline);
-      console.log("✅ Completion date found:", completionDate);
+      const deliverySubmittedDate = getDeliverySubmittedDate(agreementData);
+      const signingDate = getSigningDate(agreementData);
+      const cancellationDate = getCancellationDate(agreementData);
 
       // Transform API data to frontend format
-      const transformedAgreement: Agreement & { completionDate?: string } = {
+      const transformedAgreement: Agreement = {
         id: agreementData.id.toString(),
         title: agreementData.title,
         description: agreementData.description,
@@ -325,13 +691,16 @@ export default function AgreementDetails() {
           : undefined,
         token: agreementData.tokenSymbol || undefined,
         includeFunds: agreementData.type === 2 ? "yes" : "no",
-        useEscrow: agreementData.type === 2,
+        useEscrow: useEscrow,
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
 
         // Store completion date
         completionDate: completionDate || undefined,
+        deliverySubmittedDate: deliverySubmittedDate || undefined,
+        signingDate: signingDate || undefined,
+        cancellationDate: cancellationDate || undefined,
 
         // Avatar and user IDs
         createdByAvatarId: getAvatarIdFromParty(agreementData.firstParty),
@@ -343,6 +712,11 @@ export default function AgreementDetails() {
         creator: creatorUsername,
         creatorUserId: getUserIdFromParty(agreementData.creator),
         creatorAvatarId: getAvatarIdFromParty(agreementData.creator),
+
+        // Cancellation properties
+        cancelPending: agreementData.cancelPending || false,
+        cancelRequestedById:
+          agreementData.cancelRequestedById?.toString() || null,
 
         // Store raw API data for role checking
         _raw: agreementData,
@@ -385,8 +759,39 @@ export default function AgreementDetails() {
   };
 
   // Cancel Agreement Handler
+  // Cancel Agreement Handler - WITH ENHANCED DEBUGGING
   const handleCancelAgreement = async () => {
     if (!id || !agreement) return;
+
+    console.log("🚀 James is attempting to cancel agreement:", {
+      agreementId: id,
+      currentStatus: agreement.status,
+      currentUser: user?.id,
+    });
+
+    // SIMPLE CHECK: Use the same logic as the permission check
+    const hasCancellationRequest =
+      agreement.cancelPending ||
+      agreement._raw?.cancelPending ||
+      agreement.cancelRequestedById ||
+      agreement._raw?.cancelRequestedById ||
+      (agreement._raw?.timeline?.some(
+        (event: any) =>
+          event.eventType === AgreementEventTypeEnum.CANCEL_REQUESTED,
+      ) ??
+        false);
+
+    console.log("🔍 Pre-cancellation check:", {
+      hasCancellationRequest,
+      cancelPending: agreement.cancelPending,
+      cancelRequestedById: agreement.cancelRequestedById,
+      timelineEvents: agreement._raw?.timeline?.length,
+    });
+
+    if (hasCancellationRequest) {
+      toast.error("There is already a pending cancellation request.");
+      return;
+    }
 
     if (!confirm("Are you sure you want to cancel this agreement?")) {
       return;
@@ -396,21 +801,29 @@ export default function AgreementDetails() {
     try {
       const agreementId = parseInt(id);
 
-      // For pending agreements, use sign with false to reject
       if (agreement.status === "pending") {
-        await agreementService.signAgreement(agreementId, false);
+        await agreementService.deleteAgreement(agreementId);
         toast.success("Agreement cancelled successfully!");
+        navigate("/agreements");
       } else {
-        // For active agreements, use cancel request
-        await agreementService.requestCancelation(agreementId);
+        console.log("📞 Calling requestCancelation API...");
+        const response = await agreementService.requestCancelation(agreementId);
+        console.log("✅ requestCancelation API response:", response);
+
         toast.success(
           "Cancellation requested! Waiting for counterparty confirmation.",
         );
-      }
 
-      await fetchAgreementDetails(); // Refresh data
+        // FORCE REFRESH with more aggressive retry
+        console.log("🔄 Starting forced refresh...");
+        setTimeout(() => {
+          fetchAgreementDetails();
+          // Double refresh to ensure we get latest data
+          setTimeout(() => fetchAgreementDetails(), 500);
+        }, 500);
+      }
     } catch (error: any) {
-      console.error("Failed to cancel agreement:", error);
+      console.error("❌ Failed to cancel agreement:", error);
       const errorMessage =
         error.response?.data?.message ||
         "Failed to cancel agreement. Please try again.";
@@ -421,8 +834,22 @@ export default function AgreementDetails() {
   };
 
   // Respond to Cancelation Request
+  // SIMPLE WORKING VERSION - Replace the response handler
   const handleRespondToCancelation = async (accepted: boolean) => {
     if (!id || !agreement) return;
+
+    // SIMPLE CHECK: Look for any cancellation request in ANY timeline location
+    const timeline = agreement.timeline || agreement._raw?.timeline || [];
+    const hasCancelRequest = timeline.some(
+      (event: any) =>
+        event.type === 7 ||
+        event.eventType === AgreementEventTypeEnum.CANCEL_REQUESTED,
+    );
+
+    if (!hasCancelRequest) {
+      toast.error("No pending cancellation request found.");
+      return;
+    }
 
     setIsRespondingToCancel(true);
     try {
@@ -658,16 +1085,153 @@ export default function AgreementDetails() {
     });
   };
 
-  const handleDownloadFile = async (fileId: number) => {
-    if (!id) return;
+  const handleDownloadFile = async (fileIndex: number) => {
+    if (!id || !agreement) return;
 
     try {
       const agreementId = parseInt(id);
-      await agreementService.downloadFile(agreementId, fileId);
-    } catch (error) {
+
+      // Show loading state
+      toast.info("Downloading file...");
+
+      // Get file information from agreement data
+      const files = agreement._raw?.files || [];
+      if (files.length === 0 || fileIndex >= files.length) {
+        toast.error("File not found in agreement data");
+        return;
+      }
+
+      const file = files[fileIndex];
+      const fileId = file.id;
+
+      if (!fileId) {
+        toast.error("File ID not found");
+        return;
+      }
+
+      // Create a custom download function that preserves the original filename
+      await downloadFileWithOriginalName(agreementId, fileId, file.fileName);
+      toast.success("File downloaded successfully!");
+    } catch (error: any) {
       console.error("Failed to download file:", error);
-      alert("Failed to download file. Please try again.");
+      const errorMessage =
+        error.message || "Failed to download file. Please try again.";
+      toast.error(errorMessage);
     }
+  };
+
+  // Enhanced download function that preserves original filename
+  const downloadFileWithOriginalName = async (
+    agreementId: number,
+    fileId: number,
+    originalFileName: string,
+  ) => {
+    try {
+      const response = await api.get(
+        `/agreement/${agreementId}/file/${fileId}`,
+        {
+          responseType: "blob",
+        },
+      );
+
+      // Use the original filename from the file data
+      let filename = originalFileName;
+
+      // If the original filename doesn't have an extension, try to get it from headers
+      if (!filename.includes(".")) {
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1];
+          }
+        }
+      }
+
+      // Create blob with proper MIME type
+      const contentType = response.headers["content-type"];
+      const blob = contentType
+        ? new Blob([response.data], { type: contentType })
+        : new Blob([response.data]);
+
+      // Create and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed:", error);
+      throw error;
+    }
+  };
+
+  // Helper function to determine file type
+  const getFileType = (filename: string): string => {
+    if (!filename) return "document";
+
+    const ext = filename.toLowerCase().split(".").pop();
+    switch (ext) {
+      case "pdf":
+        return "pdf";
+      case "jpg":
+      case "jpeg":
+      case "png":
+      case "gif":
+      case "webp":
+      case "svg":
+        return "image";
+      case "doc":
+      case "docx":
+        return "word";
+      case "xls":
+      case "xlsx":
+        return "excel";
+      case "zip":
+      case "rar":
+      case "7z":
+        return "archive";
+      case "txt":
+        return "text";
+      default:
+        return "document";
+    }
+  };
+
+  // Helper function to get appropriate file icon
+  const getFileIcon = (fileType: string) => {
+    const className = "h-5 w-5";
+
+    switch (fileType) {
+      case "pdf":
+        return <FileText className={`${className} text-red-400`} />;
+      case "image":
+        return <Image className={`${className} text-green-400`} />;
+      case "word":
+        return <FileText className={`${className} text-blue-400`} />;
+      case "excel":
+        return <FileText className={`${className} text-green-500`} />;
+      case "archive":
+        return <Paperclip className={`${className} text-yellow-400`} />;
+      case "text":
+        return <FileText className={`${className} text-gray-400`} />;
+      default:
+        return <Paperclip className={`${className} text-cyan-400`} />;
+    }
+  };
+
+  // Helper function to format file size
+  const getFileSizeDisplay = (fileSize?: number): string => {
+    if (!fileSize) return "Unknown size";
+
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(fileSize) / Math.log(1024));
+    return (
+      Math.round((fileSize / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
+    );
   };
 
   // Check user roles and permissions
@@ -685,25 +1249,27 @@ export default function AgreementDetails() {
   const canViewAgreement =
     isParticipant || isCreator || (agreement && agreement.type === "Public");
 
-  // BIDIRECTIONAL ACTION PERMISSIONS
+  // PERMISSIONS - Using the same logic as delivery system
   const canSign =
     agreement?.status === "pending" &&
     (isCounterparty || (isFirstParty && !isCreator));
+
   const canCancel = agreement?.status === "pending" && isFirstParty;
-  const canRequestCancel = agreement?.status === "signed" && isParticipant;
-  const canRespondToCancel =
-    agreement?.status === "signed" &&
-    agreement._raw?.cancelPending &&
-    ((isFirstParty &&
-      agreement._raw.cancelRequestedById === agreement._raw.counterParty?.id) ||
-      (isCounterparty &&
-        agreement._raw.cancelRequestedById === agreement._raw.firstParty?.id));
+
+  // FIXED: Define canRequestCancellation variable at component level
+  const canRequestCancellation = canUserRequestCancellation(
+    agreement?._raw,
+    user,
+  );
+
+  // Respond to cancellation - only the OTHER party can respond (same logic as delivery)
+  const canRespondToCancellation = shouldShowCancellationResponseButtons(
+    agreement,
+    user,
+  );
 
   // BIDIRECTIONAL DELIVERY PERMISSIONS
-  // Both parties can mark as delivered when agreement is signed
   const canMarkDelivered = canUserMarkAsDelivered(agreement?._raw, user);
-
-  // The other party can review delivery when status is pending_approval (FIXED)
   const canReviewDelivery = shouldShowDeliveryReviewButtons(
     agreement?._raw,
     user,
@@ -716,12 +1282,24 @@ export default function AgreementDetails() {
     ((deliverySubmittedBy.id && deliverySubmittedBy.id === user?.id) ||
       deliverySubmittedBy === user?.id);
 
+  // Check who requested cancellation
+  const cancellationRequestedBy = getCancellationRequestedBy(agreement?._raw);
+  const isCurrentUserRequestedCancellation =
+    cancellationRequestedBy &&
+    ((cancellationRequestedBy.id && cancellationRequestedBy.id === user?.id) ||
+      cancellationRequestedBy === user?.id);
+
   // Dispute permissions
   const canOpenDispute = agreement?.status === "signed" && isParticipant;
   const canCancelDispute = agreement?.status === "disputed" && isParticipant;
 
-  // Get completion date for display
   const completionDate = getCompletionDate(agreement?._raw);
+  const deliverySubmittedDate = getDeliverySubmittedDate(agreement?._raw);
+  const signingDate = getSigningDate(agreement?._raw);
+  const cancellationDate = getCancellationDate(agreement?._raw);
+
+  // Check if cancellation is pending using enhanced detection
+  const cancellationPending = isCancellationPending(agreement?._raw);
 
   if (loading) {
     return (
@@ -850,9 +1428,7 @@ export default function AgreementDetails() {
                       {agreement.creator}
                     </button>
                     {isCreator && (
-                      <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
-                        you
-                      </span>
+                      <VscVerifiedFilled className="size-5 text-green-400" />
                     )}
                   </div>
                 </div>
@@ -890,12 +1466,12 @@ export default function AgreementDetails() {
                             {agreement.createdBy}
                           </button>
                           {isFirstParty && (
-                            <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
-                              you
-                            </span>
+                            <VscVerifiedFilled className="size-5 text-green-400" />
                           )}
                         </div>
-                        <span className="text-cyan-400">↔</span>
+                        <span className="text-cyan-400">
+                          <FaArrowRightArrowLeft />
+                        </span>
                         <div className="flex items-center gap-1">
                           <UserAvatar
                             userId={
@@ -919,9 +1495,7 @@ export default function AgreementDetails() {
                             {agreement.counterparty}
                           </button>
                           {isCounterparty && (
-                            <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-300">
-                              you
-                            </span>
+                            <VscVerifiedFilled className="size-5 text-green-400" />
                           )}
                         </div>
                       </div>
@@ -936,7 +1510,7 @@ export default function AgreementDetails() {
                       </div>
                     </div>
                   </div>
-                  {agreement.includeFunds === "yes" && (
+                  {agreement.includeFunds === "yes" && agreement.useEscrow && (
                     <div className="flex items-center space-x-3">
                       <DollarSign className="h-5 w-5 text-emerald-400" />
                       <div>
@@ -988,9 +1562,9 @@ export default function AgreementDetails() {
                     <div className="flex items-center space-x-3">
                       <Shield className="h-5 w-5 text-cyan-400" />
                       <div>
-                        <div className="text-sm text-cyan-300">Escrow</div>
+                        <div className="text-sm text-cyan-300">Escrow Used</div>
                         <div className="text-white">
-                          {agreement.useEscrow ? "Enabled" : "Not Used"}
+                          {agreement.useEscrow ? "Yes" : "No"}
                         </div>
                       </div>
                     </div>
@@ -1017,36 +1591,48 @@ export default function AgreementDetails() {
                     Supporting Documents
                   </h3>
                   <div className="space-y-2">
-                    {agreement.images.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center space-x-3 rounded-lg border border-white/10 bg-white/5 p-3"
-                      >
-                        {file.toLowerCase().endsWith(".pdf") ? (
-                          <FileText className="h-5 w-5 text-red-400" />
-                        ) : /\.(jpg|jpeg|png|gif|webp)$/i.test(file) ? (
-                          <Image className="h-5 w-5 text-green-400" />
-                        ) : (
-                          <Paperclip className="h-5 w-5 text-cyan-400" />
-                        )}
-                        <span className="flex-1 text-white">{file}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          onClick={() => handleDownloadFile(index)}
+                    {agreement.images.map((file, index) => {
+                      // Get file type for better icon display
+                      const fileType = getFileType(file);
+                      const fileIcon = getFileIcon(fileType);
+
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3 transition-colors duration-200 hover:bg-white/10"
                         >
-                          <Upload className="mr-2 h-4 w-4" />
-                          Download
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex min-w-0 flex-1 items-center space-x-3">
+                            {fileIcon}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-white">
+                                {file}
+                              </span>
+                              <span className="text-xs text-cyan-300/70 capitalize">
+                                {fileType} •{" "}
+                                {getFileSizeDisplay(
+                                  agreement._raw?.files?.[index]?.fileSize,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
+                            onClick={() => handleDownloadFile(index)}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Download
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Financial Details */}
-              {agreement.includeFunds === "yes" && (
+              {agreement.includeFunds === "yes" && agreement.useEscrow && (
                 <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4">
                   <h3 className="mb-3 text-lg font-semibold text-emerald-300">
                     Financial Details
@@ -1071,10 +1657,10 @@ export default function AgreementDetails() {
                         Escrow Protection
                       </div>
                       <div className="text-lg font-semibold text-white">
-                        {agreement.useEscrow ? "Enabled" : "Not Used"}
+                        Enabled
                       </div>
                     </div>
-                    {agreement.useEscrow && agreement.escrowAddress && (
+                    {agreement.escrowAddress && (
                       <div className="md:col-span-2">
                         <div className="mb-2 text-sm text-emerald-300">
                           Escrow Contract
@@ -1110,296 +1696,269 @@ export default function AgreementDetails() {
             {/* BIDIRECTIONAL Action Buttons Section */}
             {(canSign ||
               canCancel ||
-              canRequestCancel ||
-              canRespondToCancel ||
+              canRequestCancellation ||
+              canRespondToCancellation ||
               canMarkDelivered ||
               canReviewDelivery ||
               canOpenDispute ||
-              canCancelDispute) && (
-              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-                <h3 className="mb-4 text-lg font-semibold text-white">
-                  Agreement Actions
-                </h3>
-
-                <div className="flex flex-wrap gap-3">
-                  {/* Sign Agreement Button - Only for counterparty when pending */}
-                  {canSign && (
-                    <Button
-                      variant="neon"
-                      className="neon-hover"
-                      onClick={handleSignAgreement}
-                      disabled={isSigning}
-                    >
-                      {isSigning ? (
-                        <>
-                          <Clock className="mr-2 h-4 w-4 animate-spin" />
-                          Signing...
-                        </>
-                      ) : (
-                        <>
-                          <UserCheck className="mr-2 h-4 w-4" />
-                          {isFirstParty && !isCreator
-                            ? "Sign as First Party"
-                            : "Sign as Counterparty"}
-                        </>
-                      )}
-                    </Button>
-                  )}
-
-                  {/* Cancel Agreement Button - For first party when pending */}
-                  {canCancel && (
-                    <Button
-                      variant="outline"
-                      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                      onClick={handleCancelAgreement}
-                      disabled={isCancelling}
-                    >
-                      {isCancelling ? (
-                        <>
-                          <Clock className="mr-2 h-4 w-4 animate-spin" />
-                          Cancelling...
-                        </>
-                      ) : (
-                        <>
-                          <X className="mr-2 h-4 w-4" />
-                          Cancel Agreement
-                        </>
-                      )}
-                    </Button>
-                  )}
-
-                  {/* Request Cancelation Button - For both parties when active */}
-                  {canRequestCancel && (
-                    <Button
-                      variant="outline"
-                      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                      onClick={handleCancelAgreement}
-                      disabled={isCancelling}
-                    >
-                      {isCancelling ? (
-                        <>
-                          <Clock className="mr-2 h-4 w-4 animate-spin" />
-                          Requesting...
-                        </>
-                      ) : (
-                        <>
-                          <Ban className="mr-2 h-4 w-4" />
-                          Request Cancellation
-                        </>
-                      )}
-                    </Button>
-                  )}
-
-                  {/* Respond to Cancelation Buttons */}
-                  {canRespondToCancel && (
-                    <>
+              canCancelDispute) &&
+              agreement?.status !== "completed" && (
+                <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">
+                    Agreement Actions
+                  </h3>
+                  <div className="flex flex-wrap gap-3">
+                    {/* Sign Agreement Button */}
+                    {canSign && (
                       <Button
-                        variant="outline"
-                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                        onClick={() => handleRespondToCancelation(true)}
-                        disabled={isRespondingToCancel}
+                        variant="neon"
+                        className="neon-hover"
+                        onClick={handleSignAgreement}
+                        disabled={isSigning}
                       >
-                        {isRespondingToCancel ? (
+                        {isSigning ? (
                           <>
                             <Clock className="mr-2 h-4 w-4 animate-spin" />
-                            Accepting...
+                            Signing...
                           </>
                         ) : (
                           <>
-                            <ThumbsUp className="mr-2 h-4 w-4" />
-                            Accept Cancellation
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            {isFirstParty && !isCreator
+                              ? "Sign as First Party"
+                              : "Sign as Counterparty"}
                           </>
                         )}
                       </Button>
+                    )}
+
+                    {/* Cancel Agreement Button - For first party when pending */}
+                    {canCancel && (
                       <Button
                         variant="outline"
                         className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                        onClick={() => handleRespondToCancelation(false)}
-                        disabled={isRespondingToCancel}
+                        onClick={handleCancelAgreement}
+                        disabled={isCancelling}
                       >
-                        {isRespondingToCancel ? (
+                        {isCancelling ? (
                           <>
                             <Clock className="mr-2 h-4 w-4 animate-spin" />
-                            Rejecting...
+                            Cancelling...
                           </>
                         ) : (
                           <>
-                            <ThumbsDown className="mr-2 h-4 w-4" />
-                            Reject Cancellation
+                            <X className="mr-2 h-4 w-4" />
+                            Cancel Agreement
                           </>
                         )}
                       </Button>
-                    </>
-                  )}
+                    )}
 
-                  {/* BIDIRECTIONAL: Mark as Delivered Button - For both parties when active */}
-                  {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
-                    <Button
-                      variant="outline"
-                      className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                      onClick={handleMarkAsDelivered}
-                      disabled={isCompleting}
-                    >
-                      {isCompleting ? (
-                        <>
-                          <Clock className="mr-2 h-4 w-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Mark My Work as Delivered
-                        </>
-                      )}
-                    </Button>
-                  )}
-
-                  {/* BIDIRECTIONAL: Delivery Review Buttons - For the OTHER party when pending approval */}
-                  {canReviewDelivery && (
-                    <>
+                    {/* Request Cancellation Button - For both parties when active, but ONLY if no pending cancellation */}
+                    {canRequestCancellation && (
                       <Button
                         variant="outline"
-                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                        onClick={handleConfirmDelivery}
-                        disabled={isConfirming}
+                        className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                        onClick={handleCancelAgreement}
+                        disabled={isCancelling}
                       >
-                        {isConfirming ? (
+                        {isCancelling ? (
                           <>
                             <Clock className="mr-2 h-4 w-4 animate-spin" />
-                            Confirming...
-                          </>
-                        ) : (
-                          <>
-                            <PackageCheck className="mr-2 h-4 w-4" />
-                            Accept Delivery
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                        onClick={handleRejectDelivery}
-                        disabled={isRejecting}
-                      >
-                        {isRejecting ? (
-                          <>
-                            <Clock className="mr-2 h-4 w-4 animate-spin" />
-                            Rejecting...
+                            Requesting...
                           </>
                         ) : (
                           <>
                             <Ban className="mr-2 h-4 w-4" />
-                            Reject Delivery
+                            Request Cancellation
                           </>
                         )}
                       </Button>
-                    </>
-                  )}
+                    )}
 
-                  {/* Open Dispute Button */}
-                  {canOpenDispute && (
-                    <Button
-                      variant="outline"
-                      className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                      onClick={handleOpenDispute}
-                      disabled={isOpeningDispute}
-                    >
-                      {isOpeningDispute ? (
-                        <>
-                          <Clock className="mr-2 h-4 w-4 animate-spin" />
-                          Opening...
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="mr-2 h-4 w-4" />
-                          Open Dispute
-                        </>
+                    {/* Respond to Cancellation Buttons - For the OTHER party ONLY when there's a pending cancellation */}
+                    {canRespondToCancellation && (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                          onClick={() => handleRespondToCancelation(true)}
+                          disabled={isRespondingToCancel}
+                        >
+                          {isRespondingToCancel ? (
+                            <>
+                              <Clock className="mr-2 h-4 w-4 animate-spin" />
+                              Accepting...
+                            </>
+                          ) : (
+                            <>
+                              <ThumbsUp className="mr-2 h-4 w-4" />
+                              Accept Cancellation
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                          onClick={() => handleRespondToCancelation(false)}
+                          disabled={isRespondingToCancel}
+                        >
+                          {isRespondingToCancel ? (
+                            <>
+                              <Clock className="mr-2 h-4 w-4 animate-spin" />
+                              Rejecting...
+                            </>
+                          ) : (
+                            <>
+                              <ThumbsDown className="mr-2 h-4 w-4" />
+                              Reject Cancellation
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    )}
+
+                    {/* BIDIRECTIONAL: Mark as Delivered Button */}
+                    {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
+                      <Button
+                        variant="outline"
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                        onClick={handleMarkAsDelivered}
+                        disabled={isCompleting}
+                      >
+                        {isCompleting ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Submitting...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 h-4 w-4" />
+                            Mark My Work as Delivered
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    {/* BIDIRECTIONAL: Delivery Review Buttons */}
+                    {canReviewDelivery && (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                          onClick={handleConfirmDelivery}
+                          disabled={isConfirming}
+                        >
+                          {isConfirming ? (
+                            <>
+                              <Clock className="mr-2 h-4 w-4 animate-spin" />
+                              Confirming...
+                            </>
+                          ) : (
+                            <>
+                              <PackageCheck className="mr-2 h-4 w-4" />
+                              Accept Delivery
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                          onClick={handleRejectDelivery}
+                          disabled={isRejecting}
+                        >
+                          {isRejecting ? (
+                            <>
+                              <Clock className="mr-2 h-4 w-4 animate-spin" />
+                              Rejecting...
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="mr-2 h-4 w-4" />
+                              Reject Delivery
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Open Dispute Button */}
+                    {canOpenDispute && (
+                      <Button
+                        variant="outline"
+                        className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                        onClick={handleOpenDispute}
+                        disabled={isOpeningDispute}
+                      >
+                        {isOpeningDispute ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Opening...
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="mr-2 h-4 w-4" />
+                            Open Dispute
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    {/* Cancel Dispute Button */}
+                    {canCancelDispute && (
+                      <Button
+                        variant="outline"
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                        onClick={handleCancelDispute}
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Cancel Dispute
+                      </Button>
+                    )}
+
+                    {/* Show status if user has already submitted delivery */}
+                    {isCurrentUserSubmittedDelivery && (
+                      <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2">
+                        <CheckSquare className="h-4 w-4 text-blue-400" />
+                        <span className="text-sm text-blue-300">
+                          Your delivery has been submitted and is awaiting
+                          review
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Show status if user has requested cancellation */}
+                    {isCurrentUserRequestedCancellation &&
+                      cancellationPending && (
+                        <div className="flex items-center gap-2 rounded-lg bg-orange-500/10 px-4 py-2">
+                          <Clock className="h-4 w-4 text-orange-400" />
+                          <span className="text-sm text-orange-300">
+                            You have requested cancellation. Waiting for the
+                            other party to respond.
+                          </span>
+                        </div>
                       )}
-                    </Button>
-                  )}
+                  </div>
+                  {/* Cancellation Status Display */}
 
-                  {/* Cancel Dispute Button */}
-                  {canCancelDispute && (
-                    <Button
-                      variant="outline"
-                      className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                      onClick={handleCancelDispute}
-                    >
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Cancel Dispute
-                    </Button>
-                  )}
-
-                  {/* Show status if user has already submitted delivery */}
-                  {isCurrentUserSubmittedDelivery && (
-                    <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2">
-                      <CheckSquare className="h-4 w-4 text-blue-400" />
-                      <span className="text-sm text-blue-300">
-                        Your delivery has been submitted and is awaiting review
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action descriptions */}
-                <div className="mt-4 space-y-2 text-sm text-cyan-300">
-                  {canSign && (
-                    <p>
-                      {isFirstParty && !isCreator
-                        ? "As the first party (but not the creator), you need to sign this agreement."
-                        : "As the counterparty, you need to sign this agreement to make it active."}
-                    </p>
-                  )}
-                  {canCancel && (
-                    <p>You can cancel this agreement before it's signed.</p>
-                  )}
-                  {canRequestCancel && (
-                    <p>
-                      Request cancellation of this agreement. The other party
-                      will need to confirm.
-                    </p>
-                  )}
-                  {canRespondToCancel && (
-                    <p>
-                      Respond to the cancellation request from the other party.
-                    </p>
-                  )}
-                  {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
-                    <p>
-                      Mark your work as delivered when you've completed your
-                      part of the agreement.
-                    </p>
-                  )}
-                  {canReviewDelivery && (
-                    <div>
-                      <p>
-                        Review the other party's delivery and either accept or
-                        reject it. Please keep in mind that if you marked work
-                        as delivered, you won't be able to accpet or reject
-                        delivery. Only the other party can
+                  {cancellationPending && (
+                    <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-orange-400" />
+                        <span className="font-medium text-orange-300">
+                          Cancellation Requested
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-orange-200/80">
+                        {isCurrentUserRequestedCancellation
+                          ? "You have requested cancellation. Waiting for the other party to respond."
+                          : "The other party has requested cancellation. Please accept or reject the request."}
                       </p>
+                      {/* Show debug info in development */}
                     </div>
                   )}
-                  {canOpenDispute && (
-                    <p>
-                      Open a dispute if there are issues with the agreement that
-                      need resolution.
-                    </p>
-                  )}
-                  {canCancelDispute && (
-                    <p>
-                      Cancel the dispute if you've resolved the issues mutually.
-                    </p>
-                  )}
-                  {isCurrentUserSubmittedDelivery && (
-                    <p>
-                      You've submitted your delivery. Waiting for the other
-                      party to review it.
-                    </p>
-                  )}
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Delivery Status Information */}
             {agreement?.status === "pending_approval" && (
@@ -1437,9 +1996,8 @@ export default function AgreementDetails() {
                                   : `@${deliverySubmittedBy.username}`
                                 : deliverySubmittedBy.name || "The other party"}
                             </strong>{" "}
-                            {isCounterparty || isFirstParty ? "(you)" : ""} has
-                            marked their work as delivered and is waiting for{" "}
-                            <strong>your</strong> review.
+                            has marked their work as delivered and is waiting
+                            for <strong>your</strong> review.
                           </>
                         )}
                       </div>
@@ -1470,7 +2028,7 @@ export default function AgreementDetails() {
                     Agreement Created
                   </div>
                   <div className="text-sm text-cyan-300">
-                    {formatDate(agreement.dateCreated)}
+                    {formatDateWithTime(agreement.dateCreated)}
                   </div>
                   <div className="mt-1 text-xs text-blue-400/70">
                     <div className="flex items-center gap-2">
@@ -1484,9 +2042,7 @@ export default function AgreementDetails() {
                       />
                       {agreement.creator}
                       {isCreator && (
-                        <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300">
-                          you
-                        </span>
+                        <VscVerifiedFilled className="size-5 text-green-400" />
                       )}
                     </div>
                   </div>
@@ -1500,13 +2056,15 @@ export default function AgreementDetails() {
                   "disputed",
                   "pending_approval",
                 ].includes(agreement.status) && (
-                  <div className="relative flex min-w-[10rem] flex-col items-center text-center">
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
                     <div className="mt-3 font-medium text-white">
                       Agreement Signed
                     </div>
                     <div className="text-sm text-cyan-300">
-                      {formatDate(agreement.dateCreated)}
+                      {signingDate
+                        ? formatDateWithTime(signingDate)
+                        : formatDateWithTime(agreement.dateCreated)}
                     </div>
                     <div className="mt-1 text-xs text-emerald-400/70">
                       by both parties
@@ -1522,7 +2080,11 @@ export default function AgreementDetails() {
                     <div className="mt-3 font-medium text-white">
                       Delivery Submitted
                     </div>
-                    <div className="text-sm text-cyan-300">Recently</div>
+                    <div className="text-sm text-cyan-300">
+                      {deliverySubmittedDate
+                        ? formatDateWithTime(deliverySubmittedDate)
+                        : "Date not available"}
+                    </div>
                     <div className="mt-1 text-xs text-amber-400/70">
                       Waiting for approval
                     </div>
@@ -1532,13 +2094,15 @@ export default function AgreementDetails() {
 
                 {/* Step 4 - Completed */}
                 {agreement.status === "completed" && (
-                  <div className="relative flex min-w-[10rem] flex-col items-center text-center">
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
                     <div className="mt-3 font-medium text-white">
                       Work Completed
                     </div>
                     <div className="text-sm text-cyan-300">
-                      {completionDate ? formatDate(completionDate) : "Recently"}
+                      {completionDate
+                        ? formatDateWithTime(completionDate)
+                        : "Date not available"}
                     </div>
                   </div>
                 )}
@@ -1559,12 +2123,16 @@ export default function AgreementDetails() {
 
                 {/* Cancelled State */}
                 {agreement.status === "cancelled" && (
-                  <div className="relative flex min-w-[10rem] flex-col items-center text-center">
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-400"></div>
                     <div className="mt-3 font-medium text-white">
                       Agreement Cancelled
                     </div>
-                    <div className="text-sm text-cyan-300">Recently</div>
+                    <div className="text-sm text-cyan-300">
+                      {cancellationDate
+                        ? formatDateWithTime(cancellationDate)
+                        : "Date not available"}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1587,12 +2155,7 @@ export default function AgreementDetails() {
                   <span className="text-cyan-300">Type</span>
                   <span className="text-white">{agreement.type}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Visibility</span>
-                  <span className="text-white">
-                    {agreement.type === "Public" ? "Public" : "Private"}
-                  </span>
-                </div>
+
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Status</span>
                   <span
@@ -1694,20 +2257,92 @@ export default function AgreementDetails() {
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Created</span>
                   <span className="text-white">
-                    {formatDate(agreement.dateCreated)}
+                    {formatDateWithTime(agreement.dateCreated)}
                   </span>
                 </div>
+                {signingDate && (
+                  <div className="flex justify-between">
+                    <span className="text-cyan-300">Signed</span>
+                    <span className="text-white">
+                      {formatDateWithTime(signingDate)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Deadline</span>
                   <span className="text-white">
-                    {formatDate(agreement.deadline)}
+                    {formatDateWithTime(agreement.deadline)}
                   </span>
                 </div>
+                {deliverySubmittedDate && (
+                  <div className="flex justify-between">
+                    <span className="text-cyan-300">Delivery Submitted</span>
+                    <span className="text-white">
+                      {formatDateWithTime(deliverySubmittedDate)}
+                    </span>
+                  </div>
+                )}
                 {completionDate && (
                   <div className="flex justify-between">
                     <span className="text-cyan-300">Completed</span>
                     <span className="text-white">
-                      {formatDate(completionDate)}
+                      {formatDateWithTime(completionDate)}
+                    </span>
+                  </div>
+                )}
+                {agreement.status === "cancelled" && (
+                  <div className="flex justify-between">
+                    <span className="text-cyan-300">Cancelled</span>
+                    <span className="text-white">
+                      {cancellationDate
+                        ? formatDateWithTime(cancellationDate)
+                        : "Date not available"}
+                    </span>
+                  </div>
+                )}
+                {/* TEMPORARY DEBUG BUTTON - Remove after testing */}
+                {/* TEMPORARY DEBUG BUTTON - Enhanced */}
+                {/* FINAL DEBUG BUTTON */}
+                {/* <Button
+                  variant="outline"
+                  className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                  onClick={() => {
+                    console.log("🔍 FINAL CANCELLATION DEBUG:", {
+                      agreementData: agreement?._raw,
+                      cancelPending: agreement?.cancelPending,
+                      timeline: agreement?.timeline, // ← CHANGED: top level timeline
+                      timelineEvents: agreement?.timeline?.map(
+                        (event: any) => ({
+                          type: event.type,
+                          name: getEventTypeName(event.type),
+                          createdAt: event.createdAt,
+                          actor: event.actor,
+                        }),
+                      ),
+                      canRequest: canRequestCancellation,
+                      canRespond: canRespondToCancellation,
+                      user: user?.id,
+                    });
+                  }}
+                >
+                  Final Debug
+                </Button> */}
+
+                {/* <Button
+                  variant="outline"
+                  className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                  onClick={() => {
+                    console.log("🔄 MANUAL REFRESH TRIGGERED");
+                    fetchAgreementDetails();
+                  }}
+                >
+                  🔄 Manual Refresh
+                </Button> */}
+                {agreement.status === "completed" && !completionDate && (
+                  <div className="flex justify-between">
+                    <span className="text-cyan-300">Completed</span>
+                    <span className="text-sm text-yellow-400">
+                      Date not recorded
                     </span>
                   </div>
                 )}
@@ -1716,6 +2351,61 @@ export default function AgreementDetails() {
           </div>
         </div>
       </div>
+      {/* Enhanced Debug Section */}
+
+      {/* {process.env.NODE_ENV === "development" && (
+        <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+          <h4 className="mb-2 font-semibold text-yellow-400">
+            ULTRA-DETAILED Cancellation Debug:
+          </h4>
+          <div className="space-y-1 text-sm text-yellow-300">
+            <p>
+              Status: {agreement?.status} (Raw: {agreement?._raw?.status})
+            </p>
+            <p>Cancel Pending: {agreement?.cancelPending ? "YES" : "NO"}</p>
+            <p>
+              Cancel Requested By ID: {agreement?.cancelRequestedById || "NULL"}
+            </p>
+            <p>
+              Raw Cancel Pending:{" "}
+              {agreement?._raw?.cancelPending ? "YES" : "NO"}
+            </p>
+            <p>
+              Raw Cancel Requested By ID:{" "}
+              {agreement?._raw?.cancelRequestedById || "NULL"}
+            </p>
+            <p>
+              Enhanced Cancel Pending:{" "}
+              {isCancellationPending(agreement?._raw) ? "YES" : "NO"}
+            </p>
+            <p>Can Request: {canRequestCancellation ? "YES" : "NO"}</p>
+            <p>Can Respond: {canRespondToCancellation ? "YES" : "NO"}</p>
+            <p>Current User: {user?.id}</p>
+            <p>First Party: {isFirstParty ? "YES" : "NO"}</p>
+            <p>Counterparty: {isCounterparty ? "YES" : "NO"}</p>
+            <p>
+              Cancellation Requested By:{" "}
+              {cancellationRequestedBy?.id || "UNKNOWN"}
+            </p>
+            <p>
+              Is Current User Requester:{" "}
+              {isCurrentUserRequestedCancellation ? "YES" : "NO"}
+            </p>
+            <p>Timeline Events: {agreement?._raw?.timeline?.length || 0}</p>
+            <p>
+              Timeline:{" "}
+              {JSON.stringify(
+                agreement?._raw?.timeline?.map((e: any) => ({
+                  type: e.type,
+                  eventType: e.eventType,
+                  name: getEventTypeName(e.eventType || e.type),
+                  actor: e.actor?.id || e.createdBy?.id || e.userId,
+                })),
+              )}
+            </p>
+          </div>
+        </div>
+      )} */}
     </div>
   );
 }
