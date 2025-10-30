@@ -109,7 +109,7 @@ function MiniTrust({ score }: { score: number }) {
 }
 
 // Helper function to convert API user to your User interface
-// UserProfile.tsx - Update the mapApiUserToUser function
+// UserProfile.tsx - UPDATED TO PRIORITIZE TELEGRAM USERNAME
 function mapApiUserToUser(apiUser: any): User {
   // Determine roles based on the role number from API
   const getRolesFromRoleNumber = (role: number) => {
@@ -137,9 +137,14 @@ function mapApiUserToUser(apiUser: any): User {
       ? `https://dev-api.dexcourt.com/accounts/${apiUser.id}/file/${apiUser.avatarId}`
       : undefined;
 
+  // UPDATED: Use Telegram username as primary identifier
+  const primaryUsername = apiUser.telegram?.username
+    ? `@${apiUser.telegram.username}`
+    : `@${apiUser.username || "user"}`;
+
   return {
     id: apiUser.id.toString(),
-    username: apiUser.username || "",
+    username: apiUser.telegram?.username || apiUser.username || "", // Telegram username first
     bio: apiUser.bio || null,
     isVerified: apiUser.isVerified,
     telegram: apiUser.telegram
@@ -151,7 +156,7 @@ function mapApiUserToUser(apiUser: any): User {
     walletAddress: apiUser.walletAddress,
     role: apiUser.role || 0,
     avatarId: apiUser.avatarId || null,
-    handle: `@${apiUser.username || "user"}`,
+    handle: primaryUsername, // Use Telegram username for display
     wallet: apiUser.walletAddress
       ? `${apiUser.walletAddress.slice(0, 6)}…${apiUser.walletAddress.slice(-4)}`
       : "Not connected",
@@ -168,6 +173,7 @@ function mapApiUserToUser(apiUser: any): User {
     avatarUrl: avatarUrl, // Use the correct URL pattern
   };
 }
+
 export default function UserProfile() {
   const { handle } = useParams<{ handle: string }>();
   const { isAuthenticated, user: currentUser } = useAuth();
@@ -217,16 +223,22 @@ export default function UserProfile() {
     navigate(`/agreements/${agreementId}`);
   };
 
-  // Check if this is the current user's profile
+  // Check if this is the current user's profile - UPDATED TO USE TELEGRAM USERNAME
   const isOwnProfile = useMemo(() => {
     if (!currentUser || !decodedHandle) return false;
 
     // Clean the handle for comparison (remove @ symbol and handle URL encoding)
     const cleanHandle = decodedHandle.replace(/^@/, "");
-    const cleanCurrentUsername = currentUser.username?.replace(/^@/, "") || "";
 
-    // Check if handle matches current user's username
-    return cleanHandle === cleanCurrentUsername;
+    // Use Telegram username for comparison if available
+    const currentUserTelegramUsername = currentUser.telegram?.username;
+    const currentUserUsername = currentUser.username?.replace(/^@/, "") || "";
+
+    // Check if handle matches current user's Telegram username or fallback username
+    return (
+      cleanHandle === currentUserTelegramUsername ||
+      cleanHandle === currentUserUsername
+    );
   }, [currentUser, decodedHandle]);
 
   useEffect(() => {
@@ -307,6 +319,8 @@ export default function UserProfile() {
     disputed: agreements.filter((agreement) => agreement.status === 4).length,
   };
 
+  console.log(agreements, "check agreements");
+
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
@@ -374,10 +388,14 @@ export default function UserProfile() {
                 <p>Unable to load user profile for {handle}.</p>
                 <div className="mt-4 text-sm text-cyan-300">
                   <p>Try these URLs instead:</p>
-                  <p>• Your profile: /profile/{currentUser?.username}</p>
+                  <p>
+                    • Your profile: /profile/
+                    {currentUser?.telegram?.username || currentUser?.username}
+                  </p>
                   <p>• Your profile by ID: /profile/{currentUser?.id}</p>
                   <p>
-                    • Other users: /profile/[username] or /profile/[user-id]
+                    • Other users: /profile/[telegram-username] or
+                    /profile/[user-id]
                   </p>
                 </div>
               </div>
@@ -422,7 +440,7 @@ export default function UserProfile() {
       <header className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-white/90">
-            {user.handle}
+            {user.handle} {/* This now shows Telegram username */}
             {user.isVerified && (
               <span className="ml-2 rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-300">
                 Verified
@@ -445,7 +463,7 @@ export default function UserProfile() {
             <UserAvatar
               userId={user.id}
               avatarId={user.avatarId}
-              username={user.username}
+              username={user.telegram?.username || user.username}
               size="lg"
               className="h-14 w-14 border border-cyan-400/30"
               priority={true} // Profile pages get priority
@@ -471,7 +489,8 @@ export default function UserProfile() {
                 />
               </div>
               <div className="text-muted-foreground mt-2 text-xs">
-                <div className="font-semibold text-white/90">{user.handle}</div>
+                <div className="font-semibold text-white/90">{user.handle}</div>{" "}
+                {/* Telegram username */}
                 {user.wallet}
               </div>
             </div>
@@ -545,7 +564,7 @@ export default function UserProfile() {
       </section>
 
       {/* User's Public Content */}
-      <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <section className="flex flex-col gap-6 lg:grid lg:grid-cols-3">
         {/* User's Disputes */}
         <BentoCard
           title={`${user.handle}'s Disputes`}
@@ -564,7 +583,8 @@ export default function UserProfile() {
             <div className="text-sm text-white/50">
               {isOwnProfile
                 ? "Your dispute cases will appear here"
-                : `${user.handle}'s dispute history`}
+                : `${user.handle}'s dispute history`}{" "}
+              {/* Telegram username */}
             </div>
           </div>
         </BentoCard>
@@ -598,7 +618,8 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your public agreements will appear here"
-                  : `${user.handle} has no public agreements yet`}
+                  : `${user.handle} has no public agreements yet`}{" "}
+                {/* Telegram username */}
               </div>
             </div>
           ) : (
@@ -615,7 +636,9 @@ export default function UserProfile() {
                         <h4 className="truncate text-sm font-medium text-white/90">
                           {getAgreementTitle(agreement)}
                         </h4>
-                        <AgreementStatusBadge status={agreement.status} />
+                        <div className="ml-auto">
+                          <AgreementStatusBadge status={agreement.status} />
+                        </div>
                       </div>
 
                       <div className="mb-2 text-xs text-white/70">
@@ -626,13 +649,13 @@ export default function UserProfile() {
                         <div className="flex justify-between">
                           <span>First Party:</span>
                           <span className="text-white/80">
-                            {agreement.firstParty.username}
+                            {agreement.firstParty.telegramUsername}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Counter Party:</span>
                           <span className="text-white/80">
-                            {agreement.counterParty.username}
+                            {agreement.counterParty.telegramUsername}
                           </span>
                         </div>
                       </div>

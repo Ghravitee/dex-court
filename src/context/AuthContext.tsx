@@ -1,9 +1,9 @@
 // src/contexts/AuthContext.tsx
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { loginTelegram } from "../lib/apiClient";
+import { loginTelegram, apiService } from "../lib/apiClient";
 import { agreementService } from "../services/agreementServices";
-import { apiService, type AccountSummaryDTO } from "../services/apiService";
+import type { AccountSummaryDTO } from "../services/apiService";
 
 // Update User interface to match the actual API response
 export interface User {
@@ -52,6 +52,10 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Cache for user data to prevent duplicate fetches
+let userDataCache: { user: User | null; timestamp: number } | null = null;
+const USER_CACHE_DURATION = 60000; // 1 minute
 
 // Helper function to validate token format (basic check)
 function isValidToken(token: string | null): boolean {
@@ -145,6 +149,9 @@ function mapApiResponseToUser(apiUser: AccountSummaryDTO): User {
   };
 }
 
+// Debounced user fetch to prevent rapid consecutive calls
+let pendingUserFetch: Promise<User | null> | null = null;
+
 async function getCurrentUser(): Promise<User | null> {
   const token = localStorage.getItem("authToken");
 
@@ -152,67 +159,112 @@ async function getCurrentUser(): Promise<User | null> {
     return null;
   }
 
-  try {
-    const apiUser = await apiService.getMyAccount();
-    console.log("🔐 User data fetched successfully:", apiUser);
-    console.log("🔐 Full API user response:", JSON.stringify(apiUser, null, 2));
-    console.log("🔐 Avatar ID:", apiUser.avatarId);
-    console.log("🔐 Avatar URL:", apiUser.avatarUrl);
-    return mapApiResponseToUser(apiUser);
-  } catch (error) {
-    console.error("🔐 Failed to get user data from API:", error);
-
-    // Don't clear token immediately on 500 errors - might be server issue
-    if (
-      error instanceof Error &&
-      error.message.includes("Authentication failed")
-    ) {
-      console.warn("🔐 Authentication error, clearing token");
-      localStorage.removeItem("authToken");
-      agreementService.clearAuthToken();
-    }
-
-    // Return minimal user data for UI continuity
-    return {
-      id: "unknown",
-      username: "",
-      bio: null,
-      isVerified: false,
-      walletAddress: null,
-      role: 0,
-      avatarId: null,
-      handle: "@user",
-      wallet: "Not connected",
-      trustScore: 50,
-      roles: { judge: false, community: false, user: true },
-      stats: {
-        deals: 0,
-        agreements: 0,
-        disputes: 0,
-        revenue: { "7d": 0, "30d": 0, "90d": 0 },
-      },
-      joinedDate: new Date().toISOString().split("T")[0],
-    };
+  // Return cached data if available and not expired
+  const now = Date.now();
+  if (userDataCache && now - userDataCache.timestamp < USER_CACHE_DURATION) {
+    return userDataCache.user;
   }
+
+  // If there's already a pending request, return that instead of making a new one
+  if (pendingUserFetch) {
+    return pendingUserFetch;
+  }
+
+  pendingUserFetch = (async () => {
+    try {
+      // You'll need to implement this method in your apiService or use the cachedGet
+      // For now, using direct api call - replace with your actual user fetching method
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com"}/accounts/mine`,
+        {
+          headers: {
+            Authorization: token,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user: ${response.status}`);
+      }
+
+      const apiUser = await response.json();
+      const user = mapApiResponseToUser(apiUser);
+
+      // Cache the successful response
+      userDataCache = {
+        user,
+        timestamp: now,
+      };
+
+      return user;
+    } catch (error) {
+      console.error("🔐 Failed to get user data from API:", error);
+
+      // Don't clear token immediately on 500 errors - might be server issue
+      if (
+        error instanceof Error &&
+        error.message.includes("Authentication failed")
+      ) {
+        console.warn("🔐 Authentication error, clearing token");
+        localStorage.removeItem("authToken");
+        agreementService.clearAuthToken();
+        userDataCache = null; // Clear cache on auth failure
+      }
+
+      // Return minimal user data for UI continuity
+      return {
+        id: "unknown",
+        username: "",
+        bio: null,
+        isVerified: false,
+        walletAddress: null,
+        role: 0,
+        avatarId: null,
+        handle: "@user",
+        wallet: "Not connected",
+        trustScore: 50,
+        roles: { judge: false, community: false, user: true },
+        stats: {
+          deals: 0,
+          agreements: 0,
+          disputes: 0,
+          revenue: { "7d": 0, "30d": 0, "90d": 0 },
+        },
+        joinedDate: new Date().toISOString().split("T")[0],
+      };
+    } finally {
+      pendingUserFetch = null;
+    }
+  })();
+
+  return pendingUserFetch;
+}
+
+// Clear user cache
+function clearUserCache() {
+  userDataCache = null;
+  apiService.clearCache("/accounts/mine");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const initializedRef = useRef(false);
 
-  // In AuthContext.tsx - Update the refreshUser function
-  const refreshUser = async () => {
+  const refreshUser = async (forceRefresh = false) => {
     try {
+      if (forceRefresh) {
+        clearUserCache();
+      }
+
       const userData = await getCurrentUser();
 
       // If we have an avatarId but no URL, try to get the avatar
       if (userData && userData.avatarId && !userData.avatarUrl) {
         try {
-          const avatarUrl = await apiService.getAvatar(
-            userData.id,
-            userData.avatarId,
-          );
+          const avatarUrl = getAvatarUrl(userData.id, userData.avatarId);
           setUser({ ...userData, avatarUrl });
         } catch (error) {
           console.error("🔐 Failed to load avatar, using default", error);
@@ -222,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userData);
       }
 
-      setIsAuthenticated(!!userData);
+      setIsAuthenticated(!!userData && userData.id !== "unknown");
     } catch (error) {
       console.error("Failed to refresh user data:", error);
       setIsAuthenticated(false);
@@ -230,6 +282,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Prevent double initialization in React 18 strict mode
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+
     const initializeAuth = async () => {
       const token = localStorage.getItem("authToken");
 
@@ -245,9 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         try {
           agreementService.setAuthToken(token);
-          const userData = await getCurrentUser();
-          setUser(userData);
-          setIsAuthenticated(!!userData);
+          await refreshUser(true); // Force refresh on initial load
         } catch (error) {
           console.error("Failed to get user data:", error);
           // Clear invalid token on error
@@ -262,12 +318,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeAuth();
   }, []);
 
-  // AuthContext.tsx - Update the login function
   const login = async (otp: string) => {
     setIsLoading(true);
     try {
-      console.log("🔐 Starting Telegram login with OTP:", otp);
-
       const response = await loginTelegram(otp);
       const token = response.token?.trim();
 
@@ -279,30 +332,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("authToken", token);
       agreementService.setAuthToken(token);
 
-      console.log("🔐 Token stored, fetching user data...");
-
-      // Since we know the token works with raw format, proceed directly
-      const userData = await getCurrentUser();
-
-      if (userData && userData.id !== "unknown") {
-        console.log("🔐 Login successful, user data:", userData);
-        setUser(userData);
-        setIsAuthenticated(true);
-      } else {
-        // If we can't get user data but have a valid token, use the data from our test
-        console.warn("🔐 Using fallback user data from successful test");
-        const testResponse = JSON.parse(
-          '{"id":3,"username":"","bio":null,"isVerified":true,"telegram":{"username":"Ghravitee","id":"5343564237"},"walletAddress":null,"role":1,"avatarId":null}',
-        );
-        const mappedUser = mapApiResponseToUser(testResponse);
-        console.log("🔐 Login successful with fallback data:", mappedUser);
-        setUser(mappedUser);
-        setIsAuthenticated(true);
-      }
+      // Clear cache and force refresh
+      clearUserCache();
+      await refreshUser(true);
     } catch (error) {
       console.error("🔐 Login failed:", error);
       localStorage.removeItem("authToken");
       agreementService.clearAuthToken();
+      clearUserCache();
       setIsAuthenticated(false);
       setUser(null);
       throw error;
@@ -314,6 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem("authToken");
     agreementService.clearAuthToken();
+    clearUserCache();
     setUser(null);
     setIsAuthenticated(false);
   };
@@ -326,7 +364,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         login,
         logout,
-        refreshUser,
+        refreshUser: () => refreshUser(true),
       }}
     >
       {children}

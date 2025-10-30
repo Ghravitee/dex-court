@@ -28,6 +28,7 @@ import {
   PackageCheck,
   Ban,
   CheckSquare,
+  Info,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { Button } from "../components/ui/button";
@@ -96,37 +97,25 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
   }
 };
 
-// CORRECTED Helper to get event type names for debugging
-// const getEventTypeName = (eventType: number): string => {
-//   switch (eventType) {
-//     case 1:
-//       return "CREATED";
-//     case 2:
-//       return "SIGNED";
-//     case 3:
-//       return "REJECTED";
-//     case 4:
-//       return "DELIVERED";
-//     case 5:
-//       return "DELIVERY_CONFIRMED";
-//     case 6:
-//       return "DELIVERY_REJECTED";
-//     case 7:
-//       return "CANCEL_REQUESTED";
-//     case 8:
-//       return "CANCEL_CONFIRMED";
-//     case 9:
-//       return "CANCEL_REJECTED";
-//     case 10:
-//       return "EXPIRED";
-//     case 11:
-//       return "AUTO_CANCELLED";
-//     case 12:
-//       return "CANCELLED";
-//     default:
-//       return `UNKNOWN (${eventType})`;
-//   }
-// };
+// Helper function to get username from party data (using username as Telegram username during transition)
+const getTelegramUsernameFromParty = (party: any): string => {
+  if (!party) return "Unknown";
+
+  // TEMPORARY: Use username field as Telegram username since telegramUsername doesn't exist in API
+  const telegramUsername = party?.username;
+
+  if (!telegramUsername) return "Unknown";
+
+  // Add @ prefix for display
+  return telegramUsername.startsWith("@")
+    ? telegramUsername
+    : `@${telegramUsername}`;
+};
+
+// Helper function to get user ID from party data
+const getUserIdFromParty = (party: any) => {
+  return party?.id?.toString();
+};
 
 // Helper function to normalize usernames (remove @ prefix for comparison)
 const normalizeUsername = (username: string): string => {
@@ -138,42 +127,51 @@ const normalizeUsername = (username: string): string => {
 const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  const currentUsername = normalizeUsername(
-    currentUser.handle || currentUser.username,
-  );
-  const counterpartyUsername = normalizeUsername(
-    agreement.counterParty?.username || agreement.counterparty,
-  );
+  // Use username as Telegram username during transition
+  const currentUserTelegram = currentUser?.username;
+  if (!currentUserTelegram) return false;
 
-  return currentUsername === counterpartyUsername;
+  const counterpartyTelegram = agreement.counterParty?.username;
+  if (!counterpartyTelegram) return false;
+
+  return (
+    normalizeUsername(currentUserTelegram) ===
+    normalizeUsername(counterpartyTelegram)
+  );
 };
 
 // Helper to check if current user is first party
 const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  const currentUsername = normalizeUsername(
-    currentUser.handle || currentUser.username,
-  );
-  const firstPartyUsername = normalizeUsername(
-    agreement.firstParty?.username || agreement.createdBy,
-  );
+  // Use username as Telegram username during transition
+  const currentUserTelegram = currentUser?.username;
+  if (!currentUserTelegram) return false;
 
-  return currentUsername === firstPartyUsername;
+  const firstPartyTelegram = agreement.firstParty?.username;
+  if (!firstPartyTelegram) return false;
+
+  return (
+    normalizeUsername(currentUserTelegram) ===
+    normalizeUsername(firstPartyTelegram)
+  );
 };
 
 // Helper to check if current user is creator
 const isCurrentUserCreator = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  const currentUsername = normalizeUsername(
-    currentUser.handle || currentUser.username,
-  );
-  const creatorUsername = normalizeUsername(
-    agreement.creator?.username || agreement.creator,
-  );
+  // Use username as Telegram username during transition
+  const currentUserTelegram = currentUser?.username;
+  if (!currentUserTelegram) return false;
 
-  return currentUsername === creatorUsername;
+  const creatorTelegram = agreement.creator?.username;
+  if (!creatorTelegram) return false;
+
+  return (
+    normalizeUsername(currentUserTelegram) ===
+    normalizeUsername(creatorTelegram)
+  );
 };
 
 // Helper to check who submitted the delivery
@@ -204,17 +202,8 @@ const getDeliverySubmittedBy = (agreement: any) => {
 };
 
 // Enhanced helper to check who requested cancellation with fallbacks
-// Enhanced helper to check who requested cancellation with fallbacks
 const getCancellationRequestedBy = (agreement: any) => {
   if (!agreement) return null;
-
-  console.log("🔍 DEBUG getCancellationRequestedBy:", {
-    cancelRequestedById: agreement.cancelRequestedById,
-    rawCancelRequestedById: agreement._raw?.cancelRequestedById,
-    cancelRequestedBy: agreement.cancelRequestedBy,
-    rawCancelRequestedBy: agreement._raw?.cancelRequestedBy,
-    timeline: agreement.timeline || agreement._raw?.timeline,
-  });
 
   // Priority 1: Check if we have cancellation request info in the API response
   if (agreement.cancelRequestedBy) {
@@ -252,7 +241,6 @@ const getCancellationRequestedBy = (agreement: any) => {
   return null;
 };
 
-// Enhanced helper to check if cancellation is pending using multiple methods
 // Enhanced helper to check if cancellation is pending using multiple methods
 const isCancellationPending = (agreement: any): boolean => {
   if (!agreement) return false;
@@ -322,7 +310,6 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   return currentUserId !== submittedById && (isFirstParty || isCounterparty);
 };
 
-// Enhanced helper to check if current user should see cancellation response buttons
 // CORRECTED Helper to check if current user should see cancellation response buttons
 const shouldShowCancellationResponseButtons = (
   agreement: any,
@@ -338,15 +325,6 @@ const shouldShowCancellationResponseButtons = (
   // Check if there's a pending cancellation request
   const isPendingCancellation = isCancellationPending(agreement);
 
-  console.log("🔍 ULTRA-SIMPLE RESPONSE CHECK:", {
-    isPendingCancellation,
-    currentUser: currentUser.id,
-    isFirstParty,
-    isCounterparty,
-    cancelPending: agreement.cancelPending,
-    cancelRequestedById: agreement.cancelRequestedById,
-  });
-
   if (!isPendingCancellation) {
     return false;
   }
@@ -355,20 +333,12 @@ const shouldShowCancellationResponseButtons = (
   const cancellationRequestedBy = getCancellationRequestedBy(agreement);
 
   if (!cancellationRequestedBy) {
-    console.log("❌ No cancellation requester found");
     return false;
   }
 
   // Get IDs for comparison
   const currentUserId = currentUser.id;
   const requestedById = cancellationRequestedBy.id || cancellationRequestedBy;
-
-  console.log("🔍 USER COMPARISON:", {
-    currentUserId,
-    requestedById,
-    shouldShow:
-      currentUserId !== requestedById && (isFirstParty || isCounterparty),
-  });
 
   // Only show response buttons to the OTHER party (the one who didn't request cancellation)
   return currentUserId !== requestedById && (isFirstParty || isCounterparty);
@@ -409,17 +379,6 @@ const canUserRequestCancellation = (agreement: any, currentUser: any) => {
     agreement.timeline?.some(
       (event: any) => event.type === 7, // CANCEL_REQUESTED
     ) ?? false;
-
-  console.log("🔍 FINAL REQUEST CHECK:", {
-    hasCancelRequest,
-    isFirstParty,
-    isCounterparty,
-    currentUser: currentUser.id,
-    timeline: agreement.timeline?.map((e: any) => ({
-      type: e.type,
-      actor: e.actor?.id,
-    })),
-  });
 
   // Both parties can request cancellation ONLY if no cancellation request exists
   return (isFirstParty || isCounterparty) && !hasCancelRequest;
@@ -621,6 +580,10 @@ export default function AgreementDetails() {
   const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
   const [isOpeningDispute, setIsOpeningDispute] = useState(false);
 
+  // ADD THESE NEW STATE VARIABLES FOR POLLING
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+
   // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
   const fetchAgreementDetails = useCallback(async () => {
     if (!id) return;
@@ -639,33 +602,29 @@ export default function AgreementDetails() {
         return avatarId ? Number(avatarId) : null;
       };
 
-      // Helper function to get username from party data with @ prefix
-      const getUsernameFromParty = (party: any) => {
-        const username = party?.username || party?.handle || "Unknown";
-        // Add @ prefix if it doesn't already have one
-        return username.startsWith("@") ? username : `@${username}`;
-      };
-
-      // Helper function to get user ID from party data
-      const getUserIdFromParty = (party: any) => {
-        return party?.id?.toString();
-      };
-
-      // Escrow is considered "used" only if:
-      // 1. Funds are included (type = 2) AND
-      // 2. There's an escrow contract address OR token/amount specified
-      const useEscrow = Boolean(
-        agreementData.type === AgreementTypeEnum.ESCROW &&
-          (agreementData.escrowContract ||
-            agreementData.tokenSymbol ||
-            agreementData.amount),
+      // TEMPORARY: Use username fields as Telegram usernames during transition
+      const firstPartyUsername = getTelegramUsernameFromParty(
+        agreementData.firstParty,
       );
-
-      const firstPartyUsername = getUsernameFromParty(agreementData.firstParty);
-      const counterPartyUsername = getUsernameFromParty(
+      const counterPartyUsername = getTelegramUsernameFromParty(
         agreementData.counterParty,
       );
-      const creatorUsername = getUsernameFromParty(agreementData.creator);
+      const creatorUsername = getTelegramUsernameFromParty(
+        agreementData.creator,
+      );
+
+      // CRITICAL FIX: Determine if funds are included (type = 2 = ESCROW)
+      const includeFunds =
+        agreementData.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
+
+      // CRITICAL FIX: Escrow is only considered "used" if there's an escrow contract
+      const useEscrow = Boolean(
+        agreementData.type === AgreementTypeEnum.ESCROW &&
+          agreementData.escrowContract,
+      );
+
+      // Determine if funds are included but escrow is not used
+      const hasFundsWithoutEscrow = includeFunds === "yes" && !useEscrow;
 
       const completionDate = getCompletionDate(agreementData);
       const deliverySubmittedDate = getDeliverySubmittedDate(agreementData);
@@ -690,7 +649,8 @@ export default function AgreementDetails() {
           ? agreementData.amount.toString()
           : undefined,
         token: agreementData.tokenSymbol || undefined,
-        includeFunds: agreementData.type === 2 ? "yes" : "no",
+        includeFunds: includeFunds,
+        hasFundsWithoutEscrow: hasFundsWithoutEscrow,
         useEscrow: useEscrow,
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
@@ -732,11 +692,136 @@ export default function AgreementDetails() {
     }
   }, [id]);
 
+  // Wrap fetchAgreementDetailsBackground in useCallback to stabilize the reference
+  const fetchAgreementDetailsBackground = useCallback(async () => {
+    if (isRefreshing || !id) return;
+
+    setIsRefreshing(true);
+    try {
+      const agreementId = parseInt(id);
+      const response = await agreementService.getAgreementDetails(agreementId);
+      const agreementData = response.data;
+
+      // Use the same transformation logic but WITHOUT setting loading state
+      const getAvatarIdFromParty = (party: any): number | null => {
+        const avatarId = party?.avatarId || party?.avatar?.id;
+        return avatarId ? Number(avatarId) : null;
+      };
+
+      // TEMPORARY: Use username fields as Telegram usernames during transition
+      const firstPartyUsername = getTelegramUsernameFromParty(
+        agreementData.firstParty,
+      );
+      const counterPartyUsername = getTelegramUsernameFromParty(
+        agreementData.counterParty,
+      );
+      const creatorUsername = getTelegramUsernameFromParty(
+        agreementData.creator,
+      );
+
+      const includeFunds =
+        agreementData.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
+      const useEscrow = Boolean(
+        agreementData.type === AgreementTypeEnum.ESCROW &&
+          agreementData.escrowContract,
+      );
+      const hasFundsWithoutEscrow = includeFunds === "yes" && !useEscrow;
+
+      const completionDate = getCompletionDate(agreementData);
+      const deliverySubmittedDate = getDeliverySubmittedDate(agreementData);
+      const signingDate = getSigningDate(agreementData);
+      const cancellationDate = getCancellationDate(agreementData);
+
+      const transformedAgreement: Agreement = {
+        id: agreementData.id.toString(),
+        title: agreementData.title,
+        description: agreementData.description,
+        type:
+          agreementData.visibility === AgreementVisibilityEnum.PRIVATE
+            ? "Private"
+            : "Public",
+        counterparty: counterPartyUsername,
+        createdBy: firstPartyUsername,
+        status: apiStatusToFrontend(agreementData.status),
+        dateCreated: agreementData.createdAt,
+        deadline: agreementData.deadline,
+        amount: agreementData.amount
+          ? agreementData.amount.toString()
+          : undefined,
+        token: agreementData.tokenSymbol || undefined,
+        includeFunds: includeFunds,
+        hasFundsWithoutEscrow: hasFundsWithoutEscrow,
+        useEscrow: useEscrow,
+        escrowAddress: agreementData.escrowContract || undefined,
+        files: agreementData.files?.length || 0,
+        images: agreementData.files?.map((file: any) => file.fileName) || [],
+        completionDate: completionDate || undefined,
+        deliverySubmittedDate: deliverySubmittedDate || undefined,
+        signingDate: signingDate || undefined,
+        cancellationDate: cancellationDate || undefined,
+        createdByAvatarId: getAvatarIdFromParty(agreementData.firstParty),
+        counterpartyAvatarId: getAvatarIdFromParty(agreementData.counterParty),
+        createdByUserId: getUserIdFromParty(agreementData.firstParty),
+        counterpartyUserId: getUserIdFromParty(agreementData.counterParty),
+        creator: creatorUsername,
+        creatorUserId: getUserIdFromParty(agreementData.creator),
+        creatorAvatarId: getAvatarIdFromParty(agreementData.creator),
+        cancelPending: agreementData.cancelPending || false,
+        cancelRequestedById:
+          agreementData.cancelRequestedById?.toString() || null,
+        _raw: agreementData,
+      };
+
+      // Update the agreement state WITHOUT triggering loading state
+      setAgreement(transformedAgreement);
+    } catch (error) {
+      console.error("Background agreement fetch failed:", error);
+      // Don't show toast for background failures to avoid annoying the user
+    } finally {
+      setIsRefreshing(false);
+      setLastUpdate(Date.now());
+    }
+  }, [id, isRefreshing]);
+
   useEffect(() => {
     fetchAgreementDetails();
   }, [id, fetchAgreementDetails]);
 
-  // Sign Agreement Handler
+  // ADD THIS POLLING EFFECT
+  useEffect(() => {
+    if (!id) return;
+
+    const pollInterval = setInterval(() => {
+      // Only poll if the tab is visible and not already refreshing
+      if (document.visibilityState === "visible" && !isRefreshing) {
+        fetchAgreementDetailsBackground();
+      }
+    }, 30000); // Increased to 30 seconds to be even less intrusive
+
+    return () => clearInterval(pollInterval);
+  }, [id, isRefreshing, fetchAgreementDetailsBackground]);
+
+  // ADD THIS EVENT LISTENER FOR CROSS-TAB UPDATES
+  useEffect(() => {
+    const handleAgreementUpdate = (event: CustomEvent) => {
+      if (event.detail.agreementId === parseInt(id || "")) {
+        fetchAgreementDetailsBackground();
+      }
+    };
+
+    window.addEventListener(
+      "agreementUpdated",
+      handleAgreementUpdate as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "agreementUpdated",
+        handleAgreementUpdate as EventListener,
+      );
+    };
+  }, [id, fetchAgreementDetailsBackground]);
+
+  // Sign Agreement Handler - UPDATED
   const handleSignAgreement = async () => {
     if (!id || !agreement) return;
 
@@ -746,7 +831,7 @@ export default function AgreementDetails() {
       await agreementService.signAgreement(agreementId, true);
 
       toast.success("Agreement signed successfully!");
-      await fetchAgreementDetails(); // Refresh data
+      await fetchAgreementDetailsBackground(); // Use enhanced fetch
     } catch (error: any) {
       console.error("Failed to sign agreement:", error);
       const errorMessage =
@@ -758,16 +843,9 @@ export default function AgreementDetails() {
     }
   };
 
-  // Cancel Agreement Handler
-  // Cancel Agreement Handler - WITH ENHANCED DEBUGGING
+  // Cancel Agreement Handler - UPDATED
   const handleCancelAgreement = async () => {
     if (!id || !agreement) return;
-
-    console.log("🚀 James is attempting to cancel agreement:", {
-      agreementId: id,
-      currentStatus: agreement.status,
-      currentUser: user?.id,
-    });
 
     // SIMPLE CHECK: Use the same logic as the permission check
     const hasCancellationRequest =
@@ -780,13 +858,6 @@ export default function AgreementDetails() {
           event.eventType === AgreementEventTypeEnum.CANCEL_REQUESTED,
       ) ??
         false);
-
-    console.log("🔍 Pre-cancellation check:", {
-      hasCancellationRequest,
-      cancelPending: agreement.cancelPending,
-      cancelRequestedById: agreement.cancelRequestedById,
-      timelineEvents: agreement._raw?.timeline?.length,
-    });
 
     if (hasCancellationRequest) {
       toast.error("There is already a pending cancellation request.");
@@ -806,7 +877,6 @@ export default function AgreementDetails() {
         toast.success("Agreement cancelled successfully!");
         navigate("/agreements");
       } else {
-        console.log("📞 Calling requestCancelation API...");
         const response = await agreementService.requestCancelation(agreementId);
         console.log("✅ requestCancelation API response:", response);
 
@@ -814,13 +884,8 @@ export default function AgreementDetails() {
           "Cancellation requested! Waiting for counterparty confirmation.",
         );
 
-        // FORCE REFRESH with more aggressive retry
-        console.log("🔄 Starting forced refresh...");
-        setTimeout(() => {
-          fetchAgreementDetails();
-          // Double refresh to ensure we get latest data
-          setTimeout(() => fetchAgreementDetails(), 500);
-        }, 500);
+        // Use enhanced fetch instead of manual timeouts
+        await fetchAgreementDetailsBackground();
       }
     } catch (error: any) {
       console.error("❌ Failed to cancel agreement:", error);
@@ -834,7 +899,6 @@ export default function AgreementDetails() {
   };
 
   // Respond to Cancelation Request
-  // SIMPLE WORKING VERSION - Replace the response handler
   const handleRespondToCancelation = async (accepted: boolean) => {
     if (!id || !agreement) return;
 
@@ -862,7 +926,7 @@ export default function AgreementDetails() {
         toast.success("Cancellation rejected! Agreement remains active.");
       }
 
-      await fetchAgreementDetails();
+      await fetchAgreementDetailsBackground();
     } catch (error: any) {
       console.error("Failed to respond to cancellation:", error);
       const errorMessage =
@@ -884,7 +948,7 @@ export default function AgreementDetails() {
       await agreementService.markAsDelivered(agreementId);
 
       toast.success("Delivery marked! Waiting for the other party's approval.");
-      await fetchAgreementDetails();
+      await fetchAgreementDetailsBackground();
     } catch (error: any) {
       console.error("Failed to mark as delivered:", error);
       const errorMessage =
@@ -906,7 +970,7 @@ export default function AgreementDetails() {
       await agreementService.confirmDelivery(agreementId);
 
       toast.success("Delivery confirmed! Agreement completed.");
-      await fetchAgreementDetails();
+      await fetchAgreementDetailsBackground();
     } catch (error: any) {
       console.error("Failed to confirm delivery:", error);
       const errorMessage =
@@ -942,7 +1006,7 @@ export default function AgreementDetails() {
         toast.success(
           "Delivery rejected! Dispute has been automatically opened due to second rejection.",
         );
-        await fetchAgreementDetails();
+        await fetchAgreementDetailsBackground();
       } catch (error: any) {
         console.error("Failed to reject delivery:", error);
         const errorMessage =
@@ -970,7 +1034,7 @@ export default function AgreementDetails() {
         toast.success(
           "Delivery rejected! Agreement returned to signed status.",
         );
-        await fetchAgreementDetails();
+        await fetchAgreementDetailsBackground();
       } catch (error: any) {
         console.error("Failed to reject delivery:", error);
         const errorMessage =
@@ -1032,7 +1096,7 @@ export default function AgreementDetails() {
       toast.success("Dispute cancelled successfully!");
 
       // Refresh agreement data to get actual status
-      await fetchAgreementDetails();
+      await fetchAgreementDetailsBackground();
     } catch (error: any) {
       console.error("Failed to cancel dispute:", error);
       toast.error("Failed to cancel dispute. Please try again.");
@@ -1354,9 +1418,9 @@ export default function AgreementDetails() {
 
   return (
     <div className="min-h-screen">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto py-8 lg:px-4">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex flex-col items-center justify-between space-y-4 sm:flex-row">
           <div className="flex items-center space-x-4">
             <Button
               variant="outline"
@@ -1376,16 +1440,26 @@ export default function AgreementDetails() {
               </span>
             </div>
           </div>
+
+          {/* ADD THIS SUBTLE UPDATE INDICATOR */}
+          <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
+            {isRefreshing && (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+            )}
+            <span>
+              Last updated: {new Date(lastUpdate).toLocaleTimeString()}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Main Content */}
           <div className="space-y-6 lg:col-span-2">
             {/* Agreement Overview Card */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-6 sm:px-4">
               <div className="mb-6 flex items-start justify-between">
                 <div>
-                  <h1 className="mb-2 text-3xl font-bold text-white">
+                  <h1 className="mb-2 text-2xl font-bold text-white lg:text-3xl">
                     {agreement.title}
                   </h1>
                   <div className="flex items-center space-x-2 text-cyan-300">
@@ -1423,7 +1497,7 @@ export default function AgreementDetails() {
                         );
                         navigate(`/profile/${cleanUsername}`);
                       }}
-                      className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                     >
                       {agreement.creator}
                     </button>
@@ -1435,7 +1509,7 @@ export default function AgreementDetails() {
               </div>
 
               {/* Key Details Grid */}
-              <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-[.6fr_.4fr]">
                 <div className="space-y-4">
                   <div className="flex items-center space-x-3">
                     <Users className="h-5 w-5 text-cyan-400" />
@@ -1461,7 +1535,7 @@ export default function AgreementDetails() {
                                 encodeURIComponent(cleanUsername);
                               navigate(`/profile/${encodedUsername}`);
                             }}
-                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                            className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
                             {agreement.createdBy}
                           </button>
@@ -1469,7 +1543,7 @@ export default function AgreementDetails() {
                             <VscVerifiedFilled className="size-5 text-green-400" />
                           )}
                         </div>
-                        <span className="text-cyan-400">
+                        <span className="text-sm text-cyan-400 sm:text-base">
                           <FaArrowRightArrowLeft />
                         </span>
                         <div className="flex items-center gap-1">
@@ -1490,7 +1564,7 @@ export default function AgreementDetails() {
                                 encodeURIComponent(cleanUsername);
                               navigate(`/profile/${encodedUsername}`);
                             }}
-                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                            className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
                             {agreement.counterparty}
                           </button>
@@ -1632,65 +1706,131 @@ export default function AgreementDetails() {
               )}
 
               {/* Financial Details */}
-              {agreement.includeFunds === "yes" && agreement.useEscrow && (
-                <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4">
-                  <h3 className="mb-3 text-lg font-semibold text-emerald-300">
-                    Financial Details
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <div className="text-sm text-emerald-300">
-                        Funds Included
-                      </div>
-                      <div className="text-lg font-semibold text-white">
-                        Yes
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-emerald-300">Amount</div>
-                      <div className="text-lg font-semibold text-white">
-                        {agreement.amount} {agreement.token}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-emerald-300">
-                        Escrow Protection
-                      </div>
-                      <div className="text-lg font-semibold text-white">
-                        Enabled
-                      </div>
-                    </div>
-                    {agreement.escrowAddress && (
-                      <div className="md:col-span-2">
-                        <div className="mb-2 text-sm text-emerald-300">
-                          Escrow Contract
+              <div>
+                {/* Financial Details Section */}
+                {agreement.includeFunds === "yes" && (
+                  <div
+                    className={`rounded-lg border ${
+                      agreement.useEscrow
+                        ? "border-emerald-400/30 bg-emerald-500/10"
+                        : "border-cyan-400/30 bg-cyan-500/10"
+                    } p-4`}
+                  >
+                    <h3
+                      className={`mb-3 text-lg font-semibold ${
+                        agreement.useEscrow
+                          ? "text-emerald-300"
+                          : "text-cyan-300"
+                      }`}
+                    >
+                      Financial Details
+                    </h3>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {/* Funds included */}
+                      <div>
+                        <div
+                          className={`text-sm ${
+                            agreement.useEscrow
+                              ? "text-emerald-300"
+                              : "text-cyan-300"
+                          }`}
+                        >
+                          Funds Included
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
-                            {showEscrowAddress
-                              ? agreement.escrowAddress
-                              : `${agreement.escrowAddress.slice(0, 10)}...${agreement.escrowAddress.slice(-8)}`}
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setShowEscrowAddress(!showEscrowAddress)
-                            }
-                            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                        <div className="text-lg font-semibold text-white">
+                          Yes
+                        </div>
+                      </div>
+
+                      {/* Amount + Token */}
+                      {agreement.amount && (
+                        <div>
+                          <div
+                            className={`text-sm ${
+                              agreement.useEscrow
+                                ? "text-emerald-300"
+                                : "text-cyan-300"
+                            }`}
                           >
-                            {showEscrowAddress ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </Button>
+                            Amount
+                          </div>
+                          <div className="text-lg font-semibold text-white">
+                            {agreement.amount} {agreement.token}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Escrow Status */}
+                      <div>
+                        <div
+                          className={`text-sm ${
+                            agreement.useEscrow
+                              ? "text-emerald-300"
+                              : "text-cyan-300"
+                          }`}
+                        >
+                          Escrow Protection
+                        </div>
+                        <div className="text-lg font-semibold text-white">
+                          {agreement.useEscrow ? "Enabled" : "Not Used"}
                         </div>
                       </div>
-                    )}
+
+                      {/* Show Escrow Contract Address if exists */}
+                      {agreement.useEscrow && agreement.escrowAddress && (
+                        <div className="md:col-span-2">
+                          <div className="mb-2 text-sm text-emerald-300">
+                            Escrow Contract Address
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
+                              {showEscrowAddress
+                                ? agreement.escrowAddress
+                                : `${agreement.escrowAddress.slice(0, 10)}...${agreement.escrowAddress.slice(-8)}`}
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setShowEscrowAddress(!showEscrowAddress)
+                              }
+                              className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                            >
+                              {showEscrowAddress ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* If Not Escrow - Show Warning */}
+                      {!agreement.useEscrow && (
+                        <div className="md:col-span-2">
+                          <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                            <div>
+                              <p className="text-sm text-cyan-300">
+                                Funds information is for reference only and not
+                                secured in escrow.
+                              </p>
+                              <p className="mt-1 text-xs text-cyan-300/70">
+                                The amount and token details help track the
+                                financial scope without automated fund handling.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* BIDIRECTIONAL Action Buttons Section */}
@@ -1714,7 +1854,7 @@ export default function AgreementDetails() {
                         variant="neon"
                         className="neon-hover"
                         onClick={handleSignAgreement}
-                        disabled={isSigning}
+                        disabled={isSigning || isRefreshing}
                       >
                         {isSigning ? (
                           <>
@@ -1738,7 +1878,7 @@ export default function AgreementDetails() {
                         variant="outline"
                         className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                         onClick={handleCancelAgreement}
-                        disabled={isCancelling}
+                        disabled={isCancelling || isRefreshing}
                       >
                         {isCancelling ? (
                           <>
@@ -1760,7 +1900,7 @@ export default function AgreementDetails() {
                         variant="outline"
                         className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
                         onClick={handleCancelAgreement}
-                        disabled={isCancelling}
+                        disabled={isCancelling || isRefreshing}
                       >
                         {isCancelling ? (
                           <>
@@ -1783,7 +1923,7 @@ export default function AgreementDetails() {
                           variant="outline"
                           className="border-green-500/30 text-green-400 hover:bg-green-500/10"
                           onClick={() => handleRespondToCancelation(true)}
-                          disabled={isRespondingToCancel}
+                          disabled={isRespondingToCancel || isRefreshing}
                         >
                           {isRespondingToCancel ? (
                             <>
@@ -1801,7 +1941,7 @@ export default function AgreementDetails() {
                           variant="outline"
                           className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                           onClick={() => handleRespondToCancelation(false)}
-                          disabled={isRespondingToCancel}
+                          disabled={isRespondingToCancel || isRefreshing}
                         >
                           {isRespondingToCancel ? (
                             <>
@@ -1824,7 +1964,7 @@ export default function AgreementDetails() {
                         variant="outline"
                         className="border-green-500/30 text-green-400 hover:bg-green-500/10"
                         onClick={handleMarkAsDelivered}
-                        disabled={isCompleting}
+                        disabled={isCompleting || isRefreshing}
                       >
                         {isCompleting ? (
                           <>
@@ -1847,7 +1987,7 @@ export default function AgreementDetails() {
                           variant="outline"
                           className="border-green-500/30 text-green-400 hover:bg-green-500/10"
                           onClick={handleConfirmDelivery}
-                          disabled={isConfirming}
+                          disabled={isConfirming || isRefreshing}
                         >
                           {isConfirming ? (
                             <>
@@ -1865,7 +2005,7 @@ export default function AgreementDetails() {
                           variant="outline"
                           className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                           onClick={handleRejectDelivery}
-                          disabled={isRejecting}
+                          disabled={isRejecting || isRefreshing}
                         >
                           {isRejecting ? (
                             <>
@@ -1888,7 +2028,7 @@ export default function AgreementDetails() {
                         variant="outline"
                         className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
                         onClick={handleOpenDispute}
-                        disabled={isOpeningDispute}
+                        disabled={isOpeningDispute || isRefreshing}
                       >
                         {isOpeningDispute ? (
                           <>
@@ -1943,18 +2083,20 @@ export default function AgreementDetails() {
 
                   {cancellationPending && (
                     <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-orange-400" />
-                        <span className="font-medium text-orange-300">
-                          Cancellation Requested
-                        </span>
+                      <div className="flex items-start gap-3">
+                        <Clock className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-400" />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-orange-300">
+                            Cancellation Request Pending
+                          </h4>
+                          <p className="mt-1 text-sm text-orange-200">
+                            A cancellation request has been initiated. Waiting
+                            for the other party to respond. The party who
+                            requested cancellation cannot approve their own
+                            request.
+                          </p>
+                        </div>
                       </div>
-                      <p className="mt-1 text-sm text-orange-200/80">
-                        {isCurrentUserRequestedCancellation
-                          ? "You have requested cancellation. Waiting for the other party to respond."
-                          : "The other party has requested cancellation. Please accept or reject the request."}
-                      </p>
-                      {/* Show debug info in development */}
                     </div>
                   )}
                 </div>
@@ -1990,11 +2132,9 @@ export default function AgreementDetails() {
                         ) : (
                           <>
                             <strong>
-                              {deliverySubmittedBy.username
-                                ? deliverySubmittedBy.username.startsWith("@")
-                                  ? deliverySubmittedBy.username
-                                  : `@${deliverySubmittedBy.username}`
-                                : deliverySubmittedBy.name || "The other party"}
+                              {getTelegramUsernameFromParty(
+                                deliverySubmittedBy,
+                              )}
                             </strong>{" "}
                             has marked their work as delivered and is waiting
                             for <strong>your</strong> review.
@@ -2300,44 +2440,6 @@ export default function AgreementDetails() {
                     </span>
                   </div>
                 )}
-                {/* TEMPORARY DEBUG BUTTON - Remove after testing */}
-                {/* TEMPORARY DEBUG BUTTON - Enhanced */}
-                {/* FINAL DEBUG BUTTON */}
-                {/* <Button
-                  variant="outline"
-                  className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
-                  onClick={() => {
-                    console.log("🔍 FINAL CANCELLATION DEBUG:", {
-                      agreementData: agreement?._raw,
-                      cancelPending: agreement?.cancelPending,
-                      timeline: agreement?.timeline, // ← CHANGED: top level timeline
-                      timelineEvents: agreement?.timeline?.map(
-                        (event: any) => ({
-                          type: event.type,
-                          name: getEventTypeName(event.type),
-                          createdAt: event.createdAt,
-                          actor: event.actor,
-                        }),
-                      ),
-                      canRequest: canRequestCancellation,
-                      canRespond: canRespondToCancellation,
-                      user: user?.id,
-                    });
-                  }}
-                >
-                  Final Debug
-                </Button> */}
-
-                {/* <Button
-                  variant="outline"
-                  className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                  onClick={() => {
-                    console.log("🔄 MANUAL REFRESH TRIGGERED");
-                    fetchAgreementDetails();
-                  }}
-                >
-                  🔄 Manual Refresh
-                </Button> */}
                 {agreement.status === "completed" && !completionDate && (
                   <div className="flex justify-between">
                     <span className="text-cyan-300">Completed</span>
@@ -2351,61 +2453,6 @@ export default function AgreementDetails() {
           </div>
         </div>
       </div>
-      {/* Enhanced Debug Section */}
-
-      {/* {process.env.NODE_ENV === "development" && (
-        <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-          <h4 className="mb-2 font-semibold text-yellow-400">
-            ULTRA-DETAILED Cancellation Debug:
-          </h4>
-          <div className="space-y-1 text-sm text-yellow-300">
-            <p>
-              Status: {agreement?.status} (Raw: {agreement?._raw?.status})
-            </p>
-            <p>Cancel Pending: {agreement?.cancelPending ? "YES" : "NO"}</p>
-            <p>
-              Cancel Requested By ID: {agreement?.cancelRequestedById || "NULL"}
-            </p>
-            <p>
-              Raw Cancel Pending:{" "}
-              {agreement?._raw?.cancelPending ? "YES" : "NO"}
-            </p>
-            <p>
-              Raw Cancel Requested By ID:{" "}
-              {agreement?._raw?.cancelRequestedById || "NULL"}
-            </p>
-            <p>
-              Enhanced Cancel Pending:{" "}
-              {isCancellationPending(agreement?._raw) ? "YES" : "NO"}
-            </p>
-            <p>Can Request: {canRequestCancellation ? "YES" : "NO"}</p>
-            <p>Can Respond: {canRespondToCancellation ? "YES" : "NO"}</p>
-            <p>Current User: {user?.id}</p>
-            <p>First Party: {isFirstParty ? "YES" : "NO"}</p>
-            <p>Counterparty: {isCounterparty ? "YES" : "NO"}</p>
-            <p>
-              Cancellation Requested By:{" "}
-              {cancellationRequestedBy?.id || "UNKNOWN"}
-            </p>
-            <p>
-              Is Current User Requester:{" "}
-              {isCurrentUserRequestedCancellation ? "YES" : "NO"}
-            </p>
-            <p>Timeline Events: {agreement?._raw?.timeline?.length || 0}</p>
-            <p>
-              Timeline:{" "}
-              {JSON.stringify(
-                agreement?._raw?.timeline?.map((e: any) => ({
-                  type: e.type,
-                  eventType: e.eventType,
-                  name: getEventTypeName(e.eventType || e.type),
-                  actor: e.actor?.id || e.createdBy?.id || e.userId,
-                })),
-              )}
-            </p>
-          </div>
-        </div>
-      )} */}
     </div>
   );
 }

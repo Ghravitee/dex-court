@@ -2,7 +2,7 @@
 // services/apiService.ts
 import { api } from "../lib/apiClient";
 
-const BASE_URL = "https://dev-api.dexcourt.com";
+const BASE_URL = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
 
 // services/apiService.ts - Update the interface
 export interface AccountSummaryDTO {

@@ -18,9 +18,10 @@ import { useAuth } from "../../context/AuthContext";
 const nav = [
   { to: "/", label: "Home", icon: <Home size={18} /> },
   { to: "/agreements", label: "Agreements", icon: <FileText size={18} /> },
+  { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
   { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
   { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
-  { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
+
   { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
 ];
 

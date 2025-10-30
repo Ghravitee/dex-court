@@ -1,115 +1,182 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // lib/apiClient.ts
 import axios from "axios";
 
-const API_BASE = "https://dev-api.dexcourt.com";
+const API_BASE = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
 
+// Create axios instance with optimized defaults
 export const api = axios.create({
   baseURL: API_BASE,
+  timeout: 10000, // 10 second timeout
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// lib/apiClient.ts - Fix the interceptor
+// Request deduplication cache
+const pendingRequests = new Map<string, Promise<any>>();
+
+// Request interceptor - optimized without excessive logging
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("authToken");
-    console.log(
-      "🔐 [Interceptor] Adding token to request:",
-      token ? `Raw token (no Bearer)` : "No token",
-    );
+
+    // Only log in development for non-GET requests or important endpoints
+    if (
+      import.meta.env.DEV &&
+      (config.method !== "get" || config.url?.includes("/mine"))
+    ) {
+      console.log(`🔐 [API] ${config.method?.toUpperCase()} ${config.url}`);
+    }
 
     if (token) {
-      // Remove the "Bearer" prefix - server expects raw token!
-      config.headers.Authorization = token; // Just the token, no "Bearer"
-      console.log(
-        "🔐 [Interceptor] Authorization header set:",
-        config.headers.Authorization.substring(0, 20) + "...",
-      );
+      config.headers.Authorization = token; // Raw token without "Bearer"
     }
+
     return config;
   },
   (error) => {
-    console.error("🔐 [Interceptor] Request error:", error);
+    if (import.meta.env.DEV) {
+      console.error("🔐 [API] Request error:", error);
+    }
     return Promise.reject(error);
   },
 );
 
-// Add response interceptor to handle errors
+// Response interceptor - optimized
 api.interceptors.response.use(
   (response) => {
-    console.log(
-      "🔐 [Interceptor] Response success:",
-      response.status,
-      response.config.url,
-    );
+    // Only log in development for non-GET requests or important endpoints
+    if (
+      import.meta.env.DEV &&
+      (response.config.method !== "get" ||
+        response.config.url?.includes("/mine"))
+    ) {
+      console.log(`🔐 [API] ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {
-    console.error("🔐 [Interceptor] Response error:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      url: error.config?.url,
-      headers: error.config?.headers,
-    });
-
-    if (error.response?.status === 401) {
-      console.warn("🔐 [Interceptor] Authentication failed, clearing token");
-      localStorage.removeItem("authToken");
+    if (import.meta.env.DEV) {
+      console.error("🔐 [API] Response error:", {
+        status: error.response?.status,
+        url: error.config?.url,
+        message: error.response?.data?.message || error.message,
+      });
     }
 
-    if (error.response?.status === 500) {
-      console.error("🔐 [Interceptor] Server error - check token format");
+    // Handle specific error cases
+    if (error.response?.status === 401) {
+      localStorage.removeItem("authToken");
+      // Don't redirect here - let components handle it
     }
 
     return Promise.reject(error);
   },
 );
 
-// 🧩 Telegram Login - Enhanced with better logging
-export async function loginTelegram(otp: string) {
-  console.log("🔐 [loginTelegram] Sending OTP to server");
-  try {
-    const res = await api.post(`/login/telegram`, { otp });
-    console.log("🔐 [loginTelegram] Server response:", res.data);
-    return res.data;
-  } catch (error) {
-    console.error("🔐 [loginTelegram] Failed:", error);
-    throw error;
+// Enhanced API functions with caching and deduplication
+export class ApiService {
+  private cache = new Map();
+  private readonly cacheDuration = 30000; // 30 seconds
+
+  // Generic cached GET request with deduplication
+  async cachedGet<T>(url: string, forceRefresh = false): Promise<T> {
+    const now = Date.now();
+    const cacheKey = `GET:${url}`;
+
+    // Return cached data if available and not expired
+    if (!forceRefresh && this.cache.has(cacheKey)) {
+      const { data, timestamp } = this.cache.get(cacheKey);
+      if (now - timestamp < this.cacheDuration) {
+        return data;
+      }
+    }
+
+    // Check for pending requests to avoid duplicates
+    if (pendingRequests.has(url)) {
+      return pendingRequests.get(url);
+    }
+
+    // Make fresh request
+    const request = api
+      .get<T>(url)
+      .then((response) => {
+        this.cache.set(cacheKey, {
+          data: response.data,
+          timestamp: now,
+        });
+        return response.data;
+      })
+      .finally(() => {
+        pendingRequests.delete(url);
+      });
+
+    pendingRequests.set(url, request);
+    return request;
+  }
+
+  // Clear cache for specific URL or all cache
+  clearCache(url?: string) {
+    if (url) {
+      const cacheKey = `GET:${url}`;
+      this.cache.delete(cacheKey);
+    } else {
+      this.cache.clear();
+    }
+  }
+
+  // Specialized methods for common endpoints
+  async getAgreements(): Promise<any> {
+    return this.cachedGet("/agreement", false);
+  }
+
+  async getMyAgreements(): Promise<any> {
+    return this.cachedGet("/agreement/mine", false);
+  }
+
+  async getAgreementDetails(id: number): Promise<any> {
+    return this.cachedGet(`/agreement/${id}`, false);
   }
 }
 
-// 🧩 Telegram OTP
-export async function getTelegramOtp(telegramId: string) {
-  const res = await api.get(`/otp/telegram/${telegramId}`);
-  return res.data;
+export const apiService = new ApiService();
+
+// Telegram Login
+export async function loginTelegram(otp: string) {
+  const response = await api.post(`/login/telegram`, { otp });
+  return response.data;
 }
 
-// 🧩 Telegram Register
+// Telegram OTP
+export async function getTelegramOtp(telegramId: string) {
+  const response = await api.get(`/otp/telegram/${telegramId}`);
+  return response.data;
+}
+
+// Telegram Register
 export async function registerTelegram(telegramId: string, username: string) {
-  const res = await api.post(`/register/telegram`, {
+  const response = await api.post(`/register/telegram`, {
     telegramId,
     username,
   });
-  return res.data;
+  return response.data;
 }
 
-// 🧩 Telegram Login
-
-// 🧩 Wallet Login - Nonce
+// Wallet Login - Nonce
 export async function requestWalletNonce(walletAddress: string) {
-  const res = await api.post(`/login/wallet/nonce`, { walletAddress });
-  return res.data;
+  const response = await api.post(`/login/wallet/nonce`, { walletAddress });
+  return response.data;
 }
 
-// 🧩 Wallet Login - Verify
+// Wallet Login - Verify
 export async function verifyWalletSignature(
   walletAddress: string,
   signature: string,
 ) {
-  const res = await api.post(`/login/wallet/verify`, {
+  const response = await api.post(`/login/wallet/verify`, {
     walletAddress,
     signature,
   });
-  return res.data;
+  return response.data;
 }

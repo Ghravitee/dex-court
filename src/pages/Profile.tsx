@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { FaUser, FaInstagram, FaHandshake, FaEdit } from "react-icons/fa";
 import { FaXTwitter, FaTiktok } from "react-icons/fa6";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -28,7 +28,7 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
     },
     2: {
       label: "Signed",
-      color: "bg-bkue-500/20 text-blue-300 border-blue-400/30",
+      color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
     },
     3: {
       label: "Completed",
@@ -146,7 +146,7 @@ const VerificationBadge = () => (
   </Tooltip>
 );
 
-// Profile Update Modal Component
+// Profile Update Modal Component - REMOVED USERNAME FIELD
 const ProfileUpdateModal = ({
   isOpen,
   onClose,
@@ -161,14 +161,12 @@ const ProfileUpdateModal = ({
   updating: boolean;
 }) => {
   const [formData, setFormData] = useState({
-    username: user?.username || "",
     bio: user?.bio || "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await onUpdate({
-      username: formData.username?.replace("@", "") || undefined,
       bio: formData.bio || undefined,
     });
     onClose();
@@ -187,18 +185,7 @@ const ProfileUpdateModal = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm text-white/70">Username</label>
-            <input
-              type="text"
-              value={formData.username}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, username: e.target.value }))
-              }
-              className="w-full rounded-md border border-cyan-400/30 bg-black/20 px-3 py-2 text-white focus:border-cyan-400 focus:outline-none"
-              placeholder="Enter username"
-            />
-          </div>
+          {/* REMOVED USERNAME FIELD */}
           <div>
             <label className="mb-2 block text-sm text-white/70">Bio</label>
             <textarea
@@ -362,54 +349,85 @@ export default function Profile() {
     error: agreementsError,
   } = useAgreementsApi();
 
-  // Calculate agreement stats from real data
-  const agreementStats = {
-    total: agreements.length,
-    active: agreements.filter((agreement) => agreement.status === 2).length,
-    completed: agreements.filter((agreement) => agreement.status === 3).length,
-    disputed: agreements.filter((agreement) => agreement.status === 4).length,
-  };
+  // Memoized agreement stats calculation
+  const agreementStats = useMemo(
+    () => ({
+      total: agreements.length,
+      active: agreements.filter((agreement) => agreement.status === 2).length,
+      completed: agreements.filter((agreement) => agreement.status === 3)
+        .length,
+      disputed: agreements.filter((agreement) => agreement.status === 4).length,
+    }),
+    [agreements],
+  );
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
+  // Memoized user data - UPDATED TO USE TELEGRAM USERNAME
+  const userData = useMemo(
+    () => ({
+      // Use Telegram username as the primary handle, fallback to existing username
+      handle: user?.telegram?.username
+        ? `@${user.telegram.username}`
+        : user?.username || "@you",
+      wallet: user?.wallet || "0xABCD…1234",
+      score: user?.trustScore || 72,
+      roles: user?.roles || { judge: false, community: false, user: true },
+      isVerified: user?.isVerified || false,
+      stats: user?.stats || {
+        deals: 0,
+        agreements: 0,
+        disputes: 0,
+        revenue: { "7d": 0, "30d": 0, "90d": 0 },
+      },
+    }),
+    [user],
+  );
+
+  // Format date for display - memoized callback
+  const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
-  };
+  }, []);
 
-  // Check if user is involved in agreement as first party or counter party
-  const getUserRoleInAgreement = (agreement: AgreementSummaryDTO) => {
-    const userId = user?.id;
-    if (!userId) return "Unknown";
+  // Check if user is involved in agreement as first party or counter party - memoized
+  const getUserRoleInAgreement = useCallback(
+    (agreement: AgreementSummaryDTO) => {
+      const userId = user?.id;
+      if (!userId) return "Unknown";
 
-    // Convert both to numbers for comparison to ensure type safety
-    const userIdNum = Number(userId);
-    const firstPartyId = Number(agreement.firstParty.id);
-    const counterPartyId = Number(agreement.counterParty.id);
+      // Convert both to numbers for comparison to ensure type safety
+      const userIdNum = Number(userId);
+      const firstPartyId = Number(agreement.firstParty.id);
+      const counterPartyId = Number(agreement.counterParty.id);
 
-    if (firstPartyId === userIdNum) return "First Party";
-    if (counterPartyId === userIdNum) return "Counter Party";
-    return "Creator"; // Assuming creator is different from parties
-  };
+      if (firstPartyId === userIdNum) return "First Party";
+      if (counterPartyId === userIdNum) return "Counter Party";
+      return "Creator"; // Assuming creator is different from parties
+    },
+    [user?.id],
+  );
 
-  // Helper function to get agreement title with fallbacks
-  const getAgreementTitle = (agreement: AgreementSummaryDTO) => {
-    // First try to get title from detailed agreement data
-    const detailedAgreement = agreementDetails[agreement.id];
-    if (detailedAgreement?.title) {
-      return detailedAgreement.title;
-    }
+  // Helper function to get agreement title with fallbacks - memoized
+  const getAgreementTitle = useCallback(
+    (agreement: AgreementSummaryDTO) => {
+      // First try to get title from detailed agreement data
+      const detailedAgreement = agreementDetails[agreement.id];
+      if (detailedAgreement?.title) {
+        return detailedAgreement.title;
+      }
 
-    // Fallback to summary title if available
-    if (agreement.title) {
-      return agreement.title;
-    }
+      // Fallback to summary title if available
+      if (agreement.title) {
+        return agreement.title;
+      }
 
-    // Final fallback
-    return `Agreement #${agreement.id}`;
-  };
+      // Final fallback
+      return `Agreement #${agreement.id}`;
+    },
+    [agreementDetails],
+  );
 
   // Toaster states
   const [toaster, setToaster] = useState<{
@@ -436,7 +454,7 @@ export default function Profile() {
     success: uploadSuccess,
   } = useAvatarUpload();
 
-  // Show toaster when success or error occurs
+  // Show toaster when success or error occurs - optimized with proper dependencies
   useEffect(() => {
     if (updateSuccess) {
       setToaster({
@@ -477,52 +495,50 @@ export default function Profile() {
     }
   }, [uploadError]);
 
-  const closeToaster = () => {
+  const closeToaster = useCallback(() => {
     setToaster((prev) => ({ ...prev, isVisible: false }));
-  };
+  }, []);
 
-  // Use actual user data from context
-  const handle = user?.handle || "@you";
-  const wallet = user?.wallet || "0xABCD…1234";
-  const score = user?.trustScore || 72;
-  const roles = user?.roles || { judge: false, community: false, user: true };
-  const isVerified = user?.isVerified || false;
+  // Memoized handlers
+  const handleUpdate = useCallback(
+    async (updateData: AccountUpdateRequest) => {
+      await updateAccount(updateData);
+    },
+    [updateAccount],
+  );
 
-  // Use real stats from user context - these will be empty initially until API provides data
-  const stats = user?.stats || {
-    deals: 0,
-    agreements: 0,
-    disputes: 0,
-    revenue: { "7d": 0, "30d": 0, "90d": 0 },
-  };
+  const handleAvatarChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        await uploadAvatar(file);
+      }
+    },
+    [uploadAvatar],
+  );
 
-  const handleUpdate = async (updateData: AccountUpdateRequest) => {
-    await updateAccount(updateData);
-  };
+  const handleAgreementClick = useCallback(
+    (agreementId: number) => {
+      navigate(`/agreements/${agreementId}`);
+    },
+    [navigate],
+  );
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await uploadAvatar(file);
-    }
-  };
-
-  const handleAgreementClick = (agreementId: number) => {
-    navigate(`/agreements/${agreementId}`);
-  };
-
-  const handleLogin = async () => {
-    // You'll need to implement the OTP logic here
-    // For now, we'll use a mock implementation
+  const handleLogin = useCallback(async () => {
     try {
-      await login("mock-otp"); // Replace with actual OTP logic
+      await login("mock-otp");
       setShowLoginModal(false);
     } catch (error) {
       console.error("Login failed:", error);
     }
-  };
+  }, [login]);
 
-  console.log("🔐 User data:", user);
+  // Log user data only when it actually changes
+  useEffect(() => {
+    if (user) {
+      console.log("🔐 User data:", user);
+    }
+  }, [user]);
 
   const [otp, setOtp] = useState("");
   const [loading] = useState(false);
@@ -595,10 +611,12 @@ export default function Profile() {
                 <UserAvatar
                   userId={user?.id || "unknown"}
                   avatarId={user?.avatarId || null}
-                  username={user?.username || "user"}
-                  size="lg" // Use the new xl size
+                  username={
+                    user?.telegram?.username || user?.username || "user"
+                  }
+                  size="lg"
                   className="h-14 w-14 border border-cyan-400/30"
-                  priority={true} // Important avatar, load eagerly
+                  priority={true}
                 />
 
                 <label className="absolute -right-1 -bottom-1 cursor-pointer rounded-full bg-cyan-500 p-1 text-xs text-white hover:bg-cyan-600">
@@ -626,20 +644,20 @@ export default function Profile() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <RoleBadge
-                    role={roles?.judge || false}
+                    role={userData.roles?.judge || false}
                     icon={<Judge />}
                     tooltip="Certified Judge - You can participate in dispute resolution"
                   />
                   <RoleBadge
-                    role={roles?.community || false}
+                    role={userData.roles?.community || false}
                     icon={<Community />}
                     tooltip="Community Member - Active participant in the DexCourt ecosystem"
                   />
                   <RoleBadge
                     role={
-                      (roles?.user || false) &&
-                      !(roles?.judge || false) &&
-                      !(roles?.community || false)
+                      (userData.roles?.user || false) &&
+                      !(userData.roles?.judge || false) &&
+                      !(userData.roles?.community || false)
                     }
                     icon={<User />}
                     tooltip="Basic User - Welcome to DexCourt!"
@@ -647,15 +665,15 @@ export default function Profile() {
                 </div>
                 <div className="text-muted-foreground mt-2 text-xs">
                   <div className="flex items-center gap-1 font-semibold text-white/90">
-                    {handle}
-                    {isVerified && <VerificationBadge />}
+                    {userData.handle}
+                    {userData.isVerified && <VerificationBadge />}
                   </div>
-                  <div>{wallet}</div>
+                  <div>{userData.wallet}</div>
                 </div>
               </div>
 
               <div className="self-center">
-                <MiniTrust score={score} roles={roles} />
+                <MiniTrust score={userData.score} roles={userData.roles} />
               </div>
             </div>
           </div>
@@ -684,17 +702,13 @@ export default function Profile() {
                 </div>
                 <div className="flex items-center gap-2">
                   {isAuthenticated ? (
-                    <>
-                      {/* {user?.isVerified ? <VerificationBadge /> : "Connect"} */}
-
-                      <Button
-                        onClick={logout}
-                        variant="ghost"
-                        className="text-xs text-red-400 hover:text-red-300"
-                      >
-                        Logout
-                      </Button>
-                    </>
+                    <Button
+                      onClick={logout}
+                      variant="ghost"
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Logout
+                    </Button>
                   ) : (
                     <Button
                       onClick={() => setShowLoginModal(true)}
@@ -786,16 +800,18 @@ export default function Profile() {
             </div>
 
             <div className="space-y-3 text-lg">
-              {Object.entries(stats.revenue).map(([period, amount]) => (
-                <div key={period} className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {period.toUpperCase()}
-                  </span>
-                  <span className="text-xl font-semibold text-cyan-300">
-                    ${amount.toLocaleString()}
-                  </span>
-                </div>
-              ))}
+              {Object.entries(userData.stats.revenue).map(
+                ([period, amount]) => (
+                  <div key={period} className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {period.toUpperCase()}
+                    </span>
+                    <span className="text-xl font-semibold text-cyan-300">
+                      ${Number(amount).toLocaleString()}
+                    </span>
+                  </div>
+                ),
+              )}
             </div>
 
             <div className="mt-8 flex flex-col items-center space-y-3">
@@ -816,7 +832,7 @@ export default function Profile() {
         {/* Judged Disputes & Reputation */}
         <div className="flex flex-col gap-4">
           {/* Show Judged Disputes only for judges */}
-          {roles.judge && (
+          {userData.roles.judge && (
             <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white/90">
                 Judged Disputes
@@ -834,7 +850,7 @@ export default function Profile() {
           )}
 
           {/* Show Community Stats for community members */}
-          {roles.community && !roles.judge && (
+          {userData.roles.community && !userData.roles.judge && (
             <section className="glass rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white/90">
                 Community Contributions
@@ -851,22 +867,24 @@ export default function Profile() {
           )}
 
           {/* Show welcome for basic users */}
-          {roles.user && !roles.judge && !roles.community && (
-            <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-              <h3 className="mb-4 text-lg font-semibold text-white/90">
-                Get Started
-              </h3>
-              <div className="py-8 text-center">
-                <div className="mb-2 text-lg text-cyan-300">
-                  Welcome to DexCourt!
+          {userData.roles.user &&
+            !userData.roles.judge &&
+            !userData.roles.community && (
+              <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white/90">
+                  Get Started
+                </h3>
+                <div className="py-8 text-center">
+                  <div className="mb-2 text-lg text-cyan-300">
+                    Welcome to DexCourt!
+                  </div>
+                  <div className="text-sm text-white/50">
+                    Start by creating agreements and participating in the
+                    community to unlock more features.
+                  </div>
                 </div>
-                <div className="text-sm text-white/50">
-                  Start by creating agreements and participating in the
-                  community to unlock more features.
-                </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
           {/* Reputation History - Show for all users */}
           <BentoCard
@@ -879,16 +897,16 @@ export default function Profile() {
           >
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
-                {roles.judge
+                {userData.roles.judge
                   ? "Judge Reputation"
-                  : roles.community
+                  : userData.roles.community
                     ? "Community Reputation"
                     : "Building Reputation"}
               </div>
               <div className="text-sm text-white/50">
-                {roles.judge
+                {userData.roles.judge
                   ? "Your reputation as a judge will grow with each fair dispute resolution."
-                  : roles.community
+                  : userData.roles.community
                     ? "Your community reputation builds with active participation."
                     : "Your reputation events will appear here as you participate in agreements and disputes."}
               </div>
@@ -1009,13 +1027,13 @@ export default function Profile() {
                         <div className="flex justify-between">
                           <span>First Party:</span>
                           <span className="text-white/80">
-                            {agreement.firstParty.username}
+                            {agreement.firstParty.telegramUsername}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Counter Party:</span>
                           <span className="text-white/80">
-                            {agreement.counterParty.username}
+                            {agreement.counterParty.telegramUsername}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1032,62 +1050,6 @@ export default function Profile() {
             </div>
           )}
         </BentoCard>
-
-        {/* Active Agreements */}
-        {/* Active Agreements */}
-        {/* Active Agreements */}
-        {/* <BentoCard
-          title="Active Agreements"
-          icon={<FaHandshake />}
-          color="emerald"
-          count={agreementStats.active}
-          scrollable
-          maxHeight="260px"
-        >
-          {agreementsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
-              <span className="ml-2 text-emerald-300">
-                Loading active agreements...
-              </span>
-            </div>
-          ) : agreementStats.active === 0 ? (
-            <div className="py-8 text-center">
-              <div className="mb-2 text-lg text-emerald-300">
-                No active agreements
-              </div>
-              <div className="text-sm text-white/50">
-                Your active agreements will appear here once accepted by both
-                parties.
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {agreements
-                .filter((agreement) => agreement.status === 2) // Active status
-                .map((agreement) => (
-                  <div
-                    key={agreement.id}
-                    className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between">
-                      <h4 className="truncate text-sm font-medium text-white/90">
-                        {agreement.title || `Agreement #${agreement.id}`}
-                      </h4>
-                      <AgreementStatusBadge status={agreement.status} />
-                    </div>
-                    <div className="space-y-1 text-xs text-white/70">
-                      <div>
-                        Between: {agreement.firstParty.username} &{" "}
-                        {agreement.counterParty.username}
-                      </div>
-                      <div>Created: {formatDate(agreement.dateCreated)}</div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </BentoCard> */}
 
         {/* Escrow Deals */}
         <BentoCard

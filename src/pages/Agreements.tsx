@@ -1,4 +1,3 @@
-// Agreements.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "../components/ui/button";
@@ -37,6 +36,7 @@ import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
   isValidTelegramUsername,
+  formatTelegramUsernameForDisplay,
 } from "../lib/usernameUtils";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 
@@ -101,16 +101,17 @@ const UserSearchResult = ({
   onSelect: (username: string) => void;
   field: "counterparty" | "partyA" | "partyB";
 }) => {
-  // Use consistent Telegram username extraction
+  // 🚨 FIXED: Look for telegramUsername field (from API response)
   const telegramUsername = cleanTelegramUsername(
-    user.telegram?.username ||
-      user.telegramUsername ||
-      user.telegramInfo ||
-      user.username ||
-      user.handle,
+    user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
 
-  // Add @ prefix for display
+  // If no Telegram username exists, don't show this user
+  if (!telegramUsername) {
+    return null;
+  }
+
+  // PRESERVES ORIGINAL CASE: No .toLowerCase() here
   const displayUsername = telegramUsername ? `@${telegramUsername}` : "Unknown";
   const displayName = user.displayName || displayUsername;
   const isCurrentUser = user.id === user?.id;
@@ -134,7 +135,7 @@ const UserSearchResult = ({
         </div>
         {telegramUsername && (
           <div className="truncate text-xs text-cyan-300">
-            @{telegramUsername}
+            @{telegramUsername} {/* PRESERVES ORIGINAL CASE */}
           </div>
         )}
         {user.bio && (
@@ -158,6 +159,11 @@ export default function Agreements() {
     "",
   );
   const [customTokenAddress, setCustomTokenAddress] = useState("");
+  const [fundsWithoutEscrow, setFundsWithoutEscrow] = useState({
+    token: "",
+    amount: "",
+    customTokenAddress: "",
+  });
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -359,14 +365,12 @@ export default function Agreements() {
     const includeFunds =
       apiAgreement.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
 
-    // CRITICAL FIX: Escrow is only considered "used" if there's an escrow contract or financial details
     const useEscrow =
       apiAgreement.type === AgreementTypeEnum.ESCROW &&
       (apiAgreement.escrowContract ||
         apiAgreement.tokenSymbol ||
         apiAgreement.amount);
 
-    // Handle date conversion safely with better validation
     const formatDateSafely = (dateString: string) => {
       if (!dateString) return "No deadline";
 
@@ -381,47 +385,44 @@ export default function Agreements() {
       }
     };
 
-    // Helper function to extract avatar ID and convert to number
     const getAvatarIdFromParty = (party: any): number | null => {
       const avatarId = party?.avatarId || party?.avatar?.id;
       return avatarId ? Number(avatarId) : null;
     };
 
-    // Get the creator/createdBy - check multiple possible fields
-    const rawCreatedBy =
-      apiAgreement.firstParty?.username ||
-      apiAgreement.firstParty?.handle ||
-      apiAgreement.creator?.username ||
-      "Unknown";
+    // 🚨 FIXED: Look for telegramUsername field (from API response)
+    const getFirstPartyTelegramUsername = (party: any): string => {
+      const telegramUsername =
+        party?.telegramUsername || party?.telegram?.username;
+      return telegramUsername || "Unknown";
+    };
 
-    // Add @ prefix for display
-    const createdBy = rawCreatedBy.startsWith("@")
-      ? rawCreatedBy
-      : `@${rawCreatedBy}`;
+    // 🚨 FIXED: Look for telegramUsername field (from API response)
+    const getCounterpartyTelegramUsername = (party: any): string => {
+      const telegramUsername =
+        party?.telegramUsername || party?.telegram?.username;
+      return telegramUsername || "Unknown";
+    };
+
+    // Get the creator/createdBy - Telegram only
+    const rawCreatedBy = getFirstPartyTelegramUsername(apiAgreement.firstParty);
+    const createdBy = formatTelegramUsernameForDisplay(rawCreatedBy);
 
     const createdByUserId =
       apiAgreement.firstParty?.id?.toString() ||
       apiAgreement.creator?.id?.toString();
 
-    // Check for avatar in multiple possible fields
     const createdByAvatarId =
       getAvatarIdFromParty(apiAgreement.firstParty) ||
       getAvatarIdFromParty(apiAgreement.creator);
 
-    // Get counterparty - check multiple possible fields
-    const rawCounterparty =
-      apiAgreement.counterParty?.username ||
-      apiAgreement.counterParty?.handle ||
-      "Unknown";
-
-    // Add @ prefix for display
-    const counterparty = rawCounterparty.startsWith("@")
-      ? rawCounterparty
-      : `@${rawCounterparty}`;
+    // Get counterparty - Telegram only
+    const rawCounterparty = getCounterpartyTelegramUsername(
+      apiAgreement.counterParty,
+    );
+    const counterparty = formatTelegramUsernameForDisplay(rawCounterparty);
 
     const counterpartyUserId = apiAgreement.counterParty?.id?.toString();
-
-    // Check for avatar in multiple possible fields
     const counterpartyAvatarId = getAvatarIdFromParty(
       apiAgreement.counterParty,
     );
@@ -433,7 +434,7 @@ export default function Agreements() {
       type: getAgreementType(apiAgreement.visibility),
       counterparty: counterparty,
       createdBy: createdBy,
-      status: apiStatusToFrontend(apiAgreement.status), // CRITICAL FIX: Use the correct status mapping
+      status: apiStatusToFrontend(apiAgreement.status),
       dateCreated: formatDateSafely(
         apiAgreement.dateCreated || apiAgreement.createdAt,
       ),
@@ -442,17 +443,15 @@ export default function Agreements() {
       token: apiAgreement.tokenSymbol || undefined,
       files: apiAgreement.files?.length || 0,
 
-      // Add funds and escrow information
       includeFunds: includeFunds,
       useEscrow: useEscrow,
       escrowAddress: apiAgreement.escrowContract || undefined,
-      // Add avatar information
+
       createdByAvatarId: createdByAvatarId,
       counterpartyAvatarId: counterpartyAvatarId,
       createdByUserId: createdByUserId,
       counterpartyUserId: counterpartyUserId,
 
-      // Add cancellation properties
       cancelPending: apiAgreement.cancelPending || false,
       cancelRequestedById: apiAgreement.cancelRequestedById?.toString() || null,
     };
@@ -745,6 +744,33 @@ export default function Agreements() {
         }
       }
 
+      // Add funds information regardless of escrow usage
+      if (includeFunds === "yes") {
+        const token =
+          secureWithEscrow === "yes" ? selectedToken : fundsWithoutEscrow.token;
+        const amount =
+          secureWithEscrow === "yes" ? form.amount : fundsWithoutEscrow.amount;
+        const contractAddress =
+          secureWithEscrow === "yes"
+            ? customTokenAddress
+            : fundsWithoutEscrow.customTokenAddress;
+
+        if (token && token !== "custom") {
+          agreementData.tokenSymbol = token;
+        }
+        if (token === "custom" && contractAddress) {
+          agreementData.contractAddress = contractAddress;
+        }
+        if (amount) {
+          agreementData.amount = parseFloat(amount);
+        }
+
+        // Add escrow-specific data only if escrow is used
+        if (secureWithEscrow === "yes") {
+          agreementData.useEscrow = true;
+        }
+      }
+
       // Use the real API to create the agreement - let the API handle user validation
       await agreementService.createAgreement(
         agreementData,
@@ -879,7 +905,6 @@ export default function Agreements() {
       setUserSearchQuery(query);
       setActiveSearchField(field);
 
-      // Only log in development
       if (process.env.NODE_ENV === "development") {
         console.log("🔍 Searching users for", field, "with query:", query);
       }
@@ -896,21 +921,26 @@ export default function Agreements() {
       try {
         const results = await agreementService.searchUsers(query);
 
-        // Only log in development
         if (process.env.NODE_ENV === "development") {
           console.log("🔍 RAW SEARCH RESULTS:", results);
         }
 
-        // Filter out current user from results to prevent self-agreements
+        // Filter out current user AND users without Telegram usernames
         const currentUserTelegram = getCurrentUserTelegram(user);
         const filteredResults = results.filter((resultUser) => {
+          // 🚨 FIXED: Look for telegramUsername field (from API response)
           const resultTelegram = cleanTelegramUsername(
-            resultUser.telegram?.username ||
-              resultUser.telegramUsername ||
-              resultUser.telegramInfo ||
-              resultUser.username,
+            resultUser.telegramUsername ||
+              resultUser.telegram?.username ||
+              resultUser.telegramInfo,
           );
-          return resultTelegram !== currentUserTelegram;
+
+          // Only include users with Telegram usernames AND not the current user
+          // Use case-insensitive comparison
+          return (
+            resultTelegram &&
+            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
+          );
         });
 
         setUserSearchResults(filteredResults);
@@ -931,31 +961,6 @@ export default function Agreements() {
     }
   }, [debouncedSearchQuery, activeSearchField, handleUserSearch]);
 
-  // const testWithKnownUsers = async () => {
-
-  //   const testData = {
-  //     title: "Test Agreement - Known Users",
-  //     description: "Testing with users we know exist",
-  //     type: 1,
-  //     visibility: 2,
-  //     firstParty: "Ghravitee",
-  //     counterParty: "@LuminalLink",
-  //     deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-  //   };
-
-  //   const testFiles = [new File(["test"], "test.txt", { type: "text/plain" })];
-
-  //   try {
-  //     console.log("🧪 Testing with known users (bypassing validation)");
-  //     await agreementService.createAgreement(testData, testFiles);
-  //     console.log("✅ TEST SUCCESS: Agreement created with known users");
-  //     toast.success("Test agreement created successfully");
-  //   } catch (error) {
-  //     console.error("❌ TEST FAILED:", error);
-  //     toast.error("Test failed - check console");
-  //   }
-  // };
-
   return (
     <div className="relative">
       <div className="absolute top-32 right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[30rem]"></div>
@@ -964,7 +969,7 @@ export default function Agreements() {
 
       {/* Agreements Filter */}
       <div className="grid grid-cols-1 gap-6">
-        <div className="col-span-3 w-[80%]">
+        <div className="col-span-3 w-full lg:w-[80%]">
           <div className="">
             <div className="mb-3 flex items-center justify-between">
               <h1 className="text-xl text-white">Agreements</h1>
@@ -980,7 +985,12 @@ export default function Agreements() {
               {isAuthenticated ? (
                 <div className="flex items-center gap-2 text-sm text-cyan-300">
                   <div className="h-2 w-2 rounded-full bg-green-400"></div>
-                  <span>Authenticated as {user?.handle}</span>
+                  {/* UPDATED: Only show if user has Telegram */}
+                  <span>
+                    {user?.telegram?.username
+                      ? `Authenticated as @${user.telegram.username}`
+                      : "Please connect Telegram account"}
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-orange-300">
@@ -988,14 +998,6 @@ export default function Agreements() {
                   <span>Not authenticated</span>
                 </div>
               )}
-
-              {/* Test button */}
-              {/* <button
-                onClick={testWithKnownUsers}
-                className="ml-4 rounded-md border border-cyan-400/40 bg-cyan-600/20 px-3 py-1 text-sm text-cyan-100 hover:bg-cyan-500/30"
-              >
-                Test with known users
-              </button> */}
             </div>
           </div>
 
@@ -1071,7 +1073,6 @@ export default function Agreements() {
             {/* Agreements Table */}
             <div className="w-full overflow-x-auto rounded-xl border border-b-2 border-white/10 ring-1 ring-white/10">
               <div className="p-5">
-                {/* <h3 className="font-semibold text-white/90">All Agreements</h3> */}
                 {/* Page Size Selector */}
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-cyan-300">Show:</span>
@@ -1150,18 +1151,17 @@ export default function Agreements() {
                                 <UserAvatar
                                   userId={
                                     a.createdByUserId ||
-                                    a.createdBy.replace(/^@/, "")
+                                    cleanTelegramUsername(a.createdBy)
                                   }
                                   avatarId={a.createdByAvatarId || null}
-                                  username={a.createdBy.replace(/^@/, "")}
+                                  username={cleanTelegramUsername(a.createdBy)}
                                   size="sm"
                                 />
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const cleanUsername = a.createdBy.replace(
-                                      /^@/,
-                                      "",
+                                    const cleanUsername = cleanTelegramUsername(
+                                      a.createdBy,
                                     );
                                     const encodedUsername =
                                       encodeURIComponent(cleanUsername);
@@ -1169,7 +1169,10 @@ export default function Agreements() {
                                   }}
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
-                                  {a.createdBy}
+                                  {/* FIX: Use formatTelegramUsernameForDisplay to ensure Telegram format */}
+                                  {formatTelegramUsernameForDisplay(
+                                    a.createdBy,
+                                  )}
                                 </button>
                               </div>
                               <span className="text-cyan-400">
@@ -1179,24 +1182,29 @@ export default function Agreements() {
                                 <UserAvatar
                                   userId={
                                     a.counterpartyUserId ||
-                                    a.counterparty.replace(/^@/, "")
+                                    cleanTelegramUsername(a.counterparty)
                                   }
                                   avatarId={a.counterpartyAvatarId || null}
-                                  username={a.counterparty.replace(/^@/, "")}
+                                  username={cleanTelegramUsername(
+                                    a.counterparty,
+                                  )}
                                   size="sm"
                                 />
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const cleanUsername =
-                                      a.counterparty.replace(/^@/, "");
+                                    const cleanUsername = cleanTelegramUsername(
+                                      a.counterparty,
+                                    );
                                     const encodedUsername =
                                       encodeURIComponent(cleanUsername);
                                     navigate(`/profile/${encodedUsername}`);
                                   }}
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
-                                  {a.counterparty}
+                                  {formatTelegramUsernameForDisplay(
+                                    a.counterparty,
+                                  )}
                                 </button>
                               </div>
                             </div>
@@ -1739,7 +1747,6 @@ export default function Agreements() {
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Upload Supporting Documents{" "}
-                  <span className="text-red-500">*</span>
                 </label>
 
                 <div
@@ -1883,7 +1890,15 @@ export default function Agreements() {
                   <div className="flex gap-4">
                     <button
                       type="button"
-                      onClick={() => setSecureWithEscrow("yes")}
+                      onClick={() => {
+                        setSecureWithEscrow("yes");
+                        // Clear funds without escrow data when switching to escrow
+                        setFundsWithoutEscrow({
+                          token: "",
+                          amount: "",
+                          customTokenAddress: "",
+                        });
+                      }}
                       className={`rounded-md border px-4 py-2 transition-colors ${
                         secureWithEscrow === "yes"
                           ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
@@ -1894,7 +1909,12 @@ export default function Agreements() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSecureWithEscrow("no")}
+                      onClick={() => {
+                        setSecureWithEscrow("no");
+                        // Clear escrow-specific data when switching to no escrow
+                        setSelectedToken("");
+                        setCustomTokenAddress("");
+                      }}
                       className={`rounded-md border px-4 py-2 transition-colors ${
                         secureWithEscrow === "no"
                           ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
@@ -1904,7 +1924,10 @@ export default function Agreements() {
                       No
                     </button>
                   </div>
-                  {secureWithEscrow === "yes" && (
+
+                  {/* Funds Information Panel - Show for both escrow and non-escrow */}
+                  {(secureWithEscrow === "yes" ||
+                    secureWithEscrow === "no") && (
                     <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                       {/* Token Dropdown */}
                       <div
@@ -1919,7 +1942,11 @@ export default function Agreements() {
                           onClick={() => setIsTokenOpen((prev) => !prev)}
                           className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-cyan-400/40"
                         >
-                          <span>{selectedToken || "Select Token"}</span>
+                          <span>
+                            {secureWithEscrow === "yes"
+                              ? selectedToken || "Select Token"
+                              : fundsWithoutEscrow.token || "Select Token"}
+                          </span>
                           <ChevronDown
                             className={`transition-transform ${
                               isTokenOpen ? "rotate-180" : ""
@@ -1932,10 +1959,24 @@ export default function Agreements() {
                               <div
                                 key={option.value}
                                 onClick={() => {
-                                  setSelectedToken(option.value);
+                                  if (secureWithEscrow === "yes") {
+                                    setSelectedToken(option.value);
+                                  } else {
+                                    setFundsWithoutEscrow((prev) => ({
+                                      ...prev,
+                                      token: option.value,
+                                    }));
+                                  }
                                   setIsTokenOpen(false);
                                   if (option.value !== "custom") {
-                                    setCustomTokenAddress("");
+                                    if (secureWithEscrow === "yes") {
+                                      setCustomTokenAddress("");
+                                    } else {
+                                      setFundsWithoutEscrow((prev) => ({
+                                        ...prev,
+                                        customTokenAddress: "",
+                                      }));
+                                    }
                                   }
                                 }}
                                 className="cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white"
@@ -1945,7 +1986,8 @@ export default function Agreements() {
                             ))}
                           </div>
                         )}
-                        {selectedToken === "custom" && (
+                        {(selectedToken === "custom" ||
+                          fundsWithoutEscrow.token === "custom") && (
                           <div className="mt-3">
                             <label className="text-muted-foreground mb-2 block text-sm">
                               Paste Contract Address{" "}
@@ -1953,16 +1995,28 @@ export default function Agreements() {
                             </label>
                             <input
                               type="text"
-                              value={customTokenAddress}
-                              onChange={(e) =>
-                                setCustomTokenAddress(e.target.value)
+                              value={
+                                secureWithEscrow === "yes"
+                                  ? customTokenAddress
+                                  : fundsWithoutEscrow.customTokenAddress
                               }
+                              onChange={(e) => {
+                                if (secureWithEscrow === "yes") {
+                                  setCustomTokenAddress(e.target.value);
+                                } else {
+                                  setFundsWithoutEscrow((prev) => ({
+                                    ...prev,
+                                    customTokenAddress: e.target.value,
+                                  }));
+                                }
+                              }}
                               placeholder="0x..."
                               className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                             />
                           </div>
                         )}
                       </div>
+
                       {/* Amount */}
                       <div>
                         <label className="text-muted-foreground mb-2 block text-sm">
@@ -1970,15 +2024,45 @@ export default function Agreements() {
                           <span className="text-cyan-400">(Optional)</span>
                         </label>
                         <input
-                          value={form.amount}
-                          onChange={(e) =>
-                            setForm({ ...form, amount: e.target.value })
+                          value={
+                            secureWithEscrow === "yes"
+                              ? form.amount
+                              : fundsWithoutEscrow.amount
                           }
+                          onChange={(e) => {
+                            if (secureWithEscrow === "yes") {
+                              setForm({ ...form, amount: e.target.value });
+                            } else {
+                              setFundsWithoutEscrow((prev) => ({
+                                ...prev,
+                                amount: e.target.value,
+                              }));
+                            }
+                          }}
                           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                           placeholder="1000"
                           type="number"
                         />
                       </div>
+
+                      {/* Information text for non-escrow funds */}
+                      {secureWithEscrow === "no" && (
+                        <div className="md:col-span-3">
+                          <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                            <div>
+                              <p className="text-sm text-cyan-300">
+                                Funds information is for reference only and will
+                                not be secured in escrow.
+                              </p>
+                              <p className="mt-1 text-xs text-cyan-300/70">
+                                This helps track the financial scope of the
+                                agreement without automated fund handling.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2053,7 +2137,7 @@ function SourAgreementsSwiper({ agreements }: { agreements: any[] }) {
   }, [index, agreements.length, next]);
 
   const handleUsernameClick = (username: string) => {
-    const cleanUsername = username.replace(/^@/, "");
+    const cleanUsername = cleanTelegramUsername(username);
     const encodedUsername = encodeURIComponent(cleanUsername);
     navigate(`/profile/${encodedUsername}`);
   };

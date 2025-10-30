@@ -46,11 +46,15 @@ export interface AgreementListDTO {
   totalAgreements: number;
   totalResults: number;
   results: AgreementSummaryDTO[];
+  data?: any;
 }
 
 export interface AgreementSummaryDTO {
   id: number;
   dateCreated: string;
+  description: string;
+  visibility: number;
+  data?: any;
   title: string;
   firstParty: PartyDTO;
   counterParty: PartyDTO;
@@ -339,15 +343,310 @@ class AgreementService {
   }
 
   // Get agreements list with filters
+  // Enhanced getAgreements method with detailed logging
   async getAgreements(params?: {
     top?: number;
     skip?: number;
     status?: number;
     sort?: string;
     search?: string;
+    page?: number;
+    page_size?: number;
   }): Promise<AgreementListDTO> {
+    console.log(
+      "🔍 getAgreements called with params:",
+      JSON.stringify(params, null, 2),
+    );
+
     const response = await api.get("/agreement", { params });
+
+    console.log("📦 getAgreements response details:", {
+      totalResults: response.data.totalResults,
+      totalAgreements: response.data.totalAgreements,
+      resultsCount: response.data.results?.length,
+      firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
+      hasMoreData: response.data.results?.length > 0,
+    });
+
     return response.data;
+  }
+
+  // In agreementServices.ts - FIXED getAllAgreementsCount method
+  async getAllAgreementsCount(): Promise<number> {
+    try {
+      console.log("🔢 Counting ALL agreements...");
+
+      // Get just the first page to read the totalAgreements count
+      const firstPage = await this.getAgreements({ page: 1, page_size: 1 });
+      const totalCount = firstPage.totalAgreements || 0;
+
+      console.log(`✅ Total agreements count from API: ${totalCount}`);
+      return totalCount;
+    } catch (error) {
+      console.error("❌ Failed to count all agreements:", error);
+
+      // Fallback: try to count manually if the direct count fails
+      try {
+        console.log("🔄 Falling back to manual counting...");
+        const allAgreements = await this.getAllAgreements();
+        const manualCount = allAgreements.length;
+        console.log(`✅ Manual count: ${manualCount} agreements`);
+        return manualCount;
+      } catch (fallbackError) {
+        console.error("❌ Manual count also failed:", fallbackError);
+        throw error;
+      }
+    }
+  }
+
+  // In agreementServices.ts - FIXED getAllAgreements method
+  async getAllAgreements(filters?: {
+    status?: number;
+    search?: string;
+    sort?: string;
+  }): Promise<AgreementSummaryDTO[]> {
+    try {
+      let allAgreements: AgreementSummaryDTO[] = [];
+      let currentPage = 1;
+      const pageSize = 50;
+      let hasMore = true;
+      let totalAgreements = 0;
+
+      console.log("🔍 Fetching all agreements with pagination...");
+
+      while (hasMore) {
+        const params = {
+          page: currentPage,
+          page_size: pageSize,
+          ...filters,
+        };
+
+        const response = await this.getAgreements(params);
+        const pageAgreements = response.results || [];
+
+        console.log(
+          `📄 Page ${currentPage}: ${pageAgreements.length} agreements returned`,
+        );
+
+        if (pageAgreements.length === 0) {
+          hasMore = false;
+          console.log(`📄 Reached end at page ${currentPage}`);
+        } else {
+          allAgreements = [...allAgreements, ...pageAgreements];
+
+          // Use totalAgreements from the response, not totalResults
+          totalAgreements = response.totalAgreements || 0;
+
+          console.log(
+            `📄 Page ${currentPage}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
+          );
+
+          // Check if we've reached the actual total (not the page total)
+          if (totalAgreements > 0 && allAgreements.length >= totalAgreements) {
+            hasMore = false;
+            console.log(`✅ Reached total of ${totalAgreements} agreements`);
+          }
+
+          currentPage++;
+
+          // Safety limit to prevent infinite loops
+          if (currentPage > 100) {
+            console.warn("⚠️ Reached safety limit of 100 pages");
+            hasMore = false;
+          }
+        }
+      }
+
+      console.log(
+        `✅ Fetched ${allAgreements.length} total agreements (expected: ${totalAgreements})`,
+      );
+      return allAgreements;
+    } catch (error) {
+      console.error("❌ Failed to fetch all agreements:", error);
+      throw error;
+    }
+  }
+
+  // In agreementServices.ts - Update the getUserAgreements method
+  async getUserAgreements(
+    userId: string,
+    filters?: {
+      status?: number;
+      search?: string;
+    },
+  ): Promise<AgreementSummaryDTO[]> {
+    try {
+      console.log(`👤 Fetching ALL agreements for user ${userId}...`);
+
+      let allUserAgreements: AgreementSummaryDTO[] = [];
+      let currentPage = 1;
+      const pageSize = 50;
+      let hasMore = true;
+      let totalFetched = 0;
+
+      while (hasMore) {
+        try {
+          console.log(`📄 Fetching page ${currentPage} for user agreements...`);
+
+          const params = {
+            page: currentPage,
+            page_size: pageSize,
+            ...filters,
+          };
+
+          const response = await this.getAgreements(params);
+          const pageAgreements = response.results || [];
+
+          console.log(
+            `📄 Page ${currentPage}: ${pageAgreements.length} agreements returned`,
+          );
+
+          if (pageAgreements.length === 0) {
+            hasMore = false;
+            console.log(`✅ Reached end of agreements at page ${currentPage}`);
+            break;
+          }
+
+          // Filter agreements where the user is involved
+          const userAgreementsInPage = pageAgreements.filter((agreement) => {
+            const isUserInvolved =
+              agreement.firstParty.id.toString() === userId ||
+              agreement.counterParty.id.toString() === userId;
+            return isUserInvolved;
+          });
+
+          console.log(
+            `👤 Page ${currentPage}: ${userAgreementsInPage.length} agreements involve user ${userId}`,
+          );
+
+          allUserAgreements = [...allUserAgreements, ...userAgreementsInPage];
+          totalFetched += pageAgreements.length;
+
+          // Check if we've reached the total count
+          if (response.totalResults && totalFetched >= response.totalResults) {
+            hasMore = false;
+            console.log(
+              `✅ Reached total of ${response.totalResults} agreements`,
+            );
+          }
+
+          currentPage++;
+
+          // Safety limit
+          if (currentPage > 50) {
+            console.warn("⚠️ Reached safety limit of 50 pages");
+            hasMore = false;
+          }
+        } catch (pageError) {
+          console.error(`❌ Error fetching page ${currentPage}:`, pageError);
+          hasMore = false;
+          break;
+        }
+      }
+
+      console.log(
+        `✅ Total agreements for user ${userId}: ${allUserAgreements.length}`,
+      );
+      return allUserAgreements;
+    } catch (error) {
+      console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  // Alternative approach using top/skip parameters
+  async getUserAgreementsWithTopSkip(
+    userId: string,
+    filters?: {
+      status?: number;
+      search?: string;
+    },
+  ): Promise<AgreementSummaryDTO[]> {
+    try {
+      console.log(
+        `👤 Fetching ALL agreements for user ${userId} using top/skip...`,
+      );
+
+      let allUserAgreements: AgreementSummaryDTO[] = [];
+      let skip = 0;
+      const top = 50; // Get 50 per request
+      let hasMore = true;
+      let consecutiveEmptyResults = 0;
+
+      while (hasMore) {
+        try {
+          console.log(
+            `📄 Fetching agreements with skip=${skip}, top=${top}...`,
+          );
+
+          const params = {
+            top: top,
+            skip: skip,
+            ...filters,
+            sort: "desc", // Ensure consistent ordering
+          };
+
+          const response = await this.getAgreements(params);
+          const pageAgreements = response.results || [];
+
+          console.log(
+            `📄 Skip ${skip}: ${pageAgreements.length} agreements returned`,
+          );
+
+          if (pageAgreements.length === 0) {
+            consecutiveEmptyResults++;
+            console.log(`📄 No more agreements at skip=${skip}`);
+
+            // If we get empty results, stop
+            if (consecutiveEmptyResults >= 1) {
+              hasMore = false;
+              console.log(`✅ Reached end of agreements at skip=${skip}`);
+              break;
+            }
+          } else {
+            consecutiveEmptyResults = 0;
+
+            // Filter agreements where the user is involved
+            const userAgreementsInPage = pageAgreements.filter((agreement) => {
+              const isUserInvolved =
+                agreement.firstParty.id.toString() === userId ||
+                agreement.counterParty.id.toString() === userId;
+              return isUserInvolved;
+            });
+
+            console.log(
+              `👤 Skip ${skip}: ${userAgreementsInPage.length} agreements involve user ${userId}`,
+            );
+
+            allUserAgreements = [...allUserAgreements, ...userAgreementsInPage];
+
+            // Move to next page
+            skip += top;
+          }
+
+          // Safety limit
+          if (skip > 1000) {
+            console.warn("⚠️ Reached safety limit of 1000 records");
+            hasMore = false;
+          }
+
+          // Small delay between requests
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (pageError) {
+          console.error(`❌ Error fetching skip=${skip}:`, pageError);
+          hasMore = false;
+          break;
+        }
+      }
+
+      console.log(
+        `✅ Total agreements for user ${userId}: ${allUserAgreements.length}`,
+      );
+      return allUserAgreements;
+    } catch (error) {
+      console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);
+      throw error;
+    }
   }
 
   // Get user's agreements

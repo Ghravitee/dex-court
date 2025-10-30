@@ -50,6 +50,7 @@ export interface Agreement {
   escrowAddress?: string;
   files: number;
   images?: string[];
+  hasFundsWithoutEscrow?: boolean; // Add this
 
   // 🆕 ADD PROPERLY TYPED TIMELINE PROPERTY
   timeline?: TimelineEvent[];

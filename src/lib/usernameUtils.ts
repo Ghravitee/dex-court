@@ -5,10 +5,12 @@
  * Tries both formats: with @ and without @
  */
 // In usernameUtils.ts - make sure it's not returning empty strings
+// lib/usernameUtils.ts
 export const cleanTelegramUsername = (username: string): string => {
   if (!username) return "";
 
-  return username.replace(/^@/, "").trim().toLowerCase();
+  // REMOVED: .toLowerCase() to preserve original case
+  return username.replace(/^@/, "").trim();
 };
 
 /**
@@ -35,13 +37,13 @@ export const isValidTelegramUsername = (
 
   const cleanUsername = cleanTelegramUsername(username);
 
-  // Telegram username validation rules:
+  // Telegram username validation rules (case insensitive):
   // - 5-32 characters after @
   // - Can contain a-z, 0-9, and underscores
   // - Cannot start with a number or underscore
   // - Cannot end with underscore
   // - No consecutive underscores
-  const telegramRegex = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+  const telegramRegex = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/i; // Added 'i' flag for case insensitive
 
   return telegramRegex.test(cleanUsername) && cleanUsername.length >= 1;
 };
@@ -52,13 +54,9 @@ export const isValidTelegramUsername = (
 export const getCurrentUserTelegram = (user: any): string => {
   if (!user) return "";
 
-  // Try multiple possible locations for Telegram username
+  // 🚨 FIXED: Look for telegramUsername field (from API response)
   return cleanTelegramUsername(
-    user.telegram?.username ||
-      user.telegramUsername ||
-      user.telegramInfo ||
-      user.handle ||
-      user.username,
+    user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
 };
 
@@ -68,5 +66,5 @@ export const getCurrentUserTelegram = (user: any): string => {
  */
 export const formatTelegramUsernameForDisplay = (username: string): string => {
   const clean = cleanTelegramUsername(username);
-  return clean ? `@${clean}` : "";
+  return clean ? `@${clean}` : ""; // Preserves original case
 };

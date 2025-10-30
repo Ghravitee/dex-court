@@ -1,4 +1,4 @@
-// hooks/usePublicAgreementsApi.ts
+// hooks/usePublicAgreementsApi.ts - UPDATED VERSION
 import { useState, useEffect, useCallback } from "react";
 import { agreementService } from "../services/agreementServices";
 import type {
@@ -18,27 +18,48 @@ export const usePublicAgreementsApi = (userId?: string) => {
   // Fetch detailed information for each agreement
   const fetchAgreementDetails = useCallback(
     async (agreementList: AgreementSummaryDTO[]) => {
+      if (agreementList.length === 0) return;
+
       setDetailsLoading(true);
       const details: { [key: number]: AgreementDetailsDTO } = {};
 
       try {
-        // Use Promise.all to fetch all details in parallel
-        const detailPromises = agreementList.map(async (agreement) => {
-          try {
-            const detailResponse = await agreementService.getAgreementDetails(
-              agreement.id,
-            );
-            details[agreement.id] = detailResponse.data;
-          } catch (err) {
-            console.error(
-              `Failed to fetch details for agreement ${agreement.id}:`,
-              err,
-            );
-          }
-        });
+        console.log(
+          `📋 Fetching details for ${agreementList.length} agreements...`,
+        );
 
-        await Promise.all(detailPromises);
+        // Use Promise.all to fetch all details in parallel with concurrency limit
+        const concurrencyLimit = 5; // Limit concurrent requests to avoid overwhelming the API
+        const batches = [];
+
+        for (let i = 0; i < agreementList.length; i += concurrencyLimit) {
+          const batch = agreementList.slice(i, i + concurrencyLimit);
+          const batchPromises = batch.map(async (agreement) => {
+            try {
+              const detailResponse = await agreementService.getAgreementDetails(
+                agreement.id,
+              );
+              details[agreement.id] = detailResponse.data;
+            } catch (err) {
+              console.error(
+                `Failed to fetch details for agreement ${agreement.id}:`,
+                err,
+              );
+              // Don't throw, just log and continue
+            }
+          });
+          batches.push(Promise.all(batchPromises));
+        }
+
+        // Wait for all batches to complete
+        for (const batch of batches) {
+          await batch;
+        }
+
         setAgreementDetails(details);
+        console.log(
+          `✅ Successfully fetched details for ${Object.keys(details).length} agreements`,
+        );
       } catch (err) {
         console.error("Failed to fetch agreement details:", err);
       } finally {
@@ -49,27 +70,31 @@ export const usePublicAgreementsApi = (userId?: string) => {
   );
 
   // Fetch public agreements for a specific user
+  // In usePublicAgreementsApi.ts - update the fetchPublicAgreements function
   const fetchPublicAgreements = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setAgreements([]);
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
+      setAgreements([]);
 
-      // First get all agreements
-      const response = await agreementService.getAgreements();
-      const allAgreements = response.results || [];
+      console.log(`👤 Fetching agreements for user ${userId}...`);
 
-      // Filter agreements where the user is involved AND agreement is public
-      const userAgreements = allAgreements.filter((agreement) => {
-        const isUserInvolved =
-          agreement.firstParty.id.toString() === userId ||
-          agreement.counterParty.id.toString() === userId;
+      // Use the new method with top/skip parameters
+      const userAgreements =
+        await agreementService.getUserAgreementsWithTopSkip(userId);
 
-        // For now, we'll assume all agreements from the public endpoint are public
-        // You might need to adjust this based on your actual visibility logic
-        return isUserInvolved;
-      });
+      console.log(
+        `📋 Found ${userAgreements.length} agreements for user ${userId}`,
+      );
+
+      if (userAgreements.length === 0) {
+        console.log("📋 No agreements found for user");
+      }
 
       setAgreements(userAgreements);
 
@@ -89,6 +114,9 @@ export const usePublicAgreementsApi = (userId?: string) => {
   useEffect(() => {
     if (userId) {
       fetchPublicAgreements();
+    } else {
+      setAgreements([]);
+      setAgreementDetails({});
     }
   }, [userId, fetchPublicAgreements]);
 
