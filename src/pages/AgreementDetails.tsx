@@ -2062,7 +2062,7 @@ export default function AgreementDetails() {
                         <CheckSquare className="h-4 w-4 text-blue-400" />
                         <span className="text-sm text-blue-300">
                           Your delivery has been submitted and is awaiting
-                          review
+                          review.
                         </span>
                       </div>
                     )}
