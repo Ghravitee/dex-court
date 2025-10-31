@@ -455,7 +455,7 @@ function DisputesInfiniteCards() {
       </div>
       <InfiniteMovingCardsWithAvatars
         items={disputeItems}
-        direction="left"
+        direction="right"
         speed="normal"
         pauseOnHover={true}
         type="agreements"
@@ -520,7 +520,7 @@ function LiveVotingInfiniteCards() {
       </div>
       <InfiniteMovingCardsWithAvatars
         items={votingItems}
-        direction="right"
+        direction="left"
         speed="slow"
         pauseOnHover={true}
         type="agreements"
@@ -545,6 +545,7 @@ function SignedAgreementsInfiniteCards() {
   const agreementItems = useMemo(
     () =>
       signedAgreements.map((agreement) => ({
+        id: agreement.id,
         quote: agreement.description,
         name: `${agreement.createdBy} ↔ ${agreement.counterparty}`,
         title: `${agreement.amount ? `${agreement.amount} ${agreement.token} • ` : ""}${agreement.status}`,
