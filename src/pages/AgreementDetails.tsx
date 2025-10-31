@@ -98,15 +98,16 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
 };
 
 // Helper function to get username from party data (using username as Telegram username during transition)
+// Enhanced helper function to get Telegram username from party data
 const getTelegramUsernameFromParty = (party: any): string => {
   if (!party) return "Unknown";
 
-  // TEMPORARY: Use username field as Telegram username since telegramUsername doesn't exist in API
-  const telegramUsername = party?.username;
+  // Priority 1: Check for telegramUsername field (if available in API)
+  const telegramUsername = party?.telegramUsername || party?.username;
 
   if (!telegramUsername) return "Unknown";
 
-  // Add @ prefix for display
+  // Ensure it starts with @ for display consistency
   return telegramUsername.startsWith("@")
     ? telegramUsername
     : `@${telegramUsername}`;
@@ -127,12 +128,15 @@ const normalizeUsername = (username: string): string => {
 const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use username as Telegram username during transition
-  const currentUserTelegram = currentUser?.username;
+  // Use Telegram username for comparison
+  const currentUserTelegram =
+    currentUser?.telegramUsername || currentUser?.username;
   if (!currentUserTelegram) return false;
 
-  const counterpartyTelegram = agreement.counterParty?.username;
-  if (!counterpartyTelegram) return false;
+  const counterpartyTelegram = getTelegramUsernameFromParty(
+    agreement.counterParty,
+  );
+  if (!counterpartyTelegram || counterpartyTelegram === "Unknown") return false;
 
   return (
     normalizeUsername(currentUserTelegram) ===
@@ -144,12 +148,13 @@ const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
 const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use username as Telegram username during transition
-  const currentUserTelegram = currentUser?.username;
+  // Use Telegram username for comparison
+  const currentUserTelegram =
+    currentUser?.telegramUsername || currentUser?.username;
   if (!currentUserTelegram) return false;
 
-  const firstPartyTelegram = agreement.firstParty?.username;
-  if (!firstPartyTelegram) return false;
+  const firstPartyTelegram = getTelegramUsernameFromParty(agreement.firstParty);
+  if (!firstPartyTelegram || firstPartyTelegram === "Unknown") return false;
 
   return (
     normalizeUsername(currentUserTelegram) ===
@@ -161,17 +166,64 @@ const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
 const isCurrentUserCreator = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use username as Telegram username during transition
-  const currentUserTelegram = currentUser?.username;
+  // Use Telegram username for comparison
+  const currentUserTelegram =
+    currentUser?.telegramUsername || currentUser?.username;
   if (!currentUserTelegram) return false;
 
-  const creatorTelegram = agreement.creator?.username;
-  if (!creatorTelegram) return false;
+  const creatorTelegram = getTelegramUsernameFromParty(agreement.creator);
+  if (!creatorTelegram || creatorTelegram === "Unknown") return false;
 
   return (
     normalizeUsername(currentUserTelegram) ===
     normalizeUsername(creatorTelegram)
   );
+};
+
+// NEW: Enhanced helper to check who initiated delivery using context
+const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return null;
+
+  // Priority 1: Check context.pendingApproval from API
+  if (agreement.context?.pendingApproval) {
+    const { initiatedByUser, initiatedByOther } =
+      agreement.context.pendingApproval;
+
+    if (initiatedByUser) return "user";
+    if (initiatedByOther) return "other";
+  }
+
+  // Priority 2: Fallback to existing logic
+  const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
+  if (!deliverySubmittedBy) return null;
+
+  const currentUserId = currentUser.id || currentUser.userId;
+  const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
+
+  return currentUserId === submittedById ? "user" : "other";
+};
+
+// NEW: Enhanced helper to check who initiated cancellation using context
+const getCancellationInitiatedBy = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return null;
+
+  // Priority 1: Check context.cancelPending from API
+  if (agreement.context?.cancelPending) {
+    const { initiatedByUser, initiatedByOther } =
+      agreement.context.cancelPending;
+
+    if (initiatedByUser) return "user";
+    if (initiatedByOther) return "other";
+  }
+
+  // Priority 2: Fallback to existing logic
+  const cancellationRequestedBy = getCancellationRequestedBy(agreement);
+  if (!cancellationRequestedBy) return null;
+
+  const currentUserId = currentUser.id || currentUser.userId;
+  const requestedById = cancellationRequestedBy.id || cancellationRequestedBy;
+
+  return currentUserId === requestedById ? "user" : "other";
 };
 
 // Helper to check who submitted the delivery
@@ -255,12 +307,17 @@ const isCancellationPending = (agreement: any): boolean => {
     return true;
   }
 
-  // Method 3: Check if there's a cancelRequestedById (this is crucial!)
+  // Method 3: Check context.cancelPending
+  if (agreement.context?.cancelPending?.active) {
+    return true;
+  }
+
+  // Method 4: Check if there's a cancelRequestedById (this is crucial!)
   if (agreement.cancelRequestedById || agreement._raw?.cancelRequestedById) {
     return true;
   }
 
-  // Method 4: Check timeline for pending cancellation request (as fallback)
+  // Method 5: Check timeline for pending cancellation request (as fallback)
   const timeline = agreement.timeline || agreement._raw?.timeline || [];
 
   const hasPendingCancellation = timeline.some(
@@ -281,7 +338,7 @@ const isCancellationPending = (agreement: any): boolean => {
   return hasPendingCancellation;
 };
 
-// Helper to check if current user should see delivery review buttons
+// NEW: Fixed helper to check if current user should see delivery review buttons
 const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   if (
     !agreement ||
@@ -291,26 +348,20 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
     return false;
   }
 
-  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
-  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
-
-  // Get who submitted the delivery
-  const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
-
-  // If we can't determine who submitted, show review buttons to BOTH parties
-  if (!deliverySubmittedBy) {
-    return isFirstParty || isCounterparty;
+  // Check if delivery is pending approval using context
+  const isDeliveryPending = agreement.context?.pendingApproval?.active;
+  if (!isDeliveryPending) {
+    return false;
   }
 
-  // Current user should ONLY review if they DID NOT submit the delivery
-  const currentUserId = currentUser.id || currentUser.userId;
-  const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
+  // Use the new context-based initiatedBy check
+  const initiatedBy = getDeliveryInitiatedBy(agreement, currentUser);
 
-  // Only show review buttons to the party who did NOT submit the delivery
-  return currentUserId !== submittedById && (isFirstParty || isCounterparty);
+  // Only show review buttons to the OTHER party (the one who didn't initiate delivery)
+  return initiatedBy === "other";
 };
 
-// CORRECTED Helper to check if current user should see cancellation response buttons
+// NEW: Fixed helper to check if current user should see cancellation response buttons
 const shouldShowCancellationResponseButtons = (
   agreement: any,
   currentUser: any,
@@ -319,29 +370,17 @@ const shouldShowCancellationResponseButtons = (
     return false;
   }
 
-  const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
-  const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
-
-  // Check if there's a pending cancellation request
-  const isPendingCancellation = isCancellationPending(agreement);
-
-  if (!isPendingCancellation) {
+  // Check if cancellation is pending using context
+  const isCancellationPending = agreement.context?.cancelPending?.active;
+  if (!isCancellationPending) {
     return false;
   }
 
-  // Get who requested cancellation
-  const cancellationRequestedBy = getCancellationRequestedBy(agreement);
-
-  if (!cancellationRequestedBy) {
-    return false;
-  }
-
-  // Get IDs for comparison
-  const currentUserId = currentUser.id;
-  const requestedById = cancellationRequestedBy.id || cancellationRequestedBy;
+  // Use the new context-based initiatedBy check
+  const initiatedBy = getCancellationInitiatedBy(agreement, currentUser);
 
   // Only show response buttons to the OTHER party (the one who didn't request cancellation)
-  return currentUserId !== requestedById && (isFirstParty || isCounterparty);
+  return initiatedBy === "other";
 };
 
 // Helper to check if current user can mark as delivered
@@ -374,14 +413,11 @@ const canUserRequestCancellation = (agreement: any, currentUser: any) => {
   const isFirstParty = isCurrentUserFirstParty(agreement, currentUser);
   const isCounterparty = isCurrentUserCounterparty(agreement, currentUser);
 
-  // Check timeline for CANCEL_REQUESTED (type 7) events - look at top level timeline
-  const hasCancelRequest =
-    agreement.timeline?.some(
-      (event: any) => event.type === 7, // CANCEL_REQUESTED
-    ) ?? false;
+  // Check if there's already a pending cancellation
+  const hasPendingCancellation = isCancellationPending(agreement);
 
   // Both parties can request cancellation ONLY if no cancellation request exists
-  return (isFirstParty || isCounterparty) && !hasCancelRequest;
+  return (isFirstParty || isCounterparty) && !hasPendingCancellation;
 };
 
 // Helper to get completion date from timeline
@@ -796,7 +832,7 @@ export default function AgreementDetails() {
       if (document.visibilityState === "visible" && !isRefreshing) {
         fetchAgreementDetailsBackground();
       }
-    }, 30000); // Increased to 30 seconds to be even less intrusive
+    }, 15000); // Increased to 15 seconds to be even less intrusive
 
     return () => clearInterval(pollInterval);
   }, [id, isRefreshing, fetchAgreementDetailsBackground]);
@@ -1326,32 +1362,31 @@ export default function AgreementDetails() {
     user,
   );
 
-  // Respond to cancellation - only the OTHER party can respond (same logic as delivery)
+  // NEW: Use the fixed context-based helpers for response buttons
   const canRespondToCancellation = shouldShowCancellationResponseButtons(
-    agreement,
+    agreement?._raw,
     user,
   );
 
   // BIDIRECTIONAL DELIVERY PERMISSIONS
   const canMarkDelivered = canUserMarkAsDelivered(agreement?._raw, user);
+
+  // NEW: Use the fixed context-based helper for delivery review
   const canReviewDelivery = shouldShowDeliveryReviewButtons(
     agreement?._raw,
     user,
   );
 
-  // Check who submitted the delivery
-  const deliverySubmittedBy = getDeliverySubmittedBy(agreement?._raw);
-  const isCurrentUserSubmittedDelivery =
-    deliverySubmittedBy &&
-    ((deliverySubmittedBy.id && deliverySubmittedBy.id === user?.id) ||
-      deliverySubmittedBy === user?.id);
+  // NEW: Check who initiated delivery using context
+  const deliveryInitiatedBy = getDeliveryInitiatedBy(agreement?._raw, user);
+  const isCurrentUserInitiatedDelivery = deliveryInitiatedBy === "user";
 
-  // Check who requested cancellation
-  const cancellationRequestedBy = getCancellationRequestedBy(agreement?._raw);
-  const isCurrentUserRequestedCancellation =
-    cancellationRequestedBy &&
-    ((cancellationRequestedBy.id && cancellationRequestedBy.id === user?.id) ||
-      cancellationRequestedBy === user?.id);
+  // NEW: Check who initiated cancellation using context
+  const cancellationInitiatedBy = getCancellationInitiatedBy(
+    agreement?._raw,
+    user,
+  );
+  const isCurrentUserInitiatedCancellation = cancellationInitiatedBy === "user";
 
   // Dispute permissions
   const canOpenDispute = agreement?.status === "signed" && isParticipant;
@@ -1364,6 +1399,36 @@ export default function AgreementDetails() {
 
   // Check if cancellation is pending using enhanced detection
   const cancellationPending = isCancellationPending(agreement?._raw);
+
+  // NEW: Get appropriate messages for both parties
+  // NEW: Get appropriate messages for both parties
+  const getDeliveryStatusMessage = () => {
+    if (!agreement || agreement.status !== "pending_approval") return null;
+
+    const initiatedBy = getDeliveryInitiatedBy(agreement._raw, user);
+
+    if (initiatedBy === "user") {
+      return "You have marked your work as delivered and are waiting for the other party to review it.";
+    } else if (initiatedBy === "other") {
+      return "The other party has marked their work as delivered and is waiting for your review.";
+    } else {
+      return "Work has been marked as delivered. Please review and accept or reject the delivery.";
+    }
+  };
+
+  const getCancellationStatusMessage = () => {
+    if (!agreement || !cancellationPending) return null;
+
+    const initiatedBy = getCancellationInitiatedBy(agreement._raw, user);
+
+    if (initiatedBy === "user") {
+      return "You have requested cancellation. Waiting for the other party to respond.";
+    } else if (initiatedBy === "other") {
+      return "The other party has requested cancellation. Waiting for your response.";
+    } else {
+      return "A cancellation request has been initiated. Waiting for response.";
+    }
+  };
 
   if (loading) {
     return (
@@ -1457,7 +1522,7 @@ export default function AgreementDetails() {
           <div className="space-y-6 lg:col-span-2">
             {/* Agreement Overview Card */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-6 sm:px-4">
-              <div className="mb-6 flex items-start justify-between">
+              <div className="mb-6 flex flex-col items-start justify-between sm:flex-row">
                 <div>
                   <h1 className="mb-2 text-2xl font-bold text-white lg:text-3xl">
                     {agreement.title}
@@ -1916,7 +1981,7 @@ export default function AgreementDetails() {
                       </Button>
                     )}
 
-                    {/* Respond to Cancellation Buttons - For the OTHER party ONLY when there's a pending cancellation */}
+                    {/* NEW: Respond to Cancellation Buttons - Only show to the OTHER party */}
                     {canRespondToCancellation && (
                       <>
                         <Button
@@ -1958,8 +2023,8 @@ export default function AgreementDetails() {
                       </>
                     )}
 
-                    {/* BIDIRECTIONAL: Mark as Delivered Button */}
-                    {canMarkDelivered && !isCurrentUserSubmittedDelivery && (
+                    {/* BIDIRECTIONAL: Mark as Delivered Button - Only show if user didn't initiate delivery */}
+                    {canMarkDelivered && !isCurrentUserInitiatedDelivery && (
                       <Button
                         variant="outline"
                         className="border-green-500/30 text-green-400 hover:bg-green-500/10"
@@ -1980,7 +2045,7 @@ export default function AgreementDetails() {
                       </Button>
                     )}
 
-                    {/* BIDIRECTIONAL: Delivery Review Buttons */}
+                    {/* NEW: Delivery Review Buttons - Only show to the OTHER party */}
                     {canReviewDelivery && (
                       <>
                         <Button
@@ -2056,19 +2121,19 @@ export default function AgreementDetails() {
                       </Button>
                     )}
 
-                    {/* Show status if user has already submitted delivery */}
-                    {isCurrentUserSubmittedDelivery && (
+                    {/* NEW: Show appropriate message if user initiated delivery */}
+                    {isCurrentUserInitiatedDelivery && (
                       <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2">
                         <CheckSquare className="h-4 w-4 text-blue-400" />
                         <span className="text-sm text-blue-300">
                           Your delivery has been submitted and is awaiting
-                          review.
+                          review by the other party.
                         </span>
                       </div>
                     )}
 
-                    {/* Show status if user has requested cancellation */}
-                    {isCurrentUserRequestedCancellation &&
+                    {/* NEW: Show appropriate message if user initiated cancellation */}
+                    {isCurrentUserInitiatedCancellation &&
                       cancellationPending && (
                         <div className="flex items-center gap-2 rounded-lg bg-orange-500/10 px-4 py-2">
                           <Clock className="h-4 w-4 text-orange-400" />
@@ -2079,8 +2144,8 @@ export default function AgreementDetails() {
                         </div>
                       )}
                   </div>
-                  {/* Cancellation Status Display */}
 
+                  {/* NEW: Enhanced Status Display with Context Messages */}
                   {cancellationPending && (
                     <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4">
                       <div className="flex items-start gap-3">
@@ -2090,10 +2155,7 @@ export default function AgreementDetails() {
                             Cancellation Request Pending
                           </h4>
                           <p className="mt-1 text-sm text-orange-200">
-                            A cancellation request has been initiated. Waiting
-                            for the other party to respond. The party who
-                            requested cancellation cannot approve their own
-                            request.
+                            {getCancellationStatusMessage()}
                           </p>
                         </div>
                       </div>
@@ -2102,7 +2164,7 @@ export default function AgreementDetails() {
                 </div>
               )}
 
-            {/* Delivery Status Information */}
+            {/* NEW: Enhanced Delivery Status Information with Context */}
             {agreement?.status === "pending_approval" && (
               <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white">
@@ -2120,36 +2182,11 @@ export default function AgreementDetails() {
                     </div>
                   </div>
 
-                  {deliverySubmittedBy ? (
-                    <div className="rounded-lg bg-orange-500/10 p-3">
-                      <div className="text-sm text-orange-300">
-                        {isCurrentUserSubmittedDelivery ? (
-                          <>
-                            <strong>You</strong> have marked your work as
-                            delivered and are waiting for{" "}
-                            <strong>the other party</strong> to review it.
-                          </>
-                        ) : (
-                          <>
-                            <strong>
-                              {getTelegramUsernameFromParty(
-                                deliverySubmittedBy,
-                              )}
-                            </strong>{" "}
-                            has marked their work as delivered and is waiting
-                            for <strong>your</strong> review.
-                          </>
-                        )}
-                      </div>
+                  <div className="rounded-lg bg-orange-500/10 p-3">
+                    <div className="text-sm text-orange-300">
+                      {getDeliveryStatusMessage()}
                     </div>
-                  ) : (
-                    <div className="rounded-lg bg-orange-500/10 p-3">
-                      <div className="text-sm text-orange-300">
-                        <strong>Work has been marked as delivered.</strong>{" "}
-                        Please review and accept or reject the delivery.
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
