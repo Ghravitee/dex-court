@@ -969,7 +969,7 @@ export default function Agreements() {
 
       {/* Agreements Filter */}
       <div className="grid grid-cols-1 gap-6">
-        <div className="col-span-3 w-full lg:w-[80%]">
+        <div className="col-span-3 w-full lg:w-[90%]">
           <div className="">
             <div className="mb-3 flex items-center justify-between">
               <h1 className="text-xl text-white">Agreements</h1>

@@ -10,10 +10,8 @@ import {
   Wallet,
   Landmark,
   Users,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   LineChart,
@@ -35,9 +33,11 @@ import avatar3 from "../assets/avatar-3.webp";
 import avatar4 from "../assets/avatar4.webp";
 
 import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
-import { UserAvatar } from "../components/UserAvatar";
 import { useAllAgreementsCount } from "../hooks/useAllAgreementsCount";
 import { usePublicAgreements } from "../hooks/usePublicAgreements";
+import { InfiniteMovingJudges } from "../components/ui/infinite-moving-judges";
+import { InfiniteMovingAgreements } from "../components/ui/infinite-moving-agreements";
+import { InfiniteMovingCardsWithAvatars } from "../components/ui/infinite-moving-cards-with-avatars";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
@@ -61,13 +61,14 @@ export default function Index() {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 items-stretch gap-x-6 lg:grid-cols-2">
-        <DisputesSlideshow />
-        <LiveVoting />
+      <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-8 lg:grid-cols-2">
+        <DisputesInfiniteCards />
+        <LiveVotingInfiniteCards />
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-2">
-        <SignedAgreements />
-        <RenownedJudges />
+
+      <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-8 lg:grid-cols-2">
+        <SignedAgreementsInfiniteCards />
+        <RenownedJudgesInfiniteCards />
       </div>
     </main>
   );
@@ -418,379 +419,120 @@ function genSeries(type: "daily" | "weekly" | "monthly"): any[] {
   return out;
 }
 
-function DisputesSlideshow() {
-  const [data, setData] = useState<DisputeRow[]>([]);
-  const [index, setIndex] = useState(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const delay = useMemo(() => 3500 + Math.floor(Math.random() * 1200), []);
-
-  const nextSlide = useCallback(() => {
-    setIndex((prev) => (prev + 1) % data.length);
-  }, [data.length]);
-
-  const prevSlide = useCallback(() => {
-    setIndex((prev) => (prev - 1 + data.length) % data.length);
-  }, [data.length]);
-
-  const touchStart = useRef<number | null>(null);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart.current) return;
-    const diff = e.changedTouches[0].clientX - touchStart.current;
-    if (diff > 50) prevSlide();
-    if (diff < -50) nextSlide();
-    touchStart.current = null;
-  };
+// NEW: Disputes Infinite Cards Component
+function DisputesInfiniteCards() {
+  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
 
   useEffect(() => {
-    getDisputes().then(setData);
+    getDisputes().then(setDisputes);
   }, []);
 
-  useEffect(() => {
-    if (!data.length) return;
-
-    timeoutRef.current = setTimeout(nextSlide, delay);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [index, data.length, nextSlide, delay]);
+  const disputeItems = useMemo(
+    () =>
+      disputes.map((dispute) => ({
+        quote: `"${dispute.claim}" - ${dispute.title}`,
+        name: dispute.parties,
+        title: `${dispute.evidence.length} evidences • ${dispute.status}`,
+      })),
+    [disputes],
+  );
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="mt-4 mb-2 flex items-center justify-between md:mt-0">
-        <h3 className="space max-w-[20rem] text-[17px] font-semibold text-white/90">
-          Have you been wronged or cheated? Don't stay silent, start a{" "}
-          <Link to={"/disputes"} className="text-[#0891b2]">
-            dispute
-          </Link>
-          .
+    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <h3 className="glow-text text-xl font-semibold text-cyan-100">
+          Recent Disputes
         </h3>
-        <Link
-          to={"/disputes"}
-          className="neon-hover ring-offset-background focus-visible:ring-ring relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-cyan-400/40 bg-cyan-500/15 px-4 py-3 text-sm font-medium whitespace-nowrap text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.35)] transition-colors hover:bg-cyan-500/20 hover:shadow-[0_0_34px_rgba(34,211,238,0.6)] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
-        >
-          <Scale className="mr-2 h-4 w-4" />
-          Create Dispute
+        <Link to="/disputes">
+          <Button
+            variant="outline"
+            className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+          >
+            <Scale className="mr-2 h-4 w-4" />
+            View All Disputes
+          </Button>
         </Link>
       </div>
-
-      <div
-        className="relative flex w-full transition-transform duration-700 ease-in-out"
-        style={{ transform: `translateX(-${index * 100}%)` }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        {data.map((item, i) => (
-          <Link
-            key={item.id}
-            to={`/disputes/${item.id}`}
-            style={{
-              transform: i === index ? "scale(1)" : "scale(0.9)",
-              opacity: i === index ? 1 : 0.4,
-            }}
-            className="glass flex min-w-full flex-col items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 transition lg:h-[13.5rem]"
-          >
-            <div className="mt-1 text-lg font-semibold text-[#0891b2]">
-              {item.title}
-            </div>
-            <div className="mt-2 text-sm text-white/60">{item.parties}</div>
-            <p className="mt-2 text-sm">
-              {item.status === "Settled" ? (
-                <span className="badge badge-blue">Settled</span>
-              ) : item.status === "Pending" ? (
-                <span className="badge badge-orange">Pending</span>
-              ) : item.status === "Dismissed" ? (
-                <span className="badge badge-red">Dismissed</span>
-              ) : (
-                <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
-                  Vote in Progress
-                </span>
-              )}
-            </p>
-            <p className="mt-2 line-clamp-2 text-center text-xs text-white/60 italic">
-              "{item.claim}"
-            </p>
-            <div className="mt-1 flex items-center gap-3 text-xs text-white/50">
-              <span>
-                {item.evidence.length}{" "}
-                {item.evidence.length > 1 ? "evidences" : "evidence"}
-              </span>
-              {item.witnesses.length > 0 && (
-                <span>{item.witnesses.length} witnesses</span>
-              )}
-            </div>
-          </Link>
-        ))}
-      </div>
+      <InfiniteMovingCardsWithAvatars
+        items={disputeItems}
+        direction="left"
+        speed="normal"
+        pauseOnHover={true}
+        type="agreements"
+      />
     </div>
   );
 }
 
-function RenownedJudges() {
-  const judges = useMemo(
+// NEW: Live Voting Infinite Cards Component
+function LiveVotingInfiniteCards() {
+  const votingItems = useMemo(
     () => [
       {
-        name: "@judgeNova",
-        tg: "@judgeNova",
-        x: "@nova_xyz",
-        href: "/judges/nova",
-        bio: "Lead arbitrator, Solidity auditor, and DAO governance advisor with 5+ years in on-chain dispute resolution. Known for technical fairness and precise smart contract analysis.",
-        avatar: avatar2,
+        quote:
+          "Escrow Refund Request: The plaintiff seeks a full refund after the developer missed two key delivery milestones in a freelance contract.",
+        name: "@0xNova vs @0xVega",
+        title: "Community Voting • 2 days left",
       },
       {
-        name: "@judgeAres",
-        tg: "@judgeAres",
-        x: "@ares_eth",
-        href: "/judges/ares",
-        bio: "Founder of AresLabs • DeFi risk analyst and strategist. Brings deep financial expertise to tokenomics disputes and contract risk assessments.",
-        avatar: avatar1,
+        quote:
+          "Code Ownership Dispute: A disagreement over authorship of a jointly developed smart contract for an NFT minting protocol.",
+        name: "@0xLuna vs @0xSol",
+        title: "Community Voting • 5 days left",
       },
       {
-        name: "@judgeKai",
-        tg: "@kai",
-        x: "@kai_io",
-        href: "/judges/kai",
-        bio: "Full-stack developer and Layer-2 researcher with focus on zk-rollups and protocol efficiency. Mediates technical disputes with balanced reasoning.",
-        avatar: avatar4,
+        quote:
+          "Liquidity Pool Compensation Proposal: Following a governance bug exploit that drained 12% of the liquidity pool.",
+        name: "@0xTheta vs @0xDelta",
+        title: "DAO Voting • 3 days left",
       },
       {
-        name: "@judgeVera",
-        tg: "@vera_lex",
-        x: "@vera_x",
-        href: "/judges/vera",
-        bio: "Corporate lawyer and IP rights advocate bridging Web2 and Web3 legal frameworks. Oversees intellectual property and compliance-related disputes.",
-        avatar: avatar3,
+        quote:
+          "NFT Royalties Dispute: An artist claims unpaid royalties from a secondary marketplace smart contract.",
+        name: "@0xAria vs @0xMaven",
+        title: "Community Voting • 1 day left",
       },
       {
-        name: "@judgeOrion",
-        tg: "@orion_xyz",
-        x: "@orion_xyz",
-        href: "/judges/orion",
-        bio: "Protocol governance specialist and DAO operations consultant. Focuses on collective decision-making ethics and decentralization fairness.",
-        avatar: avatar4,
+        quote:
+          "Protocol Exploit Responsibility: A protocol contributor is accused of negligence after a critical vulnerability went unpatched.",
+        name: "@0xEcho vs @0xPrime",
+        title: "Expert Panel • 4 days left",
       },
     ],
     [],
   );
 
-  const [index, setIndex] = useState(0);
-  const delay = useMemo(() => 4200 + Math.floor(Math.random() * 1000), []);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const next = useCallback(
-    () => setIndex((prev) => (prev + 1) % judges.length),
-    [judges.length],
-  );
-  const prev = useCallback(
-    () => setIndex((prev) => (prev - 1 + judges.length) % judges.length),
-    [judges.length],
-  );
-
-  useEffect(() => {
-    timeoutRef.current = setTimeout(next, delay);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [index, next, delay]);
-
   return (
-    <div className="relative overflow-hidden">
-      <div className="flex items-center justify-between">
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Renowned Judges
+    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <h3 className="glow-text text-xl font-semibold text-cyan-100">
+          Live Voting Sessions
         </h3>
-        <div className="flex items-center gap-2">
-          <button onClick={prev}>
-            <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
-          </button>
-          <button onClick={next}>
-            <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
-          </button>
-        </div>
-      </div>
-
-      <div
-        className="relative flex w-full transition-transform duration-700 ease-in-out lg:h-[15rem]"
-        style={{ transform: `translateX(-${index * 100}%)` }}
-      >
-        {judges.map((j, i) => (
-          <Link
-            to={j.href}
-            key={j.name}
-            style={{
-              transform: i === index ? "scale(1)" : "scale(0.9)",
-              opacity: i === index ? 1 : 0.4,
-            }}
-            className="glass flex min-w-full items-center gap-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
+        <Link to="/voting">
+          <Button
+            variant="outline"
+            className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
           >
-            <img
-              src={j.avatar}
-              alt={j.name}
-              className="h-20 w-20 rounded-full border-2 border-cyan-400/40 object-contain shadow-lg"
-            />
-            <div className="flex flex-col text-left">
-              <div className="text-lg font-semibold text-[#0891b2]">
-                {j.name}
-              </div>
-              <div className="flex flex-wrap gap-2 text-sm text-white/60">
-                {j.tg && <span>{j.tg}</span>}
-                {j.x && <span>{j.x}</span>}
-              </div>
-              <p className="mt-2 max-w-[25rem] text-sm leading-relaxed text-white/70">
-                {j.bio}
-              </p>
-            </div>
-          </Link>
-        ))}
+            <Scale className="mr-2 h-4 w-4" />
+            Participate in Voting
+          </Button>
+        </Link>
       </div>
+      <InfiniteMovingCardsWithAvatars
+        items={votingItems}
+        direction="right"
+        speed="slow"
+        pauseOnHover={true}
+        type="agreements"
+      />
     </div>
   );
 }
 
-function LiveVoting() {
-  const votes = useMemo(
-    () => [
-      {
-        id: 1,
-        title: "Escrow Refund Request",
-        parties: "@0xNova vs @0xVega",
-        desc: "The plaintiff seeks a full refund after the developer missed two key delivery milestones in a freelance contract. Community members are voting on whether the escrow should be released or refunded.",
-        href: "/voting/escrow-refund",
-      },
-      {
-        id: 2,
-        title: "Code Ownership Dispute",
-        parties: "@0xLuna vs @0xSol",
-        desc: "A disagreement over authorship of a jointly developed smart contract for an NFT minting protocol. Voters must decide if both parties share IP rights or if one contributor holds exclusive control.",
-        href: "/voting/code-ownership",
-      },
-      {
-        id: 3,
-        title: "Liquidity Pool Compensation Proposal",
-        parties: "@0xTheta vs @0xDelta",
-        desc: "Following a governance bug exploit that drained 12% of the liquidity pool, the DAO proposes a partial reimbursement to affected users. Voters decide whether compensation should be approved or rejected.",
-        href: "/voting/liquidity-compensation",
-      },
-      {
-        id: 4,
-        title: "NFT Royalties Dispute",
-        parties: "@0xAria vs @0xMaven",
-        desc: "An artist claims unpaid royalties from a secondary marketplace smart contract. The defendant argues the royalties were waived under a previous governance proposal. The vote determines if compensation is due.",
-        href: "/voting/nft-royalties",
-      },
-      {
-        id: 5,
-        title: "Protocol Exploit Responsibility",
-        parties: "@0xEcho vs @0xPrime",
-        desc: "A protocol contributor is accused of negligence after a critical vulnerability went unpatched. The community votes to determine accountability and potential penalties.",
-        href: "/voting/protocol-liability",
-      },
-      {
-        id: 6,
-        title: "DAO Fund Misallocation",
-        parties: "@0xAtlas vs @0xCoreDAO",
-        desc: "A member alleges that DAO funds were misused for personal gain by a multisig signer. Voters must decide whether to initiate a treasury audit and revoke privileges.",
-        href: "/voting/dao-fund-misuse",
-      },
-    ],
-    [],
-  );
+// NEW: Signed Agreements Infinite Cards Component WITH AVATARS
+function SignedAgreementsInfiniteCards() {
+  const { agreements: allAgreements, loading } = usePublicAgreements();
 
-  const [index, setIndex] = useState(0);
-  const delay = useMemo(() => 5000 + Math.floor(Math.random() * 1200), []);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const next = useCallback(
-    () => setIndex((prev) => (prev + 1) % votes.length),
-    [votes.length],
-  );
-  const prev = useCallback(
-    () => setIndex((prev) => (prev - 1 + votes.length) % votes.length),
-    [votes.length],
-  );
-
-  useEffect(() => {
-    timeoutRef.current = setTimeout(next, delay);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [index, next, delay]);
-
-  return (
-    <div className="relative mt-4 overflow-hidden lg:mt-0 lg:h-[18rem]">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Live Voting
-        </h3>
-        <div className="flex items-center gap-2">
-          <button onClick={prev}>
-            <ChevronLeft className="text-cyan-300 hover:text-cyan-400" />
-          </button>
-          <button onClick={next}>
-            <ChevronRight className="text-cyan-300 hover:text-cyan-400" />
-          </button>
-        </div>
-      </div>
-
-      <div
-        className="relative flex w-full transition-transform duration-700 ease-in-out"
-        style={{ transform: `translateX(-${index * 100}%)` }}
-      >
-        {votes.map((v, i) => (
-          <div
-            key={v.id}
-            style={{
-              transform: i === index ? "scale(1)" : "scale(0.9)",
-              opacity: i === index ? 1 : 0.4,
-            }}
-            className="glass flex min-w-full flex-col items-center justify-between rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-700"
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <div className="flex flex-col items-center justify-center gap-4 text-center">
-                <div className="text-lg font-semibold text-[#0891b2]">
-                  {v.title}
-                </div>
-                <div className="text-sm text-white/60">{v.parties}</div>
-              </div>
-            </div>
-            <p className="mx-auto max-w-[30rem] text-center text-sm text-white/80">
-              {v.desc}
-            </p>
-            <div className="mt-4 flex justify-center">
-              <Link
-                to={v.href}
-                className="neon-hover flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/20 px-6 py-2 text-sm font-medium text-cyan-200 transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_20px_rgba(34,211,238,0.6)]"
-              >
-                <Scale className="h-4 w-4" />
-                Vote
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SignedAgreements() {
-  const { agreements: allAgreements, loading, error } = usePublicAgreements();
-  const [index, setIndex] = useState(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Memoize the filtered agreements
   const signedAgreements = useMemo(
     () =>
       allAgreements.filter(
@@ -800,40 +542,29 @@ function SignedAgreements() {
     [allAgreements],
   );
 
-  const next = useCallback(
-    () => setIndex((prev) => (prev + 1) % signedAgreements.length),
-    [signedAgreements.length],
-  );
-
-  const prev = useCallback(
+  const agreementItems = useMemo(
     () =>
-      setIndex(
-        (prev) =>
-          (prev - 1 + signedAgreements.length) % signedAgreements.length,
-      ),
-    [signedAgreements.length],
+      signedAgreements.map((agreement) => ({
+        quote: agreement.description,
+        name: `${agreement.createdBy} ↔ ${agreement.counterparty}`,
+        title: `${agreement.amount ? `${agreement.amount} ${agreement.token} • ` : ""}${agreement.status}`,
+        createdBy: agreement.createdBy,
+        counterparty: agreement.counterparty,
+        createdByUserId: agreement.createdByUserId,
+        createdByAvatarId: agreement.createdByAvatarId,
+        counterpartyUserId: agreement.counterpartyUserId,
+        counterpartyAvatarId: agreement.counterpartyAvatarId,
+      })),
+    [signedAgreements],
   );
-
-  // Auto slide with proper cleanup
-  useEffect(() => {
-    if (!signedAgreements.length) return;
-
-    timeoutRef.current = setTimeout(next, 4500);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [index, signedAgreements.length, next]);
 
   if (loading) {
     return (
-      <div>
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
+      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+        <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
           Signed Agreements
         </h3>
-        <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+        <div className="flex h-32 items-center justify-center">
           <div className="flex items-center gap-2 text-cyan-300">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
             <span>Loading agreements...</span>
@@ -843,133 +574,82 @@ function SignedAgreements() {
     );
   }
 
-  if (error) {
-    return (
-      <div>
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Signed Agreements
-        </h3>
-        <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-          <div className="text-center">
-            <Handshake className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
-            <p className="text-white/70">Error loading agreements</p>
-            <p className="mt-1 text-sm text-white/50">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  return (
+    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+      <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
+        Signed Agreements
+      </h3>
+      <InfiniteMovingAgreements
+        items={agreementItems}
+        direction="left"
+        speed="normal"
+        pauseOnHover={true}
+        className="max-w-full"
+      />
+    </div>
+  );
+}
 
-  if (!signedAgreements.length) {
-    return (
-      <div>
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Signed Agreements
-        </h3>
-        <div className="glass flex h-[15rem] items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-          <div className="text-center">
-            <Handshake className="mx-auto mb-2 h-8 w-8 text-cyan-400/60" />
-            <p className="text-white/70">No signed agreements found</p>
-            <p className="mt-1 text-sm text-white/50">
-              Agreements that are signed and active will appear here
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+// NEW: Renowned Judges Infinite Cards Component WITH AVATARS ON TOP
+function RenownedJudgesInfiniteCards() {
+  const judgeItems = useMemo(
+    () => [
+      {
+        quote:
+          "Lead arbitrator, Solidity auditor, and DAO governance advisor with 5+ years in on-chain dispute resolution. Known for technical fairness and precise smart contract analysis.",
+        name: "@judgeNova",
+        title: "Lead Arbitrator • Solidity Expert",
+        avatar: avatar2,
+        userId: "judgeNova",
+      },
+      {
+        quote:
+          "Founder of AresLabs • DeFi risk analyst and strategist. Brings deep financial expertise to tokenomics disputes and contract risk assessments.",
+        name: "@judgeAres",
+        title: "DeFi Risk Analyst • Financial Strategist",
+        avatar: avatar1,
+        userId: "judgeAres",
+      },
+      {
+        quote:
+          "Full-stack developer and Layer-2 researcher with focus on zk-rollups and protocol efficiency. Mediates technical disputes with balanced reasoning.",
+        name: "@judgeKai",
+        title: "Full-Stack Developer • L2 Researcher",
+        avatar: avatar4,
+        userId: "judgeKai",
+      },
+      {
+        quote:
+          "Corporate lawyer and IP rights advocate bridging Web2 and Web3 legal frameworks. Oversees intellectual property and compliance-related disputes.",
+        name: "@judgeVera",
+        title: "Corporate Lawyer • IP Rights Expert",
+        avatar: avatar3,
+        userId: "judgeVera",
+      },
+      {
+        quote:
+          "Protocol governance specialist and DAO operations consultant. Focuses on collective decision-making ethics and decentralization fairness.",
+        name: "@judgeOrion",
+        title: "Governance Specialist • DAO Consultant",
+        avatar: avatar4,
+        userId: "judgeOrion",
+      },
+    ],
+    [],
+  );
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="flex items-center justify-between">
-        <h3 className="glow-text mb-2 font-semibold text-cyan-100 lg:text-xl">
-          Signed Agreements
-        </h3>
-        <div className="flex items-center gap-2">
-          <button onClick={prev} aria-label="Previous agreement">
-            <ChevronLeft className="text-cyan-300 transition-colors hover:text-cyan-400" />
-          </button>
-          <button onClick={next} aria-label="Next agreement">
-            <ChevronRight className="text-cyan-300 transition-colors hover:text-cyan-400" />
-          </button>
-        </div>
-      </div>
-
-      <div
-        className="relative flex w-full transition-transform duration-500 ease-out"
-        style={{ transform: `translateX(-${index * 100}%)` }}
-      >
-        {signedAgreements.map((agreement, i) => (
-          <Link
-            key={agreement.id}
-            to={`/agreements/${agreement.id}`}
-            style={{
-              transform: i === index ? "scale(1)" : "scale(0.95)",
-              opacity: i === index ? 1 : 0.6,
-            }}
-            className="glass flex h-[14.6rem] min-w-full flex-col items-start justify-between rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6 transition-all duration-500"
-          >
-            <div className="w-full">
-              <div className="mb-3 flex items-center gap-3">
-                <Handshake className="h-6 w-6 flex-shrink-0 text-cyan-400" />
-                <h4 className="line-clamp-1 text-lg font-semibold text-[#0891b2]">
-                  {agreement.title}
-                </h4>
-              </div>
-
-              <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-white/70">
-                {agreement.description}
-              </p>
-
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <UserAvatar
-                    userId={agreement.createdByUserId || agreement.createdBy}
-                    avatarId={agreement.createdByAvatarId || null}
-                    username={agreement.createdBy}
-                    size="sm"
-                  />
-                  <span className="text-sm text-white/80">
-                    {agreement.createdBy}
-                  </span>
-                </div>
-                <span className="flex-shrink-0 text-xs text-cyan-400">↔</span>
-                <div className="flex items-center gap-1">
-                  <UserAvatar
-                    userId={
-                      agreement.counterpartyUserId || agreement.counterparty
-                    }
-                    avatarId={agreement.counterpartyAvatarId || null}
-                    username={agreement.counterparty}
-                    size="sm"
-                  />
-                  <span className="max-w-[80px] truncate text-sm text-white/80">
-                    {agreement.counterparty}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex w-full items-center justify-between text-sm">
-              <div className="flex items-center gap-4">
-                {agreement.amount && (
-                  <span className="font-medium whitespace-nowrap text-cyan-300">
-                    {agreement.amount} {agreement.token}
-                  </span>
-                )}
-                <span
-                  className={`badge ${agreement.status === "signed" ? "badge-blue" : "badge-green"}`}
-                >
-                  {agreement.status}
-                </span>
-              </div>
-              <div className="text-xs whitespace-nowrap text-white/40">
-                Created: {agreement.dateCreated}
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+      <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
+        Renowned Judges
+      </h3>
+      <InfiniteMovingJudges
+        items={judgeItems}
+        direction="right"
+        speed="slow"
+        pauseOnHover={true}
+        className="max-w-full"
+      />
     </div>
   );
 }
