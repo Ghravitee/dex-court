@@ -33,6 +33,8 @@ export interface AgreementsRequest {
   firstParty: string;
   counterParty: string;
   deadline: string;
+  includesFunds?: boolean;
+  secureTheFunds?: boolean;
   tokenSymbol?: string;
   contractAddress?: string;
   amount?: number;
@@ -79,6 +81,8 @@ export interface AgreementDetailsDTO {
   tokenSymbol?: string;
   deadline: string;
   createdAt: string;
+  includesFunds?: boolean;
+  secureTheFunds?: boolean;
   escrowContract?: string;
   creator: PartyDTO;
   firstParty: PartyDTO;

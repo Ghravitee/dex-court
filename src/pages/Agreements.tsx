@@ -311,10 +311,21 @@ export default function Agreements() {
         const agreementsList = allAgreements.results || [];
         const transformedAgreements = agreementsList.map(transformApiAgreement);
 
+        // 🆕 ADD DEBUGGING HERE
+        console.log("🔍 TRANSFORMED AGREEMENTS:", transformedAgreements);
+        if (transformedAgreements.length > 0) {
+          console.log("🔍 FIRST AGREEMENT AMOUNT:", {
+            originalAmount: agreementsList[0]?.amount,
+            transformedAmount: transformedAgreements[0]?.amount,
+            token: transformedAgreements[0]?.token,
+            includeFunds: transformedAgreements[0]?.includeFunds,
+            useEscrow: transformedAgreements[0]?.useEscrow,
+          });
+        }
+
         setAgreements(transformedAgreements);
       } catch (error: any) {
         console.error("Failed to fetch agreements:", error);
-
         toast.error(error.message || "Failed to load agreements");
         setAgreements([]);
         setTotalAgreements(0);
@@ -323,7 +334,7 @@ export default function Agreements() {
         setLoading(false);
       }
     },
-    [currentPage, pageSize], // dependencies
+    [currentPage, pageSize],
   );
 
   useEffect(() => {
@@ -361,15 +372,12 @@ export default function Agreements() {
       }
     };
 
-    // Determine if funds are included and if escrow is used
-    const includeFunds =
-      apiAgreement.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
+    // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
+    const hasAmountOrToken = apiAgreement.amount || apiAgreement.tokenSymbol;
+    const includeFunds = hasAmountOrToken ? "yes" : "no";
 
-    const useEscrow =
-      apiAgreement.type === AgreementTypeEnum.ESCROW &&
-      (apiAgreement.escrowContract ||
-        apiAgreement.tokenSymbol ||
-        apiAgreement.amount);
+    // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
+    const useEscrow = apiAgreement.type === AgreementTypeEnum.ESCROW;
 
     const formatDateSafely = (dateString: string) => {
       if (!dateString) return "No deadline";
@@ -427,6 +435,18 @@ export default function Agreements() {
       apiAgreement.counterParty,
     );
 
+    // 🆕 FIXED: Better amount handling
+    let amountValue: string | undefined;
+    if (apiAgreement.amount) {
+      // Handle both string and number amounts
+      if (typeof apiAgreement.amount === "string") {
+        // Remove trailing zeros for cleaner display
+        amountValue = parseFloat(apiAgreement.amount).toString();
+      } else if (typeof apiAgreement.amount === "number") {
+        amountValue = apiAgreement.amount.toString();
+      }
+    }
+
     return {
       id: apiAgreement.id.toString(),
       title: apiAgreement.title || "Untitled Agreement",
@@ -439,12 +459,12 @@ export default function Agreements() {
         apiAgreement.dateCreated || apiAgreement.createdAt,
       ),
       deadline: formatDateSafely(apiAgreement.deadline),
-      amount: apiAgreement.amount ? apiAgreement.amount.toString() : undefined,
+      amount: amountValue, // 🆕 Use the fixed amount value
       token: apiAgreement.tokenSymbol || undefined,
       files: apiAgreement.files?.length || 0,
 
-      includeFunds: includeFunds,
-      useEscrow: useEscrow,
+      includeFunds: includeFunds, // 🆕 Now correctly detects funds based on amount/token
+      useEscrow: useEscrow, // 🆕 Now correctly detects escrow based on type
       escrowAddress: apiAgreement.escrowContract || undefined,
 
       createdByAvatarId: createdByAvatarId,
@@ -713,10 +733,7 @@ export default function Agreements() {
       const agreementData: any = {
         title: form.title,
         description: form.description,
-        type:
-          includeFunds === "yes"
-            ? AgreementTypeEnum.ESCROW
-            : AgreementTypeEnum.REPUTATION,
+        type: AgreementTypeEnum.REPUTATION, // Default to reputation type
         visibility:
           typeValue === "Public"
             ? AgreementVisibilityEnum.PUBLIC
@@ -728,6 +745,50 @@ export default function Agreements() {
           agreementType === "myself" ? cleanCounterparty : cleanPartyB,
         deadline: deadline.toISOString(),
       };
+
+      // 🆕 NEW: Apply the updated API implementation for funds
+      if (includeFunds === "yes") {
+        agreementData.includesFunds = true;
+
+        if (secureWithEscrow === "yes") {
+          agreementData.secureTheFunds = true;
+          agreementData.type = AgreementTypeEnum.ESCROW;
+
+          // Add token and amount details only for escrow
+          if (selectedToken && selectedToken !== "custom") {
+            agreementData.tokenSymbol = selectedToken;
+          }
+          if (selectedToken === "custom" && customTokenAddress) {
+            agreementData.contractAddress = customTokenAddress;
+          }
+          if (form.amount) {
+            agreementData.amount = parseFloat(form.amount);
+          }
+        } else {
+          agreementData.secureTheFunds = false;
+
+          // For funds without escrow, still capture the financial information
+          if (
+            fundsWithoutEscrow.token &&
+            fundsWithoutEscrow.token !== "custom"
+          ) {
+            agreementData.tokenSymbol = fundsWithoutEscrow.token;
+          }
+          if (
+            fundsWithoutEscrow.token === "custom" &&
+            fundsWithoutEscrow.customTokenAddress
+          ) {
+            agreementData.contractAddress =
+              fundsWithoutEscrow.customTokenAddress;
+          }
+          if (fundsWithoutEscrow.amount) {
+            agreementData.amount = parseFloat(fundsWithoutEscrow.amount);
+          }
+        }
+      } else {
+        agreementData.includesFunds = false;
+        agreementData.secureTheFunds = false;
+      }
 
       console.log("🔍 DEBUG - Final agreement data:", agreementData);
 
@@ -969,7 +1030,7 @@ export default function Agreements() {
 
       {/* Agreements Filter */}
       <div className="grid grid-cols-1 gap-6">
-        <div className="col-span-3 w-full lg:w-[90%]">
+        <div className="col-span-3 w-full">
           <div className="">
             <div className="mb-3 flex items-center justify-between">
               <h1 className="text-xl text-white">Agreements</h1>
@@ -1142,7 +1203,7 @@ export default function Agreements() {
                           <td className="text-muted-foreground px-5 py-4">
                             {a.dateCreated}
                           </td>
-                          <td className="px-5 py-4 font-medium text-white/90">
+                          <td className="max-w-xs truncate px-5 py-4 font-medium text-white/90">
                             {a.title}
                           </td>
                           <td className="px-5 py-4 text-white/90">
@@ -1169,7 +1230,6 @@ export default function Agreements() {
                                   }}
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
-                                  {/* FIX: Use formatTelegramUsernameForDisplay to ensure Telegram format */}
                                   {formatTelegramUsernameForDisplay(
                                     a.createdBy,
                                   )}
@@ -1212,8 +1272,8 @@ export default function Agreements() {
                           <td className="px-5 py-4 text-white/90">
                             {a.includeFunds === "yes"
                               ? a.useEscrow
-                                ? `${a.amount || "0"} ${a.token || ""}`
-                                : "Funds involved (no escrow)"
+                                ? `${a.amount || "0"} ${a.token || ""} (Escrow)`
+                                : `Funds involved (no escrow)`
                               : "No amount"}
                           </td>
                           <td className="px-5 py-4 text-white/90">

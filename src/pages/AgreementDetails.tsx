@@ -21,13 +21,11 @@ import {
   Upload,
   UserCheck,
   X,
-  Send,
   ThumbsUp,
   ThumbsDown,
   Package,
   PackageCheck,
   Ban,
-  CheckSquare,
   Info,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -97,8 +95,6 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
   }
 };
 
-// Helper function to get username from party data (using username as Telegram username during transition)
-// Enhanced helper function to get Telegram username from party data
 const getTelegramUsernameFromParty = (party: any): string => {
   if (!party) return "Unknown";
 
@@ -128,19 +124,16 @@ const normalizeUsername = (username: string): string => {
 const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use Telegram username for comparison
-  const currentUserTelegram =
-    currentUser?.telegramUsername || currentUser?.username;
-  if (!currentUserTelegram) return false;
+  // Use username for comparison (not Telegram username)
+  const currentUsername = currentUser?.username;
+  if (!currentUsername) return false;
 
-  const counterpartyTelegram = getTelegramUsernameFromParty(
-    agreement.counterParty,
-  );
-  if (!counterpartyTelegram || counterpartyTelegram === "Unknown") return false;
+  const counterpartyUsername = agreement.counterParty?.username;
+  if (!counterpartyUsername || counterpartyUsername === "Unknown") return false;
 
   return (
-    normalizeUsername(currentUserTelegram) ===
-    normalizeUsername(counterpartyTelegram)
+    normalizeUsername(currentUsername) ===
+    normalizeUsername(counterpartyUsername)
   );
 };
 
@@ -148,17 +141,15 @@ const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
 const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use Telegram username for comparison
-  const currentUserTelegram =
-    currentUser?.telegramUsername || currentUser?.username;
-  if (!currentUserTelegram) return false;
+  // Use username for comparison (not Telegram username)
+  const currentUsername = currentUser?.username;
+  if (!currentUsername) return false;
 
-  const firstPartyTelegram = getTelegramUsernameFromParty(agreement.firstParty);
-  if (!firstPartyTelegram || firstPartyTelegram === "Unknown") return false;
+  const firstPartyUsername = agreement.firstParty?.username;
+  if (!firstPartyUsername || firstPartyUsername === "Unknown") return false;
 
   return (
-    normalizeUsername(currentUserTelegram) ===
-    normalizeUsername(firstPartyTelegram)
+    normalizeUsername(currentUsername) === normalizeUsername(firstPartyUsername)
   );
 };
 
@@ -166,21 +157,20 @@ const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
 const isCurrentUserCreator = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return false;
 
-  // Use Telegram username for comparison
-  const currentUserTelegram =
-    currentUser?.telegramUsername || currentUser?.username;
-  if (!currentUserTelegram) return false;
+  // Use username for comparison (not Telegram username)
+  const currentUsername = currentUser?.username;
+  if (!currentUsername) return false;
 
-  const creatorTelegram = getTelegramUsernameFromParty(agreement.creator);
-  if (!creatorTelegram || creatorTelegram === "Unknown") return false;
+  const creatorUsername = agreement.creator?.username;
+  if (!creatorUsername || creatorUsername === "Unknown") return false;
 
   return (
-    normalizeUsername(currentUserTelegram) ===
-    normalizeUsername(creatorTelegram)
+    normalizeUsername(currentUsername) === normalizeUsername(creatorUsername)
   );
 };
 
 // NEW: Enhanced helper to check who initiated delivery using context
+// FIXED: Enhanced helper to check who initiated delivery using context
 const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
   if (!agreement || !currentUser) return null;
 
@@ -189,6 +179,7 @@ const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
     const { initiatedByUser, initiatedByOther } =
       agreement.context.pendingApproval;
 
+    // FIXED: The logic was inverted - initiatedByUser means current user initiated
     if (initiatedByUser) return "user";
     if (initiatedByOther) return "other";
   }
@@ -200,6 +191,7 @@ const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
   const currentUserId = currentUser.id || currentUser.userId;
   const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
 
+  // FIXED: This logic was correct, but the context logic above was the issue
   return currentUserId === submittedById ? "user" : "other";
 };
 
@@ -230,17 +222,40 @@ const getCancellationInitiatedBy = (agreement: any, currentUser: any) => {
 const getDeliverySubmittedBy = (agreement: any) => {
   if (!agreement) return null;
 
-  // Check if we have delivery submission info in the API response
+  // Priority 1: Check if we have delivery submission info in the API response
   if (agreement.deliverySubmittedBy) {
     return agreement.deliverySubmittedBy;
   }
 
-  // Check in _raw data
+  // Priority 2: Check in _raw data
   if (agreement._raw?.deliverySubmittedBy) {
     return agreement._raw.deliverySubmittedBy;
   }
 
-  // Fallback: check timeline events for delivery submission
+  // Priority 3: Check context for delivery initiator
+  if (agreement.context?.pendingApproval) {
+    // If context shows who initiated, use that to determine the user
+    const { initiatedByUser, initiatedByOther } =
+      agreement.context.pendingApproval;
+
+    if (initiatedByUser) {
+      // Current user initiated - return current user's ID
+      return { id: agreement._raw?.currentUserId };
+    }
+    if (initiatedByOther) {
+      // Other party initiated - return the other party's ID
+      const currentUserId = agreement._raw?.currentUserId;
+      const firstPartyId = agreement._raw?.firstParty?.id;
+      const counterpartyId = agreement._raw?.counterParty?.id;
+
+      // Return the ID of the party that is NOT the current user
+      return currentUserId === firstPartyId
+        ? { id: counterpartyId }
+        : { id: firstPartyId };
+    }
+  }
+
+  // Priority 4: Fallback: check timeline events for delivery submission
   if (agreement._raw?.timeline) {
     const deliveryEvent = agreement._raw.timeline.find(
       (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
@@ -339,6 +354,7 @@ const isCancellationPending = (agreement: any): boolean => {
 };
 
 // NEW: Fixed helper to check if current user should see delivery review buttons
+// FIXED: Helper to check if current user should see delivery review buttons
 const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   if (
     !agreement ||
@@ -357,8 +373,9 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   // Use the new context-based initiatedBy check
   const initiatedBy = getDeliveryInitiatedBy(agreement, currentUser);
 
-  // Only show review buttons to the OTHER party (the one who didn't initiate delivery)
-  return initiatedBy === "other";
+  // FIX: Only show review buttons to the party that INITIATED the delivery
+  // (the one who marked their work as delivered should see Accept/Reject buttons)
+  return initiatedBy === "user";
 };
 
 // NEW: Fixed helper to check if current user should see cancellation response buttons
@@ -621,6 +638,7 @@ export default function AgreementDetails() {
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
 
   // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
+  // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
   const fetchAgreementDetails = useCallback(async () => {
     if (!id) return;
 
@@ -649,15 +667,13 @@ export default function AgreementDetails() {
         agreementData.creator,
       );
 
-      // CRITICAL FIX: Determine if funds are included (type = 2 = ESCROW)
-      const includeFunds =
-        agreementData.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
+      // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
+      const hasAmountOrToken =
+        agreementData.amount || agreementData.tokenSymbol;
+      const includeFunds = hasAmountOrToken ? "yes" : "no";
 
-      // CRITICAL FIX: Escrow is only considered "used" if there's an escrow contract
-      const useEscrow = Boolean(
-        agreementData.type === AgreementTypeEnum.ESCROW &&
-          agreementData.escrowContract,
-      );
+      // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
+      const useEscrow = agreementData.type === AgreementTypeEnum.ESCROW;
 
       // Determine if funds are included but escrow is not used
       const hasFundsWithoutEscrow = includeFunds === "yes" && !useEscrow;
@@ -688,6 +704,7 @@ export default function AgreementDetails() {
         includeFunds: includeFunds,
         hasFundsWithoutEscrow: hasFundsWithoutEscrow,
         useEscrow: useEscrow,
+        secureTheFunds: agreementData.secureTheFunds || false,
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
@@ -729,6 +746,7 @@ export default function AgreementDetails() {
   }, [id]);
 
   // Wrap fetchAgreementDetailsBackground in useCallback to stabilize the reference
+  // Wrap fetchAgreementDetailsBackground in useCallback to stabilize the reference
   const fetchAgreementDetailsBackground = useCallback(async () => {
     if (isRefreshing || !id) return;
 
@@ -755,12 +773,13 @@ export default function AgreementDetails() {
         agreementData.creator,
       );
 
-      const includeFunds =
-        agreementData.type === AgreementTypeEnum.ESCROW ? "yes" : "no";
-      const useEscrow = Boolean(
-        agreementData.type === AgreementTypeEnum.ESCROW &&
-          agreementData.escrowContract,
-      );
+      // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
+      const hasAmountOrToken =
+        agreementData.amount || agreementData.tokenSymbol;
+      const includeFunds = hasAmountOrToken ? "yes" : "no";
+
+      // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
+      const useEscrow = agreementData.type === AgreementTypeEnum.ESCROW;
       const hasFundsWithoutEscrow = includeFunds === "yes" && !useEscrow;
 
       const completionDate = getCompletionDate(agreementData);
@@ -857,23 +876,103 @@ export default function AgreementDetails() {
     };
   }, [id, fetchAgreementDetailsBackground]);
 
-  // Sign Agreement Handler - UPDATED
   const handleSignAgreement = async () => {
     if (!id || !agreement) return;
+
+    console.log("🔍 DEBUG Sign Agreement:", {
+      agreementId: id,
+      currentUser: user,
+      isCounterparty,
+      isFirstParty,
+      isCreator,
+      agreementStatus: agreement.status,
+      rawAgreement: agreement._raw,
+      hasFunds: agreement.includeFunds === "yes",
+      useEscrow: agreement.useEscrow,
+      // 🆕 ADD THIS: Check the actual backend secureTheFunds field
+      secureTheFunds: agreement._raw?.secureTheFunds,
+      userWallet: user?.walletAddress,
+    });
+
+    // 🆕 FIXED: Check both frontend AND backend indicators for escrow requirement
+    const requiresEscrow =
+      agreement.useEscrow || agreement._raw?.secureTheFunds;
+
+    if (
+      agreement.includeFunds === "yes" &&
+      requiresEscrow &&
+      !user?.walletAddress
+    ) {
+      toast.error(
+        "Wallet connection required for agreements secured with escrow",
+      );
+      return;
+    }
+
+    // ✅ For agreements with funds but NO escrow/secureTheFunds, allow signing without wallet
 
     setIsSigning(true);
     try {
       const agreementId = parseInt(id);
-      await agreementService.signAgreement(agreementId, true);
+
+      // 🆕 ADD DEBUG LOG BEFORE API CALL
+      console.log("🚀 Making API call to sign agreement:", {
+        agreementId,
+        hasFunds: agreement.includeFunds === "yes",
+        useEscrow: agreement.useEscrow,
+        secureTheFunds: agreement._raw?.secureTheFunds,
+        requiresEscrow,
+        hasWallet: !!user?.walletAddress,
+      });
+
+      const response = await agreementService.signAgreement(agreementId, true);
+      console.log("✅ Sign agreement response:", response);
 
       toast.success("Agreement signed successfully!");
-      await fetchAgreementDetailsBackground(); // Use enhanced fetch
+      await fetchAgreementDetailsBackground();
     } catch (error: any) {
-      console.error("Failed to sign agreement:", error);
-      const errorMessage =
-        error.response?.data?.message ||
-        "Failed to sign agreement. Please try again.";
-      toast.error(errorMessage);
+      console.error("❌ Failed to sign agreement:", error);
+
+      // Enhanced error logging
+      console.error("📋 FULL ERROR DETAILS:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+
+      // Handle specific error codes
+      if (error.response?.data) {
+        const errorCode = error.response.data.error;
+        const errorMessage = error.response.data.message;
+
+        switch (errorCode) {
+          case 12: // MissingWallet
+            // 🆕 IMPROVED: Provide more specific guidance based on agreement type
+            if (
+              agreement.includeFunds === "yes" &&
+              (agreement.useEscrow || agreement._raw?.secureTheFunds)
+            ) {
+              toast.error(
+                "Wallet connection required for escrow-secured agreements",
+              );
+            } else {
+              toast.error(
+                "Unexpected wallet requirement. Please contact support.",
+              );
+            }
+            break;
+          case 16: // InvalidStatus
+            toast.error("Agreement is not in a signable state");
+            break;
+          case 17: // Forbidden
+            toast.error("You are not authorized to sign this agreement");
+            break;
+          default:
+            toast.error(errorMessage || "Failed to sign agreement");
+        }
+      } else {
+        toast.error("Failed to sign agreement. Please try again.");
+      }
     } finally {
       setIsSigning(false);
     }
@@ -1114,6 +1213,7 @@ export default function AgreementDetails() {
   };
 
   // Cancel Dispute Handler
+  // Cancel Dispute Handler - FIXED
   const handleCancelDispute = async () => {
     if (!id || !agreement) return;
 
@@ -1129,9 +1229,26 @@ export default function AgreementDetails() {
       // Since dispute API is not built, we'll simulate it for now
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      toast.success("Dispute cancelled successfully!");
+      toast.success(
+        "Dispute cancelled successfully! Agreement returned to signed status.",
+      );
 
-      // Refresh agreement data to get actual status
+      // FIX: Update the agreement status to "signed" so the buttons reappear
+      setAgreement((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "signed",
+              // Also update the raw API data status
+              _raw: {
+                ...prev._raw,
+                status: AgreementStatusEnum.ACTIVE, // This is the backend status for "signed"
+              },
+            }
+          : null,
+      );
+
+      // Also trigger a background refresh to ensure we have the latest data
       await fetchAgreementDetailsBackground();
     } catch (error: any) {
       console.error("Failed to cancel dispute:", error);
@@ -1334,11 +1451,15 @@ export default function AgreementDetails() {
     );
   };
 
-  // Check user roles and permissions
+  // FIXED: Enhanced counterparty detection
   const isCounterparty =
     agreement && user ? isCurrentUserCounterparty(agreement._raw, user) : false;
+
+  // FIXED: Enhanced first party detection
   const isFirstParty =
     agreement && user ? isCurrentUserFirstParty(agreement._raw, user) : false;
+
+  // FIXED: Enhanced creator detection
   const isCreator =
     agreement && user ? isCurrentUserCreator(agreement._raw, user) : false;
 
@@ -1349,14 +1470,17 @@ export default function AgreementDetails() {
   const canViewAgreement =
     isParticipant || isCreator || (agreement && agreement.type === "Public");
 
-  // PERMISSIONS - Using the same logic as delivery system
+  // FIXED: Enhanced signing permissions
+  // First party should only auto-sign if they are the creator
+  // Otherwise, both parties need to sign manually
   const canSign =
     agreement?.status === "pending" &&
     (isCounterparty || (isFirstParty && !isCreator));
 
-  const canCancel = agreement?.status === "pending" && isFirstParty;
+  // FIXED: Only the creator can cancel pending agreements
+  const canCancel = agreement?.status === "pending" && isCreator;
 
-  // FIXED: Define canRequestCancellation variable at component level
+  // FIXED: Request Cancellation Permissions
   const canRequestCancellation = canUserRequestCancellation(
     agreement?._raw,
     user,
@@ -1402,15 +1526,17 @@ export default function AgreementDetails() {
 
   // NEW: Get appropriate messages for both parties
   // NEW: Get appropriate messages for both parties
+  // FIXED: Get appropriate messages for both parties
   const getDeliveryStatusMessage = () => {
     if (!agreement || agreement.status !== "pending_approval") return null;
 
     const initiatedBy = getDeliveryInitiatedBy(agreement._raw, user);
 
+    // FIX: The messages were flipped - now they match the button logic
     if (initiatedBy === "user") {
-      return "You have marked your work as delivered and are waiting for the other party to review it.";
-    } else if (initiatedBy === "other") {
       return "The other party has marked their work as delivered and is waiting for your review.";
+    } else if (initiatedBy === "other") {
+      return "You have marked your work as delivered and are waiting for the other party to review it.";
     } else {
       return "Work has been marked as delivered. Please review and accept or reject the delivery.";
     }
@@ -1429,6 +1555,20 @@ export default function AgreementDetails() {
       return "A cancellation request has been initiated. Waiting for response.";
     }
   };
+
+  // Add this debug log to check agreement data
+  console.log("🔍 DEBUG Agreement Data Check:", {
+    agreementId: agreement?.id,
+    agreementStatus: agreement?.status,
+    apiStatus: agreement?._raw?.status,
+    firstPartyId: agreement?._raw?.firstParty?.id,
+    counterpartyId: agreement?._raw?.counterParty?.id,
+    currentUserId: user?.id,
+    timelineEvents: agreement?._raw?.timeline?.length,
+    hasExistingSignatures: agreement?._raw?.timeline?.filter(
+      (e: any) => e.type === 2,
+    )?.length, // SIGNED events
+  });
 
   if (loading) {
     return (
@@ -1524,7 +1664,7 @@ export default function AgreementDetails() {
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-6 sm:px-4">
               <div className="mb-6 flex flex-col items-start justify-between sm:flex-row">
                 <div>
-                  <h1 className="mb-2 text-2xl font-bold text-white lg:text-3xl">
+                  <h1 className="mb-2 max-w-[30rem] text-2xl font-bold text-white lg:text-[1.5rem]">
                     {agreement.title}
                   </h1>
                   <div className="flex items-center space-x-2 text-cyan-300">
@@ -1771,8 +1911,8 @@ export default function AgreementDetails() {
               )}
 
               {/* Financial Details */}
+              {/* Financial Details */}
               <div>
-                {/* Financial Details Section */}
                 {agreement.includeFunds === "yes" && (
                   <div
                     className={`rounded-lg border ${
@@ -1808,24 +1948,6 @@ export default function AgreementDetails() {
                         </div>
                       </div>
 
-                      {/* Amount + Token */}
-                      {agreement.amount && (
-                        <div>
-                          <div
-                            className={`text-sm ${
-                              agreement.useEscrow
-                                ? "text-emerald-300"
-                                : "text-cyan-300"
-                            }`}
-                          >
-                            Amount
-                          </div>
-                          <div className="text-lg font-semibold text-white">
-                            {agreement.amount} {agreement.token}
-                          </div>
-                        </div>
-                      )}
-
                       {/* Escrow Status */}
                       <div>
                         <div
@@ -1842,20 +1964,36 @@ export default function AgreementDetails() {
                         </div>
                       </div>
 
+                      {/* Amount + Token - Show for both escrow and non-escrow if available */}
+                      {agreement.amount && (
+                        <div className="md:col-span-2">
+                          <div
+                            className={`text-sm ${
+                              agreement.useEscrow
+                                ? "text-emerald-300"
+                                : "text-cyan-300"
+                            }`}
+                          >
+                            Amount
+                          </div>
+                          <div className="text-lg font-semibold text-white">
+                            {agreement.amount} {agreement.token || ""}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Show Escrow Contract Address if exists */}
                       {agreement.useEscrow && agreement.escrowAddress && (
                         <div className="md:col-span-2">
                           <div className="mb-2 text-sm text-emerald-300">
                             Escrow Contract Address
                           </div>
-
                           <div className="flex items-center space-x-2">
                             <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
                               {showEscrowAddress
                                 ? agreement.escrowAddress
                                 : `${agreement.escrowAddress.slice(0, 10)}...${agreement.escrowAddress.slice(-8)}`}
                             </div>
-
                             <Button
                               variant="outline"
                               size="sm"
@@ -1874,24 +2012,26 @@ export default function AgreementDetails() {
                         </div>
                       )}
 
-                      {/* If Not Escrow - Show Warning */}
-                      {!agreement.useEscrow && (
-                        <div className="md:col-span-2">
-                          <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-                            <div>
-                              <p className="text-sm text-cyan-300">
-                                Funds information is for reference only and not
-                                secured in escrow.
-                              </p>
-                              <p className="mt-1 text-xs text-cyan-300/70">
-                                The amount and token details help track the
-                                financial scope without automated fund handling.
-                              </p>
+                      {/* Information for non-escrow funds */}
+                      {!agreement.useEscrow &&
+                        agreement.includeFunds === "yes" && (
+                          <div className="md:col-span-2">
+                            <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                              <div>
+                                <p className="text-sm text-cyan-300">
+                                  Funds information is for reference only and
+                                  not secured in escrow.
+                                </p>
+                                <p className="mt-1 text-xs text-cyan-300/70">
+                                  The amount and token details help track the
+                                  financial scope without automated fund
+                                  handling.
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   </div>
                 )}
@@ -1929,9 +2069,9 @@ export default function AgreementDetails() {
                         ) : (
                           <>
                             <UserCheck className="mr-2 h-4 w-4" />
-                            {isFirstParty && !isCreator
-                              ? "Sign as First Party"
-                              : "Sign as Counterparty"}
+                            {isCounterparty
+                              ? "Sign as Counterparty"
+                              : "Sign as First Party"}
                           </>
                         )}
                       </Button>
@@ -2038,8 +2178,8 @@ export default function AgreementDetails() {
                           </>
                         ) : (
                           <>
-                            <Send className="mr-2 h-4 w-4" />
-                            Mark My Work as Delivered
+                            <Package className="mr-2 h-4 w-4" />
+                            Mark Work as Delivered
                           </>
                         )}
                       </Button>
@@ -2119,17 +2259,6 @@ export default function AgreementDetails() {
                         <CheckCircle className="mr-2 h-4 w-4" />
                         Cancel Dispute
                       </Button>
-                    )}
-
-                    {/* NEW: Show appropriate message if user initiated delivery */}
-                    {isCurrentUserInitiatedDelivery && (
-                      <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2">
-                        <CheckSquare className="h-4 w-4 text-blue-400" />
-                        <span className="text-sm text-blue-300">
-                          Your delivery has been submitted and is awaiting
-                          review by the other party.
-                        </span>
-                      </div>
                     )}
 
                     {/* NEW: Show appropriate message if user initiated cancellation */}

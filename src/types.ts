@@ -51,6 +51,7 @@ export interface Agreement {
   files: number;
   images?: string[];
   hasFundsWithoutEscrow?: boolean; // Add this
+  secureTheFunds?: boolean;
 
   // 🆕 ADD PROPERLY TYPED TIMELINE PROPERTY
   timeline?: TimelineEvent[];
