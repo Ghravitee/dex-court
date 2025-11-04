@@ -10,8 +10,8 @@
  * ---------------------------------------------------------------
  */
 
-import { OtpTelegramDTO } from "./data-contracts";
-import { HttpClient, RequestParams } from "./http-client";
+import { OtpTelegramDTO, OtpTelegramPatchRequest } from "./data-contracts";
+import { ContentType, HttpClient, RequestParams } from "./http-client";
 
 export class Otp<
   SecurityDataType = unknown,
@@ -28,6 +28,25 @@ export class Otp<
       path: `/otp/telegram/${telegramId}`,
       method: "GET",
       format: "json",
+      ...params,
+    });
+  /**
+   * @description Update Telegram profile
+   *
+   * @tags OTP Telegram
+   * @name TelegramTelegramIdPartialUpdate
+   * @request PATCH:/otp/telegram/:telegramId
+   */
+  telegramTelegramIdPartialUpdate = (
+    telegramId: string,
+    data: OtpTelegramPatchRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, void>({
+      path: `/otp/telegram/${telegramId}`,
+      method: "PATCH",
+      body: data,
+      type: ContentType.Json,
       ...params,
     });
 }

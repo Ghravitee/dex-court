@@ -98,18 +98,42 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         {activeTab === "telegram" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              To log in with Telegram, open{" "}
-              <a
-                href="https://t.me/DexCourtDVBot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-cyan-300 hover:underline"
-              >
-                @DexCourtDvBot
-              </a>{" "}
-              on Telegram and click on{" "}
-              <span className="font-semibold text-white">Start</span>. You'll
-              receive a one-time password (OTP) — paste it below to verify.
+              To log in with Telegram, you need to have a Telegram username set
+              first.
+            </p>
+
+            <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
+              <p className="mb-2 text-sm font-semibold text-cyan-100">
+                First time users:
+              </p>
+              <ol className="list-inside list-decimal space-y-1 text-sm text-gray-300">
+                <li>
+                  Go to Telegram{" "}
+                  <span className="text-white">Settings → Edit Profile</span>
+                </li>
+                <li>Set your @username if you haven't already</li>
+                <li>
+                  Open{" "}
+                  <a
+                    href="https://t.me/DexCourtDVBot"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyan-300 hover:underline"
+                  >
+                    @DexCourtDvBot
+                  </a>{" "}
+                  on Telegram
+                </li>
+                <li>
+                  Type <span className="font-semibold text-white">/otp</span> to
+                  get your one-time password
+                </li>
+              </ol>
+            </div>
+
+            <p className="text-sm text-gray-300">
+              Paste the OTP you received below to verify and complete your
+              registration.
             </p>
 
             <label className="block text-sm text-gray-300">

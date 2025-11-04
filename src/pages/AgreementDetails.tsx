@@ -40,6 +40,7 @@ import { UserAvatar } from "../components/UserAvatar";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/apiClient";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
+import OpenDisputeModal from "../components/OpenDisputeModal";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -373,7 +374,6 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   // Use the new context-based initiatedBy check
   const initiatedBy = getDeliveryInitiatedBy(agreement, currentUser);
 
-  // FIX: Only show review buttons to the party that INITIATED the delivery
   // (the one who marked their work as delivered should see Accept/Reject buttons)
   return initiatedBy === "user";
 };
@@ -615,7 +615,7 @@ const isSecondRejection = (agreement: any): boolean => {
       event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED,
   );
 
-  return rejectionEvents.length >= 1;
+  return rejectionEvents.length >= 2;
 };
 
 export default function AgreementDetails() {
@@ -631,7 +631,8 @@ export default function AgreementDetails() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
-  const [isOpeningDispute, setIsOpeningDispute] = useState(false);
+  const [isOpeningDispute] = useState(false);
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
 
   // ADD THESE NEW STATE VARIABLES FOR POLLING
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1118,16 +1119,17 @@ export default function AgreementDetails() {
   };
 
   // Reject Delivery Handler - BIDIRECTIONAL with dispute logic
+  // Reject Delivery Handler - BIDIRECTIONAL with PROPER dispute logic
   const handleRejectDelivery = async () => {
     if (!id || !agreement) return;
 
     const isSecondRejectionAttempt = isSecondRejection(agreement?._raw);
 
     if (isSecondRejectionAttempt) {
-      // Second rejection automatically triggers dispute
+      // Second rejection - open dispute modal instead of automatically creating dispute
       if (
         !confirm(
-          "This is the second rejection. This will automatically open a dispute. Are you sure?",
+          "This is the second rejection. This will open a dispute creation form. Are you sure you want to proceed?",
         )
       ) {
         return;
@@ -1139,8 +1141,12 @@ export default function AgreementDetails() {
         await agreementService.rejectDelivery(agreementId);
 
         toast.success(
-          "Delivery rejected! Dispute has been automatically opened due to second rejection.",
+          "Delivery rejected! Please complete the dispute form to finalize the dispute.",
         );
+
+        // Open dispute modal after successful rejection
+        setIsDisputeModalOpen(true);
+
         await fetchAgreementDetailsBackground();
       } catch (error: any) {
         console.error("Failed to reject delivery:", error);
@@ -1183,78 +1189,18 @@ export default function AgreementDetails() {
   };
 
   // Open Dispute Handler
-  const handleOpenDispute = async () => {
+  const handleOpenDispute = () => {
     if (!id || !agreement) return;
-
-    if (
-      !confirm(
-        "Are you sure you want to open a dispute? This will escalate the agreement to dispute resolution.",
-      )
-    ) {
-      return;
-    }
-
-    setIsOpeningDispute(true);
-    try {
-      // Since dispute API is not built, we'll simulate it for now
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      toast.success(
-        "Dispute opened successfully! The agreement is now in dispute resolution.",
-      );
-
-      setAgreement((prev) => (prev ? { ...prev, status: "disputed" } : null));
-    } catch (error: any) {
-      console.error("Failed to open dispute:", error);
-      toast.error("Failed to open dispute. Please try again.");
-    } finally {
-      setIsOpeningDispute(false);
-    }
+    setIsDisputeModalOpen(true);
   };
 
-  // Cancel Dispute Handler
-  // Cancel Dispute Handler - FIXED
-  const handleCancelDispute = async () => {
-    if (!id || !agreement) return;
-
-    if (
-      !confirm(
-        "Are you sure you want to cancel this dispute? This will return the agreement to its previous status.",
-      )
-    ) {
-      return;
-    }
-
-    try {
-      // Since dispute API is not built, we'll simulate it for now
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      toast.success(
-        "Dispute cancelled successfully! Agreement returned to signed status.",
-      );
-
-      // FIX: Update the agreement status to "signed" so the buttons reappear
-      setAgreement((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: "signed",
-              // Also update the raw API data status
-              _raw: {
-                ...prev._raw,
-                status: AgreementStatusEnum.ACTIVE, // This is the backend status for "signed"
-              },
-            }
-          : null,
-      );
-
-      // Also trigger a background refresh to ensure we have the latest data
-      await fetchAgreementDetailsBackground();
-    } catch (error: any) {
-      console.error("Failed to cancel dispute:", error);
-      toast.error("Failed to cancel dispute. Please try again.");
-    }
+  const handleDisputeCreated = () => {
+    toast.success("Dispute created successfully!");
+    // Optionally refresh the agreement data to show disputed status
+    fetchAgreementDetailsBackground();
   };
+
+  // Or create a direct dispute creation modal:
 
   const getStatusIcon = (status: Agreement["status"]) => {
     switch (status) {
@@ -1513,7 +1459,12 @@ export default function AgreementDetails() {
   const isCurrentUserInitiatedCancellation = cancellationInitiatedBy === "user";
 
   // Dispute permissions
-  const canOpenDispute = agreement?.status === "signed" && isParticipant;
+  // Only show open dispute button for signed agreements OR when it's the second rejection
+  const canOpenDispute =
+    (agreement?.status === "signed" && isParticipant) ||
+    (agreement?.status === "pending_approval" &&
+      isSecondRejection(agreement._raw) &&
+      isParticipant);
   const canCancelDispute = agreement?.status === "disputed" && isParticipant;
 
   const completionDate = getCompletionDate(agreement?._raw);
@@ -1524,15 +1475,12 @@ export default function AgreementDetails() {
   // Check if cancellation is pending using enhanced detection
   const cancellationPending = isCancellationPending(agreement?._raw);
 
-  // NEW: Get appropriate messages for both parties
-  // NEW: Get appropriate messages for both parties
   // FIXED: Get appropriate messages for both parties
   const getDeliveryStatusMessage = () => {
     if (!agreement || agreement.status !== "pending_approval") return null;
 
     const initiatedBy = getDeliveryInitiatedBy(agreement._raw, user);
 
-    // FIX: The messages were flipped - now they match the button logic
     if (initiatedBy === "user") {
       return "The other party has marked their work as delivered and is waiting for your review.";
     } else if (initiatedBy === "other") {
@@ -1555,20 +1503,6 @@ export default function AgreementDetails() {
       return "A cancellation request has been initiated. Waiting for response.";
     }
   };
-
-  // Add this debug log to check agreement data
-  console.log("🔍 DEBUG Agreement Data Check:", {
-    agreementId: agreement?.id,
-    agreementStatus: agreement?.status,
-    apiStatus: agreement?._raw?.status,
-    firstPartyId: agreement?._raw?.firstParty?.id,
-    counterpartyId: agreement?._raw?.counterParty?.id,
-    currentUserId: user?.id,
-    timelineEvents: agreement?._raw?.timeline?.length,
-    hasExistingSignatures: agreement?._raw?.timeline?.filter(
-      (e: any) => e.type === 2,
-    )?.length, // SIGNED events
-  });
 
   if (loading) {
     return (
@@ -2249,18 +2183,6 @@ export default function AgreementDetails() {
                       </Button>
                     )}
 
-                    {/* Cancel Dispute Button */}
-                    {canCancelDispute && (
-                      <Button
-                        variant="outline"
-                        className="border-green-500/30 text-green-400 hover:bg-green-500/10"
-                        onClick={handleCancelDispute}
-                      >
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Cancel Dispute
-                      </Button>
-                    )}
-
                     {/* NEW: Show appropriate message if user initiated cancellation */}
                     {isCurrentUserInitiatedCancellation &&
                       cancellationPending && (
@@ -2619,6 +2541,14 @@ export default function AgreementDetails() {
           </div>
         </div>
       </div>
+      {isDisputeModalOpen && (
+        <OpenDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => setIsDisputeModalOpen(false)}
+          agreement={agreement}
+          onDisputeCreated={handleDisputeCreated}
+        />
+      )}
     </div>
   );
 }

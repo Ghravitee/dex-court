@@ -271,3 +271,223 @@ export interface AgreementDelivery {
   acceptedBy?: string;
   rejectedBy?: string;
 }
+
+// DISPUTES TYPES
+// DISPUTES TYPES
+// DISPUTES TYPES
+
+// ✅ Enum replacements using `as const` for erasableSyntaxOnly safety
+
+export const DisputeTypeEnum = {
+  ProBono: 1,
+  Paid: 2,
+} as const;
+export type DisputeTypeEnum =
+  (typeof DisputeTypeEnum)[keyof typeof DisputeTypeEnum];
+
+export const DisputeStatusEnum = {
+  Pending: 1,
+  VoteInProgress: 2,
+  Settled: 3,
+  Dismissed: 4,
+} as const;
+export type DisputeStatusEnum =
+  (typeof DisputeStatusEnum)[keyof typeof DisputeStatusEnum];
+
+export const DisputeResultEnum = {
+  PlaintiffWon: 1,
+  DefendantWon: 2,
+  Cancelled: 3,
+  Dismissed: 4,
+} as const;
+export type DisputeResultEnum =
+  (typeof DisputeResultEnum)[keyof typeof DisputeResultEnum];
+
+export const ErrorCodeEnum = {
+  MissingData: 1,
+  InvalidEnum: 13,
+  MissingWallet: 12,
+  AccountNotFound: 7,
+  SameAccount: 11,
+  WitnessesNotFound: 18,
+  InvalidData: 14,
+  InternalServerError: 10,
+  Forbidden: 17,
+  InvalidStatus: 16,
+} as const;
+export type ErrorCodeEnum = (typeof ErrorCodeEnum)[keyof typeof ErrorCodeEnum];
+
+// ✅ Interfaces remain unchanged — fully compatible
+export interface UserInfo {
+  id: number;
+  username: string;
+  avatarId: number;
+}
+
+export interface EvidenceFile {
+  id: number;
+  fileName: string;
+  fileSize: number;
+  side: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
+export interface PlaintiffComplaint {
+  description: string;
+  formalClaim: string;
+  createdAt: string;
+  updatedAt: string;
+  evidenceFiles: EvidenceFile[];
+}
+
+export interface DefendantResponse {
+  formalClaim: string;
+  createdAt: string;
+  updatedAt: string;
+  evidenceFiles: EvidenceFile[];
+}
+
+export interface Witnesses {
+  plaintiff: UserInfo[];
+  defendant: UserInfo[];
+}
+
+export interface DisputeDetails {
+  id: number;
+  title: string;
+  status: DisputeStatusEnum;
+  type: DisputeTypeEnum;
+  result: DisputeResultEnum;
+  createdAt: string;
+  votePendingAt: string;
+  voteStartedAt: string;
+  voteEndedAt: string;
+  plaintiff: UserInfo;
+  defendant: UserInfo;
+  witnesses: Witnesses;
+  plaintiffComplaint: PlaintiffComplaint;
+  defendantResponse: DefendantResponse;
+}
+
+export interface DisputeListItem {
+  id: number;
+  title: string;
+  claim: string;
+  requestType: DisputeTypeEnum;
+  status: DisputeStatusEnum;
+  result: DisputeResultEnum;
+  createdAt: string;
+  votePendingAt: string;
+  voteStartedAt: string;
+  voteEndedAt: string;
+  parties: {
+    plaintiff: UserInfo;
+    defendant: UserInfo;
+  };
+}
+
+export interface DisputeListResponse {
+  totalDisputes: number;
+  totalResults: number;
+  results: DisputeListItem[];
+}
+
+export interface CreateDisputeRequest {
+  title: string;
+  description: string;
+  requestKind: DisputeTypeEnum;
+  defendant: string;
+  claim: string;
+  witnesses?: string[];
+}
+
+export interface CreateDisputeFromAgreementRequest {
+  title: string;
+  description: string;
+  requestKind: DisputeTypeEnum;
+  claim: string;
+  witnesses?: string[];
+  defendant: string;
+}
+
+export interface DefendantClaimRequest {
+  defendantClaim: string;
+  witnesses?: string[];
+}
+
+export interface VoteRequest {
+  voteType: number;
+  comment: string;
+}
+
+export interface ApiError {
+  error: ErrorCodeEnum;
+  message: string;
+}
+
+export interface UserData {
+  username: string;
+  userId?: string;
+  avatarId?: number | null;
+  telegramUsername?: string;
+}
+// Update your DisputeRow interface in types.ts
+export interface DisputeRow {
+  id: string;
+  createdAt: string;
+  title: string;
+  request: "Pro Bono" | "Paid";
+  parties: string;
+  status: "Pending" | "Vote in Progress" | "Settled" | "Dismissed";
+  claim: string;
+  plaintiff: string;
+  defendant: string;
+  description?: string;
+  witnesses?: {
+    plaintiff: Array<{
+      id: number;
+      username: string;
+      avatarId?: number | null;
+    }>;
+    defendant: Array<{
+      id: number;
+      username: string;
+      avatarId?: number | null;
+    }>;
+  };
+  evidence: EvidenceFile[]; // This should match the API EvidenceFile structure
+  defendantResponse?: {
+    description: string;
+    evidence: EvidenceFile[]; // This should match the API EvidenceFile structure
+    createdAt: string;
+  };
+  plaintiffReply?: {
+    description: string;
+    evidence: EvidenceFile[];
+    createdAt: string;
+  };
+  plaintiffData?: UserData;
+  defendantData?: UserData;
+}
+
+// Update EvidenceFile to have all required properties
+export interface EvidenceFile {
+  id: number;
+  fileName: string;
+  fileSize: number;
+  side: number;
+  mimeType: string;
+  uploadedAt: string;
+  // Optional properties for frontend compatibility
+  fileId?: number;
+  url?: string;
+}
+
+export interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "document";
+  size?: string;
+}

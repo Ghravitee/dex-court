@@ -15,6 +15,7 @@ export interface User {
     username: string;
     id: string;
   };
+  telegramUsername?: string;
   walletAddress: string | null;
   role: number;
   avatarId: number | null;
