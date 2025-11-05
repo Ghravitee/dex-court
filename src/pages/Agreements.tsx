@@ -150,6 +150,31 @@ const UserSearchResult = ({
   );
 };
 
+const formatNumberWithCommas = (value: string): string => {
+  if (!value) return "";
+
+  // Remove all non-digit characters except decimal point
+  const numericValue = value.replace(/[^\d.]/g, "");
+
+  // Split into whole and decimal parts
+  const parts = numericValue.split(".");
+  let wholePart = parts[0];
+  const decimalPart = parts[1] || "";
+
+  // Format whole part with commas
+  if (wholePart) {
+    wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // Combine parts
+  return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
+};
+
+const parseFormattedNumber = (formattedValue: string): string => {
+  // Remove commas for storage and calculations, keep decimal point
+  return formattedValue.replace(/,/g, "");
+};
+
 export default function Agreements() {
   const navigate = useNavigate();
   const [typeValue, setTypeValue] = useState<"Public" | "Private" | "">("");
@@ -2086,22 +2111,29 @@ export default function Agreements() {
                         <input
                           value={
                             secureWithEscrow === "yes"
-                              ? form.amount
-                              : fundsWithoutEscrow.amount
+                              ? formatNumberWithCommas(form.amount)
+                              : formatNumberWithCommas(
+                                  fundsWithoutEscrow.amount,
+                                )
                           }
                           onChange={(e) => {
+                            const rawValue = parseFormattedNumber(
+                              e.target.value,
+                            );
                             if (secureWithEscrow === "yes") {
-                              setForm({ ...form, amount: e.target.value });
+                              setForm({ ...form, amount: rawValue });
                             } else {
                               setFundsWithoutEscrow((prev) => ({
                                 ...prev,
-                                amount: e.target.value,
+                                amount: rawValue,
                               }));
                             }
                           }}
+                          inputMode="decimal"
+                          pattern="[0-9,.]*"
                           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder="1000"
-                          type="number"
+                          placeholder="10,000"
+                          type="text"
                         />
                       </div>
 

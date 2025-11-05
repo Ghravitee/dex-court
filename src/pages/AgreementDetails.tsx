@@ -96,6 +96,26 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
   }
 };
 
+const formatNumberWithCommas = (value: string | undefined): string => {
+  if (!value) return "";
+
+  // Remove any existing commas and format with new commas
+  const numericValue = value.replace(/,/g, "");
+
+  // Split into whole and decimal parts
+  const parts = numericValue.split(".");
+  let wholePart = parts[0];
+  const decimalPart = parts[1] || "";
+
+  // Format whole part with commas
+  if (wholePart) {
+    wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // Combine parts
+  return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
+};
+
 const getTelegramUsernameFromParty = (party: any): string => {
   if (!party) return "Unknown";
 
@@ -612,8 +632,16 @@ const isSecondRejection = (agreement: any): boolean => {
 
   const rejectionEvents = agreement._raw.timeline.filter(
     (event: any) =>
-      event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED,
+      event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
+      event.type === 6, // DELIVERY_REJECTED
   );
+
+  console.log("🔍 Rejection events check:", {
+    timeline: agreement._raw.timeline,
+    rejectionEvents: rejectionEvents,
+    rejectionCount: rejectionEvents.length,
+    isSecondRejection: rejectionEvents.length >= 2,
+  });
 
   return rejectionEvents.length >= 2;
 };
@@ -1119,75 +1147,38 @@ export default function AgreementDetails() {
   };
 
   // Reject Delivery Handler - BIDIRECTIONAL with dispute logic
-  // Reject Delivery Handler - BIDIRECTIONAL with PROPER dispute logic
+  // Reject Delivery Handler - BIDIRECTIONAL with dispute on first rejection
   const handleRejectDelivery = async () => {
     if (!id || !agreement) return;
 
-    const isSecondRejectionAttempt = isSecondRejection(agreement?._raw);
+    if (
+      !confirm(
+        "Are you sure you want to reject this delivery? This will open a dispute.",
+      )
+    ) {
+      return;
+    }
 
-    if (isSecondRejectionAttempt) {
-      // Second rejection - open dispute modal instead of automatically creating dispute
-      if (
-        !confirm(
-          "This is the second rejection. This will open a dispute creation form. Are you sure you want to proceed?",
-        )
-      ) {
-        return;
-      }
+    setIsRejecting(true);
+    try {
+      const agreementId = parseInt(id);
+      await agreementService.rejectDelivery(agreementId);
 
-      setIsRejecting(true);
-      try {
-        const agreementId = parseInt(id);
-        await agreementService.rejectDelivery(agreementId);
+      toast.success(
+        "Delivery rejected! A dispute has been created. Please proceed to the dispute page to edit your dispute.",
+      );
 
-        toast.success(
-          "Delivery rejected! Please complete the dispute form to finalize the dispute.",
-        );
-
-        // Open dispute modal after successful rejection
-        setIsDisputeModalOpen(true);
-
-        await fetchAgreementDetailsBackground();
-      } catch (error: any) {
-        console.error("Failed to reject delivery:", error);
-        const errorMessage =
-          error.response?.data?.message ||
-          "Failed to reject delivery. Please try again.";
-        toast.error(errorMessage);
-      } finally {
-        setIsRejecting(false);
-      }
-    } else {
-      // First rejection
-      if (
-        !confirm(
-          "Are you sure you want to reject this delivery? The agreement will return to signed status.",
-        )
-      ) {
-        return;
-      }
-
-      setIsRejecting(true);
-      try {
-        const agreementId = parseInt(id);
-        await agreementService.rejectDelivery(agreementId);
-
-        toast.success(
-          "Delivery rejected! Agreement returned to signed status.",
-        );
-        await fetchAgreementDetailsBackground();
-      } catch (error: any) {
-        console.error("Failed to reject delivery:", error);
-        const errorMessage =
-          error.response?.data?.message ||
-          "Failed to reject delivery. Please try again.";
-        toast.error(errorMessage);
-      } finally {
-        setIsRejecting(false);
-      }
+      await fetchAgreementDetailsBackground();
+    } catch (error: any) {
+      console.error("Failed to reject delivery:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to reject delivery. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsRejecting(false);
     }
   };
-
   // Open Dispute Handler
   const handleOpenDispute = () => {
     if (!id || !agreement) return;
@@ -1847,60 +1838,29 @@ export default function AgreementDetails() {
               {/* Financial Details */}
               {/* Financial Details */}
               <div>
-                {agreement.includeFunds === "yes" && (
-                  <div
-                    className={`rounded-lg border ${
-                      agreement.useEscrow
-                        ? "border-emerald-400/30 bg-emerald-500/10"
-                        : "border-cyan-400/30 bg-cyan-500/10"
-                    } p-4`}
-                  >
-                    <h3
-                      className={`mb-3 text-lg font-semibold ${
+                {/* Financial Details */}
+                <div>
+                  {agreement.includeFunds === "yes" && (
+                    <div
+                      className={`rounded-lg border ${
                         agreement.useEscrow
-                          ? "text-emerald-300"
-                          : "text-cyan-300"
-                      }`}
+                          ? "border-emerald-400/30 bg-emerald-500/10"
+                          : "border-cyan-400/30 bg-cyan-500/10"
+                      } p-4`}
                     >
-                      Financial Details
-                    </h3>
+                      <h3
+                        className={`mb-3 text-lg font-semibold ${
+                          agreement.useEscrow
+                            ? "text-emerald-300"
+                            : "text-cyan-300"
+                        }`}
+                      >
+                        Financial Details
+                      </h3>
 
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {/* Funds included */}
-                      <div>
-                        <div
-                          className={`text-sm ${
-                            agreement.useEscrow
-                              ? "text-emerald-300"
-                              : "text-cyan-300"
-                          }`}
-                        >
-                          Funds Included
-                        </div>
-                        <div className="text-lg font-semibold text-white">
-                          Yes
-                        </div>
-                      </div>
-
-                      {/* Escrow Status */}
-                      <div>
-                        <div
-                          className={`text-sm ${
-                            agreement.useEscrow
-                              ? "text-emerald-300"
-                              : "text-cyan-300"
-                          }`}
-                        >
-                          Escrow Protection
-                        </div>
-                        <div className="text-lg font-semibold text-white">
-                          {agreement.useEscrow ? "Enabled" : "Not Used"}
-                        </div>
-                      </div>
-
-                      {/* Amount + Token - Show for both escrow and non-escrow if available */}
-                      {agreement.amount && (
-                        <div className="md:col-span-2">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {/* Funds included */}
+                        <div>
                           <div
                             className={`text-sm ${
                               agreement.useEscrow
@@ -1908,70 +1868,106 @@ export default function AgreementDetails() {
                                 : "text-cyan-300"
                             }`}
                           >
-                            Amount
+                            Funds Included
                           </div>
                           <div className="text-lg font-semibold text-white">
-                            {agreement.amount} {agreement.token || ""}
+                            Yes
                           </div>
                         </div>
-                      )}
 
-                      {/* Show Escrow Contract Address if exists */}
-                      {agreement.useEscrow && agreement.escrowAddress && (
-                        <div className="md:col-span-2">
-                          <div className="mb-2 text-sm text-emerald-300">
-                            Escrow Contract Address
+                        {/* Escrow Status */}
+                        <div>
+                          <div
+                            className={`text-sm ${
+                              agreement.useEscrow
+                                ? "text-emerald-300"
+                                : "text-cyan-300"
+                            }`}
+                          >
+                            Escrow Protection
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
-                              {showEscrowAddress
-                                ? agreement.escrowAddress
-                                : `${agreement.escrowAddress.slice(0, 10)}...${agreement.escrowAddress.slice(-8)}`}
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setShowEscrowAddress(!showEscrowAddress)
-                              }
-                              className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                            >
-                              {showEscrowAddress ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </Button>
+                          <div className="text-lg font-semibold text-white">
+                            {agreement.useEscrow ? "Enabled" : "Not Used"}
                           </div>
                         </div>
-                      )}
 
-                      {/* Information for non-escrow funds */}
-                      {!agreement.useEscrow &&
-                        agreement.includeFunds === "yes" && (
+                        {/* Amount + Token - Show for both escrow and non-escrow if available */}
+                        {agreement.amount && (
                           <div className="md:col-span-2">
-                            <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-                              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-                              <div>
-                                <p className="text-sm text-cyan-300">
-                                  Funds information is for reference only and
-                                  not secured in escrow.
-                                </p>
-                                <p className="mt-1 text-xs text-cyan-300/70">
-                                  The amount and token details help track the
-                                  financial scope without automated fund
-                                  handling.
-                                </p>
-                              </div>
+                            <div
+                              className={`text-sm ${
+                                agreement.useEscrow
+                                  ? "text-emerald-300"
+                                  : "text-cyan-300"
+                              }`}
+                            >
+                              Amount
+                            </div>
+                            <div className="text-lg font-semibold text-white">
+                              {formatNumberWithCommas(agreement.amount)}{" "}
+                              {agreement.token || ""}
                             </div>
                           </div>
                         )}
+
+                        {/* Show Escrow Contract Address if exists */}
+                        {agreement.useEscrow && agreement.escrowAddress && (
+                          <div className="md:col-span-2">
+                            <div className="mb-2 text-sm text-emerald-300">
+                              Escrow Contract Address
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
+                                {showEscrowAddress
+                                  ? agreement.escrowAddress
+                                  : `${agreement.escrowAddress.slice(0, 10)}...${agreement.escrowAddress.slice(-8)}`}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setShowEscrowAddress(!showEscrowAddress)
+                                }
+                                className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                              >
+                                {showEscrowAddress ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Information for non-escrow funds */}
+                        {!agreement.useEscrow &&
+                          agreement.includeFunds === "yes" && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                                <div>
+                                  <p className="text-sm text-cyan-300">
+                                    Funds information is for reference only and
+                                    not secured in escrow.
+                                  </p>
+                                  <p className="mt-1 text-xs text-cyan-300/70">
+                                    The amount and token details help track the
+                                    financial scope without automated fund
+                                    handling.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* BIDIRECTIONAL Action Buttons Section */}
             {/* BIDIRECTIONAL Action Buttons Section */}
             {(canSign ||
               canCancel ||
@@ -1981,12 +1977,14 @@ export default function AgreementDetails() {
               canReviewDelivery ||
               canOpenDispute ||
               canCancelDispute) &&
-              agreement?.status !== "completed" && (
+              agreement?.status !== "completed" &&
+              agreement?.status !== "disputed" && ( // Add this line to hide when disputed
                 <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">
                     Agreement Actions
                   </h3>
                   <div className="flex flex-wrap gap-3">
+                    {/* All your existing buttons remain the same */}
                     {/* Sign Agreement Button */}
                     {canSign && (
                       <Button
@@ -2186,7 +2184,7 @@ export default function AgreementDetails() {
                     {/* NEW: Show appropriate message if user initiated cancellation */}
                     {isCurrentUserInitiatedCancellation &&
                       cancellationPending && (
-                        <div className="flex items-center gap-2 rounded-lg bg-orange-500/10 px-4 py-2">
+                        <div className="hidden items-center gap-2 rounded-lg bg-orange-500/10 px-4 py-2">
                           <Clock className="h-4 w-4 text-orange-400" />
                           <span className="text-sm text-orange-300">
                             You have requested cancellation. Waiting for the

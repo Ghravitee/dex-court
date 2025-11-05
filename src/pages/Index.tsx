@@ -32,12 +32,13 @@ import avatar2 from "../assets/avatar-2.webp";
 import avatar3 from "../assets/avatar-3.webp";
 import avatar4 from "../assets/avatar4.webp";
 
-import { getDisputes, type DisputeRow } from "../lib/mockDisputes";
 import { useAllAgreementsCount } from "../hooks/useAllAgreementsCount";
 import { usePublicAgreements } from "../hooks/usePublicAgreements";
 import { InfiniteMovingJudges } from "../components/ui/infinite-moving-judges";
 import { InfiniteMovingAgreements } from "../components/ui/infinite-moving-agreements";
 import { InfiniteMovingCardsWithAvatars } from "../components/ui/infinite-moving-cards-with-avatars";
+import { disputeService } from "../services/disputeServices";
+import type { DisputeListItem, DisputeRow } from "../types";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
@@ -419,23 +420,83 @@ function genSeries(type: "daily" | "weekly" | "monthly"): any[] {
   return out;
 }
 
-// NEW: Disputes Infinite Cards Component
+// NEW: Disputes Infinite Cards Component - UPDATED WITH REAL DATA
 function DisputesInfiniteCards() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getDisputes().then(setDisputes);
+    const fetchRecentDisputes = async () => {
+      try {
+        setLoading(true);
+        // Get recent disputes (you might want to add a limit parameter to your API)
+        const response = await disputeService.getDisputes({
+          top: 10, // Limit to 10 recent disputes
+          sort: "desc", // Get newest first
+        });
+        const recentDisputes = response.results || [];
+
+        // Transform to DisputeRow format
+        const transformedDisputes = recentDisputes.map(
+          (dispute: DisputeListItem) =>
+            disputeService.transformDisputeListItemToRow(dispute),
+        );
+
+        setDisputes(transformedDisputes);
+      } catch (error) {
+        console.error("Error fetching recent disputes:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecentDisputes();
   }, []);
 
   const disputeItems = useMemo(
     () =>
       disputes.map((dispute) => ({
-        quote: `"${dispute.claim}" - ${dispute.title}`,
+        id: dispute.id, // Add ID for linking
+        quote:
+          dispute.claim || dispute.description || `Dispute: ${dispute.title}`,
         name: dispute.parties,
-        title: `${dispute.evidence.length} evidences • ${dispute.status}`,
+        title: `${dispute.status} • ${dispute.request}`,
+        // Add party information for avatars
+        plaintiff: dispute.plaintiff,
+        defendant: dispute.defendant,
+        plaintiffData: dispute.plaintiffData,
+        defendantData: dispute.defendantData,
+        // Add evidence count if available
+        evidenceCount: dispute.evidence?.length || 0,
       })),
     [disputes],
   );
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="glow-text text-xl font-semibold text-cyan-100">
+            Recent Disputes
+          </h3>
+          <Button
+            variant="outline"
+            className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+            disabled
+          >
+            <Scale className="mr-2 h-4 w-4" />
+            View All Disputes
+          </Button>
+        </div>
+        <div className="flex h-32 items-center justify-center">
+          <div className="flex items-center gap-2 text-cyan-300">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+            <span>Loading disputes...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -456,9 +517,9 @@ function DisputesInfiniteCards() {
       <InfiniteMovingCardsWithAvatars
         items={disputeItems}
         direction="right"
-        speed="normal"
+        speed="slow"
         pauseOnHover={true}
-        type="agreements"
+        type="disputes" // New type for disputes
       />
     </div>
   );

@@ -18,6 +18,8 @@ import { Loader2, UploadCloud } from "lucide-react";
 import { useAgreementsApi } from "../hooks/useAgreementsApi";
 import type { AgreementSummaryDTO } from "../services/agreementServices";
 import { useNavigate } from "react-router-dom";
+import { useDisputesApi } from "../hooks/useDisputesApi";
+import type { DisputeRow } from "@/types";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -36,7 +38,7 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
     },
     4: {
       label: "Disputed",
-      color: "bg-red-800/20 text-red-800 border-red-800/30",
+      color: "bg-purple-800/20 text-purple-300 border-purple-800/30",
     },
     5: {
       label: "Cancelled",
@@ -48,7 +50,7 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
     },
     7: {
       label: "Delivery Submitted",
-      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
   };
 
@@ -348,6 +350,26 @@ export default function Profile() {
     loading: agreementsLoading,
     error: agreementsError,
   } = useAgreementsApi();
+  const {
+    disputes,
+    loading: disputesLoading,
+    error: disputesError,
+  } = useDisputesApi(user?.id?.toString() || "");
+  // const { updateAccount, updating } = useAccountUpdate();
+  // const { uploadAvatar, uploading } = useAvatarUpload();
+  // Use the API hooks
+  const {
+    updateAccount,
+    loading: updating,
+    error: updateError,
+    success: updateSuccess,
+  } = useAccountUpdate();
+  const {
+    uploadAvatar,
+    loading: uploading,
+    error: uploadError,
+    success: uploadSuccess,
+  } = useAvatarUpload();
 
   // Memoized agreement stats calculation
   const agreementStats = useMemo(
@@ -360,6 +382,106 @@ export default function Profile() {
     }),
     [agreements],
   );
+
+  // Memoized disputes stats calculation
+  const disputesStats = useMemo(
+    () => ({
+      total: disputes.length,
+      pending: disputes.filter((dispute) => dispute.status === "Pending")
+        .length,
+      inProgress: disputes.filter(
+        (dispute) => dispute.status === "Vote in Progress",
+      ).length,
+      settled: disputes.filter((dispute) => dispute.status === "Settled")
+        .length,
+      dismissed: disputes.filter((dispute) => dispute.status === "Dismissed")
+        .length,
+    }),
+    [disputes],
+  );
+
+  const getUserRoleInDispute = useCallback(
+    (dispute: DisputeRow) => {
+      const userId = user?.id?.toString();
+      if (!userId) return "Unknown";
+
+      if (dispute.plaintiffData?.userId === userId) return "Plaintiff";
+      if (dispute.defendantData?.userId === userId) return "Defendant";
+
+      // Check if user is a witness - handle different witness structures safely
+      let isPlaintiffWitness = false;
+      let isDefendantWitness = false;
+
+      if (dispute.witnesses) {
+        if (
+          typeof dispute.witnesses === "object" &&
+          !Array.isArray(dispute.witnesses)
+        ) {
+          // Handle object structure { plaintiff: [], defendant: [] }
+          isPlaintiffWitness = (dispute.witnesses.plaintiff || []).some(
+            (w: any) => w.id?.toString() === userId,
+          );
+          isDefendantWitness = (dispute.witnesses.defendant || []).some(
+            (w: any) => w.id?.toString() === userId,
+          );
+        } else if (Array.isArray(dispute.witnesses)) {
+          // Handle array structure
+          isPlaintiffWitness = dispute.witnesses.some(
+            (w: any) => w.id?.toString() === userId,
+          );
+        }
+      }
+
+      if (isPlaintiffWitness) return "Witness (Plaintiff)";
+      if (isDefendantWitness) return "Witness (Defendant)";
+
+      return "Observer";
+    },
+    [user?.id],
+  );
+
+  // Handle dispute click
+  const handleDisputeClick = useCallback(
+    (disputeId: string) => {
+      navigate(`/disputes/${disputeId}`);
+    },
+    [navigate],
+  );
+
+  // Dispute Status Badge Component
+  const DisputeStatusBadge = ({ status }: { status: string }) => {
+    const statusConfig = {
+      Pending: {
+        label: "Pending",
+        color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
+      },
+      "Vote in Progress": {
+        label: "Voting",
+        color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
+      },
+      Settled: {
+        label: "Settled",
+        color: "bg-green-500/20 text-green-300 border-green-400/30",
+      },
+      Dismissed: {
+        label: "Dismissed",
+        color: "bg-red-500/20 text-red-300 border-red-400/30",
+      },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || {
+      label: status,
+      color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+    };
+
+    return (
+      <span
+        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+      >
+        {config.label}
+      </span>
+    );
+  };
 
   // Memoized user data - UPDATED TO USE TELEGRAM USERNAME
   const userData = useMemo(
@@ -439,20 +561,6 @@ export default function Profile() {
     type: "success",
     isVisible: false,
   });
-
-  // Use the API hooks
-  const {
-    updateAccount,
-    loading: updating,
-    error: updateError,
-    success: updateSuccess,
-  } = useAccountUpdate();
-  const {
-    uploadAvatar,
-    loading: uploading,
-    error: uploadError,
-    success: uploadSuccess,
-  } = useAvatarUpload();
 
   // Show toaster when success or error occurs - optimized with proper dependencies
   useEffect(() => {
@@ -960,17 +1068,78 @@ export default function Profile() {
           title="My Disputes"
           icon={<FiAlertCircle />}
           color="cyan"
-          count={0}
+          count={disputesStats.total}
           scrollable
           maxHeight="260px"
         >
-          <div className="py-8 text-center">
-            <div className="mb-2 text-lg text-cyan-300">No disputes yet</div>
-            <div className="text-sm text-white/50">
-              Your dispute cases will appear here when you're involved in
-              disagreements.
+          {disputesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+              <span className="ml-2 text-cyan-300">Loading disputes...</span>
             </div>
-          </div>
+          ) : disputesError ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-red-300">
+                Error loading disputes
+              </div>
+              <div className="text-sm text-white/50">{disputesError}</div>
+            </div>
+          ) : disputes.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-cyan-300">No disputes yet</div>
+              <div className="text-sm text-white/50">
+                Your dispute cases will appear here when you're involved in
+                disagreements.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {disputes.map((dispute) => (
+                <div
+                  key={dispute.id}
+                  onClick={() => handleDisputeClick(dispute.id)}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center justify-between">
+                        <h4 className="truncate text-sm font-medium text-white/90">
+                          {dispute.title}
+                        </h4>
+
+                        <DisputeStatusBadge status={dispute.status} />
+                      </div>
+
+                      <div className="mb-2 text-xs text-white/70">
+                        Created: {formatDate(dispute.createdAt)}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-white/60">
+                        <div className="flex justify-between">
+                          <span>Parties:</span>
+                          <span className="text-white/80">
+                            {dispute.parties}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Your Role:</span>
+                          <span className="text-cyan-300">
+                            {getUserRoleInDispute(dispute)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Type:</span>
+                          <span className="text-white/80">
+                            {dispute.request}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </BentoCard>
 
         <BentoCard
@@ -1012,7 +1181,7 @@ export default function Profile() {
                 >
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center gap-2">
+                      <div className="mb-1 flex items-center justify-between">
                         <h4 className="truncate text-sm font-medium text-white/90">
                           {getAgreementTitle(agreement)}
                         </h4>

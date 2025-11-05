@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../components/ui/button";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Send } from "lucide-react";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 import {
@@ -1399,7 +1399,7 @@ export default function Disputes() {
                     </>
                   ) : (
                     <>
-                      <Paperclip className="mr-2 h-4 w-4" />
+                      <Send className="mr-2 h-4 w-4" />
                       Submit Dispute
                     </>
                   )}

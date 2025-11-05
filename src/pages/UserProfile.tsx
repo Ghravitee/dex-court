@@ -17,7 +17,9 @@ import { BentoCard } from "./Profile";
 import { LoginModal } from "../components/LoginModal";
 import { UserAvatar } from "../components/UserAvatar";
 import { usePublicAgreementsApi } from "../hooks/usePublicAgreementsApi";
-import type { AgreementSummaryDTO } from "../services/agreementServices";
+import { useDisputesApi } from "../hooks/useDisputesApi"; // ADD THIS IMPORT
+import type { AgreementSummaryDTO } from "../services/agreementServices"; // UPDATE IMPORT
+import type { DisputeRow } from "../types"; // UPDATE IMPORT
 import { Loader2 } from "lucide-react";
 
 // Add AgreementStatusBadge component (same as in Profile)
@@ -37,7 +39,7 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
     },
     4: {
       label: "Disputed",
-      color: "bg-red-800/20 text-red-800 border-red-800/30",
+      color: "bg-purple-800/20 text-purple-300 border-purple-800/30",
     },
     5: {
       label: "Cancelled",
@@ -49,12 +51,47 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
     },
     7: {
       label: "Delivery Submitted",
-      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
   };
 
   const config = statusConfig[status as keyof typeof statusConfig] || {
     label: "Unknown",
+    color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+    >
+      {config.label}
+    </span>
+  );
+};
+
+// ADD DisputeStatusBadge component
+const DisputeStatusBadge = ({ status }: { status: string }) => {
+  const statusConfig = {
+    Pending: {
+      label: "Pending",
+      color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
+    },
+    "Vote in Progress": {
+      label: "Voting",
+      color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
+    },
+    Settled: {
+      label: "Settled",
+      color: "bg-green-500/20 text-green-300 border-green-400/30",
+    },
+    Dismissed: {
+      label: "Dismissed",
+      color: "bg-red-500/20 text-red-300 border-red-400/30",
+    },
+  };
+
+  const config = statusConfig[status as keyof typeof statusConfig] || {
+    label: status,
     color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
   };
 
@@ -190,6 +227,12 @@ export default function UserProfile() {
     error: agreementsError,
   } = usePublicAgreementsApi(user?.id);
 
+  const {
+    disputes,
+    loading: disputesLoading,
+    error: disputesError,
+  } = useDisputesApi(user?.id);
+
   // Decode the URL parameter to handle spaces and special characters
   const decodedHandle = useMemo(() => {
     if (!handle) return "";
@@ -222,6 +265,59 @@ export default function UserProfile() {
   const handleAgreementClick = (agreementId: number) => {
     navigate(`/agreements/${agreementId}`);
   };
+
+  // ADD handle dispute click function
+  const handleDisputeClick = (disputeId: string) => {
+    navigate(`/disputes/${disputeId}`);
+  };
+
+  // ADD helper function to get user role in dispute
+  const getUserRoleInDispute = useMemo(() => {
+    return (dispute: DisputeRow) => {
+      const userId = user?.id;
+      if (!userId) return "Unknown";
+
+      if (dispute.plaintiffData?.userId === userId) return "Plaintiff";
+      if (dispute.defendantData?.userId === userId) return "Defendant";
+
+      // Check if user is a witness
+      let isPlaintiffWitness = false;
+      let isDefendantWitness = false;
+
+      if (dispute.witnesses && typeof dispute.witnesses === "object") {
+        const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
+        const defendantWitnesses = dispute.witnesses.defendant || [];
+
+        isPlaintiffWitness = plaintiffWitnesses.some(
+          (w) => w.id?.toString() === userId,
+        );
+        isDefendantWitness = defendantWitnesses.some(
+          (w) => w.id?.toString() === userId,
+        );
+      }
+
+      if (isPlaintiffWitness) return "Witness (Plaintiff)";
+      if (isDefendantWitness) return "Witness (Defendant)";
+
+      return "Observer";
+    };
+  }, [user?.id]);
+
+  const disputeStats = useMemo(
+    () => ({
+      total: disputes.length,
+      pending: disputes.filter((dispute) => dispute.status === "Pending")
+        .length,
+      inProgress: disputes.filter(
+        (dispute) => dispute.status === "Vote in Progress",
+      ).length,
+      settled: disputes.filter((dispute) => dispute.status === "Settled")
+        .length,
+      dismissed: disputes.filter((dispute) => dispute.status === "Dismissed")
+        .length,
+    }),
+    [disputes],
+  );
 
   // Check if this is the current user's profile - UPDATED TO USE TELEGRAM USERNAME
   const isOwnProfile = useMemo(() => {
@@ -319,8 +415,6 @@ export default function UserProfile() {
     disputed: agreements.filter((agreement) => agreement.status === 4).length,
   };
 
-  console.log(agreements, "check agreements");
-
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
@@ -407,27 +501,27 @@ export default function UserProfile() {
   }
 
   // Safe calculations for user stats
-  const safeStats = user.stats || {
+  const safeStats = user?.stats || {
     deals: 0,
     agreements: 0,
-    disputes: 0,
+    disputes: disputeStats.total, // Use real dispute count from API
     revenue: { "7d": 0, "30d": 0, "90d": 0 },
   };
 
-  const safeRoles = user.roles || {
+  const safeRoles = user?.roles || {
     judge: false,
     community: false,
     user: true,
   };
 
-  const safeTrustScore = user.trustScore || 50;
+  const safeTrustScore = user?.trustScore || 50;
   const safeJoinedDate =
-    user.joinedDate || new Date().toISOString().split("T")[0];
+    user?.joinedDate || new Date().toISOString().split("T")[0];
 
   // Calculate rates safely to avoid division by zero
   const disputeRate =
     safeStats.deals > 0
-      ? Math.round((safeStats.disputes / safeStats.deals) * 100)
+      ? Math.round((disputeStats.total / safeStats.deals) * 100) // Use real dispute count
       : 0;
 
   const successRate =
@@ -522,7 +616,7 @@ export default function UserProfile() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Disputes</span>
                 <span className="font-semibold text-cyan-300">
-                  {safeStats.disputes}
+                  {disputeStats.total}
                 </span>
               </div>
             </div>
@@ -566,27 +660,83 @@ export default function UserProfile() {
       {/* User's Public Content */}
       <section className="flex flex-col gap-6 lg:grid lg:grid-cols-3">
         {/* User's Disputes */}
+        {/* User's Disputes - UPDATED WITH REAL DATA */}
         <BentoCard
-          title={`${user.handle}'s Disputes`}
+          title={`${user?.handle}'s Disputes`}
           icon={<FiAlertCircle />}
           color="cyan"
-          count={safeStats.disputes}
+          count={disputeStats.total}
           scrollable
           maxHeight="260px"
         >
-          <div className="py-8 text-center">
-            <div className="mb-2 text-lg text-cyan-300">
-              {safeStats.disputes > 0
-                ? `${safeStats.disputes} disputes`
-                : "No disputes yet"}
+          {disputesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+              <span className="ml-2 text-cyan-300">Loading disputes...</span>
             </div>
-            <div className="text-sm text-white/50">
-              {isOwnProfile
-                ? "Your dispute cases will appear here"
-                : `${user.handle}'s dispute history`}{" "}
-              {/* Telegram username */}
+          ) : disputesError ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-red-300">
+                Error loading disputes
+              </div>
+              <div className="text-sm text-white/50">{disputesError}</div>
             </div>
-          </div>
+          ) : disputes.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-cyan-300">No disputes yet</div>
+              <div className="text-sm text-white/50">
+                {isOwnProfile
+                  ? "Your dispute cases will appear here when you're involved in disagreements."
+                  : `${user?.handle} has not been involved in any disputes yet.`}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {disputes.map((dispute) => (
+                <div
+                  key={dispute.id}
+                  onClick={() => handleDisputeClick(dispute.id)}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center justify-between">
+                        <h4 className="truncate text-sm font-medium text-white/90">
+                          {dispute.title}
+                        </h4>
+                        <DisputeStatusBadge status={dispute.status} />
+                      </div>
+
+                      <div className="mb-2 text-xs text-white/70">
+                        Created: {formatDate(dispute.createdAt)}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-white/60">
+                        <div className="flex justify-between">
+                          <span>Parties:</span>
+                          <span className="text-white/80">
+                            {dispute.parties}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Your Role:</span>
+                          <span className="text-cyan-300">
+                            {getUserRoleInDispute(dispute)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Type:</span>
+                          <span className="text-white/80">
+                            {dispute.request}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </BentoCard>
 
         {/* User's Public Agreements - UPDATED WITH REAL DATA */}

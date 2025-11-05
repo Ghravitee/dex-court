@@ -546,7 +546,6 @@ class DisputeService {
     const plaintiffData = extractUserData(dispute.plaintiff);
     const defendantData = extractUserData(dispute.defendant);
 
-    // FIX: Preserve the separate witness structure
     const witnesses = {
       plaintiff:
         dispute.witnesses?.plaintiff?.map((w: any) => ({
@@ -622,29 +621,71 @@ class DisputeService {
   }
 
   // Also update the transformDisputeListItemToRow function
+  // In your disputeServices.ts file - update this function
   transformDisputeListItemToRow(item: any): DisputeRow {
+    console.log("🔍 Transforming dispute list item:", item);
+
     // Helper function to extract user data with avatars
     const extractUserData = (user: any) => ({
-      username: user.username,
-      userId: user.id?.toString(),
-      avatarId: user.avatarId || user.avatar?.id || null,
-      telegramUsername: user.telegramUsername || user.telegram?.username,
+      username: user?.username || "Unknown",
+      userId: user?.id?.toString() || "0",
+      avatarId: user?.avatarId || user?.avatar?.id || null,
+      telegramUsername:
+        user?.telegramUsername || user?.telegram?.username || null,
     });
 
-    const plaintiffData = extractUserData(item.parties.plaintiff);
-    const defendantData = extractUserData(item.parties.defendant);
+    const plaintiffData = extractUserData(item.parties?.plaintiff);
+    const defendantData = extractUserData(item.parties?.defendant);
+
+    // Handle witnesses structure properly
+    let witnesses = { plaintiff: [], defendant: [] };
+
+    if (item.witnesses) {
+      if (
+        typeof item.witnesses === "object" &&
+        !Array.isArray(item.witnesses)
+      ) {
+        // Handle object structure { plaintiff: [], defendant: [] }
+        witnesses = {
+          plaintiff: (item.witnesses.plaintiff || []).map((w: any) => ({
+            id: w?.id || 0,
+            username: w?.username || "Unknown",
+            avatarId: w?.avatarId || w?.avatar?.id || null,
+          })),
+          defendant: (item.witnesses.defendant || []).map((w: any) => ({
+            id: w?.id || 0,
+            username: w?.username || "Unknown",
+            avatarId: w?.avatarId || w?.avatar?.id || null,
+          })),
+        };
+      } else if (Array.isArray(item.witnesses)) {
+        // Handle array structure - assign to plaintiff witnesses by default
+        witnesses = {
+          plaintiff: item.witnesses.map((w: any) => ({
+            id: w?.id || 0,
+            username: w?.username || "Unknown",
+            avatarId: w?.avatarId || w?.avatar?.id || null,
+          })),
+          defendant: [],
+        };
+      }
+    }
+
+    console.log("🔍 Witnesses after list transformation:", witnesses);
 
     return {
-      id: item.id.toString(),
-      createdAt: item.createdAt,
-      title: item.title,
+      id: item.id?.toString() || "0",
+      createdAt: item.createdAt || new Date().toISOString(),
+      title: item.title || "Untitled Dispute",
       request:
         item.requestType === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
       parties: `${plaintiffData.username} vs ${defendantData.username}`,
       status: this.mapStatusToFrontend(item.status),
-      claim: item.claim,
+      claim: item.claim || "No claim specified",
       plaintiff: plaintiffData.username,
       defendant: defendantData.username,
+      description: item.description || "No description provided",
+      witnesses: witnesses,
       evidence: [], // Add empty evidence array for list items
       plaintiffData,
       defendantData,

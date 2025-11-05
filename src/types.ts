@@ -370,6 +370,7 @@ export interface DisputeDetails {
   defendantResponse: DefendantResponse;
 }
 
+// In your types file, update the DisputeListItem interface
 export interface DisputeListItem {
   id: number;
   title: string;
@@ -385,8 +386,12 @@ export interface DisputeListItem {
     plaintiff: UserInfo;
     defendant: UserInfo;
   };
+  // 🆕 ADD witnesses property to list items
+  witnesses?: {
+    plaintiff: UserInfo[];
+    defendant: UserInfo[];
+  };
 }
-
 export interface DisputeListResponse {
   totalDisputes: number;
   totalResults: number;
@@ -490,4 +495,24 @@ export interface UploadedFile {
   preview?: string;
   type: "image" | "document";
   size?: string;
+}
+
+export interface VoteData {
+  choice: "plaintiff" | "defendant" | "dismissed" | null;
+  comment: string;
+}
+
+// Simplified evidence type definitions - only images and docs
+export type EvidenceType =
+  | "image"
+  | "pdf"
+  | "transaction"
+  | "chat"
+  | "document";
+
+export interface EvidenceItem {
+  name: string;
+  type: EvidenceType;
+  url: string;
+  preview?: string;
 }
