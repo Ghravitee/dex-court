@@ -458,3 +458,86 @@ body::after {
 .animate-slide-in-right {
   animation: slide-in-right 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
 }
+
+/* Base notification styling — keeps the glass/card look when you want it */
+.toaster [data-toast="notification"] {
+  @apply rounded-xl border px-4 py-3 shadow-lg;
+  /* fallback vars — will be overridden per-variant below */
+  background: var(--toast-bg, rgba(17, 24, 39, 0.85));
+  color: var(--toast-text, #fff);
+  border-color: var(--toast-border, rgba(255, 255, 255, 0.06));
+}
+
+/* Variant: success (green) */
+.toaster [data-toast="notification"][data-type="success"],
+.toaster [data-toast="notification"].sonner-success {
+  /* two selector forms: prefer data-type, fallback on class if your version uses classes */
+  background: linear-gradient(
+    180deg,
+    rgba(16, 185, 129, 0.95),
+    rgba(16, 185, 129, 0.88)
+  );
+  border-color: rgba(4, 120, 87, 0.9);
+  color: white;
+}
+
+/* Variant: error (red) */
+.toaster [data-toast="notification"][data-type="error"],
+.toaster [data-toast="notification"].sonner-error {
+  background: linear-gradient(
+    180deg,
+    rgba(239, 68, 68, 0.95),
+    rgba(239, 68, 68, 0.88)
+  );
+  border-color: rgba(153, 27, 27, 0.9);
+  color: white;
+}
+
+/* Variant: warning (yellow / amber) */
+.toaster [data-toast="notification"][data-type="warning"],
+.toaster [data-toast="notification"].sonner-warning {
+  background: linear-gradient(
+    180deg,
+    rgba(234, 179, 8, 0.95),
+    rgba(234, 179, 8, 0.88)
+  );
+  border-color: rgba(133, 77, 14, 0.9);
+  color: rgba(17, 24, 39, 1); /* dark text on yellow */
+}
+
+/* Variant: info (blue) */
+.toaster [data-toast="notification"][data-type="info"],
+.toaster [data-toast="notification"].sonner-info {
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.95),
+    rgba(59, 130, 246, 0.88)
+  );
+  border-color: rgba(30, 64, 175, 0.9);
+  color: white;
+}
+
+/* Icon and action button tweaks inside the notification */
+.toaster [data-toast="notification"] [data-toast="icon"] {
+  /* keep icon visible and a little separated */
+  margin-right: 0.6rem;
+  opacity: 0.95;
+}
+
+.toaster [data-toast="notification"] [data-toast-button="action"] {
+  @apply rounded-md px-2 py-1 text-sm font-medium;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* small: close button (x) */
+.toaster [data-toast="notification"] button[aria-label="Close"] {
+  opacity: 0.85;
+}
+
+/* Optional: make toasts slightly larger on desktop */
+@media (min-width: 768px) {
+  .toaster [data-toast="notification"] {
+    padding: 0.8rem 1rem;
+  }
+}

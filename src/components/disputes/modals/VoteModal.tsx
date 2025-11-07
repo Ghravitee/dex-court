@@ -4,13 +4,13 @@ import {
   cleanTelegramUsername,
   formatTelegramUsernameForDisplay,
 } from "../../../lib/usernameUtils";
-import { Info, Minus, Scale, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Info, Scale, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback } from "react";
 import { VscVerifiedFilled } from "react-icons/vsc";
-import { VoteOption } from "../VoteOption";
 import { useNavigate } from "react-router-dom";
 import type { VoteData, DisputeRow } from "../../../types";
+import { Loader2 } from "lucide-react";
 
 interface VoteModalProps {
   isOpen: boolean;
@@ -22,12 +22,77 @@ interface VoteModalProps {
   ) => void;
   onCastVote: () => void;
   hasVoted: boolean;
+  isSubmitting: boolean; // Add this line
   dispute: DisputeRow | null;
   canUserVote: () => Promise<{ canVote: boolean; reason?: string }>;
   isCurrentUserPlaintiff: () => boolean;
   isCurrentUserDefendant: () => boolean;
   isJudge?: boolean;
 }
+
+// New VoteOption component matching the voting page style
+const VoteOption = ({
+  label,
+  active,
+  onClick,
+  choice,
+  optionType,
+  disabled = false,
+  username,
+  avatarId,
+  userId,
+}: {
+  label: string | React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  choice: "plaintiff" | "defendant" | "dismissed" | null;
+  optionType: "plaintiff" | "defendant" | "dismissed";
+  disabled?: boolean;
+  username?: string;
+  avatarId?: number | null;
+  userId?: string;
+}) => {
+  const showThumbsUp = active && choice === optionType;
+  const showThumbsDown =
+    choice &&
+    choice !== optionType &&
+    choice !== "dismissed" &&
+    optionType !== "dismissed";
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${
+        disabled
+          ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50"
+          : active
+            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/40 active:scale-[0.98]"
+            : "border-white/10 bg-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/20 active:scale-[0.98]"
+      }`}
+    >
+      {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
+      {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
+      {typeof label === "string" ? (
+        username && avatarId && userId ? (
+          <div className="flex items-center gap-2">
+            <UserAvatar
+              userId={userId}
+              avatarId={avatarId}
+              username={username}
+              size="sm"
+            />
+            <span>{label}</span>
+          </div>
+        ) : (
+          label
+        )
+      ) : (
+        label
+      )}
+    </button>
+  );
+};
 
 export const VoteModal = ({
   isOpen,
@@ -36,11 +101,12 @@ export const VoteModal = ({
   onVoteChange,
   onCastVote,
   hasVoted,
+  isSubmitting, // Add this parameter
   dispute,
   canUserVote,
   isCurrentUserPlaintiff,
   isCurrentUserDefendant,
-  isJudge = true, // Default to true for mock
+  isJudge = true,
 }: VoteModalProps) => {
   const navigate = useNavigate();
 
@@ -63,6 +129,17 @@ export const VoteModal = ({
     },
     [onVoteChange, voteData.choice],
   );
+
+  const handleCastVoteWithFeedback = useCallback(async () => {
+    if (!voteData.choice || !dispute) return;
+
+    try {
+      await onCastVote();
+    } catch (error) {
+      console.error("Failed to cast vote:", error);
+      // Error handling is now done in the parent component
+    }
+  }, [voteData.choice, dispute, onCastVote]);
 
   if (!isOpen) return null;
 
@@ -94,6 +171,7 @@ export const VoteModal = ({
               variant="ghost"
               size="sm"
               onClick={onClose}
+              disabled={isSubmitting}
               className="text-white/70 hover:text-white"
             >
               <X className="h-5 w-5" />
@@ -116,12 +194,27 @@ export const VoteModal = ({
               </div>
             ) : hasVoted ? (
               <div className="py-8 text-center">
+                <div className="mb-4 text-6xl">✅</div>
                 <div className="mb-2 text-lg font-semibold text-emerald-400">
-                  ✓ Vote Submitted
+                  Vote Successfully Submitted!
                 </div>
-                <div className="text-sm text-cyan-200">
-                  Thank you for participating. Your vote will be revealed when
-                  the voting period ends.
+                <div className="mb-4 text-sm text-cyan-200">
+                  Thank you for participating in the democratic process. Your
+                  vote helps maintain fairness and transparency in dispute
+                  resolution.
+                </div>
+                <div className="rounded-lg bg-cyan-500/10 p-3 text-xs text-cyan-300/70">
+                  <div className="mb-1 font-semibold">What happens next?</div>
+                  <ul className="space-y-1 text-left">
+                    <li>• Your vote remains confidential until voting ends</li>
+                    <li>
+                      • Results will be revealed when the voting period
+                      concludes
+                    </li>
+                    <li>
+                      • You can view the final outcome in the "Concluded" tab
+                    </li>
+                  </ul>
                 </div>
               </div>
             ) : (
@@ -176,9 +269,9 @@ export const VoteModal = ({
                   </div>
                 </div>
 
-                {/* Voting Options */}
+                {/* Voting Options - Updated to match voting page */}
                 <div>
-                  <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200">
+                  <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     Who is your vote for?
                   </h4>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -199,7 +292,7 @@ export const VoteModal = ({
                           <div className="text-left">
                             <div>Plaintiff</div>
                             <div className="flex items-center gap-1">
-                              <button
+                              <span
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const cleanUsername = cleanTelegramUsername(
@@ -214,7 +307,7 @@ export const VoteModal = ({
                                 {formatTelegramUsernameForDisplay(
                                   dispute?.plaintiff || "",
                                 )}
-                              </button>
+                              </span>
                               {isCurrentUserPlaintiff() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
                               )}
@@ -224,7 +317,15 @@ export const VoteModal = ({
                       }
                       active={voteData.choice === "plaintiff"}
                       onClick={() => handleVoteChoice("plaintiff")}
-                      icon={<ThumbsUp className="h-4 w-4" />}
+                      choice={voteData.choice}
+                      optionType="plaintiff"
+                      disabled={isSubmitting}
+                      username={cleanTelegramUsername(dispute?.plaintiff || "")}
+                      avatarId={dispute?.plaintiffData?.avatarId || null}
+                      userId={
+                        dispute?.plaintiffData?.userId ||
+                        cleanTelegramUsername(dispute?.plaintiff || "")
+                      }
                     />
                     <VoteOption
                       label={
@@ -243,7 +344,7 @@ export const VoteModal = ({
                           <div className="text-left">
                             <div>Defendant</div>
                             <div className="flex items-center gap-1">
-                              <button
+                              <span
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const cleanUsername = cleanTelegramUsername(
@@ -258,7 +359,7 @@ export const VoteModal = ({
                                 {formatTelegramUsernameForDisplay(
                                   dispute?.defendant || "",
                                 )}
-                              </button>
+                              </span>
                               {isCurrentUserDefendant() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
                               )}
@@ -268,13 +369,23 @@ export const VoteModal = ({
                       }
                       active={voteData.choice === "defendant"}
                       onClick={() => handleVoteChoice("defendant")}
-                      icon={<ThumbsDown className="h-4 w-4" />}
+                      choice={voteData.choice}
+                      optionType="defendant"
+                      disabled={isSubmitting}
+                      username={cleanTelegramUsername(dispute?.defendant || "")}
+                      avatarId={dispute?.defendantData?.avatarId || null}
+                      userId={
+                        dispute?.defendantData?.userId ||
+                        cleanTelegramUsername(dispute?.defendant || "")
+                      }
                     />
                     <VoteOption
                       label="Dismiss Case"
                       active={voteData.choice === "dismissed"}
                       onClick={() => handleVoteChoice("dismissed")}
-                      icon={<Minus className="h-4 w-4" />}
+                      choice={voteData.choice}
+                      optionType="dismissed"
+                      disabled={isSubmitting}
                     />
                   </div>
                 </div>
@@ -293,7 +404,7 @@ export const VoteModal = ({
                     )}
                   </div>
                   <textarea
-                    disabled={!isJudge}
+                    disabled={!isJudge || isSubmitting}
                     value={voteData.comment}
                     onChange={(e) => handleCommentChange(e.target.value)}
                     className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
@@ -314,11 +425,18 @@ export const VoteModal = ({
                 <div className="flex items-center justify-between gap-3">
                   <Button
                     variant="neon"
-                    className="neon-hover"
-                    disabled={!voteData.choice}
-                    onClick={onCastVote}
+                    className="neon-hover relative"
+                    disabled={!voteData.choice || isSubmitting}
+                    onClick={handleCastVoteWithFeedback}
                   >
-                    Cast Vote
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting Vote...
+                      </>
+                    ) : (
+                      "Cast Vote"
+                    )}
                   </Button>
                   <div className="group relative cursor-pointer">
                     <Info className="h-4 w-4 text-cyan-300/70 transition group-hover:text-cyan-300" />
@@ -329,6 +447,18 @@ export const VoteModal = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Voting Progress */}
+                {isSubmitting && (
+                  <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-cyan-300" />
+                      <div className="text-sm text-cyan-200">
+                        Securely submitting your vote...
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

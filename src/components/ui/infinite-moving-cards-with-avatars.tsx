@@ -1,7 +1,8 @@
 import { cn } from "../../lib/utils";
 import React, { useEffect, useState } from "react";
 import { UserAvatar } from "../UserAvatar";
-import { Link } from "react-router-dom"; // ADD THIS IMPORT
+import { Link } from "react-router-dom";
+import { FaArrowRightArrowLeft } from "react-icons/fa6";
 
 interface AgreementItem {
   quote: string;
@@ -24,7 +25,6 @@ interface JudgeItem {
   userId?: string;
 }
 
-// ADD NEW DisputeItem interface
 interface DisputeItem {
   id: string;
   quote: string;
@@ -42,16 +42,43 @@ interface DisputeItem {
     avatarId?: number | null;
     username?: string;
   };
+  plaintiffUserId?: string; // ADD THIS
+  defendantUserId?: string; // ADD THIS
   evidenceCount?: number;
 }
 
+// ADD NEW LiveVotingItem interface
+interface LiveVotingItem {
+  id: string;
+  quote: string;
+  name: string;
+  title: string;
+  plaintiff: string;
+  defendant: string;
+  plaintiffData?: {
+    userId?: string;
+    avatarId?: number | null;
+    username?: string;
+  };
+  defendantData?: {
+    userId?: string;
+    avatarId?: number | null;
+    username?: string;
+  };
+  plaintiffUserId?: string; // ADD THIS
+  defendantUserId?: string; // ADD THIS
+  endsAt?: number;
+  hasVoted?: boolean;
+  timeRemaining?: string;
+}
+
 interface InfiniteMovingCardsWithAvatarsProps {
-  items: (AgreementItem | JudgeItem | DisputeItem)[]; // UPDATE to include DisputeItem
+  items: (AgreementItem | JudgeItem | DisputeItem | LiveVotingItem)[]; // UPDATE to include LiveVotingItem
   direction?: "left" | "right";
   speed?: "fast" | "normal" | "slow";
   pauseOnHover?: boolean;
   className?: string;
-  type: "agreements" | "judges" | "disputes"; // ADD "disputes" type
+  type: "agreements" | "judges" | "disputes" | "live-voting"; // ADD "live-voting" type
 }
 
 export const InfiniteMovingCardsWithAvatars = ({
@@ -116,7 +143,9 @@ export const InfiniteMovingCardsWithAvatars = ({
   }, [direction, speed]);
 
   // Helper function to render the appropriate card content based on type
-  const renderCardContent = (item: AgreementItem | JudgeItem | DisputeItem) => {
+  const renderCardContent = (
+    item: AgreementItem | JudgeItem | DisputeItem | LiveVotingItem,
+  ) => {
     // Agreements type
     if (type === "agreements" && "createdBy" in item) {
       return (
@@ -125,14 +154,13 @@ export const InfiniteMovingCardsWithAvatars = ({
           <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
             <div className="flex items-center gap-2">
               <UserAvatar
-                userId={item.createdByUserId || item.createdBy || ""}
+                userId={item.createdByUserId || item.createdBy || "unknown"}
                 avatarId={item.createdByAvatarId ?? null}
-                username={item.createdBy || ""}
+                username={item.createdBy || "unknown"}
                 size="sm"
               />
               <span className="text-xs text-cyan-300">{item.createdBy}</span>
             </div>
-            <span className="text-xs text-cyan-400">↔</span>
             <div className="flex items-center gap-2">
               <UserAvatar
                 userId={item.counterpartyUserId || item.counterparty || ""}
@@ -207,11 +235,11 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    // Disputes type - NEW
+    // Disputes type
     if (type === "disputes" && "plaintiff" in item) {
       const disputeItem = item as DisputeItem;
       return (
-        <>
+        <div className="flex flex-col">
           {/* Avatars Section for Disputes */}
 
           {/* Quote */}
@@ -220,43 +248,140 @@ export const InfiniteMovingCardsWithAvatars = ({
           </span>
 
           {/* Additional Info */}
-          <div className="relative z-20 mt-4 flex flex-row items-center justify-between">
-            <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
-              <div className="flex items-center gap-2">
-                <UserAvatar
-                  userId={
-                    disputeItem.plaintiffData?.userId ||
-                    disputeItem.plaintiff ||
-                    ""
-                  }
-                  avatarId={disputeItem.plaintiffData?.avatarId ?? null}
-                  username={disputeItem.plaintiff}
-                  size="sm"
-                />
-                <span className="text-xs text-cyan-300">
-                  {disputeItem.plaintiff}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <UserAvatar
-                  userId={
-                    disputeItem.defendantData?.userId ||
-                    disputeItem.defendant ||
-                    ""
-                  }
-                  avatarId={disputeItem.defendantData?.avatarId ?? null}
-                  username={disputeItem.defendant}
-                  size="sm"
-                />
-                <span className="text-xs text-cyan-300">
-                  {disputeItem.defendant}
-                </span>
-              </div>
-            </div>
-          </div>
           <div className="flex items-center justify-between text-sm leading-[1.6] font-normal text-cyan-200/70">
             <p>{disputeItem.title}</p>
+          </div>
+
+          <div className="relative z-20 mt-10 flex items-center justify-center gap-3">
+            <div className="flex flex-col items-center gap-2">
+              <UserAvatar
+                userId={
+                  disputeItem.plaintiffData?.userId ||
+                  disputeItem.plaintiffUserId ||
+                  disputeItem.plaintiff ||
+                  ""
+                }
+                avatarId={disputeItem.plaintiffData?.avatarId ?? null}
+                username={disputeItem.plaintiff}
+                size="md"
+              />
+              <span className="text-xs text-cyan-300">
+                {disputeItem.plaintiff}
+              </span>
+            </div>
+            <span className="text-cyan-400">
+              <FaArrowRightArrowLeft />
+            </span>
+
+            <div className="flex flex-col items-center gap-2">
+              <UserAvatar
+                userId={
+                  disputeItem.defendantData?.userId ||
+                  disputeItem.defendantUserId ||
+                  disputeItem.defendant ||
+                  ""
+                }
+                avatarId={disputeItem.defendantData?.avatarId ?? null}
+                username={disputeItem.defendant}
+                size="md"
+              />
+              <span className="text-xs text-cyan-300">
+                {disputeItem.defendant}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Live Voting type - NEW
+    if (type === "live-voting" && "plaintiff" in item) {
+      const votingItem = item as LiveVotingItem;
+      return (
+        <>
+          {/* Voting Badge */}
+          <div className="relative z-20 mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500/20">
+                <div className="h-2 w-2 animate-pulse rounded-full bg-red-400"></div>
+              </div>
+              <span className="text-xs font-medium text-red-400">
+                LIVE VOTING
+              </span>
+            </div>
+            {votingItem.hasVoted && (
+              <span className="text-xs text-green-400">✓ Voted</span>
+            )}
+          </div>
+
+          {/* Quote */}
+          <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
+            {votingItem.quote}
+          </span>
+
+          {/* Additional Info */}
+          <div className="relative z-20 my-4 flex flex-row items-center justify-between">
+            <span className="text-sm leading-[1.6] font-normal text-cyan-200/70">
+              {votingItem.title}
+            </span>
+          </div>
+
+          {/* Time Remaining */}
+          {votingItem.timeRemaining && (
+            <div className="relative z-20 mt-3 flex items-center justify-between">
+              <span className="text-xs text-amber-400">
+                ⏳ {votingItem.timeRemaining}
+              </span>
+              {votingItem.endsAt && (
+                <span className="text-xs text-amber-200/70">
+                  Ends in{" "}
+                  {Math.ceil(
+                    (votingItem.endsAt - Date.now()) / (1000 * 60 * 60 * 24),
+                  )}{" "}
+                  days
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Avatars Section for Live Voting */}
+          <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
+            <div className="flex items-center gap-2">
+              <UserAvatar
+                userId={
+                  votingItem.plaintiffData?.userId ||
+                  votingItem.plaintiffUserId ||
+                  votingItem.plaintiff ||
+                  ""
+                }
+                avatarId={votingItem.plaintiffData?.avatarId ?? null}
+                username={votingItem.plaintiff}
+                size="md"
+              />
+              <span className="text-xs text-cyan-300">
+                {votingItem.plaintiff}
+              </span>
+            </div>
+            <span className="text-cyan-400">
+              <FaArrowRightArrowLeft />
+            </span>
+
+            <div className="flex items-center gap-2">
+              <UserAvatar
+                userId={
+                  votingItem.defendantData?.userId ||
+                  votingItem.defendantUserId ||
+                  votingItem.defendant ||
+                  ""
+                }
+                avatarId={votingItem.defendantData?.avatarId ?? null}
+                username={votingItem.defendant}
+                size="md"
+              />
+              <span className="text-xs text-cyan-300">
+                {votingItem.defendant}
+              </span>
+            </div>
           </div>
         </>
       );
@@ -301,9 +426,12 @@ export const InfiniteMovingCardsWithAvatars = ({
             className="relative w-[350px] max-w-full shrink-0 cursor-pointer rounded-2xl border border-b-0 border-cyan-400/30 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br" // ADD hover effects and cursor
             key={`${item.name}-${idx}`}
           >
-            {/* WRAP CONTENT IN LINK FOR DISPUTES */}
-            {type === "disputes" && "id" in item ? (
-              <Link to={`/disputes/${item.id}`} className="block h-full w-full">
+            {/* WRAP CONTENT IN LINK FOR DISPUTES AND LIVE VOTING */}
+            {(type === "disputes" || type === "live-voting") && "id" in item ? (
+              <Link
+                to={type === "live-voting" ? `/voting` : `/disputes/${item.id}`}
+                className="block h-full w-full"
+              >
                 <blockquote className="h-full">
                   {renderCardContent(item)}
                 </blockquote>

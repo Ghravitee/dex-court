@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Clock,
   Users,
-  FileText,
   Scale,
   MessageCircle,
   Upload,
@@ -14,13 +13,13 @@ import {
   Shield,
   Loader2,
   BarChart3,
+  Vote,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { disputeService } from "../services/disputeServices";
-// Add these imports with your other imports
 import { UserAvatar } from "../components/UserAvatar";
 import {
   cleanTelegramUsername,
@@ -44,6 +43,7 @@ import VoteOutcomeModal from "../components/disputes/modals/VoteOutcomeModal";
 import SettleConfirmationModal from "../components/disputes/modals/SettleConfirmationModal";
 import DisputeChat from "./DisputeChat";
 import type { DisputeChatRole } from "./DisputeChat/types/dto";
+import { useVotingStatus } from "../hooks/useVotingStatus";
 
 // Main Component
 export default function DisputeDetails() {
@@ -61,22 +61,28 @@ export default function DisputeDetails() {
   const [settleModalOpen, setSettleModalOpen] = useState(false);
 
   // Voting state
+  // Voting state
   const [voteData, setVoteData] = useState<VoteData>({
     choice: null,
     comment: "",
   });
-  const [hasVoted, setHasVoted] = useState(false);
+
+  const disputeId = id ? parseInt(id) : null;
+
+  const {
+    hasVoted,
+    canVote,
+    reason,
+    isLoading: votingStatusLoading,
+    markAsVoted,
+  } = useVotingStatus(disputeId, dispute);
+
   const [voteOutcomeModalOpen, setVoteOutcomeModalOpen] = useState(false);
   const [voteModalOpen, setVoteModalOpen] = useState(false);
 
   // Reply modals state
   const [defendantReplyModalOpen, setDefendantReplyModalOpen] = useState(false);
   const [plaintiffReplyModalOpen, setPlaintiffReplyModalOpen] = useState(false);
-
-  const [votingEligibility, setVotingEligibility] = useState<{
-    canVote: boolean;
-    reason?: string;
-  }>({ canVote: false });
 
   // Replace your current isCurrentUserPlaintiff function with this:
   const isCurrentUserPlaintiff = useCallback(() => {
@@ -120,42 +126,15 @@ export default function DisputeDetails() {
   const canUserVote = useCallback(async (): Promise<{
     canVote: boolean;
     reason?: string;
+    hasVoted?: boolean;
   }> => {
-    if (!user || !dispute) {
-      return { canVote: false, reason: "User or dispute not found" };
-    }
-
-    // Quick client-side check first - this is the key fix
-    if (isCurrentUserPlaintiff()) {
-      return {
-        canVote: false,
-        reason: "Plaintiffs cannot vote in their own disputes",
-      };
-    }
-
-    if (isCurrentUserDefendant()) {
-      return {
-        canVote: false,
-        reason: "Defendants cannot vote in their own disputes",
-      };
-    }
-
-    // Only call the API if user is not plaintiff or defendant
-    const disputeId = parseInt(dispute.id);
-    if (isNaN(disputeId)) {
-      return { canVote: false, reason: "Invalid dispute ID" };
-    }
-
-    try {
-      return await disputeService.canUserVote(
-        disputeId,
-        user.id || "current-user",
-      );
-    } catch (error) {
-      console.error("Error checking voting eligibility:", error);
-      return { canVote: false, reason: "Error checking eligibility" };
-    }
-  }, [user, dispute, isCurrentUserPlaintiff, isCurrentUserDefendant]);
+    // Return the state from our hook
+    return {
+      canVote,
+      reason,
+      hasVoted,
+    };
+  }, [canVote, reason, hasVoted]);
 
   // Add this function to your DisputeDetails component
   const getUserRole = (): DisputeChatRole | undefined => {
@@ -190,28 +169,16 @@ export default function DisputeDetails() {
     return undefined;
   };
 
-  // === ADD THIS useEffect HERE ===
-  // Check voting eligibility when dispute loads or user changes
   useEffect(() => {
-    const checkEligibility = async () => {
-      console.log("🔍 Checking voting eligibility...");
-      console.log("Dispute:", dispute?.status);
-      console.log("User:", user?.username);
-
-      if (dispute && user && dispute.status === "Vote in Progress") {
-        console.log("🔄 Fetching voting eligibility...");
-        const eligibility = await canUserVote();
-        console.log("✅ Voting eligibility result:", eligibility);
-        setVotingEligibility(eligibility);
-      } else {
-        console.log("❌ Conditions not met for voting check");
-        // Reset if not in voting status
-        setVotingEligibility({ canVote: false });
-      }
-    };
-
-    checkEligibility();
-  }, [dispute, user, canUserVote]);
+    console.log("🔍 VOTING STATUS DEBUG:");
+    console.log("Dispute ID:", disputeId);
+    console.log("Dispute data:", dispute);
+    console.log("HasVoted from dispute:", dispute?.hasVoted);
+    console.log("Hook state - hasVoted:", hasVoted);
+    console.log("Hook state - canVote:", canVote);
+    console.log("Hook state - reason:", reason);
+    console.log("Hook state - isLoading:", votingStatusLoading);
+  }, [dispute, hasVoted, canVote, reason, votingStatusLoading, disputeId]);
 
   // Fetch dispute details
   // Fetch dispute details
@@ -372,15 +339,13 @@ export default function DisputeDetails() {
   );
 
   const handleCastVote = useCallback(async () => {
-    if (!voteData.choice || !id) return;
+    if (!voteData.choice || !disputeId || !user) return;
 
-    const disputeId = parseInt(id);
-    if (isNaN(disputeId)) {
-      toast.error("Invalid dispute ID");
-      return;
-    }
+    let loadingToast: string | number | undefined;
 
     try {
+      loadingToast = toast.loading("Submitting your vote...");
+
       await disputeService.castVote(disputeId, {
         voteType:
           voteData.choice === "plaintiff"
@@ -391,15 +356,39 @@ export default function DisputeDetails() {
         comment: voteData.comment,
       });
 
-      setHasVoted(true);
-      setVoteModalOpen(false);
-      toast.success("Vote submitted successfully!");
-    } catch (error: any) {
-      toast.error("Failed to submit vote", {
-        description: error.message,
+      toast.dismiss(loadingToast);
+
+      // Use the hook to mark as voted
+      markAsVoted(voteData.choice);
+
+      const voteMessage =
+        voteData.choice === "plaintiff"
+          ? "You voted for the Plaintiff"
+          : voteData.choice === "defendant"
+            ? "You voted for the Defendant"
+            : "You voted to dismiss the case";
+
+      toast.success("Vote Submitted Successfully! 🗳️", {
+        description: `${voteMessage}. Your vote is now confidential.`,
       });
+
+      setVoteModalOpen(false);
+      setVoteData({ choice: null, comment: "" });
+
+      // Refresh dispute details
+      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+      const transformedDispute =
+        disputeService.transformDisputeDetailsToRow(disputeDetails);
+      setDispute(transformedDispute);
+    } catch (error: any) {
+      if (loadingToast) toast.dismiss(loadingToast);
+
+      toast.error("Failed to submit vote", {
+        description: error.message || "Please try again later",
+      });
+      throw error;
     }
-  }, [voteData, id]);
+  }, [voteData, disputeId, user, markAsVoted]);
 
   const handleOpenVoteModal = useCallback(() => {
     setVoteModalOpen(true);
@@ -570,6 +559,100 @@ export default function DisputeDetails() {
     return trimmedDesc !== "" && trimmedDesc !== "No response description";
   };
 
+  // Add this component inside your DisputeDetails component
+  const VotingStatus = () => {
+    if (dispute?.status !== "Vote in Progress") return null;
+
+    // Show loading state
+    if (votingStatusLoading) {
+      return (
+        <div className="animate-fade-in card-cyan glass rounded-2xl p-6">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+            <p className="text-sm text-cyan-200">Checking voting status...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // User has voted - Consistent with Voting page
+    if (hasVoted) {
+      return (
+        <div className="animate-fade-in card-emerald glass rounded-2xl p-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
+              <span className="text-2xl">✅</span>
+            </div>
+            <div>
+              <h3 className="mb-1 text-lg font-bold text-emerald-300">
+                Vote Submitted!
+              </h3>
+              <p className="text-sm text-emerald-200">
+                Thank you for participating in this dispute.
+              </p>
+              <p className="mt-2 text-xs text-emerald-300/70">
+                Results will be revealed when voting ends.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // User can vote
+    if (canVote) {
+      return (
+        <div className="animate-fade-in card-cyan glass rounded-2xl p-6">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
+              <Vote className="h-6 w-6 text-cyan-300" />
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <h3 className="mb-1 text-lg font-bold text-cyan-300">
+                Cast Your Vote
+              </h3>
+              <p className="text-sm text-cyan-200">
+                Your vote will help resolve this dispute fairly.
+              </p>
+            </div>
+            <Button
+              variant="neon"
+              className="neon-hover mt-2"
+              onClick={handleOpenVoteModal}
+              size="lg"
+            >
+              <Vote className="mr-2 h-4 w-4" />
+              Cast Vote
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // User cannot vote
+    return (
+      <div className="animate-fade-in card-amber glass rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+            <Shield className="h-6 w-6 text-amber-300" />
+          </div>
+          <div>
+            <h3 className="mb-1 text-lg font-bold text-amber-300">
+              Voting in Progress
+            </h3>
+            <p className="text-sm text-amber-200">
+              This dispute is currently being voted on by eligible community
+              members.
+            </p>
+            {reason && (
+              <p className="mt-2 text-xs text-amber-300/70">{reason}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -600,13 +683,33 @@ export default function DisputeDetails() {
     <div className="animate-fade-in space-y-6 py-6 text-white">
       <div className="flex items-center justify-between">
         {/* Back Button */}
-        <Button
-          onClick={() => navigate("/disputes")}
-          variant="ghost"
-          className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to Disputes
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => navigate("/disputes")}
+            variant="outline"
+            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Disputes
+          </Button>
+
+          {dispute.status === "Settled" ? (
+            <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1">
+              Settled
+            </span>
+          ) : dispute.status === "Pending" ? (
+            <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1">
+              Pending
+            </span>
+          ) : dispute.status === "Dismissed" ? (
+            <span className="badge-red inline-flex items-center rounded-full border px-4 py-1">
+              Dismissed
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-emerald-300">
+              Vote in Progress
+            </span>
+          )}
+        </div>
 
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
@@ -621,26 +724,29 @@ export default function DisputeDetails() {
               See Vote Outcome
             </Button>
           )}
-
           {/* Show Cast Vote button for Vote in Progress disputes */}
-          {/* Show Cast Vote button ONLY for Vote in Progress disputes AND eligible voters */}
-          {dispute.status === "Vote in Progress" &&
-            votingEligibility.canVote && (
-              <Button
-                variant="neon"
-                className="neon-hover ml-auto"
-                onClick={handleOpenVoteModal}
-              >
-                <Scale className="mr-2 h-4 w-4" />
-                Cast Vote
-              </Button>
-            )}
+
+          {dispute.status === "Vote in Progress" && canVote && !hasVoted && (
+            <Button
+              variant="neon"
+              className="neon-hover ml-auto"
+              onClick={handleOpenVoteModal}
+            >
+              <Vote className="mr-2 h-4 w-4" />
+              Cast Vote
+            </Button>
+          )}
+          {dispute.status === "Vote in Progress" && hasVoted && (
+            <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+              <span className="text-emerald-300">✅ Vote Submitted</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Header Card */}
       {/* Header Card */}
-      <div className="flex flex-col gap-3 lg:flex-row">
+      <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
         <div className="card-cyan glass max-w-2xl rounded-2xl p-6 shadow-lg">
           <div className="flex items-start justify-between">
             <div>
@@ -655,12 +761,7 @@ export default function DisputeDetails() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-emerald-300">
-                  <FileText className="h-4 w-4" />
                   <span>{dispute.request}</span>
-                </div>
-                <div className="flex items-center gap-2 text-yellow-300">
-                  <Scale className="h-4 w-4" />
-                  <span>{dispute.status}</span>
                 </div>
               </div>
             </div>
@@ -731,37 +832,7 @@ export default function DisputeDetails() {
             </div>
           </div>
         </div>
-        {dispute.status === "Vote in Progress" && (
-          <div className="animate-fade-in card-cyan glass rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="mb-2 text-xl font-bold text-cyan-300">
-                  Voting in Progress
-                </h3>
-                <p className="text-white">
-                  This dispute is currently being voted on. Cast your vote to
-                  help reach a resolution.
-                </p>
-                {!votingEligibility.canVote && votingEligibility.reason && (
-                  <p className="mt-2 text-sm text-yellow-300">
-                    {votingEligibility.reason}
-                  </p>
-                )}
-              </div>
-              {votingEligibility.canVote && (
-                <Button
-                  variant="neon"
-                  className="neon-hover border-purple-400/30 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
-                  onClick={handleOpenVoteModal}
-                  size="lg"
-                >
-                  <Scale className="mr-2 h-5 w-5" />
-                  Cast Your Vote
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        {dispute.status === "Vote in Progress" && <VotingStatus />}
       </div>
 
       {/* Two Column Layout */}
@@ -986,7 +1057,7 @@ export default function DisputeDetails() {
       {/* Action Buttons */}
       {/* Action Buttons */}
       {/* Action Buttons */}
-      <div className="flex gap-3 border-y border-cyan-500 py-6">
+      <div className="flex gap-3 border-b border-white/10 py-6">
         {/* Plaintiff Edit Button - Only show when dispute is pending */}
         {dispute.status === "Pending" && isCurrentUserPlaintiff() && (
           <Button
@@ -1040,15 +1111,24 @@ export default function DisputeDetails() {
           )}
 
         {/* Show Cast Vote button ONLY for Vote in Progress disputes */}
-        {dispute.status === "Vote in Progress" && (
+        {/* Enhanced Vote Button */}
+        {/* Show Cast Vote button ONLY for Vote in Progress disputes */}
+        {dispute.status === "Vote in Progress" && canVote && !hasVoted && (
           <Button
             variant="neon"
             className="neon-hover ml-auto"
             onClick={handleOpenVoteModal}
           >
-            <Scale className="mr-2 h-4 w-4" />
+            <Vote className="mr-2 h-4 w-4" />
             Cast Vote
           </Button>
+        )}
+
+        {/* Show voted status */}
+        {dispute.status === "Vote in Progress" && hasVoted && (
+          <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+            <span className="text-emerald-300">✅ Vote Submitted</span>
+          </div>
         )}
       </div>
 
@@ -1073,9 +1153,13 @@ export default function DisputeDetails() {
       />
 
       {/* Vote Outcome Modal */}
+
       <VoteOutcomeModal
         isOpen={voteOutcomeModalOpen}
         onClose={() => setVoteOutcomeModalOpen(false)}
+        disputeId={parseInt(id!)}
+        // Optional: You can also pass voteOutcome data directly if you already have it
+        // voteOutcome={yourVoteOutcomeData}
       />
 
       {/* Vote Modal */}
@@ -1086,12 +1170,13 @@ export default function DisputeDetails() {
         voteData={voteData}
         onVoteChange={handleVoteChange}
         onCastVote={handleCastVote}
-        hasVoted={hasVoted}
+        hasVoted={hasVoted} // CHANGE FROM votingState.hasVoted TO hasVoted
+        isSubmitting={false} // CHANGE FROM votingState.isSubmitting TO false (or remove if not needed)
         dispute={dispute}
         canUserVote={canUserVote}
         isCurrentUserPlaintiff={isCurrentUserPlaintiff}
         isCurrentUserDefendant={isCurrentUserDefendant}
-        isJudge={true} // You can make this dynamic based on user role
+        isJudge={true}
       />
       {/* Plaintiff Reply Modal */}
       <PlaintiffReplyModal

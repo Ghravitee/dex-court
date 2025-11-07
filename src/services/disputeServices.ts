@@ -11,6 +11,7 @@ import type {
   ApiError,
   DisputeRow,
   EvidenceFile,
+  VoteOutcomeData,
 } from "../types";
 
 class DisputeService {
@@ -402,10 +403,19 @@ class DisputeService {
   }
 
   // Cast vote
+  // In disputeServices.ts - check the castVote method
   async castVote(disputeId: number, data: VoteRequest): Promise<void> {
     try {
-      await api.post(`/dispute/${disputeId}/vote`, data);
+      console.log("🗳️ [DisputeService] Casting vote:", { disputeId, data });
+
+      const response = await api.post(`/dispute/${disputeId}/vote`, data);
+
+      console.log("✅ [DisputeService] Vote response:", response.data);
+
+      // If the API returns data, return it
+      return response.data;
     } catch (error: any) {
+      console.error("❌ [DisputeService] Vote failed:", error);
       this.handleError(error);
     }
   }
@@ -468,11 +478,116 @@ class DisputeService {
   }
 
   // Get vote outcome
-  async getVoteOutcome(disputeId: number): Promise<any> {
+  // Update the getVoteOutcome method in disputeServices.ts
+  // Update the getVoteOutcome method to handle the complex object structure
+  async getVoteOutcome(disputeId: number): Promise<VoteOutcomeData> {
     try {
+      console.log(
+        `🔍 [DisputeService] Fetching vote outcome for dispute ${disputeId}`,
+      );
+
       const response = await api.get(`/dispute/${disputeId}/vote-outcome`);
-      return response.data;
+
+      console.log(
+        `📊 [DisputeService] Raw vote outcome response:`,
+        response.data,
+      );
+
+      const apiData = response.data;
+
+      // Extract data from the complex object structure
+      const totalVotes =
+        typeof apiData.totalVotes === "number" ? apiData.totalVotes : 0;
+
+      // Extract judge votes - it's an object with plaintiff, defendant, dismiss properties
+      const judgeVotesObj =
+        apiData.votesPerGroup?.judges || apiData.judgeVotes || {};
+      const judgeVotes =
+        (judgeVotesObj.plaintiff || 0) +
+        (judgeVotesObj.defendant || 0) +
+        (judgeVotesObj.dismiss || 0);
+
+      // Extract community votes - sum across both tiers
+      const communityTierOne = apiData.votesPerGroup?.communityTierOne || {};
+      const communityTierTwo = apiData.votesPerGroup?.communityTierTwo || {};
+      const communityVotes =
+        (communityTierOne.plaintiff || 0) +
+        (communityTierOne.defendant || 0) +
+        (communityTierOne.dismiss || 0) +
+        (communityTierTwo.plaintiff || 0) +
+        (communityTierTwo.defendant || 0) +
+        (communityTierTwo.dismiss || 0);
+
+      // Extract judge percentage - it's an object, we need plaintiff percentage
+      const judgePctObj =
+        apiData.percentagesPerGroup?.judges || apiData.judgePct || {};
+      const judgePct = judgePctObj.plaintiff || 0;
+
+      // Extract community percentage - use communityTierOne as representative
+      const communityPctObj =
+        apiData.percentagesPerGroup?.communityTierOne ||
+        apiData.communityPct ||
+        {};
+      const communityPct = communityPctObj.plaintiff || 0;
+
+      // Determine winner based on weighted result or result field
+      let winner: "plaintiff" | "defendant" | "dismissed" = "dismissed";
+
+      // Option 1: Use result field (1 = plaintiff, 2 = defendant, 3 = dismissed)
+      if (apiData.result === 1) winner = "plaintiff";
+      else if (apiData.result === 2) winner = "defendant";
+      else if (apiData.result === 3) winner = "dismissed";
+      // Option 2: Use weighted object to determine winner
+      else if (apiData.weighted) {
+        const { plaintiff = 0, defendant = 0, dismiss = 0 } = apiData.weighted;
+        if (plaintiff > defendant && plaintiff > dismiss) winner = "plaintiff";
+        else if (defendant > plaintiff && defendant > dismiss)
+          winner = "defendant";
+        else winner = "dismissed";
+      }
+
+      const transformedData = {
+        winner: winner,
+        judgeVotes: judgeVotes,
+        communityVotes: communityVotes,
+        judgePct: judgePct,
+        communityPct: communityPct,
+        comments: apiData.comments || [],
+      };
+
+      console.log("🔄 Transformed vote outcome:", transformedData);
+      console.log("📈 Detailed vote analysis:", {
+        totalVotes,
+        judgeVotes: {
+          total: judgeVotes,
+          breakdown: judgeVotesObj,
+        },
+        communityVotes: {
+          total: communityVotes,
+          breakdown: {
+            tierOne: communityTierOne,
+            tierTwo: communityTierTwo,
+          },
+        },
+        judgePct: {
+          plaintiff: judgePct,
+          breakdown: judgePctObj,
+        },
+        communityPct: {
+          plaintiff: communityPct,
+          breakdown: communityPctObj,
+        },
+        winner,
+        weighted: apiData.weighted,
+        result: apiData.result,
+      });
+
+      return transformedData;
     } catch (error: any) {
+      console.error(
+        `❌ [DisputeService] Failed to fetch vote outcome for dispute ${disputeId}:`,
+        error,
+      );
       this.handleError(error);
     }
   }
@@ -488,9 +603,16 @@ class DisputeService {
   }
 
   // Get settled disputes with voting results
-  async getSettledDisputes(): Promise<any> {
+  // Get settled disputes with voting results - UPDATED for new endpoint
+  async getSettledDisputes(params?: {
+    top?: number;
+    skip?: number;
+    sort?: "asc" | "desc";
+    search?: string;
+    range?: string;
+  }): Promise<any> {
     try {
-      const response = await api.get("/dispute/vote-settled");
+      const response = await api.get("/dispute/vote-settled", { params });
       return response.data;
     } catch (error: any) {
       this.handleError(error);
@@ -519,10 +641,8 @@ class DisputeService {
   }
 
   // Transform API data to frontend format
-  // In disputeServices.ts - FIXED transformDisputeDetailsToRow function
+  // In disputeServices.ts - update transformDisputeDetailsToRow function
   transformDisputeDetailsToRow(dispute: DisputeDetails): DisputeRow {
-    console.log("🔍 Transforming dispute details:", dispute);
-
     // Helper function to extract user data with fallbacks
     const extractUserData = (user: any) => {
       if (!user) {
@@ -614,17 +734,16 @@ class DisputeService {
         : undefined,
       plaintiffData,
       defendantData,
+
+      hasVoted: dispute.hasVoted,
     };
 
-    console.log("🔍 FINAL Transformed dispute row:", transformed);
     return transformed;
   }
 
   // Also update the transformDisputeListItemToRow function
   // In your disputeServices.ts file - update this function
   transformDisputeListItemToRow(item: any): DisputeRow {
-    console.log("🔍 Transforming dispute list item:", item);
-
     // Helper function to extract user data with avatars
     const extractUserData = (user: any) => ({
       username: user?.username || "Unknown",
@@ -670,8 +789,6 @@ class DisputeService {
         };
       }
     }
-
-    console.log("🔍 Witnesses after list transformation:", witnesses);
 
     return {
       id: item.id?.toString() || "0",

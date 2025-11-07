@@ -347,7 +347,7 @@ class AgreementService {
   }
 
   // Get agreements list with filters
-  // Enhanced getAgreements method with detailed logging
+  // Enhanced getAgreements method with better parameter handling
   async getAgreements(params?: {
     top?: number;
     skip?: number;
@@ -362,7 +362,21 @@ class AgreementService {
       JSON.stringify(params, null, 2),
     );
 
-    const response = await api.get("/agreement", { params });
+    // Use page/page_size as primary parameters, fall back to top/skip
+    const requestParams = {
+      ...params,
+      // Ensure we're using consistent pagination
+      page: params?.page || 1,
+      page_size: params?.page_size || params?.top || 50,
+    };
+
+    // Remove top/skip if we're using page/page_size to avoid conflicts
+    if (requestParams.page && requestParams.page_size) {
+      delete requestParams.top;
+      delete requestParams.skip;
+    }
+
+    const response = await api.get("/agreement", { params: requestParams });
 
     console.log("📦 getAgreements response details:", {
       totalResults: response.data.totalResults,
@@ -404,6 +418,7 @@ class AgreementService {
   }
 
   // In agreementServices.ts - FIXED getAllAgreements method
+  // In agreementServices.ts - FIXED getAllAgreements method
   async getAllAgreements(filters?: {
     status?: number;
     search?: string;
@@ -412,7 +427,7 @@ class AgreementService {
     try {
       let allAgreements: AgreementSummaryDTO[] = [];
       let currentPage = 1;
-      const pageSize = 50;
+      const pageSize = 100; // Increased page size for better performance
       let hasMore = true;
       let totalAgreements = 0;
 
@@ -435,35 +450,51 @@ class AgreementService {
         if (pageAgreements.length === 0) {
           hasMore = false;
           console.log(`📄 Reached end at page ${currentPage}`);
-        } else {
-          allAgreements = [...allAgreements, ...pageAgreements];
-
-          // Use totalAgreements from the response, not totalResults
-          totalAgreements = response.totalAgreements || 0;
-
-          console.log(
-            `📄 Page ${currentPage}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
-          );
-
-          // Check if we've reached the actual total (not the page total)
-          if (totalAgreements > 0 && allAgreements.length >= totalAgreements) {
-            hasMore = false;
-            console.log(`✅ Reached total of ${totalAgreements} agreements`);
-          }
-
-          currentPage++;
-
-          // Safety limit to prevent infinite loops
-          if (currentPage > 100) {
-            console.warn("⚠️ Reached safety limit of 100 pages");
-            hasMore = false;
-          }
+          break;
         }
+
+        allAgreements = [...allAgreements, ...pageAgreements];
+
+        // Get total count from the first response
+        if (currentPage === 1) {
+          totalAgreements =
+            response.totalAgreements || response.totalResults || 0;
+          console.log(`📊 Total agreements in system: ${totalAgreements}`);
+        }
+
+        console.log(
+          `📄 Page ${currentPage}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
+        );
+
+        // Check if we've reached the total
+        if (totalAgreements > 0 && allAgreements.length >= totalAgreements) {
+          hasMore = false;
+          console.log(`✅ Reached total of ${totalAgreements} agreements`);
+          break;
+        }
+
+        // Also stop if we get fewer results than page size (indicating last page)
+        if (pageAgreements.length < pageSize) {
+          hasMore = false;
+          console.log(
+            `✅ Reached last page with ${pageAgreements.length} agreements`,
+          );
+          break;
+        }
+
+        currentPage++;
+
+        // Safety limit to prevent infinite loops
+        if (currentPage > 50) {
+          console.warn("⚠️ Reached safety limit of 50 pages");
+          hasMore = false;
+        }
+
+        // Small delay to avoid overwhelming the API
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      console.log(
-        `✅ Fetched ${allAgreements.length} total agreements (expected: ${totalAgreements})`,
-      );
+      console.log(`✅ Fetched ${allAgreements.length} total agreements`);
       return allAgreements;
     } catch (error) {
       console.error("❌ Failed to fetch all agreements:", error);

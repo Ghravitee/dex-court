@@ -39,6 +39,8 @@ import { InfiniteMovingAgreements } from "../components/ui/infinite-moving-agree
 import { InfiniteMovingCardsWithAvatars } from "../components/ui/infinite-moving-cards-with-avatars";
 import { disputeService } from "../services/disputeServices";
 import type { DisputeListItem, DisputeRow } from "../types";
+import { useSettledDisputesCount } from "../hooks/useSettledDisputesCount";
+import { useUsersCount } from "../hooks/useUsersCount";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
@@ -229,25 +231,43 @@ function genRevenue(type: "daily" | "weekly" | "monthly"): any[] {
 }
 
 function StatsGrid() {
-  const { agreementsCount, loading } = useAllAgreementsCount();
+  const { agreementsCount, loading: agreementsLoading } =
+    useAllAgreementsCount();
+  const { settledCount, loading: settledLoading } = useSettledDisputesCount();
+  const { usersCount, loading: usersLoading } = useUsersCount();
 
   const stats = useMemo(
     () => [
-      { label: "Settled Disputes", value: 342, icon: Trophy },
+      {
+        label: "Settled Disputes",
+        value: settledLoading ? 342 : settledCount,
+        icon: Trophy,
+      },
       { label: "Judges", value: 28, icon: Scale },
       { label: "Eligible Voters", value: 12400, icon: Users },
       {
         label: "Agreements",
-        value: loading ? 5312 : agreementsCount,
+        value: agreementsLoading ? 4 : agreementsCount,
         icon: Handshake,
       },
       { label: "Platform Revenue", value: 214000, icon: Landmark, prefix: "$" },
       { label: "Escrow TVL", value: 3100000, icon: Banknote, prefix: "$" },
-      { label: "Active Users", value: 7902, icon: User },
+      {
+        label: "Active Users",
+        value: usersLoading ? 7902 : usersCount,
+        icon: User,
+      },
       { label: "Paid to Judges", value: 68000, icon: Coins, prefix: "$" },
       { label: "Paid to Community", value: 112000, icon: Wallet, prefix: "$" },
     ],
-    [agreementsCount, loading],
+    [
+      agreementsCount,
+      agreementsLoading,
+      settledCount,
+      settledLoading,
+      usersCount,
+      usersLoading,
+    ],
   );
 
   return (
@@ -272,6 +292,13 @@ function StatsGrid() {
                 prefix={s.prefix || ""}
                 className="font-bold text-white lg:text-2xl"
               />
+              {/* Show loading indicators */}
+              {s.label === "Settled Disputes" && settledLoading && (
+                <div className="mt-1 text-xs text-cyan-300">Loading...</div>
+              )}
+              {s.label === "Active Users" && usersLoading && (
+                <div className="mt-1 text-xs text-cyan-300">Loading...</div>
+              )}
             </div>
           </div>
         ))}
@@ -453,25 +480,28 @@ function DisputesInfiniteCards() {
     fetchRecentDisputes();
   }, []);
 
+  // In DisputesInfiniteCards component, update the transformation:
   const disputeItems = useMemo(
     () =>
       disputes.map((dispute) => ({
-        id: dispute.id, // Add ID for linking
+        id: dispute.id,
         quote:
           dispute.claim || dispute.description || `Dispute: ${dispute.title}`,
         name: dispute.parties,
         title: `${dispute.status} • ${dispute.request}`,
-        // Add party information for avatars
         plaintiff: dispute.plaintiff,
         defendant: dispute.defendant,
         plaintiffData: dispute.plaintiffData,
         defendantData: dispute.defendantData,
-        // Add evidence count if available
+        // Ensure we're using actual user IDs
+        plaintiffUserId:
+          dispute.plaintiffData?.userId || dispute.plaintiffData?.id || "",
+        defendantUserId:
+          dispute.defendantData?.userId || dispute.defendantData?.id || "",
         evidenceCount: dispute.evidence?.length || 0,
       })),
     [disputes],
   );
-
   if (loading) {
     return (
       <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -526,42 +556,121 @@ function DisputesInfiniteCards() {
 }
 
 // NEW: Live Voting Infinite Cards Component
+// NEW: Live Voting Infinite Cards Component WITH REAL DATA
 function LiveVotingInfiniteCards() {
-  const votingItems = useMemo(
-    () => [
-      {
-        quote:
-          "Escrow Refund Request: The plaintiff seeks a full refund after the developer missed two key delivery milestones in a freelance contract.",
-        name: "@0xNova vs @0xVega",
-        title: "Community Voting • 2 days left",
-      },
-      {
-        quote:
-          "Code Ownership Dispute: A disagreement over authorship of a jointly developed smart contract for an NFT minting protocol.",
-        name: "@0xLuna vs @0xSol",
-        title: "Community Voting • 5 days left",
-      },
-      {
-        quote:
-          "Liquidity Pool Compensation Proposal: Following a governance bug exploit that drained 12% of the liquidity pool.",
-        name: "@0xTheta vs @0xDelta",
-        title: "DAO Voting • 3 days left",
-      },
-      {
-        quote:
-          "NFT Royalties Dispute: An artist claims unpaid royalties from a secondary marketplace smart contract.",
-        name: "@0xAria vs @0xMaven",
-        title: "Community Voting • 1 day left",
-      },
-      {
-        quote:
-          "Protocol Exploit Responsibility: A protocol contributor is accused of negligence after a critical vulnerability went unpatched.",
-        name: "@0xEcho vs @0xPrime",
-        title: "Expert Panel • 4 days left",
-      },
-    ],
-    [],
-  );
+  const [liveDisputes, setLiveDisputes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLiveVotingDisputes = async () => {
+      try {
+        setLoading(true);
+        const response = await disputeService.getVoteInProgressDisputes();
+
+        if (response?.results) {
+          console.log(
+            "🔍 Raw API response for live voting disputes:",
+            response.results,
+          );
+
+          // In LiveVotingInfiniteCards component, update the transformation:
+          const transformedDisputes = response.results.map((dispute: any) => {
+            // Calculate time remaining
+            let endsAt: number;
+            if (dispute.voteStartedAt) {
+              const voteStartedAt = parseAPIDate(dispute.voteStartedAt);
+              const votingDuration = 24 * 60 * 60 * 1000; // 24 hours
+              endsAt = voteStartedAt + votingDuration;
+            } else {
+              const createdAt = parseAPIDate(dispute.createdAt);
+              const votingDuration = 24 * 60 * 60 * 1000;
+              endsAt = createdAt + votingDuration;
+            }
+
+            const remain = Math.max(0, endsAt - now());
+            const daysLeft = Math.ceil(remain / (24 * 60 * 60 * 1000));
+
+            return {
+              id: dispute.id.toString(),
+              quote:
+                dispute.claim ||
+                dispute.description ||
+                `Dispute: ${dispute.title}`,
+              name: `${dispute.parties?.plaintiff?.username || "@plaintiff"} vs ${dispute.parties?.defendant?.username || "@defendant"}`,
+              title: `Community Voting • ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`,
+              plaintiff: dispute.parties?.plaintiff?.username || "@plaintiff",
+              defendant: dispute.parties?.defendant?.username || "@defendant",
+              plaintiffData: dispute.parties?.plaintiff,
+              defendantData: dispute.parties?.defendant,
+              // ADD THESE - Extract actual user IDs
+              plaintiffUserId:
+                dispute.parties?.plaintiff?.id?.toString() ||
+                dispute.parties?.plaintiff?.userId ||
+                "",
+              defendantUserId:
+                dispute.parties?.defendant?.id?.toString() ||
+                dispute.parties?.defendant?.userId ||
+                "",
+              endsAt: endsAt,
+              hasVoted: dispute.hasVoted || false,
+            };
+          });
+
+          setLiveDisputes(transformedDisputes);
+          console.log(
+            "✅ Live voting disputes loaded:",
+            transformedDisputes.length,
+          );
+        } else {
+          setLiveDisputes([]);
+        }
+      } catch (error) {
+        console.error("Error fetching live voting disputes:", error);
+        setLiveDisputes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLiveVotingDisputes();
+  }, []);
+
+  // Helper function to parse API dates (same as in Voting component)
+  const parseAPIDate = (dateString: string): number => {
+    const date = new Date(dateString);
+    if (!dateString.endsWith("Z")) {
+      return new Date(dateString + "Z").getTime();
+    }
+    return date.getTime();
+  };
+
+  const now = () => Date.now();
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="glow-text text-xl font-semibold text-cyan-100">
+            Live Voting Sessions
+          </h3>
+          <Button
+            variant="outline"
+            className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+            disabled
+          >
+            <Scale className="mr-2 h-4 w-4" />
+            Participate in Voting
+          </Button>
+        </div>
+        <div className="flex h-32 items-center justify-center">
+          <div className="flex items-center gap-2 text-cyan-300">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+            <span>Loading live voting sessions...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -579,13 +688,28 @@ function LiveVotingInfiniteCards() {
           </Button>
         </Link>
       </div>
-      <InfiniteMovingCardsWithAvatars
-        items={votingItems}
-        direction="left"
-        speed="slow"
-        pauseOnHover={true}
-        type="agreements"
-      />
+
+      {liveDisputes.length === 0 ? (
+        <div className="flex h-32 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 text-4xl">🗳️</div>
+            <h4 className="mb-1 text-lg font-semibold text-cyan-300">
+              No Active Votes
+            </h4>
+            <p className="text-sm text-cyan-200/70">
+              There are currently no disputes in the voting phase.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <InfiniteMovingCardsWithAvatars
+          items={liveDisputes}
+          direction="left"
+          speed="normal"
+          pauseOnHover={true}
+          type="live-voting" // Use the new type
+        />
+      )}
     </div>
   );
 }

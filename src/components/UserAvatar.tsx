@@ -1,15 +1,7 @@
-// components/UserAvatar.tsx
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+// components/UserAvatar.tsx - SIMPLIFIED VERSION
+import { useState, useEffect, useRef } from "react";
 import { apiService } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
-import { getAvatarCache, clearAvatarCache } from "../lib/avatarUtils";
-import {
-  avatarUrlCache,
-  pendingRequests,
-  preloadedImages,
-  getFallbackColor,
-  getInitials,
-} from "../lib/avatarCache";
 
 interface UserAvatarProps {
   userId: string;
@@ -20,6 +12,9 @@ interface UserAvatarProps {
   priority?: boolean;
 }
 
+// Simple cache - just in memory to avoid duplicate requests
+const avatarCache = new Map<string, string>();
+
 export function UserAvatar({
   userId,
   avatarId,
@@ -29,11 +24,9 @@ export function UserAvatar({
   priority = false,
 }: UserAvatarProps) {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const { user: currentUser } = useAuth();
-  const imageRef = useRef<HTMLImageElement>(null);
   const mountedRef = useRef(true);
 
   const sizeClasses = {
@@ -43,129 +36,80 @@ export function UserAvatar({
     xl: "h-14 w-14 text-xs",
   };
 
-  // Memoize derived values
-  const cacheKey = useMemo(
-    () => (avatarId ? `user-${userId}-avatar-${avatarId}` : null),
-    [userId, avatarId],
-  );
+  // Simple fallback color based on username
+  const getFallbackColor = (username: string) => {
+    const colors = [
+      "bg-red-500/80 border-red-400/40",
+      "bg-blue-500/80 border-blue-400/40",
+      "bg-green-500/80 border-green-400/40",
+      "bg-purple-500/80 border-purple-400/40",
+      "bg-orange-500/80 border-orange-400/40",
+      "bg-cyan-500/80 border-cyan-400/40",
+    ];
+    const index = username.length % colors.length;
+    return colors[index];
+  };
 
-  // Memoize expensive calculations
-  const fallbackColor = useMemo(() => getFallbackColor(username), [username]);
-  const initials = useMemo(() => getInitials(username), [username]);
+  // Simple initials
+  const getInitials = (username: string) => {
+    return username.charAt(0).toUpperCase();
+  };
 
-  // Optimized avatar loading function
-  const loadAvatar = useCallback(async () => {
-    if (!avatarId || !cacheKey) {
-      return null;
-    }
+  const fallbackColor = getFallbackColor(username);
+  const initials = getInitials(username);
 
-    // Check memory cache first
-    if (avatarUrlCache.has(cacheKey)) {
-      return avatarUrlCache.get(cacheKey)!;
-    }
+  useEffect(() => {
+    mountedRef.current = true;
 
-    // Check if request is already in progress
-    if (pendingRequests.has(cacheKey)) {
-      return pendingRequests.get(cacheKey)!;
-    }
-
-    // Check localStorage cache
-    const avatarCache = getAvatarCache();
-    if (avatarCache.has(cacheKey)) {
-      const cachedUrl = avatarCache.get(cacheKey);
-      // Quick validation without HEAD request (too expensive)
-      if (cachedUrl && cachedUrl.startsWith("http")) {
-        avatarUrlCache.set(cacheKey, cachedUrl);
-        return cachedUrl;
+    const loadAvatar = async () => {
+      if (!avatarId) {
+        setLoading(false);
+        setError(true);
+        return;
       }
-    }
 
-    // Use current user's avatar if available
-    if (currentUser?.id === userId && currentUser?.avatarUrl) {
-      avatarUrlCache.set(cacheKey, currentUser.avatarUrl);
-      avatarCache.set(cacheKey, currentUser.avatarUrl);
-      return currentUser.avatarUrl;
-    }
+      const cacheKey = `user-${userId}-avatar-${avatarId}`;
 
-    // Make API request
-    const request = (async () => {
+      // Check cache first
+      if (avatarCache.has(cacheKey)) {
+        const cachedUrl = avatarCache.get(cacheKey);
+        if (mountedRef.current && cachedUrl) {
+          setAvatarUrl(cachedUrl);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Use current user's avatar if available
+      if (currentUser?.id === userId && currentUser?.avatarUrl) {
+        if (mountedRef.current) {
+          setAvatarUrl(currentUser.avatarUrl);
+          avatarCache.set(cacheKey, currentUser.avatarUrl);
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
+        setLoading(true);
+        setError(false);
+
         const url = await apiService.getAvatar(userId, avatarId);
 
-        if (url && typeof url === "string" && url.trim() !== "") {
-          // Cache the successful response
-          avatarUrlCache.set(cacheKey, url);
+        if (
+          mountedRef.current &&
+          url &&
+          typeof url === "string" &&
+          url.trim() !== ""
+        ) {
+          setAvatarUrl(url);
           avatarCache.set(cacheKey, url);
-          return url;
         } else {
           throw new Error("Invalid avatar URL");
         }
       } catch (error) {
-        // Clear cache on error
-        avatarUrlCache.delete(cacheKey);
-        avatarCache.delete(cacheKey);
-        throw error;
-      } finally {
-        pendingRequests.delete(cacheKey);
-      }
-    })();
-
-    pendingRequests.set(cacheKey, request);
-    return request;
-  }, [userId, avatarId, cacheKey, currentUser]);
-
-  // Preload image function
-  const preloadImage = useCallback((url: string) => {
-    if (preloadedImages.has(url)) {
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      const img = new Image();
-      img.src = url;
-      img.onload = () => {
-        preloadedImages.add(url);
-        resolve();
-      };
-      img.onerror = () => {
-        console.warn(`Preload failed for avatar: ${url}`);
-        resolve(); // Don't reject, just continue
-      };
-    });
-  }, []);
-
-  // Main effect for loading avatar
-  useEffect(() => {
-    mountedRef.current = true;
-
-    const loadAvatarData = async () => {
-      if (!avatarId || !cacheKey) {
-        return;
-      }
-
-      setLoading(true);
-      setError(false);
-
-      try {
-        const url = await loadAvatar();
-
-        if (mountedRef.current && url) {
-          setAvatarUrl(url);
-
-          // Preload image in background
-          if (!url.startsWith("blob:")) {
-            preloadImage(url).then(() => {
-              if (mountedRef.current) {
-                setImageLoaded(true);
-              }
-            });
-          } else {
-            setImageLoaded(true);
-          }
-        }
-      } catch (error) {
+        console.warn(`Failed to load avatar for user ${username}:`, error);
         if (mountedRef.current) {
-          console.error(`Failed to load avatar for user ${username}:`, error);
           setError(true);
         }
       } finally {
@@ -175,32 +119,30 @@ export function UserAvatar({
       }
     };
 
-    loadAvatarData();
+    loadAvatar();
 
     return () => {
       mountedRef.current = false;
     };
-  }, [avatarId, cacheKey, username, loadAvatar, preloadImage]);
+  }, [userId, avatarId, username, currentUser]);
 
   // Handle image load errors
-  const handleImageError = useCallback(() => {
+  const handleImageError = () => {
     setError(true);
-    if (cacheKey) {
-      // Remove from caches on error
-      avatarUrlCache.delete(cacheKey);
-      const avatarCache = getAvatarCache();
+    if (avatarId) {
+      const cacheKey = `user-${userId}-avatar-${avatarId}`;
       avatarCache.delete(cacheKey);
-      clearAvatarCache(userId, avatarId);
     }
-  }, [cacheKey, userId, avatarId]);
+  };
 
   // Handle image load success
-  const handleImageLoad = useCallback(() => {
-    setImageLoaded(true);
-  }, []);
+  const handleImageLoad = () => {
+    setLoading(false);
+    setError(false);
+  };
 
-  // Show loading skeleton
-  if (loading) {
+  // Show loading state briefly
+  if (loading && !avatarUrl) {
     return (
       <div
         className={`${sizeClasses[size]} animate-pulse rounded-full border border-white/10 bg-white/5 ${className}`}
@@ -208,11 +150,10 @@ export function UserAvatar({
     );
   }
 
-  // Show avatar image only if we have a valid URL, no error, and image is loaded
-  if (avatarUrl && !error && imageLoaded) {
+  // Show avatar image if available and no error
+  if (avatarUrl && !error) {
     return (
       <img
-        ref={imageRef}
         src={avatarUrl}
         alt={`${username}'s avatar`}
         className={`${sizeClasses[size]} rounded-full border border-white/10 object-cover ${className}`}
@@ -224,7 +165,7 @@ export function UserAvatar({
     );
   }
 
-  // Fallback to initials with colored background
+  // Fallback to initials
   return (
     <div
       className={`${sizeClasses[size]} rounded-full border ${fallbackColor} flex items-center justify-center font-medium text-white ${className}`}

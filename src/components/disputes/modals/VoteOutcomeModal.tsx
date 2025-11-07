@@ -1,35 +1,137 @@
+// VoteOutcomeModal.tsx
+import { disputeService } from "../../../services/disputeServices";
 import { Button } from "../../../components/ui/button";
 import { BarChart3, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-// Mock vote outcome data
-const mockVoteOutcome = {
-  winner: "plaintiff" as const,
-  judgeVotes: 7,
-  communityVotes: 124,
-  judgePct: 72,
-  communityPct: 61,
-  comments: [
-    {
-      handle: "@judgeNova",
-      text: "Compelling evidence of breach of agreement.",
-    },
-    {
-      handle: "@judgeAres",
-      text: "Clear violation of terms based on the evidence provided.",
-    },
-  ],
-};
+interface VoteOutcomeData {
+  winner: "plaintiff" | "defendant" | "dismissed";
+  judgeVotes: number;
+  communityVotes: number;
+  judgePct: number;
+  communityPct: number;
+  comments: Array<{
+    handle: string;
+    text: string;
+  }>;
+}
+
+interface VoteOutcomeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  disputeId: number;
+  voteOutcome?: VoteOutcomeData; // Optional prop if you want to pass data directly
+}
 
 // Vote Outcome Modal Component
 const VoteOutcomeModal = ({
   isOpen,
   onClose,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-}) => {
+  disputeId,
+  voteOutcome: passedVoteOutcome,
+}: VoteOutcomeModalProps) => {
+  const [voteOutcome, setVoteOutcome] = useState<VoteOutcomeData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchVoteOutcome = useCallback(async () => {
+    setLoading(true);
+    try {
+      const outcome = await disputeService.getVoteOutcome(disputeId);
+      setVoteOutcome(outcome);
+    } catch (error) {
+      console.error("Failed to fetch vote outcome:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [disputeId]);
+
+  // Fetch vote outcome data if not passed as prop
+  useEffect(() => {
+    if (isOpen && !passedVoteOutcome) {
+      fetchVoteOutcome();
+    } else if (passedVoteOutcome) {
+      setVoteOutcome(passedVoteOutcome);
+    }
+  }, [isOpen, disputeId, passedVoteOutcome, fetchVoteOutcome]);
+
+  const handleModalClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  if (!isOpen) return null;
+
+  // Show loading state
+  if (loading) {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="glass card-cyan relative max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl"
+            onClick={handleModalClick}
+          >
+            <div className="flex h-64 items-center justify-center">
+              <div className="text-center">
+                <div className="mb-4 text-2xl">⏳</div>
+                <div className="text-lg text-cyan-300">
+                  Loading vote results...
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // Show error state if no data
+  if (!voteOutcome) {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="glass card-cyan relative max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl"
+            onClick={handleModalClick}
+          >
+            <div className="flex h-64 items-center justify-center">
+              <div className="text-center">
+                <div className="mb-4 text-2xl">❌</div>
+                <div className="text-lg text-red-400">
+                  Failed to load vote results
+                </div>
+                <Button
+                  variant="outline"
+                  className="mt-4 border-cyan-400 text-cyan-300"
+                  onClick={fetchVoteOutcome}
+                >
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   const {
     winner,
     judgeVotes,
@@ -37,7 +139,7 @@ const VoteOutcomeModal = ({
     judgePct,
     communityPct,
     comments,
-  } = mockVoteOutcome;
+  } = voteOutcome;
 
   // Weighted Voting Logic (DexCourt 70/30 model)
   const totalVotes = judgeVotes + communityVotes;
@@ -51,12 +153,6 @@ const VoteOutcomeModal = ({
   const winPct = Math.round(
     Math.max(weightedPlaintiffPct, weightedDefendantPct),
   );
-
-  const handleModalClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
-
-  if (!isOpen) return null;
 
   return (
     <AnimatePresence mode="wait">

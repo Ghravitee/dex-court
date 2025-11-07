@@ -96,9 +96,13 @@ const apiStatusToFrontend = (status: number): AgreementStatus => {
 const UserSearchResult = ({
   user,
   onSelect,
+  field,
 }: {
   user: any;
-  onSelect: (username: string) => void;
+  onSelect: (
+    username: string,
+    field: "counterparty" | "partyA" | "partyB",
+  ) => void;
   field: "counterparty" | "partyA" | "partyB";
 }) => {
   // 🚨 FIXED: Look for telegramUsername field (from API response)
@@ -118,7 +122,7 @@ const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(telegramUsername)}
+      onClick={() => onSelect(telegramUsername, field)}
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}
@@ -657,6 +661,7 @@ export default function Agreements() {
     }
 
     // Form validation
+    // Form validation - Only required fields
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -680,14 +685,8 @@ export default function Agreements() {
       toast.error("Please enter a description");
       return;
     }
-    if (!deadline) {
-      toast.error("Please select a deadline");
-      return;
-    }
-    if (form.images.length === 0) {
-      toast.error("Please upload at least one supporting document");
-      return;
-    }
+
+    // Deadline and supporting documents are now optional - no validation for these
 
     setIsSubmitting(true);
 
@@ -768,8 +767,11 @@ export default function Agreements() {
           agreementType === "myself" ? cleanUserTelegram : cleanPartyA,
         counterParty:
           agreementType === "myself" ? cleanCounterparty : cleanPartyB,
-        deadline: deadline.toISOString(),
       };
+
+      if (deadline) {
+        agreementData.deadline = deadline.toISOString();
+      }
 
       // 🆕 NEW: Apply the updated API implementation for funds
       if (includeFunds === "yes") {
@@ -860,7 +862,7 @@ export default function Agreements() {
       // Use the real API to create the agreement - let the API handle user validation
       await agreementService.createAgreement(
         agreementData,
-        form.images.map((f) => f.file),
+        form.images.length > 0 ? form.images.map((f) => f.file) : [],
       );
 
       // Clear user cache since we might have new users or updated user data
@@ -1915,7 +1917,7 @@ export default function Agreements() {
               {/* Deadline */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
-                  Deadline <span className="text-red-500">*</span>
+                  Deadline
                 </label>
                 <div className="relative">
                   <Calendar className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
@@ -1928,7 +1930,6 @@ export default function Agreements() {
                     calendarClassName="!bg-cyan-700 !text-white rounded-lg border border-white/10"
                     popperClassName="z-50"
                     minDate={new Date()}
-                    required
                   />
                 </div>
               </div>

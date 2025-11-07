@@ -368,6 +368,7 @@ export interface DisputeDetails {
   witnesses: Witnesses;
   plaintiffComplaint: PlaintiffComplaint;
   defendantResponse: DefendantResponse;
+  hasVoted: boolean;
 }
 
 // In your types file, update the DisputeListItem interface
@@ -426,6 +427,19 @@ export interface VoteRequest {
   comment: string;
 }
 
+// In your types file
+export interface VoteOutcomeData {
+  winner: "plaintiff" | "defendant" | "dismissed";
+  judgeVotes: number;
+  communityVotes: number;
+  judgePct: number;
+  communityPct: number;
+  comments: Array<{
+    handle: string;
+    text: string;
+  }>;
+}
+
 export interface ApiError {
   error: ErrorCodeEnum;
   message: string;
@@ -436,6 +450,7 @@ export interface UserData {
   userId?: string;
   avatarId?: number | null;
   telegramUsername?: string;
+  id?: number;
 }
 // Update your DisputeRow interface in types.ts
 export interface DisputeRow {
@@ -474,6 +489,7 @@ export interface DisputeRow {
   };
   plaintiffData?: UserData;
   defendantData?: UserData;
+  hasVoted?: boolean;
 }
 
 // Update EvidenceFile to have all required properties
