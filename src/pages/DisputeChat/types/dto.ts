@@ -3,7 +3,8 @@ export type DisputeChatRole =
   | "defendant"
   | "judge"
   | "witness"
-  | "admin";
+  | "admin"
+  | "community"; // Add this
 
 /**
  * Represents a file attached to a dispute chat message

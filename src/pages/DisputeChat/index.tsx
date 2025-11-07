@@ -26,6 +26,7 @@ import {
   UserCheck,
   Shield,
   Gavel,
+  Users,
 } from "lucide-react";
 import { UserAvatar } from "../../components/UserAvatar";
 
@@ -156,8 +157,14 @@ const roleConfig: Record<
     borderColor: "border-red-400/30",
     icon: <Shield className="h-3 w-3" />,
   },
+  community: {
+    label: "Community",
+    bgColor: "bg-cyan-500/20",
+    textColor: "text-cyan-300",
+    borderColor: "border-cyan-400/30",
+    icon: <Users className="h-3 w-3" />,
+  },
 };
-
 // Role badge component
 const RoleBadge = ({ role }: { role: DisputeChatRole }) => {
   const config = roleConfig[role];
@@ -403,7 +410,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
               )}
 
               <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
+                className={`max-w-[75%] rounded-2xl px-1 py-2 text-sm shadow-sm sm:px-4 ${
                   isMine
                     ? "card-cyan text-cyan-100"
                     : "border border-gray-700/40 bg-[#1a1f27]/80 text-gray-200"
@@ -422,6 +429,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
                       )}
                       <span className="text-cyan-300">{formattedUsername}</span>
                     </div>
+                    {/* Always show role badge if role exists */}
                     {m.role && <RoleBadge role={m.role} />}
                   </div>
                   <span className="text-xs font-normal text-gray-400/70">
@@ -477,7 +485,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
               title="Attach files"
             >
               <div className="glass card-cyan flex size-10 items-center justify-center rounded-full">
-                <Paperclip size={20} />
+                <Paperclip className="text-[8px]" />
               </div>
             </label>
             <input
@@ -507,7 +515,9 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
               ) : (
                 <Send size={16} />
               )}
-              {isSending ? "Sending..." : "Send"}
+              <p className="hidden sm:block">
+                {isSending ? "Sending..." : "Send"}
+              </p>
             </button>
           </div>
 

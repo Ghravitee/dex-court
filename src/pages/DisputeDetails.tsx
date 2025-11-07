@@ -14,6 +14,7 @@ import {
   Loader2,
   BarChart3,
   Vote,
+  Gavel,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { useAuth } from "../context/AuthContext";
@@ -123,21 +124,26 @@ export default function DisputeDetails() {
     return username.replace(/^@/, "").toLowerCase().trim();
   };
 
-  const canUserVote = useCallback(async (): Promise<{
-    canVote: boolean;
-    reason?: string;
-    hasVoted?: boolean;
-  }> => {
-    // Return the state from our hook
-    return {
-      canVote,
-      reason,
-      hasVoted,
-    };
-  }, [canVote, reason, hasVoted]);
+  // Wrap these helper functions in useCallback as well
+  const getUserRoleNumber = useCallback((): number => {
+    return user?.role || 1; // Default to Community (1) if no role
+  }, [user?.role]);
 
-  // Add this function to your DisputeDetails component
-  const getUserRole = (): DisputeChatRole | undefined => {
+  const isUserJudge = useCallback((): boolean => {
+    return getUserRoleNumber() === 2; // 2 = Judge
+  }, [getUserRoleNumber]);
+
+  const isUserAdmin = useCallback((): boolean => {
+    return getUserRoleNumber() === 3; // 3 = Admin
+  }, [getUserRoleNumber]);
+
+  const isUserCommunity = useCallback((): boolean => {
+    return getUserRoleNumber() === 1; // 1 = Community
+  }, [getUserRoleNumber]);
+
+  // Update the getUserRole function
+  // Update the getUserRole function to use useCallback
+  const getUserRole = useCallback((): DisputeChatRole | undefined => {
     if (!user || !dispute) return undefined;
 
     const currentUsername = user.username || user.telegramUsername;
@@ -164,10 +170,39 @@ export default function DisputeDetails() {
 
     if (isWitness) return "witness";
 
-    // For judges - you'll need to implement this based on your judge system
-    // For now, return undefined for non-participants
-    return undefined;
-  };
+    // Check if user is a judge (role 2) or admin (role 3)
+    if (isUserJudge() || isUserAdmin()) return "judge";
+
+    return "community"; // Return community for regular users
+  }, [user, dispute, isUserJudge, isUserAdmin]); // Add all dependencies
+
+  const canUserVote = useCallback(async (): Promise<{
+    canVote: boolean;
+    reason?: string;
+    hasVoted?: boolean;
+    isJudge?: boolean;
+  }> => {
+    const userRole = getUserRole();
+    const isJudge = isUserJudge();
+
+    // Plaintiff and defendant cannot vote - this should already be handled by useVotingStatus
+    // but we double-check here for UI purposes
+    if (userRole === "plaintiff" || userRole === "defendant") {
+      return {
+        canVote: false,
+        reason: "Parties cannot vote in their own dispute",
+        hasVoted: false,
+        isJudge: false,
+      };
+    }
+
+    return {
+      canVote,
+      reason,
+      hasVoted,
+      isJudge,
+    };
+  }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
 
   useEffect(() => {
     console.log("🔍 VOTING STATUS DEBUG:");
@@ -575,6 +610,37 @@ export default function DisputeDetails() {
       );
     }
 
+    const userRole = getUserRole();
+    const isJudge = isUserJudge();
+    const isCommunity = isUserCommunity();
+    const isParty = userRole === "plaintiff" || userRole === "defendant";
+
+    // User is plaintiff or defendant - they CANNOT vote
+    if (isParty) {
+      return (
+        <div className="animate-fade-in card-amber glass rounded-2xl p-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+              <Shield className="h-6 w-6 text-amber-300" />
+            </div>
+            <div>
+              <h3 className="mb-1 text-lg font-bold text-amber-300">
+                Case Participant
+              </h3>
+              <p className="text-sm text-amber-200">
+                {userRole === "plaintiff"
+                  ? "As the plaintiff, you cannot vote in your own dispute."
+                  : "As the defendant, you cannot vote in your own dispute."}
+              </p>
+              <p className="mt-2 text-xs text-amber-300/70">
+                Voting is for community members and judges only.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // User has voted - Consistent with Voting page
     if (hasVoted) {
       return (
@@ -589,6 +655,11 @@ export default function DisputeDetails() {
               </h3>
               <p className="text-sm text-emerald-200">
                 Thank you for participating in this dispute.
+                {isJudge && (
+                  <span className="mt-1 block text-emerald-300">
+                    ⚖️ Your vote carries judge weight
+                  </span>
+                )}
               </p>
               <p className="mt-2 text-xs text-emerald-300/70">
                 Results will be revealed when voting ends.
@@ -611,8 +682,18 @@ export default function DisputeDetails() {
               <h3 className="mb-1 text-lg font-bold text-cyan-300">
                 Cast Your Vote
               </h3>
-              <p className="text-sm text-cyan-200">
+              <p className="text-center text-sm text-cyan-200">
                 Your vote will help resolve this dispute fairly.
+                {isJudge && (
+                  <span className="mt-1 block font-semibold text-cyan-300">
+                    ⚖️ Judge Vote - Carries Higher Weight
+                  </span>
+                )}
+                {isCommunity && (
+                  <span className="mt-1 block text-cyan-300">
+                    👥 Community Vote
+                  </span>
+                )}
               </p>
             </div>
             <Button
@@ -622,14 +703,14 @@ export default function DisputeDetails() {
               size="lg"
             >
               <Vote className="mr-2 h-4 w-4" />
-              Cast Vote
+              Cast {isJudge ? "Judge" : "Community"} Vote
             </Button>
           </div>
         </div>
       );
     }
 
-    // User cannot vote
+    // User cannot vote (but not because they're a party)
     return (
       <div className="animate-fade-in card-amber glass rounded-2xl p-6">
         <div className="flex flex-col items-center gap-3 text-center">
@@ -683,34 +764,51 @@ export default function DisputeDetails() {
     <div className="animate-fade-in space-y-6 py-6 text-white">
       <div className="flex items-center justify-between">
         {/* Back Button */}
+
         <div className="flex items-center gap-3">
           <Button
             onClick={() => navigate("/disputes")}
             variant="outline"
             className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to Disputes
+            <ArrowLeft className="h-4 w-4" />{" "}
+            <p className="hidden sm:block">Back to Disputes</p>
           </Button>
 
+          {/* Role Badge */}
+          {isUserJudge() && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
+              <Gavel className="h-3 w-3" />
+              Judge
+            </span>
+          )}
+          {isUserCommunity() && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
+              <Users className="h-3 w-3" />
+              <p className="hidden sm:block">Community</p>
+            </span>
+          )}
+
+          {/* Status Badge */}
           {dispute.status === "Settled" ? (
-            <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1">
+            <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
               Settled
             </span>
           ) : dispute.status === "Pending" ? (
-            <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1">
+            <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
               Pending
             </span>
           ) : dispute.status === "Dismissed" ? (
-            <span className="badge-red inline-flex items-center rounded-full border px-4 py-1">
+            <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
               Dismissed
             </span>
           ) : (
-            <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-emerald-300">
+            <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
               Vote in Progress
             </span>
           )}
         </div>
-
+        {/* Right Side Actions */}
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
           {/* Show Vote Outcome for Settled/Dismissed disputes */}
@@ -724,23 +822,35 @@ export default function DisputeDetails() {
               See Vote Outcome
             </Button>
           )}
-          {/* Show Cast Vote button for Vote in Progress disputes */}
 
-          {dispute.status === "Vote in Progress" && canVote && !hasVoted && (
-            <Button
-              variant="neon"
-              className="neon-hover ml-auto"
-              onClick={handleOpenVoteModal}
-            >
-              <Vote className="mr-2 h-4 w-4" />
-              Cast Vote
-            </Button>
-          )}
-          {dispute.status === "Vote in Progress" && hasVoted && (
-            <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
-              <span className="text-emerald-300">✅ Vote Submitted</span>
-            </div>
-          )}
+          {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant */}
+          {dispute.status === "Vote in Progress" &&
+            canVote &&
+            !hasVoted &&
+            !isCurrentUserPlaintiff() &&
+            !isCurrentUserDefendant() && (
+              <Button
+                variant="neon"
+                className="neon-hover ml-auto"
+                onClick={handleOpenVoteModal}
+              >
+                <Vote className="mr-2 h-4 w-4" />
+                Cast {isUserJudge() ? "Judge" : "Community"} Vote
+              </Button>
+            )}
+
+          {/* Show voted status ONLY if user is NOT plaintiff/defendant */}
+          {dispute.status === "Vote in Progress" &&
+            hasVoted &&
+            !isCurrentUserPlaintiff() &&
+            !isCurrentUserDefendant() && (
+              <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+                <span className="text-emerald-300">
+                  ✅ {isUserJudge() ? "Judge " : ""}Vote Submitted
+                  {isUserJudge() && " ⚖️"}
+                </span>
+              </div>
+            )}
         </div>
       </div>
 
@@ -1110,26 +1220,31 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-        {/* Show Cast Vote button ONLY for Vote in Progress disputes */}
-        {/* Enhanced Vote Button */}
-        {/* Show Cast Vote button ONLY for Vote in Progress disputes */}
-        {dispute.status === "Vote in Progress" && canVote && !hasVoted && (
-          <Button
-            variant="neon"
-            className="neon-hover ml-auto"
-            onClick={handleOpenVoteModal}
-          >
-            <Vote className="mr-2 h-4 w-4" />
-            Cast Vote
-          </Button>
-        )}
+        {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant */}
+        {dispute.status === "Vote in Progress" &&
+          canVote &&
+          !hasVoted &&
+          !isCurrentUserPlaintiff() &&
+          !isCurrentUserDefendant() && (
+            <Button
+              variant="neon"
+              className="neon-hover ml-auto"
+              onClick={handleOpenVoteModal}
+            >
+              <Vote className="mr-2 h-4 w-4" />
+              Cast Vote
+            </Button>
+          )}
 
-        {/* Show voted status */}
-        {dispute.status === "Vote in Progress" && hasVoted && (
-          <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
-            <span className="text-emerald-300">✅ Vote Submitted</span>
-          </div>
-        )}
+        {/* Show voted status ONLY if user is NOT plaintiff/defendant */}
+        {dispute.status === "Vote in Progress" &&
+          hasVoted &&
+          !isCurrentUserPlaintiff() &&
+          !isCurrentUserDefendant() && (
+            <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+              <span className="text-emerald-300">✅ Vote Submitted</span>
+            </div>
+          )}
       </div>
 
       {/* Dispute Chat Integration */}
@@ -1170,13 +1285,13 @@ export default function DisputeDetails() {
         voteData={voteData}
         onVoteChange={handleVoteChange}
         onCastVote={handleCastVote}
-        hasVoted={hasVoted} // CHANGE FROM votingState.hasVoted TO hasVoted
-        isSubmitting={false} // CHANGE FROM votingState.isSubmitting TO false (or remove if not needed)
+        hasVoted={hasVoted}
+        isSubmitting={false}
         dispute={dispute}
         canUserVote={canUserVote}
         isCurrentUserPlaintiff={isCurrentUserPlaintiff}
         isCurrentUserDefendant={isCurrentUserDefendant}
-        isJudge={true}
+        isJudge={isUserJudge()} // Pass actual judge status
       />
       {/* Plaintiff Reply Modal */}
       <PlaintiffReplyModal

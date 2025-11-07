@@ -268,7 +268,6 @@ export const VoteModal = ({
                     </div>
                   </div>
                 </div>
-
                 {/* Voting Options - Updated to match voting page */}
                 <div>
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
@@ -389,8 +388,8 @@ export const VoteModal = ({
                     />
                   </div>
                 </div>
-
                 {/* Comment Section */}
+
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground text-sm">
@@ -410,8 +409,8 @@ export const VoteModal = ({
                     className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
                     placeholder={
                       isJudge
-                        ? "Add your reasoning..."
-                        : "Comments restricted to judges"
+                        ? "Add your reasoning as a judge..."
+                        : "Comments are restricted to judges only"
                     }
                   />
                   {isJudge && (
@@ -420,7 +419,6 @@ export const VoteModal = ({
                     </div>
                   )}
                 </div>
-
                 {/* Vote Button + Info */}
                 <div className="flex items-center justify-between gap-3">
                   <Button
@@ -447,7 +445,6 @@ export const VoteModal = ({
                     </div>
                   </div>
                 </div>
-
                 {/* Voting Progress */}
                 {isSubmitting && (
                   <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">

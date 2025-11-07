@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useVotingStatus.ts - UPDATED
 import { useCallback, useEffect, useState } from "react";
 import { disputeService } from "../services/disputeServices";
@@ -6,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 
 export const useVotingStatus = (
   disputeId: number | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   disputeData?: any,
 ) => {
   const { user } = useAuth();
@@ -20,6 +20,26 @@ export const useVotingStatus = (
     isLoading: true,
   });
 
+  // Helper function to check if user is plaintiff or defendant
+  const isUserPartyToDispute = useCallback(() => {
+    if (!user || !disputeData) return false;
+
+    const currentUsername = user.username || user.telegramUsername;
+    const normalizeUsername = (username: string | undefined): string => {
+      if (!username) return "";
+      return username.replace(/^@/, "").toLowerCase().trim();
+    };
+
+    const plaintiffUsername = normalizeUsername(disputeData.plaintiff);
+    const defendantUsername = normalizeUsername(disputeData.defendant);
+    const normalizedCurrent = normalizeUsername(currentUsername);
+
+    return (
+      normalizedCurrent === plaintiffUsername ||
+      normalizedCurrent === defendantUsername
+    );
+  }, [user, disputeData]);
+
   const checkVotingStatus = useCallback(async () => {
     if (!disputeId || !user) {
       setVotingStatus({
@@ -33,7 +53,19 @@ export const useVotingStatus = (
     try {
       setVotingStatus((prev) => ({ ...prev, isLoading: true }));
 
-      // Check localStorage first for quick response
+      // FIRST: Check if user is plaintiff or defendant - they CANNOT vote
+      if (isUserPartyToDispute()) {
+        console.log("🎯 User is plaintiff or defendant - cannot vote");
+        setVotingStatus({
+          hasVoted: false,
+          canVote: false,
+          reason: "Parties cannot vote in their own dispute",
+          isLoading: false,
+        });
+        return;
+      }
+
+      // Check localStorage for quick response
       const storageKey = `vote_${disputeId}_${user.id}`;
       const savedVote = localStorage.getItem(storageKey);
 
@@ -48,7 +80,7 @@ export const useVotingStatus = (
         return;
       }
 
-      // ✅ PRIMARY: Use hasVoted from dispute data if available
+      // Use hasVoted from dispute data if available
       if (disputeData && disputeData.hasVoted !== undefined) {
         console.log(
           "🎯 Using hasVoted from dispute data:",
@@ -56,7 +88,7 @@ export const useVotingStatus = (
         );
         setVotingStatus({
           hasVoted: disputeData.hasVoted,
-          canVote: !disputeData.hasVoted, // If hasn't voted, they can vote
+          canVote: !disputeData.hasVoted,
           reason: disputeData.hasVoted
             ? "You have already voted in this dispute"
             : "You can vote in this dispute",
@@ -74,7 +106,6 @@ export const useVotingStatus = (
 
       console.log("🔍 Eligibility API response:", eligibility);
 
-      // Determine hasVoted based on the API response
       const hasVotedFromAPI =
         !eligibility.canVote &&
         eligibility.reason?.toLowerCase().includes("already voted");
@@ -94,7 +125,7 @@ export const useVotingStatus = (
         isLoading: false,
       });
     }
-  }, [disputeId, user, disputeData]);
+  }, [disputeId, user, disputeData, isUserPartyToDispute]);
 
   const markAsVoted = useCallback(
     (choice: string) => {
