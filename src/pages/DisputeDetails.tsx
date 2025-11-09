@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
   BarChart3,
   Vote,
   Gavel,
+  FileText,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { useAuth } from "../context/AuthContext";
@@ -45,6 +46,7 @@ import SettleConfirmationModal from "../components/disputes/modals/SettleConfirm
 import DisputeChat from "./DisputeChat";
 import type { DisputeChatRole } from "./DisputeChat/types/dto";
 import { useVotingStatus } from "../hooks/useVotingStatus";
+import { agreementService } from "../services/agreementServices";
 
 // Main Component
 export default function DisputeDetails() {
@@ -60,6 +62,8 @@ export default function DisputeDetails() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [settleModalOpen, setSettleModalOpen] = useState(false);
+  const [sourceAgreement, setSourceAgreement] = useState<any>(null);
+  const [, setAgreementLoading] = useState(false);
 
   // Voting state
   // Voting state
@@ -214,6 +218,28 @@ export default function DisputeDetails() {
     console.log("Hook state - reason:", reason);
     console.log("Hook state - isLoading:", votingStatusLoading);
   }, [dispute, hasVoted, canVote, reason, votingStatusLoading, disputeId]);
+
+  // Add effect to fetch agreement details if agreementId exists
+  useEffect(() => {
+    const fetchSourceAgreement = async () => {
+      if (!dispute?.agreementId) return;
+
+      setAgreementLoading(true);
+      try {
+        // You'll need to import your agreement service
+        const agreementDetails = await agreementService.getAgreementDetails(
+          dispute.agreementId,
+        );
+        setSourceAgreement(agreementDetails.data);
+      } catch (error) {
+        console.error("Failed to fetch source agreement:", error);
+      } finally {
+        setAgreementLoading(false);
+      }
+    };
+
+    fetchSourceAgreement();
+  }, [dispute?.agreementId]);
 
   // Fetch dispute details
   // Fetch dispute details
@@ -618,7 +644,7 @@ export default function DisputeDetails() {
     // User is plaintiff or defendant - they CANNOT vote
     if (isParty) {
       return (
-        <div className="animate-fade-in card-amber glass rounded-2xl p-6">
+        <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
               <Shield className="h-6 w-6 text-amber-300" />
@@ -644,7 +670,7 @@ export default function DisputeDetails() {
     // User has voted - Consistent with Voting page
     if (hasVoted) {
       return (
-        <div className="animate-fade-in card-emerald glass rounded-2xl p-6">
+        <div className="animate-fade-in card-emerald glass mx-auto rounded-2xl p-6">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
               <span className="text-2xl">✅</span>
@@ -673,7 +699,7 @@ export default function DisputeDetails() {
     // User can vote
     if (canVote) {
       return (
-        <div className="animate-fade-in card-cyan glass rounded-2xl p-6">
+        <div className="animate-fade-in card-cyan glass mx-auto rounded-2xl p-6">
           <div className="flex flex-col items-center justify-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
               <Vote className="h-6 w-6 text-cyan-300" />
@@ -686,12 +712,12 @@ export default function DisputeDetails() {
                 Your vote will help resolve this dispute fairly.
                 {isJudge && (
                   <span className="mt-1 block font-semibold text-cyan-300">
-                    ⚖️ Judge Vote - Carries Higher Weight
+                    Judge Vote - Carries Higher Weight
                   </span>
                 )}
                 {isCommunity && (
                   <span className="mt-1 block text-cyan-300">
-                    👥 Community Vote
+                    Community Vote
                   </span>
                 )}
               </p>
@@ -712,7 +738,7 @@ export default function DisputeDetails() {
 
     // User cannot vote (but not because they're a party)
     return (
-      <div className="animate-fade-in card-amber glass rounded-2xl p-6">
+      <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
             <Shield className="h-6 w-6 text-amber-300" />
@@ -736,7 +762,7 @@ export default function DisputeDetails() {
 
   if (loading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
+      <div className="mx-auto flex h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
           <p className="text-muted-foreground">Loading dispute details...</p>
@@ -807,6 +833,21 @@ export default function DisputeDetails() {
               Vote in Progress
             </span>
           )}
+
+          {/* {dispute.agreementId && (
+            <Link
+              to={`/agreements/${dispute.agreementId}`}
+              className="flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200"
+            >
+              <FileText className="h-4 w-4" />
+              View Source Agreement
+              {dispute.agreementTitle && (
+                <span className="max-w-[200px] truncate text-xs text-blue-400/70">
+                  {dispute.agreementTitle}
+                </span>
+              )}
+            </Link>
+          )} */}
         </div>
         {/* Right Side Actions */}
         {/* Right Side Actions */}
@@ -853,7 +894,6 @@ export default function DisputeDetails() {
             )}
         </div>
       </div>
-
       {/* Header Card */}
       {/* Header Card */}
       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
@@ -942,9 +982,42 @@ export default function DisputeDetails() {
             </div>
           </div>
         </div>
-        {dispute.status === "Vote in Progress" && <VotingStatus />}
+        {/* Agreement Information Section */}
+        {dispute.agreementId && sourceAgreement && (
+          <div className="glass rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-6">
+            <div className="space-y-4">
+              <div className="p-4">
+                <div className="flex flex-col justify-between gap-2">
+                  <div>
+                    <h4 className="font-medium text-blue-300">
+                      {sourceAgreement.title ||
+                        `Agreement #${dispute.agreementId}`}
+                    </h4>
+                    <p className="mt-1 text-sm text-blue-200/80">
+                      Created:{" "}
+                      {new Date(sourceAgreement.createdAt).toLocaleDateString()}
+                    </p>
+                    {sourceAgreement.description && (
+                      <p className="mt-2 line-clamp-2 text-xs text-blue-300/70">
+                        {sourceAgreement.description}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    to={`/agreements/${dispute.agreementId}`}
+                    className="flex w-fit items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
+                  >
+                    <FileText className="h-4 w-4" />
+                    View Source Agreement
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
+      {dispute.status === "Vote in Progress" && <VotingStatus />}
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Plaintiff Column */}
@@ -1163,7 +1236,6 @@ export default function DisputeDetails() {
 
         {/* Voting Section - Prominent display for Vote in Progress disputes */}
       </div>
-
       {/* Action Buttons */}
       {/* Action Buttons */}
       {/* Action Buttons */}
@@ -1246,12 +1318,10 @@ export default function DisputeDetails() {
             </div>
           )}
       </div>
-
       {/* Dispute Chat Integration */}
       <div className="mt-8">
         <DisputeChat disputeId={parseInt(id!)} userRole={getUserRole()} />
       </div>
-
       {/* Evidence Viewer Modal */}
       <EvidenceViewer
         isOpen={evidenceViewerOpen}
@@ -1266,9 +1336,7 @@ export default function DisputeDetails() {
         pdfLoading={pdfLoading}
         pdfError={pdfError}
       />
-
       {/* Vote Outcome Modal */}
-
       <VoteOutcomeModal
         isOpen={voteOutcomeModalOpen}
         onClose={() => setVoteOutcomeModalOpen(false)}
@@ -1276,9 +1344,7 @@ export default function DisputeDetails() {
         // Optional: You can also pass voteOutcome data directly if you already have it
         // voteOutcome={yourVoteOutcomeData}
       />
-
       {/* Vote Modal */}
-
       <VoteModal
         isOpen={voteModalOpen}
         onClose={() => setVoteModalOpen(false)}
@@ -1301,7 +1367,6 @@ export default function DisputeDetails() {
         onSubmit={handlePlaintiffReply}
         navigate={navigate}
       />
-
       {/* Defendant Reply Modal */}
       <DefendantReplyModal
         isOpen={defendantReplyModalOpen}
@@ -1310,7 +1375,6 @@ export default function DisputeDetails() {
         onSubmit={handleDefendantReply}
         navigate={navigate}
       />
-
       <SettleConfirmationModal
         isOpen={settleModalOpen}
         onClose={() => setSettleModalOpen(false)}

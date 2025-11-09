@@ -736,6 +736,8 @@ class DisputeService {
       defendantData,
 
       hasVoted: dispute.hasVoted,
+      agreementId: dispute.agreementId, // This should come from the API
+      agreementTitle: dispute.agreementTitle,
     };
 
     return transformed;

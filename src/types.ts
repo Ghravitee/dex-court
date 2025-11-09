@@ -369,6 +369,8 @@ export interface DisputeDetails {
   plaintiffComplaint: PlaintiffComplaint;
   defendantResponse: DefendantResponse;
   hasVoted: boolean;
+  agreementId?: number;
+  agreementTitle?: string;
 }
 
 // In your types file, update the DisputeListItem interface
@@ -490,6 +492,8 @@ export interface DisputeRow {
   plaintiffData?: UserData;
   defendantData?: UserData;
   hasVoted?: boolean;
+  agreementId?: number;
+  agreementTitle?: string;
 }
 
 // Update EvidenceFile to have all required properties

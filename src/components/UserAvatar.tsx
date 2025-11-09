@@ -1,4 +1,4 @@
-// components/UserAvatar.tsx - SIMPLIFIED VERSION
+// components/UserAvatar.tsx - FIXED VERSION
 import { useState, useEffect, useRef } from "react";
 import { apiService } from "../services/apiService";
 import { useAuth } from "../context/AuthContext";
@@ -12,8 +12,9 @@ interface UserAvatarProps {
   priority?: boolean;
 }
 
-// Simple cache - just in memory to avoid duplicate requests
-const avatarCache = new Map<string, string>();
+// Enhanced cache with timestamp
+const avatarCache = new Map<string, { url: string; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export function UserAvatar({
   userId,
@@ -27,7 +28,7 @@ export function UserAvatar({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const { user: currentUser } = useAuth();
-  const mountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const sizeClasses = {
     sm: "h-6 w-6 text-xs",
@@ -36,7 +37,6 @@ export function UserAvatar({
     xl: "h-14 w-14 text-xs",
   };
 
-  // Simple fallback color based on username
   const getFallbackColor = (username: string) => {
     const colors = [
       "bg-red-500/80 border-red-400/40",
@@ -50,7 +50,6 @@ export function UserAvatar({
     return colors[index];
   };
 
-  // Simple initials
   const getInitials = (username: string) => {
     return username.charAt(0).toUpperCase();
   };
@@ -58,23 +57,31 @@ export function UserAvatar({
   const fallbackColor = getFallbackColor(username);
   const initials = getInitials(username);
 
+  // Helper function to check if error is AbortError
+  const isAbortError = (error: unknown): boolean => {
+    return error instanceof Error && error.name === "AbortError";
+  };
+
   useEffect(() => {
-    mountedRef.current = true;
+    let isMounted = true;
+    abortControllerRef.current = new AbortController();
 
     const loadAvatar = async () => {
       if (!avatarId) {
-        setLoading(false);
-        setError(true);
+        if (isMounted) {
+          setLoading(false);
+          setError(true);
+        }
         return;
       }
 
       const cacheKey = `user-${userId}-avatar-${avatarId}`;
 
-      // Check cache first
-      if (avatarCache.has(cacheKey)) {
-        const cachedUrl = avatarCache.get(cacheKey);
-        if (mountedRef.current && cachedUrl) {
-          setAvatarUrl(cachedUrl);
+      // Check cache with expiration
+      const cached = avatarCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+        if (isMounted) {
+          setAvatarUrl(cached.url);
           setLoading(false);
         }
         return;
@@ -82,38 +89,49 @@ export function UserAvatar({
 
       // Use current user's avatar if available
       if (currentUser?.id === userId && currentUser?.avatarUrl) {
-        if (mountedRef.current) {
+        if (isMounted) {
           setAvatarUrl(currentUser.avatarUrl);
-          avatarCache.set(cacheKey, currentUser.avatarUrl);
+          avatarCache.set(cacheKey, {
+            url: currentUser.avatarUrl,
+            timestamp: Date.now(),
+          });
           setLoading(false);
         }
         return;
       }
 
       try {
-        setLoading(true);
-        setError(false);
+        if (isMounted) {
+          setLoading(true);
+          setError(false);
+        }
 
-        const url = await apiService.getAvatar(userId, avatarId);
+        const url = await apiService.getAvatar(
+          userId,
+          avatarId,
+          abortControllerRef.current?.signal, // Pass the signal
+        );
 
-        if (
-          mountedRef.current &&
-          url &&
-          typeof url === "string" &&
-          url.trim() !== ""
-        ) {
+        if (isMounted && url && typeof url === "string" && url.trim() !== "") {
           setAvatarUrl(url);
-          avatarCache.set(cacheKey, url);
-        } else {
+          avatarCache.set(cacheKey, {
+            url,
+            timestamp: Date.now(),
+          });
+        } else if (isMounted) {
           throw new Error("Invalid avatar URL");
         }
       } catch (error) {
-        console.warn(`Failed to load avatar for user ${username}:`, error);
-        if (mountedRef.current) {
+        // Don't log AbortError as it's expected behavior
+        if (!isAbortError(error)) {
+          console.warn(`Failed to load avatar for user ${username}:`, error);
+        }
+
+        if (isMounted && !isAbortError(error)) {
           setError(true);
         }
       } finally {
-        if (mountedRef.current) {
+        if (isMounted) {
           setLoading(false);
         }
       }
@@ -122,11 +140,14 @@ export function UserAvatar({
     loadAvatar();
 
     return () => {
-      mountedRef.current = false;
+      isMounted = false;
+      // Abort ongoing request when component unmounts
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, [userId, avatarId, username, currentUser]);
 
-  // Handle image load errors
   const handleImageError = () => {
     setError(true);
     if (avatarId) {
@@ -135,7 +156,6 @@ export function UserAvatar({
     }
   };
 
-  // Handle image load success
   const handleImageLoad = () => {
     setLoading(false);
     setError(false);

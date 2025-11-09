@@ -155,32 +155,47 @@ class ApiService {
   }
 
   // Add this to your apiService.ts
-  // services/apiService.ts - Update the getAvatar method
-  // services/apiService.ts - Update getAvatar method
-  async getAvatar(userId: string, avatarId: number): Promise<string> {
+  // services/apiService.ts - UPDATED getAvatar method with proper typing
+  async getAvatar(
+    userId: string,
+    avatarId: number,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const token = localStorage.getItem("authToken");
     if (!token) {
       throw new Error("Authentication required");
     }
 
     try {
-      // Add cache-busting parameter only for non-recent uploads
-      // For recent uploads (last 5 minutes), use cache
-      const cacheBuster =
-        Date.now() - 5 * 60 * 1000 > 0 ? `?t=${Date.now()}` : "";
+      // Create abort controller if not provided
+      const controller = new AbortController();
+      const abortSignal = signal || controller.signal;
+
+      // Set timeout only if no signal provided (component-level control)
+      const timeoutId = signal
+        ? null
+        : setTimeout(() => {
+            controller.abort();
+          }, 15000); // 15 seconds for dev environment
 
       const response = await fetch(
-        `${this.baseURL}/accounts/${userId}/file/${avatarId}${cacheBuster}`,
+        `${this.baseURL}/accounts/${userId}/file/${avatarId}?t=${Date.now()}`,
         {
           headers: {
             Authorization: token,
           },
-          // Add timeout for avatar requests
-          signal: AbortSignal.timeout(10000), // 10 second timeout
+          signal: abortSignal,
         },
       );
 
+      // Clear timeout if response received
+      if (timeoutId) clearTimeout(timeoutId);
+
       if (!response.ok) {
+        // Don't throw AbortError for regular HTTP errors
+        if (abortSignal.aborted) {
+          throw new DOMException("Request was aborted", "AbortError");
+        }
         throw new Error(`Failed to fetch avatar: ${response.status}`);
       }
 
@@ -193,7 +208,10 @@ class ApiService {
 
       return URL.createObjectURL(blob);
     } catch (error) {
-      console.error("🔐 Failed to fetch avatar:", error);
+      // Only log non-abort errors
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        console.error("🔐 Failed to fetch avatar:", error);
+      }
       throw error;
     }
   }

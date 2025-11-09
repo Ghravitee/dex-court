@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { BarChart3, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
+import { calculateVoteResults } from "../../../lib/voteCalculations";
 
 interface VoteOutcomeData {
   winner: "plaintiff" | "defendant" | "dismissed";
@@ -55,6 +56,17 @@ const VoteOutcomeModal = ({
     }
   }, [isOpen, disputeId, passedVoteOutcome, fetchVoteOutcome]);
 
+  // Calculate vote results only when voteOutcome is available
+  const voteResults = voteOutcome
+    ? calculateVoteResults(
+        voteOutcome.judgeVotes,
+        voteOutcome.communityVotes,
+        voteOutcome.judgePct,
+        voteOutcome.communityPct,
+        voteOutcome.winner,
+      )
+    : null;
+
   const handleModalClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
@@ -94,7 +106,7 @@ const VoteOutcomeModal = ({
   }
 
   // Show error state if no data
-  if (!voteOutcome) {
+  if (!voteOutcome || !voteResults) {
     return (
       <AnimatePresence mode="wait">
         <motion.div
@@ -132,6 +144,7 @@ const VoteOutcomeModal = ({
     );
   }
 
+  // Destructure voteOutcome here, after we've confirmed it's not null
   const {
     winner,
     judgeVotes,
@@ -140,19 +153,6 @@ const VoteOutcomeModal = ({
     communityPct,
     comments,
   } = voteOutcome;
-
-  // Weighted Voting Logic (DexCourt 70/30 model)
-  const totalVotes = judgeVotes + communityVotes;
-  const judgeWeight = 0.7;
-  const communityWeight = 0.3;
-  const weightedPlaintiffPct =
-    judgePct * judgeWeight + communityPct * communityWeight;
-  const weightedDefendantPct = 100 - weightedPlaintiffPct;
-  const plaintiffVotes = Math.round((totalVotes * weightedPlaintiffPct) / 100);
-  const defendantVotes = totalVotes - plaintiffVotes;
-  const winPct = Math.round(
-    Math.max(weightedPlaintiffPct, weightedDefendantPct),
-  );
 
   return (
     <AnimatePresence mode="wait">
@@ -212,7 +212,7 @@ const VoteOutcomeModal = ({
                       : "Case Dismissed"}
                 </div>
                 <div className="text-emerald-200">
-                  {winPct}% weighted majority
+                  {voteResults.winPct}% weighted majority
                 </div>
               </div>
 
@@ -244,12 +244,10 @@ const VoteOutcomeModal = ({
                   </div>
                   <div className="mt-2 flex justify-between text-sm">
                     <span className="text-cyan-300">
-                      Plaintiff: {Math.round((judgePct / 100) * judgeVotes)}{" "}
-                      votes
+                      Plaintiff: {voteResults.plaintiffJudgeVotes} votes
                     </span>
                     <span className="text-pink-300">
-                      Defendant:{" "}
-                      {Math.round(((100 - judgePct) / 100) * judgeVotes)} votes
+                      Defendant: {voteResults.defendantJudgeVotes} votes
                     </span>
                   </div>
                 </div>
@@ -284,15 +282,10 @@ const VoteOutcomeModal = ({
                   </div>
                   <div className="mt-2 flex justify-between text-sm">
                     <span className="text-cyan-300">
-                      Plaintiff:{" "}
-                      {Math.round((communityPct / 100) * communityVotes)} votes
+                      Plaintiff: {voteResults.plaintiffCommunityVotes} votes
                     </span>
                     <span className="text-pink-300">
-                      Defendant:{" "}
-                      {Math.round(
-                        ((100 - communityPct) / 100) * communityVotes,
-                      )}{" "}
-                      votes
+                      Defendant: {voteResults.defendantCommunityVotes} votes
                     </span>
                   </div>
                 </div>
@@ -302,14 +295,17 @@ const VoteOutcomeModal = ({
                   <div className="text-muted-foreground mb-2 flex justify-between text-sm">
                     <span>Weighted Total (70% Judges, 30% Community)</span>
                     <span>
-                      {weightedPlaintiffPct.toFixed(1)}% favor Plaintiff
+                      {voteResults.weightedPlaintiffPct.toFixed(1)}% favor
+                      Plaintiff
                     </span>
                   </div>
                   <div className="relative h-3 w-full overflow-hidden rounded-full bg-white/10">
                     <motion.div
                       className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-400"
                       initial={{ width: 0 }}
-                      animate={{ width: `${weightedPlaintiffPct}%` }}
+                      animate={{
+                        width: `${voteResults.weightedPlaintiffPct}%`,
+                      }}
                       transition={{
                         duration: 1,
                         ease: "easeOut",
@@ -319,7 +315,9 @@ const VoteOutcomeModal = ({
                     <motion.div
                       className="absolute top-0 right-0 h-full rounded-r-full bg-pink-400/60"
                       initial={{ width: 0 }}
-                      animate={{ width: `${weightedDefendantPct}%` }}
+                      animate={{
+                        width: `${voteResults.weightedDefendantPct}%`,
+                      }}
                       transition={{
                         duration: 1,
                         ease: "easeOut",
@@ -329,10 +327,10 @@ const VoteOutcomeModal = ({
                   </div>
                   <div className="mt-2 flex justify-between text-sm">
                     <span className="text-cyan-300">
-                      Plaintiff: {plaintiffVotes} votes
+                      Plaintiff: {voteResults.plaintiffVotes} votes
                     </span>
                     <span className="text-pink-300">
-                      Defendant: {defendantVotes} votes
+                      Defendant: {voteResults.defendantVotes} votes
                     </span>
                   </div>
                 </div>

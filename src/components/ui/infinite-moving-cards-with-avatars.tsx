@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { UserAvatar } from "../UserAvatar";
 import { Link } from "react-router-dom";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
+import { AvatarErrorBoundary } from "../AvatarErrorBoundary";
 
 interface AgreementItem {
   quote: string;
@@ -153,21 +154,25 @@ export const InfiniteMovingCardsWithAvatars = ({
           {/* Avatars Section */}
           <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
             <div className="flex items-center gap-2">
-              <UserAvatar
-                userId={item.createdByUserId || item.createdBy || "unknown"}
-                avatarId={item.createdByAvatarId ?? null}
-                username={item.createdBy || "unknown"}
-                size="sm"
-              />
+              <AvatarErrorBoundary>
+                <UserAvatar
+                  userId={item.createdByUserId || item.createdBy || "unknown"}
+                  avatarId={item.createdByAvatarId ?? null}
+                  username={item.createdBy || "unknown"}
+                  size="sm"
+                />
+              </AvatarErrorBoundary>
               <span className="text-xs text-cyan-300">{item.createdBy}</span>
             </div>
             <div className="flex items-center gap-2">
-              <UserAvatar
-                userId={item.counterpartyUserId || item.counterparty || ""}
-                avatarId={item.counterpartyAvatarId ?? null}
-                username={item.counterparty || ""}
-                size="sm"
-              />
+              <AvatarErrorBoundary>
+                <UserAvatar
+                  userId={item.counterpartyUserId || item.counterparty || ""}
+                  avatarId={item.counterpartyAvatarId ?? null}
+                  username={item.counterparty || ""}
+                  size="sm"
+                />
+              </AvatarErrorBoundary>
               <span className="text-xs text-cyan-300">{item.counterparty}</span>
             </div>
           </div>

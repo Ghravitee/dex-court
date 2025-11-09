@@ -22,6 +22,10 @@ import { disputeService } from "../services/disputeServices";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
 import React from "react";
+import {
+  calculateVoteResults,
+  type VoteCalculationResult,
+} from "../lib/voteCalculations";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -561,41 +565,14 @@ const MemoizedLiveCaseCard = React.memo(LiveCaseCard);
 
 const DoneCaseCard = ({ c }: { c: DoneCase }) => {
   // Memoized calculations
-  const {
-    totalVotes,
-    isDismissedDueToNoVotes,
-    weightedPlaintiffPct,
-    winPct,
-    plaintiffVotes,
-    defendantVotes,
-  } = useMemo(() => {
-    const totalVotes = c.judgeVotes + c.communityVotes;
-    const judgeWeight = 0.7;
-    const communityWeight = 0.3;
-
-    const weightedPlaintiffPct =
-      c.judgePct * judgeWeight + c.communityPct * communityWeight;
-
-    const plaintiffJudgeVotes = Math.round((c.judgePct / 100) * c.judgeVotes);
-    const plaintiffCommunityVotes = Math.round(
-      (c.communityPct / 100) * c.communityVotes,
+  const voteResults = useMemo(() => {
+    return calculateVoteResults(
+      c.judgeVotes,
+      c.communityVotes,
+      c.judgePct,
+      c.communityPct,
+      c.winner,
     );
-
-    const plaintiffVotes = plaintiffJudgeVotes + plaintiffCommunityVotes;
-    const defendantVotes = totalVotes - plaintiffVotes;
-
-    const winPct = Math.round(weightedPlaintiffPct);
-    const isDismissedDueToNoVotes =
-      c.winner === "dismissed" && totalVotes === 0;
-
-    return {
-      totalVotes,
-      isDismissedDueToNoVotes,
-      weightedPlaintiffPct,
-      winPct,
-      plaintiffVotes,
-      defendantVotes,
-    };
   }, [c.judgeVotes, c.communityVotes, c.judgePct, c.communityPct, c.winner]);
 
   return (
@@ -649,8 +626,8 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                 </span>
               </div>
               <div className="text-muted-foreground text-xs">
-                Total votes: {totalVotes}
-                {isDismissedDueToNoVotes && (
+                Total votes: {voteResults.totalVotes}
+                {voteResults.isDismissedDueToNoVotes && (
                   <div className="mt-1 text-xs text-yellow-400">
                     No votes cast
                   </div>
@@ -684,19 +661,14 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                       : "Case Dismissed"}
                 </div>
                 <div className="text-emerald-200">
-                  {isDismissedDueToNoVotes
+                  {voteResults.isDismissedDueToNoVotes
                     ? "No votes were cast during the voting period"
-                    : `${winPct}% weighted majority`}
+                    : `${voteResults.winPct}% weighted majority`}
                 </div>
               </div>
 
-              {!isDismissedDueToNoVotes && (
-                <VotingBreakdown
-                  c={c}
-                  weightedPlaintiffPct={weightedPlaintiffPct}
-                  plaintiffVotes={plaintiffVotes}
-                  defendantVotes={defendantVotes}
-                />
+              {!voteResults.isDismissedDueToNoVotes && (
+                <VotingBreakdown c={c} voteResults={voteResults} />
               )}
 
               {/* Judges' Comments */}
@@ -722,22 +694,11 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
 // Extracted components for better performance
 const VotingBreakdown = ({
   c,
-  weightedPlaintiffPct,
-  plaintiffVotes,
-  defendantVotes,
+  voteResults,
 }: {
   c: DoneCase;
-  weightedPlaintiffPct: number;
-  plaintiffVotes: number;
-  defendantVotes: number;
+  voteResults: VoteCalculationResult;
 }) => {
-  const plaintiffJudgeVotes = Math.round((c.judgePct / 100) * c.judgeVotes);
-  const defendantJudgeVotes = c.judgeVotes - plaintiffJudgeVotes;
-  const plaintiffCommunityVotes = Math.round(
-    (c.communityPct / 100) * c.communityVotes,
-  );
-  const defendantCommunityVotes = c.communityVotes - plaintiffCommunityVotes;
-
   return (
     <div className="glass rounded-lg border border-cyan-400/30 bg-white/5 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
       <div className="mb-2 text-sm font-medium text-white/90">
@@ -749,8 +710,8 @@ const VotingBreakdown = ({
         title="Judges"
         votes={c.judgeVotes}
         percentage={c.judgePct}
-        plaintiffVotes={plaintiffJudgeVotes}
-        defendantVotes={defendantJudgeVotes}
+        plaintiffVotes={voteResults.plaintiffJudgeVotes}
+        defendantVotes={voteResults.defendantJudgeVotes}
         delay={0}
       />
 
@@ -759,8 +720,8 @@ const VotingBreakdown = ({
         title="Community"
         votes={c.communityVotes}
         percentage={c.communityPct}
-        plaintiffVotes={plaintiffCommunityVotes}
-        defendantVotes={defendantCommunityVotes}
+        plaintiffVotes={voteResults.plaintiffCommunityVotes}
+        defendantVotes={voteResults.defendantCommunityVotes}
         delay={0.3}
       />
 
@@ -768,14 +729,16 @@ const VotingBreakdown = ({
       <div>
         <div className="text-muted-foreground mb-1 flex justify-between text-xs">
           <span>Weighted Total (70% Judges, 30% Community)</span>
-          <span>{weightedPlaintiffPct.toFixed(1)}% favor Plaintiff</span>
+          <span>
+            {voteResults.weightedPlaintiffPct.toFixed(1)}% favor Plaintiff
+          </span>
         </div>
 
         <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
           <motion.div
             className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-400"
             initial={{ width: 0 }}
-            animate={{ width: `${weightedPlaintiffPct}%` }}
+            animate={{ width: `${voteResults.weightedPlaintiffPct}%` }}
             transition={{
               duration: 1,
               ease: "easeOut",
@@ -785,7 +748,7 @@ const VotingBreakdown = ({
           <motion.div
             className="absolute top-0 right-0 h-full rounded-r-full bg-pink-400/60"
             initial={{ width: 0 }}
-            animate={{ width: `${100 - weightedPlaintiffPct}%` }}
+            animate={{ width: `${voteResults.weightedDefendantPct}%` }}
             transition={{
               duration: 1,
               ease: "easeOut",
@@ -796,10 +759,10 @@ const VotingBreakdown = ({
 
         <div className="mt-1 flex justify-between text-[11px]">
           <span className="text-cyan-300">
-            Plaintiff: {plaintiffVotes} votes
+            Plaintiff: {voteResults.plaintiffVotes} votes
           </span>
           <span className="text-pink-300">
-            Defendant: {defendantVotes} votes
+            Defendant: {voteResults.defendantVotes} votes
           </span>
         </div>
       </div>
