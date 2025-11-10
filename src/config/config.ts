@@ -21,8 +21,12 @@ import {
 } from "@rainbow-me/rainbowkit/wallets";
 
 const projectId = import.meta.env.VITE_WALLET_CONNECT_PROJECT_ID!;
-const alchemyKey = import.meta.env.VITE_ETH_RPC_URL!;
-const Sepolia_AlchemyKey = import.meta.env.VITE_SEPOLIA_RPC_URL!;
+const alchemyKey =
+  import.meta.env.VITE_ETH_RPC_URL! ||
+  `https://lb.nodies.app/v2/ethereum-sepolia?apikey=dd97685f-5501-46ee-8dc7-18c09b5eaf46`;
+const Sepolia_AlchemyKey =
+  import.meta.env.VITE_SEPOLIA_RPC_URL! ||
+  `https://lb.nodies.app/v2/ethereum-sepolia?apikey=dd97685f-5501-46ee-8dc7-18c09b5eaf46`;
 // const bsc_AlchemyKey = import.meta.env.VITE_BSC_RPC_URL!;
 // const bscTestnet_AlchemyKey = import.meta.env.VITE_BSC_TESTNET_RPC_URL! || import.meta.env.VITE_BSC_TESTNET_RPC_URL2!; // Fallback to second key if first is not set
 
@@ -41,7 +45,9 @@ export const ALL_CHAINS = [
 export const config = getDefaultConfig({
   appName: "Abyss App",
   projectId,
-  chains: [mainnet, sepolia,
+  chains: [
+    mainnet,
+    sepolia,
     //  bscTestnet, bsc
   ], // Support all chains
   ssr: true,

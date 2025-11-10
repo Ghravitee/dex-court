@@ -26,6 +26,7 @@ import {
   calculateVoteResults,
   type VoteCalculationResult,
 } from "../lib/voteCalculations";
+import { useAuth } from "../context/AuthContext";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -221,10 +222,12 @@ const LiveCaseCard = ({
   c,
   currentTime,
   refetchLiveDisputes,
+  isJudge = false,
 }: {
   c: LiveCase;
   currentTime: number;
   refetchLiveDisputes: () => void;
+  isJudge?: boolean;
 }) => {
   const [choice, setChoice] = useState<
     "plaintiff" | "defendant" | "dismissed" | null
@@ -364,9 +367,9 @@ const LiveCaseCard = ({
               </div>
             </div>
             <div className="text-right">
-              <div className="text-muted-foreground mb-1 flex items-center justify-end gap-2 text-xl">
+              <div className="text-muted-foreground mb-1 flex justify-end gap-2 text-xl">
                 <Clock
-                  className={`h-5 w-5 ${
+                  className={`mt-2 ml-10 h-5 w-5 ${
                     isExpired ? "text-yellow-400" : "text-cyan-300"
                   }`}
                 />
@@ -480,26 +483,38 @@ const LiveCaseCard = ({
               </div>
 
               {/* Comment Section */}
+              {/* Comment Section */}
               {!localHasVoted && !isExpired && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground text-sm">
-                      Comment (optional)
+                      Comment{" "}
+                      {isJudge && <span className="text-xs">(max 1200)</span>}
                     </span>
-                    <span className="text-muted-foreground text-xs">
-                      Max 1200 characters
-                    </span>
+                    {!isJudge && (
+                      <span className="text-muted-foreground text-xs">
+                        Only judges can comment
+                      </span>
+                    )}
                   </div>
 
                   <textarea
+                    disabled={!isJudge || isVoting}
                     value={comment}
                     onChange={handleCommentChange}
-                    className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-cyan-400/40"
-                    placeholder="Add your reasoning (optional)..."
+                    className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
+                    placeholder={
+                      isJudge
+                        ? "Add your reasoning as a judge..."
+                        : "Comments are restricted to judges only"
+                    }
                   />
-                  <div className="text-muted-foreground mt-1 text-right text-[10px]">
-                    {1200 - comment.length} characters left
-                  </div>
+
+                  {isJudge && (
+                    <div className="text-muted-foreground mt-1 text-right text-xs">
+                      {1200 - comment.length} characters left
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -889,6 +904,16 @@ export default function Voting() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"live" | "done">("live");
   const [currentTime, setCurrentTime] = useState(now()); // Single time source for all cards
+  const { user } = useAuth();
+
+  // Add these helper functions inside the Voting component (before the return statement)
+  const getUserRoleNumber = useCallback((): number => {
+    return user?.role || 1; // Default to Community (1) if no role
+  }, [user?.role]);
+
+  const isUserJudge = useCallback((): boolean => {
+    return getUserRoleNumber() === 2; // 2 = Judge
+  }, [getUserRoleNumber]);
 
   // Single interval for all cards - better performance
   useEffect(() => {
@@ -1093,6 +1118,7 @@ export default function Voting() {
           c={c}
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
+          isJudge={isUserJudge()}
         />
       ));
     } else {
@@ -1136,6 +1162,7 @@ export default function Voting() {
     concludedCases,
     currentTime,
     fetchLiveDisputes,
+    isUserJudge,
   ]);
 
   return (
