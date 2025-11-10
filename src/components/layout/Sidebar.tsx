@@ -21,7 +21,12 @@ const nav = [
   { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
   { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
   { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
-
+  {
+    to: "/web3escrow",
+    label: "Theo's Escrow",
+    icon: <BadgeDollarSign size={18} />,
+  }, // Added
+  { to: "/web3vote", label: "Theo's Voting", icon: <Vote size={18} /> }, // Added
   { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
 ];
 

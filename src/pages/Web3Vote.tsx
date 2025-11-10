@@ -1,6 +1,6 @@
 // src/pages/Web3Vote.tsx
 import { useCallback, useEffect, useState } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+
 import {
   useAccount,
   useWriteContract,
@@ -748,7 +748,6 @@ function Web3Vote() {
           </h1>
         </div>
 
-        <ConnectButton />
         {!isConnected ? (
           <div className="py-20 text-center">
             <p className="text-xl text-gray-400">
