@@ -318,18 +318,18 @@ export default function Agreements() {
 
   // Load agreements
 
-  // FIXED: Use only the main agreements endpoint
-
   const loadAgreements = useCallback(
     async (page: number = currentPage, size: number = pageSize) => {
       try {
         setLoading(true);
 
+        // ✅ FIXED: Use correct API parameters (top and skip instead of page/page_size)
         const skip = (page - 1) * size;
 
         const allAgreements = await agreementService.getAgreements({
           top: size,
           skip: skip,
+          sort: "desc", // Add sort parameter for consistency
         });
 
         console.log("📋 Agreements response:", allAgreements);
@@ -340,7 +340,6 @@ export default function Agreements() {
         const agreementsList = allAgreements.results || [];
         const transformedAgreements = agreementsList.map(transformApiAgreement);
 
-        // 🆕 ADD DEBUGGING HERE
         console.log("🔍 TRANSFORMED AGREEMENTS:", transformedAgreements);
         if (transformedAgreements.length > 0) {
           console.log("🔍 FIRST AGREEMENT AMOUNT:", {
@@ -365,7 +364,6 @@ export default function Agreements() {
     },
     [currentPage, pageSize],
   );
-
   useEffect(() => {
     loadAgreements();
   }, [loadAgreements]);

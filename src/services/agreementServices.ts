@@ -348,33 +348,35 @@ class AgreementService {
 
   // Get agreements list with filters
   // Enhanced getAgreements method with better parameter handling
+  // In agreementServices.ts - Update the getAgreements method
   async getAgreements(params?: {
     top?: number;
     skip?: number;
     status?: number;
     sort?: string;
     search?: string;
-    page?: number;
-    page_size?: number;
+    // Remove page and page_size since API doesn't support them
   }): Promise<AgreementListDTO> {
     console.log(
       "🔍 getAgreements called with params:",
       JSON.stringify(params, null, 2),
     );
 
-    // Use page/page_size as primary parameters, fall back to top/skip
+    // ✅ FIXED: Use only the parameters that the API actually supports
     const requestParams = {
-      ...params,
-      // Ensure we're using consistent pagination
-      page: params?.page || 1,
-      page_size: params?.page_size || params?.top || 50,
+      top: params?.top || 10, // Default to 10 if not provided
+      skip: params?.skip || 0, // Default to 0 if not provided
+      status: params?.status,
+      sort: params?.sort || "desc", // Default to desc if not provided
+      search: params?.search,
     };
 
-    // Remove top/skip if we're using page/page_size to avoid conflicts
-    if (requestParams.page && requestParams.page_size) {
-      delete requestParams.top;
-      delete requestParams.skip;
-    }
+    // Remove undefined parameters
+    Object.keys(requestParams).forEach((key) => {
+      if (requestParams[key as keyof typeof requestParams] === undefined) {
+        delete requestParams[key as keyof typeof requestParams];
+      }
+    });
 
     const response = await api.get("/agreement", { params: requestParams });
 
@@ -384,6 +386,8 @@ class AgreementService {
       resultsCount: response.data.results?.length,
       firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
       hasMoreData: response.data.results?.length > 0,
+      currentPage:
+        Math.floor((requestParams.skip || 0) / (requestParams.top || 10)) + 1,
     });
 
     return response.data;
@@ -394,8 +398,11 @@ class AgreementService {
     try {
       console.log("🔢 Counting ALL agreements...");
 
-      // Get just the first page to read the totalAgreements count
-      const firstPage = await this.getAgreements({ page: 1, page_size: 1 });
+      // ✅ FIXED: Use correct API parameters (top and skip instead of page/page_size)
+      const firstPage = await this.getAgreements({
+        top: 1,
+        skip: 0,
+      });
       const totalCount = firstPage.totalAgreements || 0;
 
       console.log(`✅ Total agreements count from API: ${totalCount}`);
@@ -416,7 +423,6 @@ class AgreementService {
       }
     }
   }
-
   // In agreementServices.ts - FIXED getAllAgreements method
   // In agreementServices.ts - FIXED getAllAgreements method
   async getAllAgreements(filters?: {
@@ -426,8 +432,8 @@ class AgreementService {
   }): Promise<AgreementSummaryDTO[]> {
     try {
       let allAgreements: AgreementSummaryDTO[] = [];
-      let currentPage = 1;
-      const pageSize = 100; // Increased page size for better performance
+      let skip = 0;
+      const top = 100; // Use top instead of page_size
       let hasMore = true;
       let totalAgreements = 0;
 
@@ -435,35 +441,36 @@ class AgreementService {
 
       while (hasMore) {
         const params = {
-          page: currentPage,
-          page_size: pageSize,
+          top: top,
+          skip: skip,
           ...filters,
+          sort: filters?.sort || "desc",
         };
 
         const response = await this.getAgreements(params);
         const pageAgreements = response.results || [];
 
         console.log(
-          `📄 Page ${currentPage}: ${pageAgreements.length} agreements returned`,
+          `📄 Skip ${skip}: ${pageAgreements.length} agreements returned`,
         );
 
         if (pageAgreements.length === 0) {
           hasMore = false;
-          console.log(`📄 Reached end at page ${currentPage}`);
+          console.log(`📄 Reached end at skip ${skip}`);
           break;
         }
 
         allAgreements = [...allAgreements, ...pageAgreements];
 
         // Get total count from the first response
-        if (currentPage === 1) {
+        if (skip === 0) {
           totalAgreements =
             response.totalAgreements || response.totalResults || 0;
           console.log(`📊 Total agreements in system: ${totalAgreements}`);
         }
 
         console.log(
-          `📄 Page ${currentPage}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
+          `📄 Skip ${skip}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
         );
 
         // Check if we've reached the total
@@ -473,8 +480,8 @@ class AgreementService {
           break;
         }
 
-        // Also stop if we get fewer results than page size (indicating last page)
-        if (pageAgreements.length < pageSize) {
+        // Also stop if we get fewer results than top (indicating last page)
+        if (pageAgreements.length < top) {
           hasMore = false;
           console.log(
             `✅ Reached last page with ${pageAgreements.length} agreements`,
@@ -482,11 +489,11 @@ class AgreementService {
           break;
         }
 
-        currentPage++;
+        skip += top;
 
         // Safety limit to prevent infinite loops
-        if (currentPage > 50) {
-          console.warn("⚠️ Reached safety limit of 50 pages");
+        if (skip > 5000) {
+          console.warn("⚠️ Reached safety limit of 5000 records");
           hasMore = false;
         }
 
