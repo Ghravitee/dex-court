@@ -1,7 +1,7 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { loginTelegram, apiService } from "../lib/apiClient";
+import { loginTelegram, apiService, api } from "../lib/apiClient";
 import { agreementService } from "../services/agreementServices";
 import type { AccountSummaryDTO } from "../services/apiService";
 import { walletLinkingService } from "../services/walletLinkingService";
@@ -183,22 +183,13 @@ async function getCurrentUser(): Promise<User | null> {
   pendingUserFetch = (async () => {
     try {
       // You'll need to implement this method in your apiService or use the cachedGet
-      // For now, using direct api call - replace with your actual user fetching method
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com"}/accounts/mine`,
-        {
-          headers: {
-            Authorization: token,
-            "Content-Type": "application/json",
-          },
+      // Replace the fetch call with:
+      const response = await api.get("/accounts/mine", {
+        headers: {
+          Authorization: token,
         },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user: ${response.status}`);
-      }
-
-      const apiUser = await response.json();
+      });
+      const apiUser = response.data;
       const user = mapApiResponseToUser(apiUser);
 
       // Cache the successful response

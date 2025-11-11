@@ -40,9 +40,27 @@ export function LoginModal({
       }
       onClose();
       setOtp("");
-    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
       console.error(`${mode === "link" ? "Linking" : "Login"} failed:`, error);
-      alert(`Invalid or expired OTP. Please try again.`);
+
+      const errorMessage = error.response?.data?.message || error.message;
+
+      if (errorMessage.includes("expired")) {
+        alert(
+          "OTP has expired. Please generate a new one from the Telegram bot.",
+        );
+      } else if (errorMessage.includes("invalid")) {
+        alert(
+          "Invalid OTP format. Please copy the entire code from the Telegram bot.",
+        );
+      } else if (error.response?.status === 404) {
+        alert(
+          "Telegram bot not found. Please check the bot username: @DexCourtDVBot",
+        );
+      } else {
+        alert(`Authentication failed: ${errorMessage}`);
+      }
     }
   };
 
