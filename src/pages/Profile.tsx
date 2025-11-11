@@ -14,12 +14,13 @@ import { LoginModal } from "../components/LoginModal";
 import { useAccountUpdate, useAvatarUpload } from "../hooks/useAccountApi";
 import type { AccountUpdateRequest } from "../services/apiService";
 import { UserAvatar } from "../components/UserAvatar";
-import { Loader2, UploadCloud } from "lucide-react";
+import { Loader2, UploadCloud, Wallet } from "lucide-react";
 import { useAgreementsApi } from "../hooks/useAgreementsApi";
 import type { AgreementSummaryDTO } from "../services/agreementServices";
 import { useNavigate } from "react-router-dom";
 import { useDisputesApi } from "../hooks/useDisputesApi";
-import type { DisputeRow } from "@/types";
+import type { DisputeRow } from "../types";
+import { WalletLinkingModal } from "../components/WalletLinkingModal";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -341,6 +342,10 @@ export default function Profile() {
   const { isAuthenticated, logout, user, login } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState<{
+    type: "telegram" | "wallet";
+    open: boolean;
+  }>({ type: "telegram", open: false });
 
   const navigate = useNavigate();
 
@@ -697,16 +702,24 @@ export default function Profile() {
         isVisible={toaster.isVisible}
         onClose={closeToaster}
       />
-
       <header className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
-        <Button
-          onClick={() => setShowProfileUpdateModal(true)}
-          className="flex items-center gap-2 border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
-        >
-          <FaEdit className="h-4 w-4" />
-          Edit Profile
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={logout}
+            variant="outline"
+            className="border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+          >
+            Logout
+          </Button>
+          <Button
+            onClick={() => setShowProfileUpdateModal(true)}
+            className="flex items-center gap-2 border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+          >
+            <FaEdit className="h-4 w-4" />
+            Edit Profile
+          </Button>
+        </div>
       </header>
 
       {/* ===== Top Summary Section ===== */}
@@ -809,26 +822,54 @@ export default function Profile() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isAuthenticated ? (
-                    <Button
-                      onClick={logout}
-                      variant="ghost"
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Logout
-                    </Button>
+                  {user?.telegram?.username ? (
+                    <span className="text-xs text-green-400">✅ Linked</span>
                   ) : (
                     <Button
-                      onClick={() => setShowLoginModal(true)}
+                      onClick={() =>
+                        setShowLinkModal({ type: "telegram", open: true })
+                      }
                       variant="outline"
                       className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
                     >
-                      Connect
+                      Link
                     </Button>
                   )}
                 </div>
               </div>
 
+              {/* Wallet Verification */}
+              <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center gap-3">
+                  <Wallet className="h-5 w-5 text-cyan-300" />
+                  <div>
+                    <div className="flex items-center gap-2 text-sm text-white/90">
+                      Wallet
+                      {user?.walletAddress && <VerificationBadge />}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      {user?.walletAddress
+                        ? `${user.walletAddress.slice(0, 8)}...${user.walletAddress.slice(-6)}`
+                        : "Not linked"}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {user?.walletAddress ? (
+                    <span className="text-xs text-green-400">✅ Linked</span>
+                  ) : (
+                    <Button
+                      onClick={() =>
+                        setShowLinkModal({ type: "wallet", open: true })
+                      }
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                    >
+                      Link
+                    </Button>
+                  )}
+                </div>
+              </div>
               {/* Twitter Verification */}
               <div className="flex cursor-not-allowed items-center justify-between rounded-md border border-white/10 bg-white/5 p-3 opacity-50">
                 <div className="flex items-center gap-3">
@@ -1249,6 +1290,21 @@ export default function Profile() {
         onUpdate={handleUpdate}
         updating={updating}
       />
+
+      {showLinkModal.type === "telegram" && (
+        <LoginModal
+          isOpen={showLinkModal.open}
+          onClose={() => setShowLinkModal({ type: "telegram", open: false })}
+          mode="link"
+        />
+      )}
+
+      {showLinkModal.type === "wallet" && (
+        <WalletLinkingModal
+          isOpen={showLinkModal.open}
+          onClose={() => setShowLinkModal({ type: "wallet", open: false })}
+        />
+      )}
     </div>
   );
 }

@@ -1,43 +1,93 @@
-// src/components/LoginModal.tsx
+// src/components/LoginModal.tsx - Major update
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { useAuth } from "../context/AuthContext";
-import { X } from "lucide-react";
+import { X, Wallet, Loader2 } from "lucide-react";
+import { useAccount, useConnect } from "wagmi";
+import { useWalletLogin } from "../hooks/useWalletLogin";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  mode?: "login" | "link";
 }
 
-export function LoginModal({ isOpen, onClose }: LoginModalProps) {
+export function LoginModal({
+  isOpen,
+  onClose,
+  mode = "login",
+}: LoginModalProps) {
   const [otp, setOtp] = useState("");
   const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, linkTelegram } = useAuth();
+  const { isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
 
-  if (!isOpen) return null;
+  // NEW: Use wallet login hook
+  const {
+    loginWithConnectedWallet,
+    isLoggingIn,
+    error: walletError,
+    setError: setWalletError,
+  } = useWalletLogin();
 
-  const handleTelegramLogin = async () => {
+  const handleTelegramAction = async () => {
     try {
-      await login(otp);
+      if (mode === "link") {
+        await linkTelegram(otp);
+      } else {
+        await login(otp);
+      }
       onClose();
       setOtp("");
     } catch (error) {
-      console.error("Login failed:", error);
-      // You might want to show a more user-friendly error message here
-      alert("Invalid or expired OTP. Please try again.");
+      console.error(`${mode === "link" ? "Linking" : "Login"} failed:`, error);
+      alert(`Invalid or expired OTP. Please try again.`);
     }
   };
 
-  const handleWalletConnect = () => {
-    // Implement wallet connection logic here
-    console.log("Connect wallet clicked");
-    // For now, we'll show a message since wallet login isn't implemented
-    alert("Wallet connection coming soon!");
+  // NEW: Handle wallet login
+  const handleWalletLogin = async () => {
+    if (!isConnected) {
+      // Auto-connect if not connected
+      if (connectors[0]) {
+        connect({ connector: connectors[0] });
+      }
+      return;
+    }
+
+    const success = await loginWithConnectedWallet();
+    if (success) {
+      onClose();
+    }
   };
 
-  // Reset form when modal closes
+  const getModalTitle = () => {
+    if (mode === "link") {
+      return "Link Account";
+    }
+    return "Login to DexCourt";
+  };
+
+  const getTelegramButtonText = () => {
+    if (mode === "link") {
+      return isLoading ? "Linking..." : "Link Telegram";
+    }
+    return isLoading ? "Logging in..." : "Login";
+  };
+
+  const getWalletButtonText = () => {
+    if (!isConnected) {
+      return "Connect Wallet";
+    }
+    return isLoggingIn ? "Logging in..." : "Login with Wallet";
+  };
+
+  if (!isOpen) return null;
+
   const handleClose = () => {
     setOtp("");
+    setWalletError("");
     onClose();
   };
 
@@ -45,10 +95,11 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="card-cyan relative w-[90%] max-w-md rounded-xl p-6 text-white shadow-lg">
         <div className="flex items-center justify-between">
-          <h3 className="mb-4 text-lg font-semibold">Login to DexCourt</h3>
+          <h3 className="mb-4 text-lg font-semibold">{getModalTitle()}</h3>
           <button
             onClick={handleClose}
             className="text-cyan-300 hover:text-white"
+            disabled={isLoading || isLoggingIn}
           >
             <X className="h-5 w-5" />
           </button>
@@ -57,14 +108,17 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         {/* Tab Navigation */}
         <div className="mb-4 flex border-b border-white/10">
           <button
-            onClick={() => setActiveTab("wallet")}
+            onClick={() => {
+              setActiveTab("wallet");
+              setWalletError("");
+            }}
             className={`flex-1 py-2 text-sm font-medium ${
               activeTab === "wallet"
                 ? "border-b-2 border-cyan-400 text-cyan-300"
                 : "text-gray-400"
             }`}
           >
-            Connect Wallet
+            Wallet
           </button>
           <button
             onClick={() => setActiveTab("telegram")}
@@ -78,33 +132,78 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </button>
         </div>
 
-        {/* Wallet Login */}
+        {/* Wallet Login Section */}
         {activeTab === "wallet" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              Connect your wallet to view your profile and interact with
-              DexCourt
+              {mode === "link"
+                ? "Connect your wallet to link it to your account"
+                : "Connect your wallet to login to your DexCourt account"}
             </p>
-            <Button
-              onClick={handleWalletConnect}
-              className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30"
-            >
-              Connect Wallet
-            </Button>
+
+            {mode === "link" && isConnected ? (
+              <div className="rounded-md border border-green-400/20 bg-green-500/10 p-3">
+                <p className="text-sm text-green-300">
+                  ✅ Wallet connected! Switch to Telegram tab to complete
+                  linking.
+                </p>
+              </div>
+            ) : (
+              <>
+                {walletError && (
+                  <div className="rounded-md border border-red-400/20 bg-red-500/10 p-3">
+                    <p className="text-sm text-red-300">{walletError}</p>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleWalletLogin}
+                  disabled={isLoggingIn}
+                  className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      <Wallet className="mr-2 h-5 w-5" />
+                      {getWalletButtonText()}
+                    </>
+                  )}
+                </Button>
+
+                {!isConnected && (
+                  <p className="text-center text-sm text-cyan-300">
+                    Click the button to connect your wallet and sign in
+                  </p>
+                )}
+
+                {isConnected && !isLoggingIn && (
+                  <p className="text-center text-sm text-gray-300">
+                    You'll be asked to sign a message to verify ownership
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        {/* Telegram Login */}
+        {/* Telegram Section */}
         {activeTab === "telegram" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              To log in with Telegram, you need to have a Telegram username set
-              first.
+              {mode === "link"
+                ? "Link your Telegram account to enable social features"
+                : "To log in with Telegram, you need to have a Telegram username set first."}
             </p>
 
             <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
               <p className="mb-2 text-sm font-semibold text-cyan-100">
-                First time users:
+                {mode === "link"
+                  ? "Linking Instructions:"
+                  : "First time users:"}
               </p>
               <ol className="list-inside list-decimal space-y-1 text-sm text-gray-300">
                 <li>
@@ -132,8 +231,11 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             </div>
 
             <p className="text-sm text-gray-300">
-              Paste the OTP you received below to verify and complete your
-              registration.
+              Paste the OTP you received below to{" "}
+              {mode === "link"
+                ? "link your account"
+                : "verify and complete your registration"}
+              .
             </p>
 
             <label className="block text-sm text-gray-300">
@@ -147,7 +249,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
               className="w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
               onKeyPress={(e) => {
                 if (e.key === "Enter" && otp.trim()) {
-                  handleTelegramLogin();
+                  handleTelegramAction();
                 }
               }}
             />
@@ -157,15 +259,16 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 variant="outline"
                 onClick={handleClose}
                 className="border-gray-500/30 text-gray-300 hover:bg-gray-700/40"
+                disabled={isLoading}
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleTelegramLogin}
+                onClick={handleTelegramAction}
                 className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
                 disabled={isLoading || !otp.trim()}
               >
-                {isLoading ? "Logging in..." : "Login"}
+                {getTelegramButtonText()}
               </Button>
             </div>
           </div>

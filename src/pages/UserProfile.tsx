@@ -20,7 +20,7 @@ import { usePublicAgreementsApi } from "../hooks/usePublicAgreementsApi";
 import { useDisputesApi } from "../hooks/useDisputesApi"; // ADD THIS IMPORT
 import type { AgreementSummaryDTO } from "../services/agreementServices"; // UPDATE IMPORT
 import type { DisputeRow } from "../types"; // UPDATE IMPORT
-import { Loader2 } from "lucide-react";
+import { Loader2, Wallet } from "lucide-react";
 
 // Add AgreementStatusBadge component (same as in Profile)
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -560,7 +560,7 @@ export default function UserProfile() {
               username={user.telegram?.username || user.username}
               size="lg"
               className="h-14 w-14 border border-cyan-400/30"
-              priority={true} // Profile pages get priority
+              priority={true}
             />
             <div className="flex-1">
               <div className="flex items-center gap-2">
@@ -583,9 +583,25 @@ export default function UserProfile() {
                 />
               </div>
               <div className="text-muted-foreground mt-2 text-xs">
-                <div className="font-semibold text-white/90">{user.handle}</div>{" "}
-                {/* Telegram username */}
-                {user.wallet}
+                <div className="flex items-center gap-1 font-semibold text-white/90">
+                  {user.handle}
+                </div>
+                {/* ADD WALLET ADDRESS DISPLAY */}
+                <div className="mt-1">
+                  {user.walletAddress ? (
+                    <div className="flex items-center gap-1 text-cyan-300">
+                      <Wallet className="h-3 w-3" />
+                      <span className="text-xs">
+                        {user.walletAddress.slice(0, 8)}...
+                        {user.walletAddress.slice(-6)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400">
+                      No wallet linked
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="self-center">

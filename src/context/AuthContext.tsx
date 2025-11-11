@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { loginTelegram, apiService } from "../lib/apiClient";
 import { agreementService } from "../services/agreementServices";
 import type { AccountSummaryDTO } from "../services/apiService";
+import { walletLinkingService } from "../services/walletLinkingService";
 
 // Update User interface to match the actual API response
 export interface User {
@@ -47,9 +48,17 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: User | null;
+
   login: (otp: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  // NEW: Wallet linking functionality
+  linkWallet: (walletAddress: string, signature: string) => Promise<void>;
+  linkTelegram: (otp: string) => Promise<void>;
+  generateLinkingNonce: (walletAddress: string) => Promise<string>;
+
+  loginWithWallet: (walletAddress: string, signature: string) => Promise<void>;
+  generateLoginNonce: (walletAddress: string) => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -357,6 +366,110 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false);
   };
 
+  // In AuthContext.tsx - Verify the generateLinkingNonce function
+  const generateLinkingNonce = async (
+    walletAddress: string,
+  ): Promise<string> => {
+    try {
+      const response =
+        await walletLinkingService.generateLinkingNonce(walletAddress);
+
+      // The service returns WalletNonceResponse, but we need to extract the nonce string
+      console.log("🔐 [AuthContext] Nonce service response:", response);
+
+      if (!response.nonce) {
+        throw new Error("No nonce in response");
+      }
+
+      return response.nonce; // This should be a string
+    } catch (error) {
+      console.error("Failed to generate linking nonce:", error);
+      throw error;
+    }
+  };
+
+  const linkWallet = async (
+    walletAddress: string,
+    signature: string,
+  ): Promise<void> => {
+    try {
+      await walletLinkingService.verifyAndLinkWallet({
+        walletAddress,
+        signature,
+      });
+      // Refresh user data to get updated wallet address
+      await refreshUser(true);
+    } catch (error) {
+      console.error("Failed to link wallet:", error);
+      throw error;
+    }
+  };
+
+  const linkTelegramAccount = async (otp: string): Promise<void> => {
+    try {
+      await walletLinkingService.linkTelegram(otp);
+      // Refresh user data to get updated telegram info
+      await refreshUser(true);
+    } catch (error) {
+      console.error("Failed to link Telegram:", error);
+      throw error;
+    }
+  };
+
+  const generateLoginNonce = async (walletAddress: string): Promise<string> => {
+    try {
+      const response =
+        await walletLinkingService.generateLoginNonce(walletAddress);
+      console.log("🔐 [AuthContext] Login nonce response:", response);
+
+      if (!response.nonce) {
+        throw new Error("No login nonce in response");
+      }
+
+      return response.nonce;
+    } catch (error) {
+      console.error("Failed to generate login nonce:", error);
+      throw error;
+    }
+  };
+
+  const loginWithWallet = async (
+    walletAddress: string,
+    signature: string,
+  ): Promise<void> => {
+    setIsLoading(true);
+    try {
+      const response = await walletLinkingService.verifyWalletLogin({
+        walletAddress,
+        signature,
+      });
+
+      const token = response.token?.trim();
+
+      if (!token) {
+        throw new Error("No token received from server");
+      }
+
+      // Store the token
+      localStorage.setItem("authToken", token);
+      agreementService.setAuthToken(token);
+
+      // Clear cache and force refresh
+      clearUserCache();
+      await refreshUser(true);
+    } catch (error) {
+      console.error("🔐 Wallet login failed:", error);
+      localStorage.removeItem("authToken");
+      agreementService.clearAuthToken();
+      clearUserCache();
+      setIsAuthenticated(false);
+      setUser(null);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -366,6 +479,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshUser: () => refreshUser(true),
+        // NEW methods
+        linkWallet,
+        linkTelegram: linkTelegramAccount,
+        generateLinkingNonce,
+        // NEW: Wallet login methods
+        loginWithWallet,
+        generateLoginNonce,
       }}
     >
       {children}
