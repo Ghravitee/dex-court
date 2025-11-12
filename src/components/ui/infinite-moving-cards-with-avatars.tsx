@@ -271,7 +271,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                {disputeItem.plaintiff}
+                @{disputeItem.plaintiff}
               </span>
             </div>
             <span className="text-cyan-400">
@@ -291,7 +291,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                {disputeItem.defendant}
+                @{disputeItem.defendant}
               </span>
             </div>
           </div>

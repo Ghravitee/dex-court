@@ -767,12 +767,12 @@ export default function Profile() {
                   <RoleBadge
                     role={userData.roles?.judge || false}
                     icon={<Judge />}
-                    tooltip="Certified Judge - You can participate in dispute resolution"
+                    tooltip="Certified Judge"
                   />
                   <RoleBadge
                     role={userData.roles?.community || false}
                     icon={<Community />}
-                    tooltip="Community Member - Active participant in the DexCourt ecosystem"
+                    tooltip="Community Member"
                   />
                   <RoleBadge
                     role={
@@ -781,7 +781,7 @@ export default function Profile() {
                       !(userData.roles?.community || false)
                     }
                     icon={<User />}
-                    tooltip="Basic User - Welcome to DexCourt!"
+                    tooltip="Basic User"
                   />
                 </div>
                 <div className="text-muted-foreground mt-2 text-xs">
@@ -1159,12 +1159,21 @@ export default function Profile() {
                         <div className="flex justify-between">
                           <span>Parties:</span>
                           <span className="text-white/80">
-                            {dispute.parties}
+                            @{dispute.plaintiff} vs @{dispute.defendant}
                           </span>
                         </div>
+
                         <div className="flex justify-between">
                           <span>Your Role:</span>
-                          <span className="text-cyan-300">
+                          <span
+                            className={
+                              getUserRoleInDispute(dispute) === "Plaintiff"
+                                ? "text-blue-300"
+                                : getUserRoleInDispute(dispute) === "Defendant"
+                                  ? "text-pink-300"
+                                  : "text-cyan-300"
+                            }
+                          >
                             {getUserRoleInDispute(dispute)}
                           </span>
                         </div>
@@ -1237,18 +1246,29 @@ export default function Profile() {
                         <div className="flex justify-between">
                           <span>First Party:</span>
                           <span className="text-white/80">
-                            {agreement.firstParty.telegramUsername}
+                            @{agreement.firstParty.telegramUsername}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Counter Party:</span>
                           <span className="text-white/80">
-                            {agreement.counterParty.telegramUsername}
+                            @{agreement.counterParty.telegramUsername}
                           </span>
                         </div>
+
                         <div className="flex justify-between">
                           <span>Your Role:</span>
-                          <span className="text-cyan-300">
+                          <span
+                            className={
+                              getUserRoleInAgreement(agreement) ===
+                              "First Party"
+                                ? "text-blue-300"
+                                : getUserRoleInAgreement(agreement) ===
+                                    "Counter Party"
+                                  ? "text-pink-300"
+                                  : "text-purple-300"
+                            }
+                          >
                             {getUserRoleInAgreement(agreement)}
                           </span>
                         </div>

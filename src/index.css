@@ -1,13 +1,5 @@
 @import "tailwindcss";
 
-/* * {
-  outline: 1px solid red;
-} */
-
-/* .slide-content .scroller {
-  width: 1024px;
-} */
-
 /* =========================
    🌐 Base Theme Variables
    ========================= */
@@ -95,6 +87,11 @@
    🌐 Base Styles
    ========================= */
 
+html {
+  background-color: black;
+  will-change: scroll-position;
+}
+
 body {
   background-color: black;
   color: hsl(var(--foreground));
@@ -104,10 +101,41 @@ body {
   font-optical-sizing: auto;
   font-weight: 400;
   font-style: normal;
+
+  /* Force hardware acceleration */
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: "Arimo", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
 }
 
-main {
-  display: hidden;
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(
+    ellipse at 50% -10%,
+    black 20%,
+    transparent 70%
+  );
+  mask-image: radial-gradient(ellipse at 50% -10%, black 20%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+
+  /* Ensure it doesn't cause repaints */
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Do NOT apply transform to main or root */
+.glass,
+.sidebar-glass {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 /* ---- Custom smooth slide animation for react-responsive-carousel ---- */
@@ -160,6 +188,7 @@ main {
 button {
   cursor: pointer;
 }
+
 .space {
   font-family:
     Inter,
@@ -173,22 +202,6 @@ button {
     Arial,
     "Apple Color Emoji",
     "Segoe UI Emoji";
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-
-  mix-blend-mode: screen;
-  -webkit-mask-image: radial-gradient(
-    ellipse at 50% -10%,
-    black 20%,
-    transparent 70%
-  );
-  mask-image: radial-gradient(ellipse at 50% -10%, black 20%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 @media (max-width: 640px) {
@@ -249,37 +262,39 @@ body::after {
 
 /* Glass effect */
 .glass {
-  background-color: black;
-  /* backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px); */
-
+  background-color: rgba(0, 0, 0, 0.8); /* More opaque background */
   border-radius: 0.75rem;
-}
 
-.glass:hover {
-  border: 1px solid cyan;
-  box-shadow:
-    0 0 10px rgba(34, 211, 238, 0.4),
-    0 0 20px rgba(34, 211, 238, 0.2);
-  /* transform: scale(1.02); */
-  transition: all 0.25s ease;
-  z-index: 1;
-  position: relative;
-  overflow: hidden;
+  /* Isolate the backdrop filter */
   isolation: isolate;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 0.75rem;
+  position: relative;
+  z-index: 1;
 }
 
 .glass::before {
   content: "";
   position: absolute;
   inset: 0;
-
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: inherit;
+  z-index: -1;
   pointer-events: none;
-  mix-blend-mode: overlay;
+}
+
+/* Remove backdrop-filter from main element and use pseudo-element instead */
+.glass:hover {
+  border: 1px solid cyan;
+  box-shadow:
+    0 0 10px rgba(34, 211, 238, 0.4),
+    0 0 20px rgba(34, 211, 238, 0.2);
+  transition: all 0.25s ease;
+  z-index: 2; /* Higher on hover */
+}
+
+.glass:hover::before {
+  backdrop-filter: blur(16px); /* Stronger blur on hover */
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .glow {
@@ -307,9 +322,13 @@ body::after {
   background-color: black;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-
   border-top-right-radius: 0.75rem;
   border-bottom-right-radius: 0.75rem;
+
+  /* Performance optimizations */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Neon glow effects */

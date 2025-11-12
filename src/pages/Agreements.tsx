@@ -1049,9 +1049,9 @@ export default function Agreements() {
 
   return (
     <div className="relative">
-      <div className="absolute top-32 right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[30rem]"></div>
-      <div className="absolute -top-20 left-0 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[15rem]"></div>
-      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div>
+      {/* <div className="absolute top-32 right-10 -z-[50] block rounded-full bg-cyan-500/20 blur-3xl lg:size-[30rem]"></div>
+      <div className="absolute -top-20 left-0 -z-[50] block rounded-full bg-cyan-500/20 blur-3xl lg:size-[15rem]"></div>
+      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div> */}
 
       {/* Agreements Filter */}
       <div className="grid grid-cols-1 gap-6">
@@ -1411,7 +1411,7 @@ export default function Agreements() {
             <div className="group relative hidden w-36" ref={recentFilterRef}>
               <div
                 onClick={() => setIsRecentFilterOpen((prev) => !prev)}
-                className="flex cursor-pointer items-center justify-between rounded-md bg-white px-3 py-1 text-black transition-all dark:bg-[#d5f2f80a] dark:text-white"
+                className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-1 text-white transition-all hover:border-cyan-400/30 hover:bg-white/10"
               >
                 <span className="text-sm capitalize">
                   {recentFilterOptions.find((f) => f.value === recentFilter)

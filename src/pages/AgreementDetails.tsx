@@ -2439,10 +2439,6 @@ export default function AgreementDetails() {
                         : "Recently"}
                     </div>
 
-                    <div className="mt-1 text-xs text-violet-400/70">
-                      Under review
-                    </div>
-
                     {/* ADD DISPUTE LINK IN TIMELINE */}
                     {agreement._raw?.disputes &&
                       agreement._raw.disputes.length > 0 && (

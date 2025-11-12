@@ -61,7 +61,7 @@ export function Sidebar({
     <aside
       className={cn(
         mobile ? "flex" : "hidden md:flex",
-        "sidebar-glass fixed top-0 left-0 z-40 h-screen flex-col border-r border-white/10 transition-all duration-300",
+        "fixed top-0 left-0 z-40 h-[100vh] flex-col border-r border-white/10 transition-all duration-300",
         expanded ? "w-64" : "w-16",
       )}
     >
@@ -69,7 +69,7 @@ export function Sidebar({
       <div className="absolute top-[300px] right-0 block rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]"></div>
 
       {/* Header */}
-      <div className="flex h-16 items-center justify-between gap-3 px-4">
+      <div className="relative flex h-16 items-center justify-between gap-3 px-4">
         <div className="flex items-center gap-2 overflow-hidden">
           <div className="neon flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
             <Scale size={18} />
@@ -83,7 +83,7 @@ export function Sidebar({
         {!mobile && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-muted-foreground rounded-md p-1 hover:text-white"
+            className="text-muted-foreground absolute -right-4 rounded-md border border-white/20 p-1 hover:text-white"
             aria-label="Toggle sidebar"
           >
             {expanded ? (
@@ -169,11 +169,6 @@ export function Sidebar({
           </span>
         </button>
       </nav>
-      {!expanded && (
-        <div className="neon mx-auto mb-10 flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
-          <Scale size={18} />
-        </div>
-      )}
     </aside>
   );
 }

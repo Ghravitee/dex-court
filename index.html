@@ -11,9 +11,51 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DexCourt</title>
+
+    <!-- Critical CSS -->
+    <style>
+      body {
+        background-color: black;
+        color: white;
+        margin: 0;
+        padding: 0;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        font-family: sans-serif;
+      }
+
+      body.loaded {
+        opacity: 1;
+        font-family: "Arimo", sans-serif;
+      }
+
+      .no-fouc {
+        visibility: hidden;
+      }
+    </style>
   </head>
-  <body class="bg-black text-white">
+  <body class="no-fouc fonts-loading bg-black text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      // Comprehensive FOUC prevention
+      function removeFouc() {
+        document.body.classList.remove("no-fouc");
+        document.body.classList.add("loaded");
+      }
+
+      document.addEventListener("DOMContentLoaded", removeFouc);
+      window.addEventListener("load", removeFouc);
+
+      // Font loading
+      document.fonts.ready.then(function () {
+        document.body.classList.add("fonts-loaded");
+        document.body.classList.remove("fonts-loading");
+      });
+
+      // Fallback timeout
+      setTimeout(removeFouc, 100);
+    </script>
   </body>
 </html>

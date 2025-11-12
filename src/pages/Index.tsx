@@ -10,6 +10,7 @@ import {
   Wallet,
   Landmark,
   Users,
+  Vote,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -49,11 +50,11 @@ const seriesCache = new Map();
 export default function Index() {
   return (
     <main className="relative overflow-hidden">
-      <div className="absolute top-[10px] left-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
+      {/* <div className="absolute top-[10px] left-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute top-[300px] right-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
-      <div className="absolute inset-0 -z-[50] bg-cyan-300/1 blur-3xl"></div>
+      <div className="absolute inset-0 -z-[50] bg-cyan-300/1 blur-3xl"></div> */}
 
-      <div className="grid grid-cols-1 gap-x-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-x-4">
         <div className="col-span-2 flex h-fit w-full flex-col gap-4">
           <HeroSection />
           <RevenueChart />
@@ -79,7 +80,7 @@ export default function Index() {
 
 function HeroSection() {
   return (
-    <section>
+    <section className="w-full">
       <div className="glass relative items-center gap-6 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
         <div className="relative z-[1]">
           <h1 className="glow-text space text-3xl font-bold tracking-tight text-white">
@@ -271,7 +272,7 @@ function StatsGrid() {
   );
 
   return (
-    <section className="glass card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-8">
+    <section className="glass card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-6">
       <h3 className="space mb-6 text-center text-lg font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
@@ -290,7 +291,7 @@ function StatsGrid() {
                 delay={0.2}
                 separator={s.value > 1000 ? "," : ""}
                 prefix={s.prefix || ""}
-                className="font-bold text-white lg:text-2xl"
+                className="font-bold text-white lg:text-[20px] xl:text-[24px]"
               />
               {/* Show loading indicators */}
               {s.label === "Settled Disputes" && settledLoading && (
@@ -456,9 +457,9 @@ function DisputesInfiniteCards() {
     const fetchRecentDisputes = async () => {
       try {
         setLoading(true);
-        // Get recent disputes (you might want to add a limit parameter to your API)
+
         const response = await disputeService.getDisputes({
-          top: 10, // Limit to 10 recent disputes
+          top: 10,
           sort: "desc", // Get newest first
         });
         const recentDisputes = response.results || [];
@@ -683,7 +684,7 @@ function LiveVotingInfiniteCards() {
             variant="outline"
             className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
           >
-            <Scale className="mr-2 h-4 w-4" />
+            <Vote className="mr-2 h-4 w-4" />
             Participate in Voting
           </Button>
         </Link>
@@ -768,7 +769,7 @@ function SignedAgreementsInfiniteCards() {
       <InfiniteMovingAgreements
         items={agreementItems}
         direction="left"
-        speed="normal"
+        speed="slow"
         pauseOnHover={true}
         className="max-w-full"
       />
