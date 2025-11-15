@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// lib/apiClient.ts
+// src/lib/apiClient.ts
 import axios from "axios";
 
 const API_BASE = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";

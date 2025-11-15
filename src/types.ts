@@ -1,3 +1,4 @@
+// src/types.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type AgreementStatusFilter =
   | "all"

@@ -36,7 +36,6 @@ export function useCountdown(targetTimestamp: bigint) {
     return timeLeft;
 }
 
-
 // Format amount for display
 export const formatAmount = (amount: bigint, decimals?: number) => {
     const actualDecimals = decimals || 18;

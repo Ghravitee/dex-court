@@ -24,3 +24,5 @@ text.txt
 *.njsproj
 *.sln
 *.sw?
+
+escrowold.tsx
