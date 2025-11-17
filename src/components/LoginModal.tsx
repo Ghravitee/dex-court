@@ -1,8 +1,8 @@
-// src/components/LoginModal.tsx - Major update
+// src/components/LoginModal.tsx - IMPROVED VERSION
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { useAuth } from "../context/AuthContext";
-import { X, Wallet, Loader2 } from "lucide-react";
+import { X, Wallet, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
 import { useAccount, useConnect } from "wagmi";
 import { useWalletLogin } from "../hooks/useWalletLogin";
 
@@ -20,10 +20,9 @@ export function LoginModal({
   const [otp, setOtp] = useState("");
   const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
   const { login, isLoading, linkTelegram } = useAuth();
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { connect, connectors } = useConnect();
 
-  // NEW: Use wallet login hook
   const {
     loginWithConnectedWallet,
     isLoggingIn,
@@ -46,6 +45,15 @@ export function LoginModal({
 
       const errorMessage = error.response?.data?.message || error.message;
 
+      // Handle existing user case - show in alert
+      if (
+        errorMessage.includes("already exists") ||
+        errorMessage.includes("already registered")
+      ) {
+        alert("You already have an existing account. Please login instead.");
+        return;
+      }
+
       if (errorMessage.includes("expired")) {
         alert(
           "OTP has expired. Please generate a new one from the Telegram bot.",
@@ -64,10 +72,9 @@ export function LoginModal({
     }
   };
 
-  // NEW: Handle wallet login
+  // src/components/LoginModal.tsx - Add this check before wallet login
   const handleWalletLogin = async () => {
     if (!isConnected) {
-      // Auto-connect if not connected
       if (connectors[0]) {
         connect({ connector: connectors[0] });
       }
@@ -80,32 +87,98 @@ export function LoginModal({
     }
   };
 
+  // Update the wallet section text to be clearer
+  <p className="text-sm text-gray-300">
+    {mode === "link"
+      ? "Connect your wallet to link it to your account"
+      : "Connect your wallet to access DexCourt. We'll automatically find your existing account or create a new one."}
+  </p>;
+
   const getModalTitle = () => {
     if (mode === "link") {
       return "Link Account";
     }
-    return "Login to DexCourt";
+    return "DexCourt - Justice for Web3";
   };
 
   const getTelegramButtonText = () => {
     if (mode === "link") {
       return isLoading ? "Linking..." : "Link Telegram";
     }
-    return isLoading ? "Logging in..." : "Login";
+    return isLoading ? "Continuing..." : "Continue with Telegram";
   };
 
+  // NEW: Better wallet button text that shows progress
   const getWalletButtonText = () => {
     if (!isConnected) {
       return "Connect Wallet";
     }
-    return isLoggingIn ? "Logging in..." : "Login with Wallet";
+    if (isLoggingIn) {
+      return "Signing Message...";
+    }
+    return "Verify Ownership";
+  };
+
+  // Replace the renderWalletProgress function with this:
+  const renderWalletProgress = () => {
+    return (
+      <div className="mb-4 space-y-3">
+        {/* Step 1: Connect Wallet */}
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              isConnected
+                ? "bg-green-500 text-white"
+                : "border-2 border-cyan-400 text-cyan-400"
+            }`}
+          >
+            {isConnected ? <CheckCircle2 className="h-4 w-4" /> : "1"}
+          </div>
+          <div className="flex-1">
+            <p
+              className={`text-sm ${isConnected ? "text-green-400" : "text-gray-300"}`}
+            >
+              Connect your wallet
+            </p>
+            {isConnected && (
+              <p className="text-xs text-green-300">Connected ✓</p>
+            )}
+          </div>
+        </div>
+
+        {/* Step 2: Verify Ownership */}
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              isConnected
+                ? "border-2 border-amber-400 text-amber-400"
+                : "border-2 border-gray-500 text-gray-500"
+            }`}
+          >
+            2
+          </div>
+          <div className="flex-1">
+            <p
+              className={`text-sm ${isConnected ? "text-amber-300" : "text-gray-500"}`}
+            >
+              Verify ownership
+            </p>
+            {isConnected && (
+              <p className="text-xs text-amber-200">
+                Click below to sign message
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (!isOpen) return null;
 
   const handleClose = () => {
     setOtp("");
-    setWalletError("");
+    setWalletError();
     onClose();
   };
 
@@ -128,7 +201,7 @@ export function LoginModal({
           <button
             onClick={() => {
               setActiveTab("wallet");
-              setWalletError("");
+              setWalletError();
             }}
             className={`flex-1 py-2 text-sm font-medium ${
               activeTab === "wallet"
@@ -150,14 +223,17 @@ export function LoginModal({
           </button>
         </div>
 
-        {/* Wallet Login Section */}
+        {/* Wallet Section */}
         {activeTab === "wallet" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
               {mode === "link"
                 ? "Connect your wallet to link it to your account"
-                : "Connect your wallet to login to your DexCourt account"}
+                : "Connect your wallet to access DexCourt. If you have an existing account, we'll automatically log you in."}
             </p>
+
+            {/* NEW: Progress Indicator */}
+            {renderWalletProgress()}
 
             {mode === "link" && isConnected ? (
               <div className="rounded-md border border-green-400/20 bg-green-500/10 p-3">
@@ -174,6 +250,23 @@ export function LoginModal({
                   </div>
                 )}
 
+                {/* NEW: Connected wallet info */}
+                {isConnected && address && (
+                  <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-cyan-300">
+                          Wallet Connected ✅
+                        </p>
+                        <p className="text-xs text-cyan-200">
+                          {address.slice(0, 6)}...{address.slice(-4)}
+                        </p>
+                      </div>
+                      <CheckCircle2 className="h-5 w-5 text-green-400" />
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   onClick={handleWalletLogin}
                   disabled={isLoggingIn}
@@ -182,26 +275,53 @@ export function LoginModal({
                   {isLoggingIn ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Signing in...
+                      {getWalletButtonText()}
                     </>
                   ) : (
                     <>
-                      <Wallet className="mr-2 h-5 w-5" />
-                      {getWalletButtonText()}
+                      {!isConnected ? (
+                        <>
+                          <Wallet className="mr-2 h-5 w-5" />
+                          {getWalletButtonText()}
+                        </>
+                      ) : (
+                        <>
+                          <ArrowRight className="mr-2 h-5 w-5" />
+                          {getWalletButtonText()}
+                        </>
+                      )}
                     </>
                   )}
                 </Button>
 
-                {!isConnected && (
-                  <p className="text-center text-sm text-cyan-300">
-                    Click the button to connect your wallet and sign in
-                  </p>
+                {/* NEW: Dynamic help text based on connection state */}
+                {!isConnected ? (
+                  <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
+                    <p className="text-center text-sm text-cyan-300">
+                      <strong>Step 1:</strong> Click "Connect Wallet" to link
+                      your wallet
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-3">
+                    <p className="text-center text-sm text-amber-300">
+                      <strong>Step 2:</strong> Click "Verify Ownership" to sign
+                      a message and complete authentication
+                    </p>
+                    <p className="mt-1 text-center text-xs text-amber-200">
+                      This proves you own the wallet and keeps your account
+                      secure
+                    </p>
+                  </div>
                 )}
 
+                {/* Connection status info */}
                 {isConnected && !isLoggingIn && (
-                  <p className="text-center text-sm text-gray-300">
-                    You'll be asked to sign a message to verify ownership
-                  </p>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-300">
+                      Almost there! One more step to verify ownership.
+                    </p>
+                  </div>
                 )}
               </>
             )}
@@ -214,14 +334,12 @@ export function LoginModal({
             <p className="text-sm text-gray-300">
               {mode === "link"
                 ? "Link your Telegram account to enable social features"
-                : "To log in with Telegram, you need to have a Telegram username set first."}
+                : "Login or register with Telegram. If you have an existing account, we'll automatically log you in."}
             </p>
 
             <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
               <p className="mb-2 text-sm font-semibold text-cyan-100">
-                {mode === "link"
-                  ? "Linking Instructions:"
-                  : "First time users:"}
+                How to get started:
               </p>
               <ol className="list-inside list-decimal space-y-1 text-sm text-gray-300">
                 <li>
@@ -250,10 +368,11 @@ export function LoginModal({
 
             <p className="text-sm text-gray-300">
               Paste the OTP you received below to{" "}
-              {mode === "link"
-                ? "link your account"
-                : "verify and complete your registration"}
-              .
+              {mode === "link" ? "link your account" : "continue"}.
+              <br />
+              <span className="text-cyan-300">
+                We'll automatically detect if you have an existing account.
+              </span>
             </p>
 
             <label className="block text-sm text-gray-300">

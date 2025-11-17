@@ -28,7 +28,6 @@ export function useWalletLogin() {
 
       // Step 2: Sign ONLY the nonce
       const message = nonce;
-
       const signature = await signMessageAsync({ message });
 
       console.log("🔐 Login signature generated:", signature);
@@ -40,18 +39,71 @@ export function useWalletLogin() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Wallet login failed:", error);
-      setError(error.message || "Failed to login with wallet");
+
+      // Extract error message from different possible sources
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to login with wallet";
+
+      // Handle existing user case
+      if (
+        errorMessage.includes("already exists") ||
+        errorMessage.includes("already registered") ||
+        errorMessage.includes("User already exists") ||
+        errorMessage.includes("already have an account")
+      ) {
+        setError(
+          "You already have an existing account. Please login with your registered method or use Telegram login.",
+        );
+      }
+      // Handle wallet already linked case
+      else if (
+        errorMessage.includes("already linked") ||
+        errorMessage.includes("Wallet already linked")
+      ) {
+        setError(
+          "This wallet is already linked to another account. Please use a different wallet or login with your existing method.",
+        );
+      }
+      // Handle invalid signature cases
+      else if (
+        errorMessage.includes("signature") ||
+        errorMessage.includes("Signature") ||
+        errorMessage.includes("invalid signature")
+      ) {
+        setError("Invalid signature. Please try again.");
+      }
+      // Handle nonce-related errors
+      else if (
+        errorMessage.includes("nonce") ||
+        errorMessage.includes("Nonce") ||
+        errorMessage.includes("expired")
+      ) {
+        setError("Session expired. Please try again.");
+      }
+      // Generic error
+      else {
+        setError(errorMessage);
+      }
+
       return false;
     } finally {
       setIsLoggingIn(false);
     }
   };
 
+  // Helper function to clear errors
+  const clearError = () => {
+    setError("");
+  };
+
   return {
     loginWithConnectedWallet,
     isLoggingIn,
     error,
-    setError,
+    setError: clearError, // Expose clearError as setError for consistency
+    clearError,
     isWalletConnected: isConnected,
     walletAddress: address,
   };

@@ -1,3 +1,4 @@
+// src/pages/Agreements.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "../components/ui/button";

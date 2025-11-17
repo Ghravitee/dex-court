@@ -42,6 +42,7 @@ import { disputeService } from "../services/disputeServices";
 import type { DisputeListItem, DisputeRow } from "../types";
 import { useSettledDisputesCount } from "../hooks/useSettledDisputesCount";
 import { useUsersCount } from "../hooks/useUsersCount";
+import { WalletLoginDebug } from "../components/WalletLoginDebug";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
@@ -53,7 +54,7 @@ export default function Index() {
       {/* <div className="absolute top-[10px] left-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute top-[300px] right-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute inset-0 -z-[50] bg-cyan-300/1 blur-3xl"></div> */}
-
+      <WalletLoginDebug />
       <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-x-4">
         <div className="col-span-2 flex h-fit w-full flex-col gap-4">
           <HeroSection />

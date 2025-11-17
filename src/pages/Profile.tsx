@@ -489,13 +489,43 @@ export default function Profile() {
   };
 
   // Memoized user data - UPDATED TO USE TELEGRAM USERNAME
-  const userData = useMemo(
-    () => ({
-      // Use Telegram username as the primary handle, fallback to existing username
-      handle: user?.telegram?.username
-        ? `@${user.telegram.username}`
-        : user?.username || "@you",
-      wallet: user?.wallet || "0xABCD…1234",
+  // In the Profile component, replace the userData memo with this:
+
+  // Memoized user data - UPDATED TO HANDLE BOTH TELEGRAM AND WALLET ADDRESSES
+  const userData = useMemo(() => {
+    // Helper function to format handle based on type
+    const formatHandle = (user: any) => {
+      // If user has Telegram username, use it with @
+      if (user?.telegram?.username) {
+        return `@${user.telegram.username}`;
+      }
+
+      // If user has wallet address, truncate it
+      if (user?.walletAddress) {
+        return `${user.walletAddress.slice(0, 6)}…${user.walletAddress.slice(-4)}`;
+      }
+
+      // If user has regular username, use it with @
+      if (user?.username) {
+        return `@${user.username}`;
+      }
+
+      // Fallback
+      return "@you";
+    };
+
+    // Helper function to format wallet display
+    const formatWallet = (user: any) => {
+      if (user?.walletAddress) {
+        return `${user.walletAddress.slice(0, 8)}…${user.walletAddress.slice(-6)}`;
+      }
+      return "Not connected";
+    };
+
+    return {
+      // Use the formatted handle that works for both Telegram and wallet
+      handle: formatHandle(user),
+      wallet: formatWallet(user),
       score: user?.trustScore || 72,
       roles: user?.roles || { judge: false, community: false, user: true },
       isVerified: user?.isVerified || false,
@@ -505,9 +535,8 @@ export default function Profile() {
         disputes: 0,
         revenue: { "7d": 0, "30d": 0, "90d": 0 },
       },
-    }),
-    [user],
-  );
+    };
+  }, [user]);
 
   // Format date for display - memoized callback
   const formatDate = useCallback((dateString: string) => {

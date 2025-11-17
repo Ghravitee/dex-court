@@ -1,5 +1,6 @@
+// src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -23,6 +24,53 @@ import { Link } from "react-router-dom";
 import ReactDatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+// wagmi + viem style hooks
+import {
+  useAccount,
+  useWriteContract,
+  useReadContract,
+  useWaitForTransactionReceipt,
+  useChainId,
+  useContractReads,
+} from "wagmi";
+import { parseEther, parseUnits } from "viem";
+import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
+import { agreementService } from "../services/agreementServices";
+import { cleanTelegramUsername } from "../lib/usernameUtils";
+
+// API Enum Mappings
+const AgreementTypeEnum = {
+  REPUTATION: 1,
+  ESCROW: 2,
+} as const;
+
+const AgreementVisibilityEnum = {
+  PRIVATE: 1,
+  PUBLIC: 2,
+  AUTO_PUBLIC: 3,
+} as const;
+
+// Helper function to extract transaction hash from description
+const extractTxHashFromDescription = (
+  description: string,
+): string | undefined => {
+  const match = description?.match(/Transaction Hash: (0x[a-fA-F0-9]{64})/);
+  return match?.[1];
+};
+
+// Helper function to extract on-chain ID from description
+const extractOnChainIdFromDescription = (
+  description: string,
+): string | undefined => {
+  const match = description?.match(/Contract Agreement ID: (\d+)/);
+  return match?.[1];
+};
+
+const normalizeAddress = (address: string): string => {
+  if (!address) return "";
+  return address.toLowerCase();
+};
+
 // File upload types
 interface UploadedFile {
   id: string;
@@ -35,166 +83,299 @@ interface UploadedFile {
 // Escrow type options
 type EscrowType = "myself" | "others";
 
+// Extended Escrow type to include on-chain data
+interface ExtendedEscrowWithOnChain extends ExtendedEscrow {
+  txHash?: string;
+  onChainId?: string;
+  // whether the API/agreement included funds metadata ("yes" | "no")
+  includeFunds?: "yes" | "no";
+  // whether this agreement uses the escrow contract on-chain
+  useEscrow?: boolean;
+  // optional escrow contract address returned/stored by API
+  escrowAddress?: string;
+  // optional UI-side marker for create form type
+  escrowType?: EscrowType;
+}
+
+function isValidAddress(addr: string) {
+  return /^0x[a-fA-F0-9]{40}$/.test(addr);
+}
+
+// Smart contract error patterns (from your Solidity contract)
+const CONTRACT_ERRORS = {
+  NOT_PARTY: "NotParty",
+  NOT_ACTIVE: "NotActive",
+  INVALID_AMOUNT: "InvalidAmount",
+  CANNOT_BE_SAME: "CannotBeTheSame",
+  ZERO_ADDRESS: "ZeroAddress",
+  NOT_YET_FUNDED: "NotYetFunded",
+  ALREADY_SIGNED: "AlreadySigned",
+  ALREADY_ACCEPTED: "AlreadyAccepted",
+  ALREADY_FUNDED: "AlreadyFunded",
+  GRACE_NOT_ENDED: "Grace1NotEnded",
+  GRACE_PERIOD_ENDED: "Grace1PeriodEnded",
+  ALREADY_IN_GRACE: "AlreadyInGracePeriod",
+  NO_ACTION_MADE: "NoActionMade",
+  NOT_SIGNED: "NotSigned",
+  INITIATOR_CANNOT_RESPOND: "InitiatorCannotRespond",
+  ALREADY_PENDING_CANCELLATION: "AlreadyPendingCancellation",
+  IN_VESTING_STAGE: "InVestingStage",
+  NO_VESTING_STAGE: "NoVestingStage",
+  MILESTONE_HELD: "MilestoneHeld",
+  MILESTONE_ALREADY_CLAIMED: "MilestoneAlreadyClaimed",
+  INVALID_MILESTONE_CONFIG: "InvalidMilestoneConfig",
+  MILESTONE_NOT_UNLOCKED: "MilestoneNotUnlocked",
+  OFFSET_EXCEEDS_DEADLINE: "OffsetExceedsDeadline",
+};
+
+// Enhanced status mapping for on-chain agreements
+const mapAgreementStatusToEscrow = (
+  status: number,
+): "pending" | "active" | "completed" | "cancelled" | "frozen" | "disputed" => {
+  switch (status) {
+    case 1:
+      return "pending"; // PENDING_ACCEPTANCE
+    case 2:
+      return "active"; // ACTIVE
+    case 3:
+      return "completed"; // COMPLETED
+    case 4:
+      return "disputed"; // DISPUTED
+    case 5:
+      return "cancelled"; // CANCELLED
+    case 6:
+      return "cancelled"; // EXPIRED
+    default:
+      return "pending";
+  }
+};
+
+// Enhanced transform function for escrow agreements
+const transformApiAgreementToEscrow = (
+  apiAgreement: any,
+): ExtendedEscrowWithOnChain => {
+  const getPartyIdentifier = (party: any): string => {
+    // For escrow, prefer wallet address, fallback to Telegram
+    return (
+      party?.walletAddress ||
+      party?.WalletAddress ||
+      cleanTelegramUsername(party?.telegramUsername) ||
+      "@unknown"
+    );
+  };
+
+  // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
+  const hasAmountOrToken = apiAgreement.amount || apiAgreement.tokenSymbol;
+  const includeFunds = hasAmountOrToken ? "yes" : "no";
+
+  // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
+  const useEscrow = apiAgreement.type === AgreementTypeEnum.ESCROW;
+
+  return {
+    id: `E-${apiAgreement.id}`,
+    title: apiAgreement.title,
+    from: getPartyIdentifier(apiAgreement.counterParty), // Service Recipient (payer)
+    to: getPartyIdentifier(apiAgreement.firstParty), // Service Provider (payee)
+    token: apiAgreement.tokenSymbol || "ETH",
+    amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+    status: mapAgreementStatusToEscrow(apiAgreement.status),
+    deadline: apiAgreement.deadline
+      ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
+      : "No deadline",
+    type: apiAgreement.visibility === 1 ? "private" : "public",
+    description: apiAgreement.description || "",
+    createdAt: new Date(
+      apiAgreement.dateCreated || apiAgreement.createdAt,
+    ).getTime(),
+    // On-chain references
+    txHash: extractTxHashFromDescription(apiAgreement.description),
+    onChainId: extractOnChainIdFromDescription(apiAgreement.description),
+    includeFunds: includeFunds,
+    useEscrow: useEscrow,
+    escrowAddress: apiAgreement.escrowContractAddress,
+  };
+};
+
 export default function Escrow() {
-  const initial: Escrow[] = useMemo(
-    () => [
-      // 🟡 Pending (Active)
-      {
-        id: "E-101",
-        title: "Design Sprint Phase 1",
-        from: "@0xAlfa",
-        to: "@0xBeta",
-        token: "USDC",
-        amount: 1200,
-        status: "pending",
-        deadline: "2025-11-11",
-        type: "public",
-        description: "Design sprint including UX flows and wireframes.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3,
-      },
-      {
-        id: "E-102",
-        title: "Frontend Development",
-        from: "@0xLuna",
-        to: "@0xNova",
-        token: "ETH",
-        amount: 1,
-        status: "pending",
-        deadline: "2025-12-01",
-        type: "public",
-        description: "Landing page and dashboard components.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
-      },
-      {
-        id: "E-103",
-        title: "DAO Graphic Assets",
-        from: "@0xEcho",
-        to: "@0xAlfa",
-        token: "DAI",
-        amount: 500,
-        status: "pending",
-        deadline: "2025-12-15",
-        type: "public",
-        description: "Graphics for social media and proposals.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 4,
-      },
-
-      // 🟢 Completed
-      {
-        id: "E-099",
-        title: "Audit Settlement",
-        from: "@0xAstra",
-        to: "@0xNova",
-        token: "ETH",
-        amount: 0.5,
-        status: "completed",
-        deadline: "2025-09-01",
-        type: "public",
-        description: "Security audit settlement for v1 contracts.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 18,
-      },
-      {
-        id: "E-098",
-        title: "Content Bounty",
-        from: "@0xWriter",
-        to: "@0xAlfa",
-        token: "USDC",
-        amount: 300,
-        status: "completed",
-        deadline: "2025-09-20",
-        type: "public",
-        description: "Technical blog post about smart contracts.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 25,
-      },
-      {
-        id: "E-097A",
-        title: "Brand Kit Delivery",
-        from: "@0xEcho",
-        to: "@0xVega",
-        token: "DAI",
-        amount: 700,
-        status: "completed",
-        deadline: "2025-09-30",
-        type: "public",
-        description: "Finalized logos and brand assets.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 20,
-      },
-
-      // 🔴 Disputed (Frozen)
-      {
-        id: "E-097",
-        title: "Marketing Retainer",
-        from: "@0xOrion",
-        to: "@0xEcho",
-        token: "DAI",
-        amount: 800,
-        status: "frozen",
-        deadline: "2025-10-12",
-        type: "public",
-        description: "Monthly retainer. Disputed deliverables.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 8,
-      },
-      {
-        id: "E-096",
-        title: "Bug Fix Bounty",
-        from: "@0xBuggy",
-        to: "@0xCoder",
-        token: "USDC",
-        amount: 150,
-        status: "frozen",
-        deadline: "2025-10-20",
-        type: "public",
-        description: "Disagreement on issue reproduction.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
-      },
-      {
-        id: "E-095",
-        title: "Private NDA",
-        from: "@you",
-        to: "@partner",
-        token: "USDC",
-        amount: 200,
-        status: "pending",
-        deadline: "2025-12-22",
-        type: "private",
-        description: "Private NDA with milestone clause.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
-      },
-      {
-        id: "E-110",
-        title: "Web3 Copywriting",
-        from: "@0xPen",
-        to: "@0xInk",
-        token: "USDC",
-        amount: 250,
-        status: "active",
-        deadline: "2025-12-10",
-        type: "public",
-        description: "Ongoing copywriting engagement for Web3 DAO.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 6,
-      },
-      {
-        id: "E-111",
-        title: "Abandoned Translation Deal",
-        from: "@0xEcho",
-        to: "@0xBeta",
-        token: "DAI",
-        amount: 300,
-        status: "cancelled",
-        deadline: "2025-10-05",
-        type: "public",
-        description: "Cancelled translation project due to inactivity.",
-        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 10,
-      },
-    ],
-    [],
-  );
-
-  const [escrows, setEscrows] = useState<Escrow[]>(initial);
+  const [escrows, setEscrows] = useState<ExtendedEscrowWithOnChain[]>([]);
   const [statusTab, setStatusTab] = useState("pending");
   const [sortAsc, setSortAsc] = useState(false);
   const [query, setQuery] = useState("");
+  // Removed unused loading state
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTxHash, setLastSyncedTxHash] = useState<string | null>(null);
+
+  // ---------- wagmi / on-chain state ----------
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const contractAddress =
+    (chainId && ESCROW_CA[chainId as number]) || undefined;
+
+  // Separate write hooks: one for general writes, one for approvals
+  const {
+    data: txHash,
+    writeContract,
+    isPending: isTxPending,
+    error: writeError,
+    reset: resetWrite,
+  } = useWriteContract();
+
+  const {
+    data: approvalHash,
+    writeContract: writeApproval,
+    isPending: isApprovalPending,
+    error: approvalError,
+    reset: resetApproval,
+  } = useWriteContract();
+
+  const { isSuccess: txSuccess } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+  const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  });
+
+  // Enhanced error handling for contract errors
+  const [uiError, setUiError] = useState<string | null>(null);
+  const [uiSuccess, setUiSuccess] = useState<string | null>(null);
+
+  // Enhanced loadEscrows function
+  const loadEscrows = useCallback(async () => {
+    try {
+      const response = await agreementService.getAgreements({
+        top: 100,
+        skip: 0,
+        sort: "desc",
+      });
+
+      console.log("📥 Loaded agreements for escrow:", response);
+
+      // Filter for escrow type (type = 2) and transform
+      const escrowAgreements = response.results
+        .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
+        .map(transformApiAgreementToEscrow);
+
+      console.log("📊 Escrow agreements transformed:", escrowAgreements);
+
+      // If no escrows found, show initial mock data or empty
+
+      setEscrows(escrowAgreements);
+    } catch (err) {
+      console.error("Failed to load escrows:", err);
+      toast.error("Failed to load escrows from backend");
+      // Fallback to initial data
+      setEscrows([]);
+    }
+  }, []);
+
+  // Effect to handle write errors from smart contract
+  useEffect(() => {
+    if (writeError) {
+      const errorMessage = extractContractErrorMessage(writeError);
+      setUiError(errorMessage);
+      toast.error(`Contract Error: ${errorMessage}`);
+    }
+  }, [writeError]);
+
+  // Effect to handle approval errors
+  useEffect(() => {
+    if (approvalError) {
+      const errorMessage = extractContractErrorMessage(approvalError);
+      setUiError(errorMessage);
+      toast.error(`Approval Error: ${errorMessage}`);
+    }
+  }, [approvalError]);
+
+  // Effect to handle transaction success
+  useEffect(() => {
+    if (txSuccess) {
+      setUiSuccess("Transaction confirmed successfully!");
+      toast.success("Transaction confirmed!");
+      resetWrite();
+    }
+  }, [txSuccess, resetWrite]);
+
+  // Effect to handle approval success
+  useEffect(() => {
+    if (approvalSuccess) {
+      setUiSuccess("Token approval confirmed!");
+      toast.success("Token approval confirmed!");
+      resetApproval();
+    }
+  }, [approvalSuccess, resetApproval]);
+
+  // Function to extract meaningful error messages from contract errors
+  const extractContractErrorMessage = (error: any): string => {
+    if (!error) return "Unknown error occurred";
+
+    const errorMessage = error.message || error.toString();
+
+    // Check for common contract errors
+    if (errorMessage.includes(CONTRACT_ERRORS.NOT_PARTY)) {
+      return "You are not a party in this agreement";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.NOT_ACTIVE)) {
+      return "Agreement is not active or already completed";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.INVALID_AMOUNT)) {
+      return "Invalid amount provided";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.CANNOT_BE_SAME)) {
+      return "Service provider and recipient cannot be the same address";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.ZERO_ADDRESS)) {
+      return "Zero address is not allowed";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.NOT_YET_FUNDED)) {
+      return "Agreement has not been funded yet";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.ALREADY_SIGNED)) {
+      return "Agreement is already signed";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.ALREADY_FUNDED)) {
+      return "Agreement is already funded";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.NOT_SIGNED)) {
+      return "Agreement is not signed yet";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.INVALID_MILESTONE_CONFIG)) {
+      return "Invalid milestone configuration - check percentages and offsets";
+    }
+    if (errorMessage.includes(CONTRACT_ERRORS.OFFSET_EXCEEDS_DEADLINE)) {
+      return "Milestone offset exceeds agreement deadline";
+    }
+    if (
+      errorMessage.includes("user rejected") ||
+      errorMessage.includes("denied transaction")
+    ) {
+      return "Transaction was rejected by user";
+    }
+    if (errorMessage.includes("insufficient funds")) {
+      return "Insufficient funds for transaction";
+    }
+    if (errorMessage.includes("execution reverted")) {
+      // Extract the actual revert reason if available
+      const revertMatch = errorMessage.match(
+        /execution reverted: (.+?)(?="|$)/,
+      );
+      if (revertMatch && revertMatch[1]) {
+        return `Contract reverted: ${revertMatch[1]}`;
+      }
+      return "Transaction reverted by contract";
+    }
+
+    // Generic error fallback
+    return `Blockchain error: ${errorMessage.substring(0, 100)}...`;
+  };
+
+  // Reset error and success messages
+  const resetMessages = () => {
+    setUiError(null);
+    setUiSuccess(null);
+  };
+
+  // ---------- listing logic (unchanged) ----------
   const listed = escrows
     .filter((e) => e.type === "public")
     .filter((e) => {
@@ -225,7 +406,7 @@ export default function Escrow() {
       sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt,
     );
 
-  // Enhanced Modal state
+  // ---------- UI state (unchanged) ----------
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -245,10 +426,8 @@ export default function Escrow() {
   const [form, setForm] = useState({
     title: "",
     type: "" as "public" | "private" | "",
-    // For "myself" type
     counterparty: "",
     payer: "" as "me" | "counterparty" | "",
-    // For "others" type
     partyA: "",
     partyB: "",
     payerOther: "" as "partyA" | "partyB" | "",
@@ -258,6 +437,7 @@ export default function Escrow() {
     description: "",
     evidence: [] as UploadedFile[],
     milestones: [""] as string[],
+    tokenDecimals: 18,
   });
 
   // Close dropdowns when clicking outside
@@ -292,7 +472,7 @@ export default function Escrow() {
     { value: "custom", label: "Custom Token" },
   ];
 
-  // Enhanced file upload handlers
+  // File handlers (unchanged)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
@@ -307,7 +487,6 @@ export default function Escrow() {
         size: fileSize,
       };
 
-      // Create preview for images
       if (fileType === "image") {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -319,10 +498,7 @@ export default function Escrow() {
         };
         reader.readAsDataURL(file);
       } else {
-        setForm((prev) => ({
-          ...prev,
-          evidence: [...prev.evidence, newFile],
-        }));
+        setForm((prev) => ({ ...prev, evidence: [...prev.evidence, newFile] }));
       }
     });
   };
@@ -334,7 +510,6 @@ export default function Escrow() {
     }));
   };
 
-  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -368,44 +543,817 @@ export default function Escrow() {
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // Enhanced create escrow function
-  async function createEscrow(e: React.FormEvent) {
-    e.preventDefault();
+  // ---------- On-chain helpers (follow sample patterns) ----------
+  const [viewId] = useState("");
 
-    // Enhanced form validation based on escrow type
-    if (!form.title.trim()) {
-      toast.error("Please enter a title");
+  // percent string (like "50") -> basis points (5000)
+  const percentToBP = (s: string): number => {
+    const n = Number(s);
+    if (Number.isNaN(n)) return 0;
+    return Math.round(n * 100);
+  };
+
+  // parse amount into bigint per token decimals (ETH uses parseEther)
+  const parseAmount = (
+    amount: string,
+    tokenAddr: string,
+    decimals?: number,
+  ) => {
+    if (!amount) throw new Error("empty amount");
+    if (tokenAddr === ZERO_ADDRESS) {
+      return parseEther(amount);
+    } else {
+      const d = decimals ?? form.tokenDecimals ?? 18;
+      return parseUnits(amount, d);
+    }
+  };
+
+  // parse milestones text array from form.milestones into two arrays
+  const parseMilestonesFromForm = (
+    milestonesInput: string[],
+    deadlineDuration: number,
+  ) => {
+    const percBP: number[] = [];
+    const offsets: number[] = [];
+    for (const m of milestonesInput) {
+      if (!m || m.trim() === "") continue;
+      const parts = m.split(":").map((s) => s.trim());
+      const p = Number(parts[0]);
+      if (Number.isNaN(p)) throw new Error("invalid percent");
+      const bp = percentToBP(String(p));
+      percBP.push(bp);
+      let offset = 0;
+      if (parts.length > 1 && parts[1] !== "") {
+        offset = Number(parts[1]);
+        if (Number.isNaN(offset) || offset < 0)
+          throw new Error("invalid offset");
+        if (offset > deadlineDuration)
+          throw new Error("offset > deadlineDuration");
+      }
+      offsets.push(offset);
+    }
+    return { percBP, offsets };
+  };
+
+  // Read agreement (when viewId is set)
+  const { data: agreementData } = useReadContract({
+    address: contractAddress,
+    abi: ESCROW_ABI.abi,
+    functionName: "getAgreement",
+    args: viewId ? [BigInt(viewId)] : undefined,
+    query: { enabled: !!viewId && !!contractAddress },
+  });
+
+  // Read milestone count if vesting enabled on agreement
+  const { data: milestoneCountData } = useReadContract({
+    address: contractAddress,
+    abi: ESCROW_ABI.abi,
+    functionName: "getMilestoneCount",
+    args: viewId ? [BigInt(viewId)] : undefined,
+    query: {
+      enabled:
+        !!viewId && !!agreementData && (agreementData as any)[24] === true,
+    },
+  });
+
+  // Fetch milestone rows when milestoneCount available
+  const contractsForMilestones = useMemo(() => {
+    const count =
+      typeof milestoneCountData === "bigint"
+        ? Number(milestoneCountData)
+        : typeof milestoneCountData === "number"
+          ? milestoneCountData
+          : 0;
+    if (!count || !viewId || !contractAddress) return [];
+    return Array.from({ length: count }, (_, i) => ({
+      address: contractAddress as `0x${string}`,
+      abi: ESCROW_ABI.abi,
+      functionName: "getMilestone" as const,
+      args: [BigInt(viewId), BigInt(i)],
+    }));
+  }, [milestoneCountData, viewId, contractAddress]);
+
+  useContractReads({
+    contracts: contractsForMilestones,
+    query: { enabled: contractsForMilestones.length > 0 },
+  });
+
+  // ---------------- New: decimals lookup for create form ----------------
+  // Only attempt to read decimals for a valid customTokenAddress
+  const { data: createTokenDecimals } = useReadContract({
+    address: isValidAddress(form.customTokenAddress)
+      ? (form.customTokenAddress as `0x${string}`)
+      : undefined,
+    abi: ERC20_ABI.abi,
+    functionName: "decimals",
+    query: { enabled: isValidAddress(form.customTokenAddress) },
+  });
+
+  useEffect(() => {
+    if (
+      typeof createTokenDecimals === "number" ||
+      typeof createTokenDecimals === "bigint"
+    ) {
+      setForm((prev) => ({
+        ...prev,
+        tokenDecimals: Number(createTokenDecimals),
+      }));
+    }
+  }, [createTokenDecimals]);
+
+  // ---------------- New: automatic approval continuation ----------------
+  // Store pending create payload to invoke after approval
+  const [pendingCreatePayload, setPendingCreatePayload] = useState<any>(null);
+  const [createApprovalState, setCreateApprovalState] = useState({
+    isApprovingToken: false,
+    needsApproval: false,
+  });
+
+  useEffect(() => {
+    if (
+      approvalSuccess &&
+      createApprovalState.needsApproval &&
+      pendingCreatePayload
+    ) {
+      // Call createAgreement with the stored payload
+      try {
+        writeContract(pendingCreatePayload);
+        setCreateApprovalState({
+          isApprovingToken: false,
+          needsApproval: false,
+        });
+        setPendingCreatePayload(null);
+        setUiSuccess("Approval confirmed — creating agreement now");
+      } catch (err) {
+        console.error("auto-create after approval failed", err);
+        setUiError("Failed to create agreement after approval");
+      }
+    }
+  }, [
+    approvalSuccess,
+    createApprovalState.needsApproval,
+    pendingCreatePayload,
+    writeContract,
+  ]);
+
+  // Ref to store sync data
+  const syncDataRef = useRef<{
+    agreementIdNumber: number;
+    serviceProviderAddr: string;
+    serviceRecipientAddr: string;
+    tokenAddr: string;
+    vestingMode: boolean;
+  } | null>(null);
+
+  // 6. Load escrows on component mount
+  useEffect(() => {
+    if (isConnected) {
+      loadEscrows();
+    }
+  }, [isConnected, loadEscrows]);
+
+  useEffect(() => {
+    // Replace your current syncEscrowToBackend function with this enhanced version
+    const syncEscrowToBackend = async () => {
+      if (
+        !txSuccess ||
+        !txHash ||
+        txHash === lastSyncedTxHash ||
+        isSyncing ||
+        !syncDataRef.current
+      ) {
+        return;
+      }
+
+      setIsSyncing(true);
+      setLastSyncedTxHash(txHash);
+
+      let normalizedServiceProvider = "";
+      let normalizedServiceRecipient = "";
+
+      try {
+        const {
+          agreementIdNumber,
+          serviceProviderAddr,
+          serviceRecipientAddr,
+          tokenAddr,
+          vestingMode,
+        } = syncDataRef.current;
+
+        console.log("🔄 Syncing escrow to backend...", {
+          txHash,
+          agreementId: agreementIdNumber,
+        });
+
+        // ===== NORMALIZE ADDRESSES FOR BACKEND =====
+        normalizedServiceProvider = normalizeAddress(serviceProviderAddr);
+        normalizedServiceRecipient = normalizeAddress(serviceRecipientAddr);
+        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
+        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
+
+        // ===== VALIDATE PARTIES =====
+        if (normalizedServiceProvider === normalizedServiceRecipient) {
+          throw new Error(
+            "Service provider and recipient cannot be the same address",
+          );
+        }
+
+        // ===== BUILD ON-CHAIN METADATA =====
+        const onChainMetadata = {
+          txHash,
+          contractId: agreementIdNumber,
+          serviceProvider: normalizedServiceProvider, // Use normalized address
+          serviceRecipient: normalizedServiceRecipient, // Use normalized address
+          token: tokenAddr,
+          amount: form.amount,
+          vestingMode,
+          chainId: chainId,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Embed metadata in description for easy extraction later
+        const metadataString = `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ON-CHAIN ESCROW DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Transaction Hash: ${txHash}
+Contract Agreement ID: ${agreementIdNumber}
+Service Provider: ${serviceProviderAddr}
+Service Recipient: ${serviceRecipientAddr}
+Token Address: ${tokenAddr}
+Amount: ${form.amount}
+Vesting Enabled: ${vestingMode}
+Chain ID: ${chainId}
+Created: ${new Date().toISOString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+        const fullDescription = form.description + metadataString;
+
+        // ===== PREPARE FILES =====
+        let filesToUpload: File[];
+
+        if (form.evidence.length > 0) {
+          filesToUpload = form.evidence.map((f) => f.file);
+        } else {
+          // Create metadata file (backend requires at least 1 file)
+          const metadataJson = JSON.stringify(onChainMetadata, null, 2);
+          const metadataFile = new File(
+            [metadataJson],
+            `escrow-${agreementIdNumber}.json`,
+            { type: "application/json" },
+          );
+          filesToUpload = [metadataFile];
+        }
+
+        // ===== DETERMINE PARTIES FOR BACKEND =====
+        // Backend needs: firstParty = service provider, counterParty = service recipient
+        let firstPartyAddr: string;
+        let counterPartyAddr: string;
+
+        if (escrowType === "myself") {
+          if (form.payer === "me") {
+            // Current user pays (service recipient), counterparty provides service
+            firstPartyAddr = normalizedServiceProvider; // Service provider (counterparty)
+            counterPartyAddr = address!.toLowerCase(); // Service recipient (me)
+          } else {
+            // Counterparty pays (service recipient), current user provides service
+            firstPartyAddr = address!.toLowerCase(); // Service provider (me)
+            counterPartyAddr = normalizedServiceRecipient; // Service recipient (counterparty)
+          }
+        } else {
+          // Two other parties
+          if (form.payerOther === "partyA") {
+            // Party A pays (service recipient), Party B provides service
+            firstPartyAddr = form.partyB.toLowerCase(); // Service provider (Party B)
+            counterPartyAddr = form.partyA.toLowerCase(); // Service recipient (Party A)
+          } else {
+            // Party B pays (service recipient), Party A provides service
+            firstPartyAddr = form.partyA.toLowerCase(); // Service provider (Party A)
+            counterPartyAddr = form.partyB.toLowerCase(); // Service recipient (Party B)
+          }
+        }
+
+        console.log("🎯 Party Assignment:", {
+          firstParty: firstPartyAddr,
+          counterParty: counterPartyAddr,
+          serviceProvider: normalizedServiceProvider,
+          serviceRecipient: normalizedServiceRecipient,
+          areEqual: firstPartyAddr === counterPartyAddr,
+        });
+
+        // Convert the deadline Date object to ISO string for backend
+        const deadlineForBackend = deadline?.toISOString();
+
+        if (!deadlineForBackend) {
+          throw new Error("Deadline is required");
+        }
+
+        console.log("📋 Escrow agreement data for backend:", {
+          firstParty: firstPartyAddr,
+          counterParty: counterPartyAddr,
+          normalizedFirstParty: firstPartyAddr,
+          normalizedCounterParty: counterPartyAddr,
+          type: AgreementTypeEnum.ESCROW,
+          visibility:
+            form.type === "private"
+              ? AgreementVisibilityEnum.PRIVATE
+              : AgreementVisibilityEnum.PUBLIC,
+          deadline: deadlineForBackend,
+          includesFunds: true,
+          secureTheFunds: true,
+        });
+
+        // ===== CALL AGREEMENT API =====
+        await agreementService.createAgreement(
+          {
+            title: form.title,
+            description: fullDescription,
+            type: AgreementTypeEnum.ESCROW, // 2 = ESCROW
+            visibility:
+              form.type === "private"
+                ? AgreementVisibilityEnum.PRIVATE
+                : AgreementVisibilityEnum.PUBLIC,
+            firstParty: firstPartyAddr,
+            counterParty: counterPartyAddr,
+            deadline: deadlineForBackend,
+            amount: parseFloat(form.amount),
+            tokenSymbol: form.token === "custom" ? "custom" : form.token,
+            contractAddress:
+              form.token === "custom" ? form.customTokenAddress : undefined,
+            includesFunds: true, // Always true for escrow
+            secureTheFunds: true, // Always true for escrow
+          },
+          filesToUpload,
+        );
+
+        // ===== SUCCESS =====
+        console.log("✅ Escrow synced successfully!");
+
+        setUiSuccess("✅ Escrow created and synced to database!");
+
+        toast.success("Escrow Created Successfully!", {
+          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
+        });
+
+        // Close modal and reset
+        setTimeout(() => {
+          setOpen(false);
+          resetForm();
+          loadEscrows(); // Reload the list
+        }, 1500);
+      } catch (err: any) {
+        console.error("❌ Backend sync failed:", err);
+        handleBackendSyncError(
+          err,
+          txHash!,
+          normalizedServiceProvider,
+          normalizedServiceRecipient,
+        );
+      } finally {
+        setIsSyncing(false);
+        resetWrite();
+        syncDataRef.current = null;
+      }
+    };
+
+    // Enhanced error handler for backend sync
+    const handleBackendSyncError = (
+      err: any,
+      txHash: string,
+      normalizedServiceProvider: string,
+      normalizedServiceRecipient: string,
+    ) => {
+      const errorCode = err.response?.data?.error;
+      const errorMessage = err.response?.data?.message;
+      const errorDetails = err.response?.data?.details;
+
+      console.error("🔍 Backend Error Details:", {
+        errorCode,
+        errorMessage,
+        errorDetails,
+        responseData: err.response?.data,
+        status: err.response?.status,
+      });
+
+      let userMessage = "Failed to sync escrow to database";
+      let userDescription =
+        errorMessage || "Please try again or contact support";
+
+      switch (errorCode) {
+        case 1: // MissingData
+          userMessage = "Missing required information";
+          userDescription = "Please ensure all fields are filled correctly";
+          break;
+
+        case 5: // InvalidDate
+          userMessage = "Invalid deadline";
+          userDescription = "Deadline must be a future date";
+          break;
+
+        case 7: // AccountNotFound
+          userMessage = "User account not found";
+          userDescription = `One or both parties must connect their wallet to the platform first. Please ask them to visit the app and connect their wallet.`;
+          // Log which addresses are problematic
+          console.error("🔍 AccountNotFound - Check addresses:", {
+            firstParty: normalizedServiceProvider,
+            counterParty: normalizedServiceRecipient,
+            accountsInSystem: [
+              "0xa008df6bf68f4051b3f664ef6df86edb97a177cb", // Mystyri
+              "0x30398368287d2fe4a697238fa815f49c123ce300", // Ghravitee
+            ],
+          });
+          break;
+
+        case 11: // SameAccount
+          userMessage = "Invalid party configuration";
+          userDescription =
+            "Service provider and recipient cannot be the same account. Please ensure both parties have registered accounts.";
+          // Log the addresses being compared
+          console.error("🔍 SameAccount Error - Addresses:", {
+            firstParty: normalizedServiceProvider,
+            counterParty: normalizedServiceRecipient,
+            areEqual: normalizedServiceProvider === normalizedServiceRecipient,
+          });
+          break;
+
+        case 12: // MissingWallet
+          userMessage = "Wallet not connected";
+          userDescription =
+            "Your wallet must be connected to create escrow agreements";
+          break;
+
+        case 17: // Forbidden
+          userMessage = "Account restricted";
+          userDescription =
+            "Your account is currently restricted from creating agreements";
+          break;
+      }
+
+      setUiError(`⚠️ ${userMessage}`);
+
+      toast.error(userMessage, {
+        description: userDescription,
+        action: {
+          label: "Copy Transaction Hash",
+          onClick: () => {
+            navigator.clipboard.writeText(txHash);
+            toast.info("Transaction hash copied!");
+          },
+        },
+      });
+    };
+
+    // Reset form function
+    const resetForm = () => {
+      setForm({
+        title: "",
+        type: "",
+        counterparty: "",
+        payer: "",
+        partyA: "",
+        partyB: "",
+        payerOther: "",
+        token: "",
+        customTokenAddress: "",
+        amount: "",
+        description: "",
+        evidence: [],
+        milestones: [""],
+        tokenDecimals: 18,
+      });
+      setDeadline(null);
+      setEscrowType("myself");
+    };
+
+    syncEscrowToBackend();
+  }, [
+    txSuccess,
+    txHash,
+    lastSyncedTxHash,
+    isSyncing,
+    form.amount,
+    form.description,
+    form.evidence,
+    form.type,
+    form.title,
+    form.token,
+    form.customTokenAddress,
+    form.payer,
+    form.counterparty,
+    form.payerOther,
+    form.partyB,
+    form.partyA,
+    escrowType,
+    deadline,
+    address,
+    resetWrite,
+    loadEscrows,
+    chainId,
+  ]);
+
+  // ---------------- Create agreement handler (with enhanced error handling) ----------------
+  const handleCreateAgreementOnChain = async () => {
+    resetMessages();
+
+    if (!contractAddress) {
+      setUiError("Unsupported chain or contract not configured");
+      return;
+    }
+    if (!isConnected) {
+      setUiError("Connect your wallet");
+      return;
+    }
+    if (!form.title) {
+      setUiError("Title required");
       return;
     }
     if (!form.type) {
-      toast.error("Please select escrow type");
+      setUiError("Type required");
+      return;
+    }
+    if (!deadline) {
+      setUiError("Deadline required");
+      return;
+    }
+    if (!form.amount || Number(form.amount) <= 0) {
+      setUiError("Amount must be > 0");
+      return;
+    }
+
+    // Determine parties
+    let serviceProviderAddr = "";
+    let serviceRecipientAddr = "";
+    if (escrowType === "myself") {
+      if (!isValidAddress(form.counterparty)) {
+        setUiError("Counterparty must be a valid address (0x...)");
+        return;
+      }
+      if (form.payer === "me") {
+        serviceRecipientAddr = address!;
+        serviceProviderAddr = form.counterparty;
+      } else {
+        serviceProviderAddr = address!;
+        serviceRecipientAddr = form.counterparty;
+      }
+    } else {
+      if (!isValidAddress(form.partyA) || !isValidAddress(form.partyB)) {
+        setUiError("Both parties must be valid addresses");
+        return;
+      }
+      if (form.payerOther === "partyA") {
+        serviceRecipientAddr = form.partyA;
+        serviceProviderAddr = form.partyB;
+      } else {
+        serviceRecipientAddr = form.partyB;
+        serviceProviderAddr = form.partyA;
+      }
+    }
+
+    // Check for same address error (contract will revert with CannotBeTheSame)
+    if (
+      serviceProviderAddr.toLowerCase() === serviceRecipientAddr.toLowerCase()
+    ) {
+      setUiError("Service provider and recipient cannot be the same address");
+      return;
+    }
+
+    // token parsing
+    let tokenAddr: string = ZERO_ADDRESS;
+    if (form.token === "custom") {
+      if (!isValidAddress(form.customTokenAddress)) {
+        setUiError("Custom token must be a valid address");
+        return;
+      }
+      tokenAddr = form.customTokenAddress;
+    } else if (form.token === "ETH") {
+      tokenAddr = ZERO_ADDRESS;
+    } else {
+      // For known tokens like USDC/DAI the UI currently expects a custom address to be pasted
+      if (
+        !form.customTokenAddress ||
+        !isValidAddress(form.customTokenAddress)
+      ) {
+        setUiError(
+          `${form.token} selected — paste its contract address in Custom Token field`,
+        );
+        return;
+      }
+      tokenAddr = form.customTokenAddress;
+    }
+
+    // deadlineDuration
+    const now = Math.floor(Date.now() / 1000);
+    const deadlineSeconds = Math.floor((deadline as Date).getTime() / 1000);
+    if (deadlineSeconds <= now) {
+      setUiError("Deadline must be in the future");
+      return;
+    }
+    const deadlineDuration = deadlineSeconds - now;
+
+    // parse milestones
+    let vestingMode = false;
+    let milestonePercs: number[] = [];
+    let milestoneOffsets: number[] = [];
+    try {
+      const parsed = parseMilestonesFromForm(form.milestones, deadlineDuration);
+      if (parsed.percBP.length > 0) {
+        vestingMode = true;
+        milestonePercs = parsed.percBP;
+        milestoneOffsets = parsed.offsets;
+        const totalBP = milestonePercs.reduce((s, v) => s + v, 0);
+        if (totalBP !== 10000) {
+          setUiError(
+            "Milestone percentages must sum to 100% (10000 basis points)",
+          );
+          return;
+        }
+      }
+    } catch (err: any) {
+      setUiError(err.message || "Invalid milestones");
+      return;
+    }
+
+    // amount BN
+    let amountBN: bigint;
+    try {
+      amountBN = parseAmount(
+        form.amount,
+        tokenAddr,
+        form.tokenDecimals,
+      ) as bigint;
+      if (amountBN <= 0n) {
+        setUiError("Parsed amount invalid");
+        return;
+      }
+    } catch (err) {
+      console.error("parse amount error", err);
+      setUiError("Invalid amount format");
+      return;
+    }
+
+    // Agreement id: random
+    const agreementIdNumber = Number(Math.floor(Math.random() * 1_000_000_000));
+
+    const callerIsDepositor =
+      serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
+    const tokenIsETH = tokenAddr === ZERO_ADDRESS;
+
+    // Store sync data for backend integration
+    syncDataRef.current = {
+      agreementIdNumber,
+      serviceProviderAddr,
+      serviceRecipientAddr,
+      tokenAddr,
+      vestingMode,
+    };
+
+    // If ERC20 and caller is depositor (serviceRecipient), we must approve token first
+    if (!tokenIsETH && callerIsDepositor) {
+      setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+
+      // build the create payload and store it so we can call it after approval
+      const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
+      const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+
+      const payload = {
+        address: contractAddress as `0x${string}`,
+        abi: ESCROW_ABI.abi,
+        functionName: "createAgreement",
+        args: [
+          BigInt(agreementIdNumber),
+          serviceProviderAddr as `0x${string}`,
+          serviceRecipientAddr as `0x${string}`,
+          tokenAddr as `0x${string}`,
+          BigInt(amountBN),
+          BigInt(deadlineDuration),
+          vestingMode,
+          form.type === "private",
+          milestonePercsBN,
+          milestoneOffsetsBN,
+        ],
+        value: 0n,
+      };
+
+      setPendingCreatePayload(payload);
+
+      // Trigger approval tx
+      try {
+        writeApproval({
+          address: tokenAddr as `0x${string}`,
+          abi: ERC20_ABI.abi,
+          functionName: "approve",
+          args: [contractAddress as `0x${string}`, amountBN],
+        });
+        setUiSuccess(
+          "Approval submitted; will create agreement after confirmation",
+        );
+      } catch (err) {
+        console.error("approve error", err);
+        setUiError("ERC20 approve failed");
+        setCreateApprovalState({
+          isApprovingToken: false,
+          needsApproval: false,
+        });
+        setPendingCreatePayload(null);
+      }
+
+      return;
+    }
+
+    // Otherwise call createAgreement directly
+    try {
+      const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
+      const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+
+      const valueToSend = tokenIsETH && callerIsDepositor ? amountBN : 0n;
+
+      writeContract({
+        address: contractAddress as `0x${string}`,
+        abi: ESCROW_ABI.abi,
+        functionName: "createAgreement",
+        args: [
+          BigInt(agreementIdNumber),
+          serviceProviderAddr as `0x${string}`,
+          serviceRecipientAddr as `0x${string}`,
+          tokenAddr as `0x${string}`,
+          BigInt(amountBN),
+          BigInt(deadlineDuration),
+          vestingMode,
+          form.type === "private",
+          milestonePercsBN,
+          milestoneOffsetsBN,
+        ],
+        value: valueToSend,
+      });
+
+      setUiSuccess("CreateAgreement tx submitted — check wallet");
+
+      // optimistic UI add (mirror prior mock behavior)
+      const id = `E-${agreementIdNumber}`;
+      const from = callerIsDepositor ? "@you" : serviceProviderAddr;
+      const to = callerIsDepositor ? serviceProviderAddr : "@you";
+      const next: ExtendedEscrowWithOnChain = {
+        id,
+        title: form.title,
+        from,
+        to,
+        token: form.token === "custom" ? form.customTokenAddress : form.token,
+        amount: Number(form.amount),
+        status: callerIsDepositor ? "active" : "pending",
+        deadline: (deadline as Date).toISOString().split("T")[0],
+        type: form.type as "public" | "private",
+        description: form.description,
+        createdAt: Date.now(),
+        escrowType,
+      };
+      setEscrows((arr) => [next, ...arr]);
+      // setOpen(false);
+    } catch (err: any) {
+      console.error("createAgreement error:", err);
+      // Error will be handled by the useEffect that monitors writeError
+    }
+  };
+
+  // Wrapper for modal submit: prefer on-chain if wallet connected, otherwise fallback to mock
+  const createEscrowSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    resetMessages();
+
+    // local validations (same as original)
+    if (!form.title.trim()) {
+      setUiError("Please enter a title");
+      return;
+    }
+    if (!form.type) {
+      setUiError("Please select escrow type");
       return;
     }
     if (escrowType === "myself") {
       if (!form.payer) {
-        toast.error("Please select who pays");
+        setUiError("Please select who pays");
         return;
       }
       if (!form.counterparty.trim()) {
-        toast.error("Please enter counterparty information");
+        setUiError("Please enter counterparty information");
         return;
       }
     } else {
       if (!form.payerOther) {
-        toast.error("Please select who pays");
+        setUiError("Please select who pays");
         return;
       }
       if (!form.partyA.trim() || !form.partyB.trim()) {
-        toast.error("Please enter both parties' information");
+        setUiError("Please enter both parties' information");
         return;
       }
     }
     if (!form.token) {
-      toast.error("Please select payment token");
+      setUiError("Please select payment token");
       return;
     }
     if (form.token === "custom" && !form.customTokenAddress.trim()) {
-      toast.error("Please enter custom token address");
+      setUiError("Please enter custom token address");
       return;
     }
     if (
@@ -413,29 +1361,35 @@ export default function Escrow() {
       isNaN(Number(form.amount)) ||
       Number(form.amount) <= 0
     ) {
-      toast.error("Please enter a valid amount");
+      setUiError("Please enter a valid amount");
       return;
     }
     if (!form.description.trim()) {
-      toast.error("Please enter a description");
+      setUiError("Please enter a description");
       return;
     }
     if (!deadline) {
-      toast.error("Please select a deadline");
+      setUiError("Please select a deadline");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Mock file upload simulation
+      // if wallet connected and contract configured — do on-chain flow
+      if (isConnected && contractAddress) {
+        await handleCreateAgreementOnChain();
+        setIsSubmitting(false);
+        return;
+      }
+
+      // fallback mock (existing behavior)
       if (form.evidence.length > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
       const id = `E-${Math.floor(Math.random() * 900 + 100)}`;
 
-      // Determine parties based on escrow type
       let from: string;
       let to: string;
 
@@ -447,8 +1401,7 @@ export default function Escrow() {
         to = form.payerOther === "partyA" ? form.partyB : form.partyA;
       }
 
-      // Replace the problematic line in the createEscrow function
-      const next: ExtendedEscrow = {
+      const next: ExtendedEscrowWithOnChain = {
         id,
         title: form.title,
         from,
@@ -466,17 +1419,16 @@ export default function Escrow() {
       setEscrows((arr) => [next, ...arr]);
       setOpen(false);
 
-      // Success message based on escrow type
       const successMessage =
         escrowType === "myself"
           ? `Escrow created between you and ${form.counterparty}`
           : `Escrow created between ${form.partyA} and ${form.partyB}`;
 
+      setUiSuccess("Escrow created successfully");
       toast.success("Escrow created successfully", {
         description: `${successMessage} • ${form.amount} ${form.token} • ${form.evidence.length} files uploaded`,
       });
 
-      // Reset form
       setForm({
         title: "",
         type: "",
@@ -491,10 +1443,12 @@ export default function Escrow() {
         description: "",
         evidence: [],
         milestones: [""],
+        tokenDecimals: 18,
       });
       setDeadline(null);
-      setEscrowType("myself"); // Reset to default
+      setEscrowType("myself");
     } catch (error) {
+      setUiError("Failed to create escrow");
       toast.error("Failed to create escrow", {
         description: "Please try again later",
       });
@@ -502,7 +1456,43 @@ export default function Escrow() {
     } finally {
       setIsSubmitting(false);
     }
-  }
+  };
+
+  // ---------- Small utility: connect wallet hint (we keep UI unchanged) ----------
+  const connectHint = !isConnected ? (
+    <Button
+      variant="outline"
+      className="mb-4 w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+      onClick={() => toast("Please open your wallet and connect")}
+    >
+      Connect Wallet
+    </Button>
+  ) : (
+    <div className="mb-4 rounded-md border border-white/10 px-3 py-2 text-xs text-white/70">
+      {address?.slice(0, 6)}...{address?.slice(-4)}
+    </div>
+  );
+
+  const StatusMessages = () => (
+    <div className="space-y-2">
+      {uiError && (
+        <div className="rounded-md border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {uiError}
+        </div>
+      )}
+      {uiSuccess && (
+        <div className="rounded-md border border-green-400/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+          {uiSuccess}
+        </div>
+      )}
+      {(isTxPending || isApprovalPending) && (
+        <div className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+          <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+          Transaction pending...
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="relative">
@@ -516,13 +1506,17 @@ export default function Escrow() {
               <h2 className="space mb-4 text-[22px] font-semibold text-white/90">
                 Escrow Center
               </h2>
-              <Button
-                variant="neon"
-                className="neon-hover mb-4 w-fit"
-                onClick={() => setOpen(true)}
-              >
-                Create Escrow
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="neon"
+                  className="neon-hover mb-4 w-fit"
+                  onClick={() => setOpen(true)}
+                >
+                  Create Escrow
+                </Button>
+
+                {connectHint}
+              </div>
 
               <p className="text-muted-foreground max-w-[20rem] text-lg">
                 Browse public escrows. Create, review, and manage funds
@@ -530,10 +1524,16 @@ export default function Escrow() {
               </p>
             </div>
 
+            {/* Display status messages */}
+            <StatusMessages />
+
             {/* Enhanced Modal */}
             {open && (
               <div
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  resetMessages();
+                }}
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
               >
                 <div
@@ -542,7 +1542,10 @@ export default function Escrow() {
                 >
                   {/* Close button */}
                   <button
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      resetMessages();
+                    }}
                     className="absolute top-3 right-3 text-white/70 hover:text-white"
                   >
                     ✕
@@ -560,7 +1563,7 @@ export default function Escrow() {
 
                   {/* Enhanced Form */}
                   <form
-                    onSubmit={createEscrow}
+                    onSubmit={createEscrowSubmit}
                     className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
                   >
                     {/* Escrow Type Selection */}
@@ -900,13 +1903,12 @@ export default function Escrow() {
                       />
                     </div>
 
-                    {/* Enhanced Evidence Upload Section */}
+                    {/* Evidence Upload */}
                     <div>
                       <label className="text-muted-foreground mb-2 block text-sm">
                         Supporting Documents
                       </label>
 
-                      {/* Drag and Drop Area */}
                       <div
                         className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
                           isDragOver
@@ -941,7 +1943,6 @@ export default function Escrow() {
                         </label>
                       </div>
 
-                      {/* File List with Previews */}
                       {form.evidence.length > 0 && (
                         <div className="mt-4 space-y-3">
                           <h4 className="text-sm font-medium text-cyan-200">
@@ -985,7 +1986,61 @@ export default function Escrow() {
                       )}
                     </div>
 
-                    {/* Deadline with React DatePicker */}
+                    {/* Milestones */}
+                    <div>
+                      <label className="text-muted-foreground mb-2 block text-sm">
+                        Milestones (optional)
+                      </label>
+                      <p className="text-muted-foreground mb-2 text-xs">
+                        Enter milestone lines as{" "}
+                        <code>percentBP:offsetSeconds</code> (e.g.{" "}
+                        <code>50:604800</code> meaning 50% at +7 days). Percent
+                        values are converted to basis points automatically.
+                      </p>
+                      {form.milestones.map((m, idx) => (
+                        <div key={idx} className="mb-2 flex gap-2">
+                          <input
+                            value={m}
+                            onChange={(e) => {
+                              const next = [...form.milestones];
+                              next[idx] = e.target.value;
+                              setForm({ ...form, milestones: next });
+                            }}
+                            className="flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
+                            placeholder="percent:offsetSeconds (e.g. 50:604800)"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              const next = form.milestones.filter(
+                                (_, i) => i !== idx,
+                              );
+                              setForm({
+                                ...form,
+                                milestones: next.length ? next : [""],
+                              });
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            milestones: [...form.milestones, ""],
+                          })
+                        }
+                      >
+                        Add milestone
+                      </Button>
+                    </div>
+
+                    {/* Deadline */}
                     <div>
                       <label className="text-muted-foreground mb-2 block text-sm">
                         Deadline <span className="text-red-500">*</span>
@@ -1006,6 +2061,12 @@ export default function Escrow() {
                       </div>
                     </div>
 
+                    {(uiError || uiSuccess) && (
+                      <div className="rounded-lg border border-white/10 p-3">
+                        <StatusMessages />
+                      </div>
+                    )}
+
                     {/* Buttons */}
                     <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
                       <Button
@@ -1017,8 +2078,11 @@ export default function Escrow() {
                             description: "Your escrow has been saved as draft",
                           });
                           setOpen(false);
+                          resetMessages();
                         }}
-                        disabled={isSubmitting}
+                        disabled={
+                          isSubmitting || isTxPending || isApprovalPending
+                        }
                       >
                         Save Draft
                       </Button>
@@ -1026,12 +2090,16 @@ export default function Escrow() {
                         type="submit"
                         variant="neon"
                         className="neon-hover"
-                        disabled={isSubmitting}
+                        disabled={
+                          isSubmitting || isTxPending || isApprovalPending
+                        }
                       >
-                        {isSubmitting ? (
+                        {isSubmitting || isTxPending || isApprovalPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Creating...
+                            {createApprovalState.isApprovingToken
+                              ? "Approving..."
+                              : "Creating..."}
                           </>
                         ) : (
                           <>
@@ -1043,7 +2111,7 @@ export default function Escrow() {
                     </div>
                   </form>
 
-                  {/* Conditional note */}
+                  {/* Conditional note (unchanged) */}
                   {escrowType === "myself" && form.payer === "me" ? (
                     <p className="text-muted-foreground mt-4 text-xs">
                       After signing, you will be prompted to deposit{" "}
@@ -1113,7 +2181,7 @@ export default function Escrow() {
           </aside>
         </div>
 
-        {/* Cards grid */}
+        {/* Cards grid (unchanged) */}
         {listed.length === 0 ? (
           <div className="text-muted-foreground rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
             No escrows found.
