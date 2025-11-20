@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
 import User from "../components/ui/svgcomponents/UserIcon";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { LoginModal } from "../components/LoginModal";
 import { useAccountUpdate, useAvatarUpload } from "../hooks/useAccountApi";
 import type { AccountUpdateRequest } from "../services/apiService";
@@ -339,7 +339,7 @@ export function BentoCard({
 }
 
 export default function Profile() {
-  const { isAuthenticated, logout, user, login } = useAuth();
+  const { isAuthenticated, user, login } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState<{
@@ -734,13 +734,13 @@ export default function Profile() {
       <header className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
         <div className="flex items-center gap-2">
-          <Button
+          {/* <Button
             onClick={logout}
             variant="outline"
             className="border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
           >
             Logout
-          </Button>
+          </Button> */}
           <Button
             onClick={() => setShowProfileUpdateModal(true)}
             className="flex items-center gap-2 border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"

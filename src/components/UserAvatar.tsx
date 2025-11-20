@@ -1,7 +1,7 @@
 // components/UserAvatar.tsx - FIXED VERSION
-import { useState, useEffect, useRef } from "react";
-import { apiService } from "../services/apiService";
-import { useAuth } from "../context/AuthContext";
+import { useState } from "react";
+import { useAvatar } from "../hooks/useAvatar";
+import { useAuth } from "../hooks/useAuth";
 
 interface UserAvatarProps {
   userId: string;
@@ -12,10 +12,6 @@ interface UserAvatarProps {
   priority?: boolean;
 }
 
-// Enhanced cache with timestamp
-const avatarCache = new Map<string, { url: string; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
 export function UserAvatar({
   userId,
   avatarId,
@@ -24,11 +20,11 @@ export function UserAvatar({
   className = "",
   priority = false,
 }: UserAvatarProps) {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const { user: currentUser } = useAuth();
-  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Use TanStack Query for avatar fetching
+  const { data: avatarUrl, isLoading, isError } = useAvatar(userId, avatarId);
 
   const sizeClasses = {
     sm: "h-6 w-6 text-xs",
@@ -51,136 +47,55 @@ export function UserAvatar({
   };
 
   const getInitials = (username: string) => {
+    // Handle empty or undefined usernames
+    if (!username || username === "unknown") return "?";
     return username.charAt(0).toUpperCase();
   };
 
   const fallbackColor = getFallbackColor(username);
   const initials = getInitials(username);
 
-  // Helper function to check if error is AbortError
-  const isAbortError = (error: unknown): boolean => {
-    return error instanceof Error && error.name === "AbortError";
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    abortControllerRef.current = new AbortController();
-
-    const loadAvatar = async () => {
-      if (!avatarId) {
-        if (isMounted) {
-          setLoading(false);
-          setError(true);
-        }
-        return;
-      }
-
-      const cacheKey = `user-${userId}-avatar-${avatarId}`;
-
-      // Check cache with expiration
-      const cached = avatarCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        if (isMounted) {
-          setAvatarUrl(cached.url);
-          setLoading(false);
-        }
-        return;
-      }
-
-      // Use current user's avatar if available
-      if (currentUser?.id === userId && currentUser?.avatarUrl) {
-        if (isMounted) {
-          setAvatarUrl(currentUser.avatarUrl);
-          avatarCache.set(cacheKey, {
-            url: currentUser.avatarUrl,
-            timestamp: Date.now(),
-          });
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        if (isMounted) {
-          setLoading(true);
-          setError(false);
-        }
-
-        const url = await apiService.getAvatar(
-          userId,
-          avatarId,
-          abortControllerRef.current?.signal, // Pass the signal
-        );
-
-        if (isMounted && url && typeof url === "string" && url.trim() !== "") {
-          setAvatarUrl(url);
-          avatarCache.set(cacheKey, {
-            url,
-            timestamp: Date.now(),
-          });
-        } else if (isMounted) {
-          throw new Error("Invalid avatar URL");
-        }
-      } catch (error) {
-        // Don't log AbortError as it's expected behavior
-        if (!isAbortError(error)) {
-          console.warn(`Failed to load avatar for user ${username}:`, error);
-        }
-
-        if (isMounted && !isAbortError(error)) {
-          setError(true);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadAvatar();
-
-    return () => {
-      isMounted = false;
-      // Abort ongoing request when component unmounts
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [userId, avatarId, username, currentUser]);
+  // Use current user's avatar if available (bypass API call)
+  const effectiveAvatarUrl =
+    currentUser?.id === userId && currentUser?.avatarUrl
+      ? currentUser.avatarUrl
+      : avatarUrl;
 
   const handleImageError = () => {
-    setError(true);
-    if (avatarId) {
-      const cacheKey = `user-${userId}-avatar-${avatarId}`;
-      avatarCache.delete(cacheKey);
-    }
+    console.warn(`Avatar image failed to load for user ${username}`);
+    setImageError(true);
   };
 
   const handleImageLoad = () => {
-    setLoading(false);
-    setError(false);
+    setImageError(false);
   };
 
-  // Show loading state briefly
-  if (loading && !avatarUrl) {
+  // Determine what to display
+  const shouldShowFallback =
+    !avatarId || isError || imageError || !effectiveAvatarUrl;
+
+  // Show loading state only briefly and only if we're actually fetching
+  if (isLoading && avatarId && !effectiveAvatarUrl) {
     return (
       <div
         className={`${sizeClasses[size]} animate-pulse rounded-full border border-white/10 bg-white/5 ${className}`}
+        title={username}
       />
     );
   }
 
-  // Show avatar image if available and no error
-  if (avatarUrl && !error) {
+  // Show avatar image if available
+  if (effectiveAvatarUrl && !shouldShowFallback) {
     return (
       <img
-        src={avatarUrl}
+        src={effectiveAvatarUrl}
         alt={`${username}'s avatar`}
         className={`${sizeClasses[size]} rounded-full border border-white/10 object-cover ${className}`}
         loading={priority ? "eager" : "lazy"}
         onLoad={handleImageLoad}
         onError={handleImageError}
         decoding="async"
+        title={username}
       />
     );
   }

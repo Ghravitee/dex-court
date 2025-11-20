@@ -1,5 +1,5 @@
 import { cleanTelegramUsername } from "../../lib/usernameUtils";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { UserAvatar } from "../UserAvatar";
 import { ChevronRight } from "lucide-react";
 

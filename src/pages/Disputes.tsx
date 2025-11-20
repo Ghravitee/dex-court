@@ -27,7 +27,7 @@ import {
   isValidTelegramUsername,
 } from "../lib/usernameUtils";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 
 // File upload types
 interface UploadedFile {

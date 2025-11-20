@@ -1,6 +1,6 @@
-// src/services/agreementServices.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { api } from "../lib/apiClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 // API Enum Mappings
 export const AgreementTypeEnum = {
@@ -24,7 +24,7 @@ export const AgreementStatusEnum = {
   PARTY_SUBMITTED_DELIVERY: 7,
 } as const;
 
-// Request/Response Types
+// Request/Response Types (Keep all your existing interfaces)
 export interface AgreementsRequest {
   title: string;
   description: string;
@@ -89,17 +89,11 @@ export interface AgreementDetailsDTO {
   counterParty: PartyDTO;
   files: FileDTO[];
   timeline: TimelineEventDTO[];
-
-  // 🆕 ADD THESE CANCELLATION PROPERTIES
   cancelPending?: boolean;
   cancelRequestedById?: number | null;
   cancelRequestedBy?: PartyDTO | null;
-
-  // 🆕 ADD DELIVERY PROPERTIES
   deliverySubmittedBy?: PartyDTO | null;
   deliverySubmittedById?: number | null;
-
-  // 🆕 ADD DATE PROPERTIES
   completedAt?: string;
   updatedAt?: string;
 }
@@ -160,12 +154,22 @@ export interface UserDTO {
   avatarId: number;
 }
 
+// TanStack Query Keys for organized cache management
+export const agreementQueryKeys = {
+  all: ["agreements"] as const,
+  lists: () => [...agreementQueryKeys.all, "list"] as const,
+  list: (filters: any) => [...agreementQueryKeys.lists(), filters] as const,
+  details: () => [...agreementQueryKeys.all, "detail"] as const,
+  detail: (id: number) => [...agreementQueryKeys.details(), id] as const,
+  mine: ["agreements", "mine"] as const,
+  users: ["users"] as const,
+  userSearch: (query: string) =>
+    [...agreementQueryKeys.users, "search", query] as const,
+  counts: ["agreements", "counts"] as const,
+} as const;
+
+// Improved AgreementService - No manual caching!
 class AgreementService {
-  private userCache: {
-    users: any[];
-    timestamp: number;
-  } | null = null;
-  private readonly CACHE_DURATION = 60000;
   setAuthToken(token: string) {
     console.log("🔐 Agreement service token set", token);
   }
@@ -174,14 +178,11 @@ class AgreementService {
     console.log("🔐 Agreement service token cleared");
   }
 
-  // Create new agreement - matching the test pattern
+  // Create new agreement
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
     console.log("🔄 Creating agreement with data:", data);
 
-    // Create FormData object
     const formData = new FormData();
-
-    // Append each data field individually - EXACTLY like the test
     formData.append("title", data.title);
     formData.append("description", data.description);
     formData.append("type", data.type.toString());
@@ -190,7 +191,6 @@ class AgreementService {
     formData.append("counterParty", data.counterParty);
     formData.append("deadline", data.deadline);
 
-    // Append optional fields if they exist
     if (data.tokenSymbol) {
       formData.append("tokenSymbol", data.tokenSymbol);
     }
@@ -201,7 +201,6 @@ class AgreementService {
       formData.append("contractAddress", data.contractAddress);
     }
 
-    // Append files as array
     files.forEach((file) => {
       formData.append("files", file);
     });
@@ -218,28 +217,14 @@ class AgreementService {
       filesCount: files.length,
     });
 
-    // Send as multipart/form-data
-    const response = await api.post("/agreement", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
-
+    const response = await api.post("/agreement", formData);
     console.log("✅ Agreement created successfully:", response.data);
     return response.data;
   }
 
-  // User search methods
-  // User search methods - client-side only since no search endpoint exists
+  // User search - now with proper error handling
   async searchUsers(query: string): Promise<any[]> {
     try {
-      // Only log in development
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          `🔍 [AgreementService] Searching users with query: ${query}`,
-        );
-      }
-
       if (!query || query.trim().length === 0) {
         return [];
       }
@@ -264,12 +249,9 @@ class AgreementService {
           user?.walletAddress?.toLowerCase().includes(query.toLowerCase()),
       );
 
-      // Only log in development
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          `🔍 [AgreementService] Found ${filteredUsers.length} users matching "${query}"`,
-        );
-      }
+      console.log(
+        `🔍 [AgreementService] Found ${filteredUsers.length} users matching "${query}"`,
+      );
 
       return filteredUsers;
     } catch (error) {
@@ -278,24 +260,14 @@ class AgreementService {
     }
   }
 
+  // Get all users - simplified without manual cache
   async getAllUsers(): Promise<any[]> {
-    // Return cached users if available and not expired
-    if (
-      this.userCache &&
-      Date.now() - this.userCache.timestamp < this.CACHE_DURATION
-    ) {
-      console.log("🔍 [AgreementService] Returning cached users");
-      return this.userCache.users;
-    }
-
     try {
       const response = await api.get<any>("/accounts");
-
       console.log("🔍 [AgreementService] /accounts response:", response.data);
 
       let users: any[] = [];
 
-      // The response has { accounts: [...] } structure based on your logs
       if (response.data && Array.isArray(response.data.accounts)) {
         users = response.data.accounts;
       } else if (response.data && Array.isArray(response.data.results)) {
@@ -310,12 +282,6 @@ class AgreementService {
         users = [];
       }
 
-      // Cache the results
-      this.userCache = {
-        users,
-        timestamp: Date.now(),
-      };
-
       return users;
     } catch (error) {
       console.error("🔍 [AgreementService] Failed to get all users:", error);
@@ -323,11 +289,8 @@ class AgreementService {
     }
   }
 
-  // Clear cache when needed (e.g., after creating a new agreement)
-  clearUserCache() {
-    this.userCache = null;
-    console.log("🔍 [AgreementService] User cache cleared");
-  }
+  // REMOVED: clearUserCache() - No manual cache to clear!
+
   async getUserByUsername(username: string): Promise<any> {
     try {
       const cleanUsername = username.replace(/^@/, "");
@@ -347,27 +310,20 @@ class AgreementService {
   }
 
   // Get agreements list with filters
-  // Enhanced getAgreements method with better parameter handling
-  // In agreementServices.ts - Update the getAgreements method
   async getAgreements(params?: {
     top?: number;
     skip?: number;
     status?: number;
     sort?: string;
     search?: string;
-    // Remove page and page_size since API doesn't support them
   }): Promise<AgreementListDTO> {
-    console.log(
-      "🔍 getAgreements called with params:",
-      JSON.stringify(params, null, 2),
-    );
+    console.log("🔍 getAgreements called with params:", params);
 
-    // ✅ FIXED: Use only the parameters that the API actually supports
     const requestParams = {
-      top: params?.top || 10, // Default to 10 if not provided
-      skip: params?.skip || 0, // Default to 0 if not provided
+      top: params?.top || 10,
+      skip: params?.skip || 0,
       status: params?.status,
-      sort: params?.sort || "desc", // Default to desc if not provided
+      sort: params?.sort || "desc",
       search: params?.search,
     };
 
@@ -385,47 +341,28 @@ class AgreementService {
       totalAgreements: response.data.totalAgreements,
       resultsCount: response.data.results?.length,
       firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
-      hasMoreData: response.data.results?.length > 0,
-      currentPage:
-        Math.floor((requestParams.skip || 0) / (requestParams.top || 10)) + 1,
     });
 
     return response.data;
   }
 
-  // In agreementServices.ts - FIXED getAllAgreementsCount method
+  // Get all agreements count - optimized
   async getAllAgreementsCount(): Promise<number> {
     try {
       console.log("🔢 Counting ALL agreements...");
-
-      // ✅ FIXED: Use correct API parameters (top and skip instead of page/page_size)
-      const firstPage = await this.getAgreements({
-        top: 1,
-        skip: 0,
-      });
+      const firstPage = await this.getAgreements({ top: 1, skip: 0 });
       const totalCount = firstPage.totalAgreements || 0;
-
       console.log(`✅ Total agreements count from API: ${totalCount}`);
       return totalCount;
     } catch (error) {
       console.error("❌ Failed to count all agreements:", error);
-
-      // Fallback: try to count manually if the direct count fails
-      try {
-        console.log("🔄 Falling back to manual counting...");
-        const allAgreements = await this.getAllAgreements();
-        const manualCount = allAgreements.length;
-        console.log(`✅ Manual count: ${manualCount} agreements`);
-        return manualCount;
-      } catch (fallbackError) {
-        console.error("❌ Manual count also failed:", fallbackError);
-        throw error;
-      }
+      throw error;
     }
   }
-  // In agreementServices.ts - FIXED getAllAgreements method
-  // In agreementServices.ts - FIXED getAllAgreements method
+
+  // Get all agreements with pagination
   async getAllAgreements(filters?: {
+    top?: number;
     status?: number;
     search?: string;
     sort?: string;
@@ -433,20 +370,14 @@ class AgreementService {
     try {
       let allAgreements: AgreementSummaryDTO[] = [];
       let skip = 0;
-      const top = 100; // Use top instead of page_size
+      const top = 100;
       let hasMore = true;
       let totalAgreements = 0;
 
       console.log("🔍 Fetching all agreements with pagination...");
 
       while (hasMore) {
-        const params = {
-          top: top,
-          skip: skip,
-          ...filters,
-          sort: filters?.sort || "desc",
-        };
-
+        const params = { top, skip, ...filters, sort: filters?.sort || "desc" };
         const response = await this.getAgreements(params);
         const pageAgreements = response.results || [];
 
@@ -456,48 +387,33 @@ class AgreementService {
 
         if (pageAgreements.length === 0) {
           hasMore = false;
-          console.log(`📄 Reached end at skip ${skip}`);
           break;
         }
 
         allAgreements = [...allAgreements, ...pageAgreements];
 
-        // Get total count from the first response
         if (skip === 0) {
           totalAgreements =
             response.totalAgreements || response.totalResults || 0;
           console.log(`📊 Total agreements in system: ${totalAgreements}`);
         }
 
-        console.log(
-          `📄 Skip ${skip}: ${pageAgreements.length} agreements (Total so far: ${allAgreements.length}/${totalAgreements})`,
-        );
-
-        // Check if we've reached the total
         if (totalAgreements > 0 && allAgreements.length >= totalAgreements) {
           hasMore = false;
-          console.log(`✅ Reached total of ${totalAgreements} agreements`);
           break;
         }
 
-        // Also stop if we get fewer results than top (indicating last page)
         if (pageAgreements.length < top) {
           hasMore = false;
-          console.log(
-            `✅ Reached last page with ${pageAgreements.length} agreements`,
-          );
           break;
         }
 
         skip += top;
-
-        // Safety limit to prevent infinite loops
         if (skip > 5000) {
           console.warn("⚠️ Reached safety limit of 5000 records");
           hasMore = false;
         }
 
-        // Small delay to avoid overwhelming the API
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -509,182 +425,25 @@ class AgreementService {
     }
   }
 
-  // In agreementServices.ts - Update the getUserAgreements method
+  // Get user agreements
   async getUserAgreements(
     userId: string,
-    filters?: {
-      status?: number;
-      search?: string;
-    },
+    filters?: { status?: number; search?: string },
   ): Promise<AgreementSummaryDTO[]> {
     try {
       console.log(`👤 Fetching ALL agreements for user ${userId}...`);
+      const allAgreements = await this.getAllAgreements(filters);
 
-      let allUserAgreements: AgreementSummaryDTO[] = [];
-      let currentPage = 1;
-      const pageSize = 50;
-      let hasMore = true;
-      let totalFetched = 0;
-
-      while (hasMore) {
-        try {
-          console.log(`📄 Fetching page ${currentPage} for user agreements...`);
-
-          const params = {
-            page: currentPage,
-            page_size: pageSize,
-            ...filters,
-          };
-
-          const response = await this.getAgreements(params);
-          const pageAgreements = response.results || [];
-
-          console.log(
-            `📄 Page ${currentPage}: ${pageAgreements.length} agreements returned`,
-          );
-
-          if (pageAgreements.length === 0) {
-            hasMore = false;
-            console.log(`✅ Reached end of agreements at page ${currentPage}`);
-            break;
-          }
-
-          // Filter agreements where the user is involved
-          const userAgreementsInPage = pageAgreements.filter((agreement) => {
-            const isUserInvolved =
-              agreement.firstParty.id.toString() === userId ||
-              agreement.counterParty.id.toString() === userId;
-            return isUserInvolved;
-          });
-
-          console.log(
-            `👤 Page ${currentPage}: ${userAgreementsInPage.length} agreements involve user ${userId}`,
-          );
-
-          allUserAgreements = [...allUserAgreements, ...userAgreementsInPage];
-          totalFetched += pageAgreements.length;
-
-          // Check if we've reached the total count
-          if (response.totalResults && totalFetched >= response.totalResults) {
-            hasMore = false;
-            console.log(
-              `✅ Reached total of ${response.totalResults} agreements`,
-            );
-          }
-
-          currentPage++;
-
-          // Safety limit
-          if (currentPage > 50) {
-            console.warn("⚠️ Reached safety limit of 50 pages");
-            hasMore = false;
-          }
-        } catch (pageError) {
-          console.error(`❌ Error fetching page ${currentPage}:`, pageError);
-          hasMore = false;
-          break;
-        }
-      }
-
-      console.log(
-        `✅ Total agreements for user ${userId}: ${allUserAgreements.length}`,
-      );
-      return allUserAgreements;
-    } catch (error) {
-      console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);
-      throw error;
-    }
-  }
-
-  // Alternative approach using top/skip parameters
-  async getUserAgreementsWithTopSkip(
-    userId: string,
-    filters?: {
-      status?: number;
-      search?: string;
-    },
-  ): Promise<AgreementSummaryDTO[]> {
-    try {
-      console.log(
-        `👤 Fetching ALL agreements for user ${userId} using top/skip...`,
+      const userAgreements = allAgreements.filter(
+        (agreement) =>
+          agreement.firstParty.id.toString() === userId ||
+          agreement.counterParty.id.toString() === userId,
       );
 
-      let allUserAgreements: AgreementSummaryDTO[] = [];
-      let skip = 0;
-      const top = 50; // Get 50 per request
-      let hasMore = true;
-      let consecutiveEmptyResults = 0;
-
-      while (hasMore) {
-        try {
-          console.log(
-            `📄 Fetching agreements with skip=${skip}, top=${top}...`,
-          );
-
-          const params = {
-            top: top,
-            skip: skip,
-            ...filters,
-            sort: "desc", // Ensure consistent ordering
-          };
-
-          const response = await this.getAgreements(params);
-          const pageAgreements = response.results || [];
-
-          console.log(
-            `📄 Skip ${skip}: ${pageAgreements.length} agreements returned`,
-          );
-
-          if (pageAgreements.length === 0) {
-            consecutiveEmptyResults++;
-            console.log(`📄 No more agreements at skip=${skip}`);
-
-            // If we get empty results, stop
-            if (consecutiveEmptyResults >= 1) {
-              hasMore = false;
-              console.log(`✅ Reached end of agreements at skip=${skip}`);
-              break;
-            }
-          } else {
-            consecutiveEmptyResults = 0;
-
-            // Filter agreements where the user is involved
-            const userAgreementsInPage = pageAgreements.filter((agreement) => {
-              const isUserInvolved =
-                agreement.firstParty.id.toString() === userId ||
-                agreement.counterParty.id.toString() === userId;
-              return isUserInvolved;
-            });
-
-            console.log(
-              `👤 Skip ${skip}: ${userAgreementsInPage.length} agreements involve user ${userId}`,
-            );
-
-            allUserAgreements = [...allUserAgreements, ...userAgreementsInPage];
-
-            // Move to next page
-            skip += top;
-          }
-
-          // Safety limit
-          if (skip > 1000) {
-            console.warn("⚠️ Reached safety limit of 1000 records");
-            hasMore = false;
-          }
-
-          // Small delay between requests
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        } catch (pageError) {
-          console.error(`❌ Error fetching skip=${skip}:`, pageError);
-          hasMore = false;
-          break;
-        }
-      }
-
       console.log(
-        `✅ Total agreements for user ${userId}: ${allUserAgreements.length}`,
+        `✅ Total agreements for user ${userId}: ${userAgreements.length}`,
       );
-      return allUserAgreements;
+      return userAgreements;
     } catch (error) {
       console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);
       throw error;
@@ -698,11 +457,63 @@ class AgreementService {
   }
 
   // Get agreement details
-  async getAgreementDetails(
-    agreementId: number,
-  ): Promise<{ data: AgreementDetailsDTO }> {
+  async getAgreementDetails(agreementId: number): Promise<AgreementDetailsDTO> {
     const response = await api.get(`/agreement/${agreementId}`);
-    return { data: response.data };
+    return response.data;
+  }
+
+  // Add this method to your AgreementService class
+  async getSignedAgreements(): Promise<AgreementSummaryDTO[]> {
+    console.log("🔍 Fetching signed agreements for homepage...");
+
+    // Get all agreements
+    const allAgreements = await this.getAllAgreements({
+      sort: "desc",
+      top: 1000, // Get a large number
+    });
+
+    // Filter for signed agreements (status = ACTIVE = 2)
+    const signedAgreements = allAgreements.filter(
+      (agreement) => agreement.status === AgreementStatusEnum.ACTIVE,
+    );
+
+    console.log(
+      `✅ Found ${signedAgreements.length} signed agreements out of ${allAgreements.length} total`,
+    );
+
+    // Enhance with details if needed
+    const agreementsNeedingDetails = signedAgreements.filter(
+      (agreement) =>
+        !agreement.description || agreement.description.trim() === "",
+    );
+
+    if (agreementsNeedingDetails.length > 0) {
+      const detailedAgreements = await Promise.all(
+        agreementsNeedingDetails.map(async (agreement) => {
+          try {
+            const details = await this.getAgreementDetails(agreement.id);
+            return {
+              ...agreement,
+              description: details.description || "No description available",
+            };
+          } catch (error) {
+            console.warn(
+              `Failed to fetch details for agreement ${agreement.id}:`,
+              error,
+            );
+            return agreement;
+          }
+        }),
+      );
+
+      // Replace agreements with detailed versions
+      return signedAgreements.map((agreement) => {
+        const detailed = detailedAgreements.find((d) => d.id === agreement.id);
+        return detailed || agreement;
+      });
+    }
+
+    return signedAgreements;
   }
 
   // Sign/accept or reject agreement
@@ -730,17 +541,13 @@ class AgreementService {
   // Upload additional files
   async uploadFiles(agreementId: number, files: File[]): Promise<void> {
     const formData = new FormData();
-    files.forEach((file) => {
-      formData.append("files", file);
-    });
+    files.forEach((file) => formData.append("files", file));
 
     const response = await api.post(
       `/agreement/${agreementId}/files`,
       formData,
       {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+        headers: { "Content-Type": "multipart/form-data" },
       },
     );
 
@@ -748,22 +555,16 @@ class AgreementService {
   }
 
   // Download file
-  // In your agreementServices.ts file, add this method if it doesn't exist:
-
-  // Enhanced downloadFile method with proper TypeScript error handling
-  downloadFile = async (agreementId: number, fileId: number): Promise<void> => {
+  async downloadFile(agreementId: number, fileId: number): Promise<void> {
     try {
       const response = await api.get(
         `/agreement/${agreementId}/file/${fileId}`,
         {
-          responseType: "blob", // Important for file downloads
+          responseType: "blob",
         },
       );
 
-      // Get the original filename from the file data or response headers
       let filename = `document-${fileId}`;
-
-      // First, try to get filename from Content-Disposition header
       const contentDisposition = response.headers["content-disposition"];
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
@@ -772,53 +573,35 @@ class AgreementService {
         }
       }
 
-      console.log("📥 Download details:", {
-        contentDisposition,
-        filename,
-        contentType: response.headers["content-type"],
-      });
-
-      // Create blob with proper MIME type if available
       const contentType = response.headers["content-type"];
       const blob = contentType
         ? new Blob([response.data], { type: contentType })
         : new Blob([response.data]);
 
-      // Create and trigger download
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename; // This should preserve the original extension
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
       console.log(`✅ File downloaded successfully: ${filename}`);
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Download failed:", error);
 
-      // Type-safe error handling
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as { response?: { status?: number } };
-
-        if (axiosError.response?.status === 404) {
-          throw new Error(
-            "File not found on server. The file may have been deleted or the ID is incorrect.",
-          );
-        } else if (axiosError.response?.status === 403) {
-          throw new Error("You don't have permission to download this file.");
-        } else if (axiosError.response?.status === 400) {
-          throw new Error(
-            "Invalid request. Please check the agreement and file IDs.",
-          );
-        }
+      if (error.response?.status === 404) {
+        throw new Error("File not found on server.");
+      } else if (error.response?.status === 403) {
+        throw new Error("You don't have permission to download this file.");
+      } else if (error.response?.status === 400) {
+        throw new Error("Invalid request.");
       }
 
-      // Generic error for all other cases
       throw new Error("Failed to download file. Please try again.");
     }
-  };
+  }
 
   // Delete file
   async deleteFile(agreementId: number, fileId: number): Promise<void> {
@@ -828,7 +611,6 @@ class AgreementService {
     return response.data;
   }
 
-  // Delivery actions
   // Delivery actions
   async markAsDelivered(agreementId: number): Promise<void> {
     const response = await api.patch(`/agreement/${agreementId}/delivery/send`);
@@ -861,7 +643,7 @@ class AgreementService {
       console.error("❌ Cancellation request failed:", error);
       if (error.response?.data?.error === 16) {
         throw new Error(
-          "Cannot request cancellation: Agreement may already have a pending cancellation or invalid state.",
+          "Cannot request cancellation: Invalid agreement state.",
         );
       }
       throw error;
@@ -887,11 +669,236 @@ class AgreementService {
       console.error("❌ Cancellation response failed:", error);
       if (error.response?.data?.error === 16) {
         throw new Error(
-          "Cannot respond to cancellation: Invalid agreement state or no pending cancellation.",
+          "Cannot respond to cancellation: Invalid agreement state.",
         );
       }
       throw error;
     }
   }
 }
+
 export const agreementService = new AgreementService();
+
+// 🎯 TANSTACK QUERY HOOKS - The Real Improvement!
+
+// Query hooks for agreements
+export function useAgreements(params?: {
+  top?: number;
+  skip?: number;
+  status?: number;
+  sort?: string;
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: agreementQueryKeys.list(params || {}),
+    queryFn: () => agreementService.getAgreements(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+export function useMyAgreements() {
+  return useQuery({
+    queryKey: agreementQueryKeys.mine,
+    queryFn: () => agreementService.getMyAgreements(),
+    staleTime: 1 * 60 * 1000, // 1 minute
+  });
+}
+
+export function useAgreementDetails(agreementId: number) {
+  return useQuery({
+    queryKey: agreementQueryKeys.detail(agreementId),
+    queryFn: () => agreementService.getAgreementDetails(agreementId),
+    enabled: !!agreementId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+export function useAllUsers() {
+  return useQuery({
+    queryKey: agreementQueryKeys.users,
+    queryFn: () => agreementService.getAllUsers(),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+  });
+}
+
+export function useUserSearch(query: string) {
+  const { data: allUsers, isLoading } = useAllUsers();
+
+  const filteredUsers =
+    allUsers?.filter(
+      (user) =>
+        user?.username?.toLowerCase().includes(query.toLowerCase()) ||
+        user?.telegram?.username?.toLowerCase().includes(query.toLowerCase()) ||
+        user?.telegramInfo?.toLowerCase().includes(query.toLowerCase()) ||
+        user?.walletAddress?.toLowerCase().includes(query.toLowerCase()),
+    ) || [];
+
+  return {
+    data: filteredUsers,
+    isLoading,
+  };
+}
+
+export function useAllAgreementsCount() {
+  return useQuery({
+    queryKey: [...agreementQueryKeys.counts, "total"],
+    queryFn: () => agreementService.getAllAgreementsCount(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+// Mutation hooks
+export function useCreateAgreement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ data, files }: { data: AgreementsRequest; files: File[] }) =>
+      agreementService.createAgreement(data, files),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.users });
+    },
+  });
+}
+
+export function useSignAgreement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      agreementId,
+      accepted,
+    }: {
+      agreementId: number;
+      accepted: boolean;
+    }) => agreementService.signAgreement(agreementId, accepted),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(variables.agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.mine });
+    },
+  });
+}
+
+export function useEditAgreement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      agreementId,
+      data,
+    }: {
+      agreementId: number;
+      data: AgreementsEditRequest;
+    }) => agreementService.editAgreement(agreementId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(variables.agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+}
+
+export function useDeleteAgreement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agreementId: number) =>
+      agreementService.deleteAgreement(agreementId),
+    onSuccess: (_, agreementId) => {
+      queryClient.removeQueries({
+        queryKey: agreementQueryKeys.detail(agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.mine });
+    },
+  });
+}
+
+// Delivery actions hook
+export function useDeliveryActions() {
+  const queryClient = useQueryClient();
+
+  const markAsDelivered = useMutation({
+    mutationFn: (agreementId: number) =>
+      agreementService.markAsDelivered(agreementId),
+    onSuccess: (_, agreementId) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+
+  const confirmDelivery = useMutation({
+    mutationFn: (agreementId: number) =>
+      agreementService.confirmDelivery(agreementId),
+    onSuccess: (_, agreementId) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+
+  const rejectDelivery = useMutation({
+    mutationFn: (agreementId: number) =>
+      agreementService.rejectDelivery(agreementId),
+    onSuccess: (_, agreementId) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+
+  return { markAsDelivered, confirmDelivery, rejectDelivery };
+}
+
+// Cancellation actions hook
+export function useCancelationActions() {
+  const queryClient = useQueryClient();
+
+  const requestCancelation = useMutation({
+    mutationFn: (agreementId: number) =>
+      agreementService.requestCancelation(agreementId),
+    onSuccess: (_, agreementId) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+
+  const respondToCancelation = useMutation({
+    mutationFn: ({
+      agreementId,
+      accepted,
+    }: {
+      agreementId: number;
+      accepted: boolean;
+    }) => agreementService.respondToCancelation(agreementId, accepted),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: agreementQueryKeys.detail(variables.agreementId),
+      });
+      queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
+    },
+  });
+
+  return { requestCancelation, respondToCancelation };
+}
+
+// Utility hook for manual cache invalidation
+export function useInvalidateAgreements() {
+  const queryClient = useQueryClient();
+
+  return () => {
+    queryClient.invalidateQueries({ queryKey: agreementQueryKeys.all });
+  };
+}

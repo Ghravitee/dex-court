@@ -1,7 +1,7 @@
 // src/components/LoginModal.tsx - IMPROVED VERSION
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { X, Wallet, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
 import { useAccount, useConnect } from "wagmi";
 import { useWalletLogin } from "../hooks/useWalletLogin";
@@ -19,7 +19,7 @@ export function LoginModal({
 }: LoginModalProps) {
   const [otp, setOtp] = useState("");
   const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
-  const { login, isLoading, linkTelegram } = useAuth();
+  const { login, isLoading, linkTelegram, user } = useAuth();
   const { isConnected, address } = useAccount();
   const { connect, connectors } = useConnect();
 
@@ -30,25 +30,40 @@ export function LoginModal({
     setError: setWalletError,
   } = useWalletLogin();
 
+  // In LoginModal.tsx - Replace the handleTelegramAction function
   const handleTelegramAction = async () => {
+    if (!otp.trim()) {
+      alert("Please enter your OTP");
+      return;
+    }
+
     try {
+      console.log("🔐 Starting Telegram authentication...");
+
       if (mode === "link") {
         await linkTelegram(otp);
+        console.log("🔐 Telegram linking successful");
       } else {
         await login(otp);
+        console.log("🔐 Telegram login successful");
       }
+
       onClose();
       setOtp("");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error(`${mode === "link" ? "Linking" : "Login"} failed:`, error);
 
-      const errorMessage = error.response?.data?.message || error.message;
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Authentication failed";
 
-      // Handle existing user case - show in alert
+      // Handle specific error cases
       if (
         errorMessage.includes("already exists") ||
-        errorMessage.includes("already registered")
+        errorMessage.includes("already registered") ||
+        errorMessage.includes("User already exists")
       ) {
         alert("You already have an existing account. Please login instead.");
         return;
@@ -58,7 +73,10 @@ export function LoginModal({
         alert(
           "OTP has expired. Please generate a new one from the Telegram bot.",
         );
-      } else if (errorMessage.includes("invalid")) {
+      } else if (
+        errorMessage.includes("invalid") ||
+        errorMessage.includes("Invalid OTP")
+      ) {
         alert(
           "Invalid OTP format. Please copy the entire code from the Telegram bot.",
         );
@@ -66,6 +84,11 @@ export function LoginModal({
         alert(
           "Telegram bot not found. Please check the bot username: @DexCourtDVBot",
         );
+      } else if (
+        errorMessage.includes("401") ||
+        errorMessage.includes("unauthorized")
+      ) {
+        alert("Authentication failed. Please check your OTP and try again.");
       } else {
         alert(`Authentication failed: ${errorMessage}`);
       }
@@ -73,12 +96,21 @@ export function LoginModal({
   };
 
   // src/components/LoginModal.tsx - Add this check before wallet login
+  // In LoginModal.tsx - Update handleWalletLogin
   const handleWalletLogin = async () => {
     if (!isConnected) {
       if (connectors[0]) {
         connect({ connector: connectors[0] });
       }
       return;
+    }
+
+    // NEW: For linking mode, validate wallet matches before proceeding
+    if (mode === "link" && user?.walletAddress && address) {
+      if (user.walletAddress.toLowerCase() !== address.toLowerCase()) {
+        setWalletError();
+        return;
+      }
     }
 
     const success = await loginWithConnectedWallet();
@@ -226,10 +258,27 @@ export function LoginModal({
         {/* Wallet Section */}
         {activeTab === "wallet" && (
           <div className="space-y-4">
+            {/* NEW: Show current user's linked wallet info */}
+            {mode === "link" && user?.walletAddress && (
+              <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-3">
+                <p className="text-sm font-medium text-amber-300">
+                  Your Linked Wallet
+                </p>
+                <p className="font-mono text-xs text-amber-200">
+                  {user.walletAddress}
+                </p>
+                <p className="mt-1 text-xs text-amber-200">
+                  You can only connect this wallet to your account.
+                </p>
+              </div>
+            )}
+
             <p className="text-sm text-gray-300">
               {mode === "link"
-                ? "Connect your wallet to link it to your account"
-                : "Connect your wallet to access DexCourt. If you have an existing account, we'll automatically log you in."}
+                ? user?.walletAddress
+                  ? "Reconnect your linked wallet to verify ownership"
+                  : "Connect your wallet to link it to your account"
+                : "Connect your wallet to access DexCourt. We'll automatically find your existing account or create a new one."}
             </p>
 
             {/* NEW: Progress Indicator */}
@@ -393,19 +442,18 @@ export function LoginModal({
 
             <div className="flex items-center justify-end gap-2">
               <Button
-                variant="outline"
-                onClick={handleClose}
-                className="border-gray-500/30 text-gray-300 hover:bg-gray-700/40"
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-              <Button
                 onClick={handleTelegramAction}
                 className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
                 disabled={isLoading || !otp.trim()}
               >
-                {getTelegramButtonText()}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {mode === "link" ? "Linking..." : "Authenticating..."}
+                  </>
+                ) : (
+                  getTelegramButtonText()
+                )}
               </Button>
             </div>
           </div>

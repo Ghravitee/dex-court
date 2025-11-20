@@ -2,10 +2,10 @@
 // pages/UserProfile.tsx
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { apiService } from "../services/apiService";
 
-import type { User } from "../context/AuthContext";
+import type { User } from "../types/auth.types";
 import { FaUser, FaHandshake } from "react-icons/fa";
 import { FiAlertCircle } from "react-icons/fi";
 import { RiShieldCheckFill } from "react-icons/ri";

@@ -26,7 +26,7 @@ import {
   calculateVoteResults,
   type VoteCalculationResult,
 } from "../lib/voteCalculations";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms

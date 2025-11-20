@@ -30,7 +30,7 @@ import type {
 } from "../types";
 import { toast } from "sonner";
 import { agreementService } from "../services/agreementServices";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { UserAvatar } from "../components/UserAvatar";
 // Add imports at the top
 import {
@@ -649,7 +649,6 @@ export default function Agreements() {
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // In Agreements.tsx - replace the handleSubmit function with this updated version
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -660,7 +659,6 @@ export default function Agreements() {
     }
 
     // Form validation
-    // Form validation - Only required fields
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -684,8 +682,6 @@ export default function Agreements() {
       toast.error("Please enter a description");
       return;
     }
-
-    // Deadline and supporting documents are now optional - no validation for these
 
     setIsSubmitting(true);
 
@@ -864,8 +860,7 @@ export default function Agreements() {
         form.images.length > 0 ? form.images.map((f) => f.file) : [],
       );
 
-      // Clear user cache since we might have new users or updated user data
-      agreementService.clearUserCache();
+      // 🚨 REMOVED: agreementService.clearUserCache(); - This method no longer exists
 
       // Success message
       const successMessage =

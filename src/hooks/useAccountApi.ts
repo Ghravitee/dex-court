@@ -1,7 +1,7 @@
 // hooks/useAccountApi.ts
 import { useState } from "react";
 import { apiService, type AccountUpdateRequest } from "../services/apiService";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { clearAvatarCache } from "../lib/avatarUtils";
 
 export const useAccountUpdate = () => {
