@@ -217,7 +217,11 @@ class AgreementService {
       filesCount: files.length,
     });
 
-    const response = await api.post("/agreement", formData);
+    const response = await api.post("/agreement", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
     console.log("✅ Agreement created successfully:", response.data);
     return response.data;
   }
@@ -426,6 +430,7 @@ class AgreementService {
   }
 
   // Get user agreements
+  // Get user agreements - also fix the null checking here
   async getUserAgreements(
     userId: string,
     filters?: { status?: number; search?: string },
@@ -434,15 +439,72 @@ class AgreementService {
       console.log(`👤 Fetching ALL agreements for user ${userId}...`);
       const allAgreements = await this.getAllAgreements(filters);
 
-      const userAgreements = allAgreements.filter(
-        (agreement) =>
-          agreement.firstParty.id.toString() === userId ||
-          agreement.counterParty.id.toString() === userId,
-      );
+      // Filter for the specific user with proper null checking
+      const userAgreements = allAgreements.filter((agreement) => {
+        // Check if firstParty exists and has an id
+        const isFirstParty =
+          agreement.firstParty &&
+          agreement.firstParty.id &&
+          agreement.firstParty.id.toString() === userId;
+
+        // Check if counterParty exists and has an id
+        const isCounterParty =
+          agreement.counterParty &&
+          agreement.counterParty.id &&
+          agreement.counterParty.id.toString() === userId;
+
+        return isFirstParty || isCounterParty;
+      });
 
       console.log(
         `✅ Total agreements for user ${userId}: ${userAgreements.length}`,
       );
+      return userAgreements;
+    } catch (error) {
+      console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  // Add this method to your AgreementService class
+  async getUserAgreementsWithTopSkip(
+    userId: string,
+  ): Promise<AgreementSummaryDTO[]> {
+    try {
+      console.log(
+        `👤 Fetching agreements for user ${userId} with pagination...`,
+      );
+
+      // Use the existing getAgreements method with pagination
+      const response = await this.getAgreements({
+        top: 100, // Get a reasonable number of agreements
+        skip: 0,
+        sort: "desc",
+      });
+
+      const allAgreements = response.results || [];
+
+      // Filter for the specific user with proper null checking
+      const userAgreements = allAgreements.filter((agreement) => {
+        // Check if firstParty exists and has an id
+        const isFirstParty =
+          agreement.firstParty &&
+          agreement.firstParty.id &&
+          agreement.firstParty.id.toString() === userId;
+
+        // Check if counterParty exists and has an id
+        const isCounterParty =
+          agreement.counterParty &&
+          agreement.counterParty.id &&
+          agreement.counterParty.id.toString() === userId;
+
+        return isFirstParty || isCounterParty;
+      });
+
+      console.log(
+        `✅ Found ${userAgreements.length} agreements for user ${userId}`,
+      );
+
       return userAgreements;
     } catch (error) {
       console.error(`❌ Failed to fetch agreements for user ${userId}:`, error);

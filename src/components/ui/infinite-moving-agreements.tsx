@@ -117,9 +117,12 @@ export const InfiniteMovingAgreements = ({
                   aria-hidden="true"
                   className="user-select-none pointer-events-none absolute -top-0.5 -left-0.5 -z-1 h-[calc(100%_+_4px)] w-[calc(100%_+_4px)]"
                 ></div>
+                <h2 className="mb-4 block text-[16px] leading-[1.6] font-normal text-amber-300">
+                  {item.title}
+                </h2>
 
                 {/* Quote - At the top */}
-                <span className="relative z-20 mb-4 line-clamp-4 block text-[14px] leading-[1.6] font-normal text-white">
+                <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
                   {item.quote}
                 </span>
 

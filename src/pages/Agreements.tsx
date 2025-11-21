@@ -123,7 +123,7 @@ const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(telegramUsername, field)}
+      onClick={() => onSelect(`@${telegramUsername}`, field)} // 🆕 FIX: Add @ symbol here
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}
@@ -154,25 +154,39 @@ const UserSearchResult = ({
     </div>
   );
 };
-
 const formatNumberWithCommas = (value: string): string => {
   if (!value) return "";
 
-  // Remove all non-digit characters except decimal point
-  const numericValue = value.replace(/[^\d.]/g, "");
+  // Allow numbers, decimal point, and commas - be more permissive
+  const numericValue = value.replace(/[^\d.,]/g, "");
+
+  // Handle empty value
+  if (!numericValue) return "";
 
   // Split into whole and decimal parts
   const parts = numericValue.split(".");
   let wholePart = parts[0];
   const decimalPart = parts[1] || "";
 
-  // Format whole part with commas
+  // Format whole part with commas (only if it has content)
   if (wholePart) {
-    wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    // Remove existing commas first
+    wholePart = wholePart.replace(/,/g, "");
+    // Add commas for thousands (only if it's a valid number)
+    if (wholePart.length > 0) {
+      wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
   }
 
   // Combine parts
-  return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
+  if (decimalPart) {
+    return `${wholePart}.${decimalPart}`;
+  } else if (numericValue.includes(".")) {
+    // Handle case where user just typed a decimal point
+    return `${wholePart}.`;
+  } else {
+    return wholePart;
+  }
 };
 
 const parseFormattedNumber = (formattedValue: string): string => {
@@ -400,6 +414,20 @@ export default function Agreements() {
       }
     };
 
+    const getTelegramUsernameFromParty = (party: any): string => {
+      if (!party) return "Unknown";
+
+      // Priority 1: Check for telegramUsername field (if available in API)
+      const telegramUsername = party?.telegramUsername || party?.username;
+
+      if (!telegramUsername) return "Unknown";
+
+      // Ensure it starts with @ for display consistency
+      return telegramUsername.startsWith("@")
+        ? telegramUsername
+        : `@${telegramUsername}`;
+    };
+
     // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
     const hasAmountOrToken = apiAgreement.amount || apiAgreement.tokenSymbol;
     const includeFunds = hasAmountOrToken ? "yes" : "no";
@@ -428,16 +456,12 @@ export default function Agreements() {
 
     // 🚨 FIXED: Look for telegramUsername field (from API response)
     const getFirstPartyTelegramUsername = (party: any): string => {
-      const telegramUsername =
-        party?.telegramUsername || party?.telegram?.username;
-      return telegramUsername || "Unknown";
+      return getTelegramUsernameFromParty(party);
     };
 
-    // 🚨 FIXED: Look for telegramUsername field (from API response)
+    // 🚨 FIXED: Use the new Telegram username extraction function
     const getCounterpartyTelegramUsername = (party: any): string => {
-      const telegramUsername =
-        party?.telegramUsername || party?.telegram?.username;
-      return telegramUsername || "Unknown";
+      return getTelegramUsernameFromParty(party);
     };
 
     // Get the creator/createdBy - Telegram only
@@ -613,6 +637,27 @@ export default function Agreements() {
       ...prev,
       images: prev.images.filter((file) => file.id !== id),
     }));
+  };
+
+  const handleUsernameInput = (
+    value: string,
+    field: "counterparty" | "partyA" | "partyB",
+  ) => {
+    // Remove any existing @ and trim whitespace
+    const cleanedValue = value.replace(/^@/, "").trim();
+
+    // Update form state with clean value (without @)
+    setForm((prev) => ({
+      ...prev,
+      [field]: cleanedValue,
+    }));
+
+    // Trigger search with clean value
+    if (cleanedValue.length >= 2) {
+      handleUserSearch(cleanedValue, field);
+    } else {
+      setShowUserSuggestions(false);
+    }
   };
 
   // Drag and drop handlers
@@ -865,8 +910,8 @@ export default function Agreements() {
       // Success message
       const successMessage =
         agreementType === "myself"
-          ? `Agreement created between you and @${form.counterparty}`
-          : `Agreement created between @${form.partyA} and @${form.partyB}`;
+          ? `Agreement created between you and ${form.counterparty}`
+          : `Agreement created between ${form.partyA} and ${form.partyB}`;
 
       toast.success("Agreement created successfully", {
         description: `${successMessage} • ${typeValue} • ${form.images.length} files uploaded`,
@@ -1606,8 +1651,7 @@ export default function Agreements() {
                         value={form.counterparty}
                         onChange={(e) => {
                           const value = e.target.value;
-                          setForm({ ...form, counterparty: value });
-                          handleUserSearch(value, "counterparty");
+                          handleUsernameInput(value, "counterparty");
                         }}
                         onFocus={() => {
                           if (form.counterparty.length >= 2) {
@@ -1674,8 +1718,7 @@ export default function Agreements() {
                           value={form.partyA}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setForm({ ...form, partyA: value });
-                            handleUserSearch(value, "partyA");
+                            handleUsernameInput(value, "partyA");
                           }}
                           onFocus={() => {
                             if (form.partyA.length >= 2) {
@@ -1742,8 +1785,7 @@ export default function Agreements() {
                           value={form.partyB}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setForm({ ...form, partyB: value });
-                            handleUserSearch(value, "partyB");
+                            handleUsernameInput(value, "partyB");
                           }}
                           onFocus={() => {
                             if (form.partyB.length >= 2) {
@@ -1929,6 +1971,7 @@ export default function Agreements() {
               </div>
 
               {/* Include Funds Toggle */}
+              {/* Include Funds Toggle */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Does this Agreement Include Funds{" "}
@@ -1960,8 +2003,118 @@ export default function Agreements() {
                 </div>
               </div>
 
-              {/* Escrow Panel */}
+              {/* Funds Information Panel - Show when funds are included */}
               {includeFunds === "yes" && (
+                <div className="mt-4 grid grid-cols-1 gap-4 rounded-lg border border-white/10 bg-white/5 p-4 md:grid-cols-3">
+                  {/* Token Dropdown */}
+                  <div
+                    className="relative flex w-full flex-col gap-2"
+                    ref={tokenRef}
+                  >
+                    <label className="text-sm font-semibold text-white">
+                      Token <span className="text-cyan-400">(Optional)</span>
+                    </label>
+                    <div
+                      onClick={() => setIsTokenOpen((prev) => !prev)}
+                      className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-cyan-400/40"
+                    >
+                      <span>{fundsWithoutEscrow.token || "Select Token"}</span>
+                      <ChevronDown
+                        className={`transition-transform ${
+                          isTokenOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </div>
+                    {isTokenOpen && (
+                      <div className="absolute top-[110%] z-50 w-full rounded-xl border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
+                        {tokenOptions.map((option) => (
+                          <div
+                            key={option.value}
+                            onClick={() => {
+                              setFundsWithoutEscrow((prev) => ({
+                                ...prev,
+                                token: option.value,
+                              }));
+                              setIsTokenOpen(false);
+                              if (option.value !== "custom") {
+                                setFundsWithoutEscrow((prev) => ({
+                                  ...prev,
+                                  customTokenAddress: "",
+                                }));
+                              }
+                            }}
+                            className="cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white"
+                          >
+                            {option.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {fundsWithoutEscrow.token === "custom" && (
+                      <div className="mt-3">
+                        <label className="text-muted-foreground mb-2 block text-sm">
+                          Paste Contract Address{" "}
+                          <span className="text-cyan-400">(Optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={fundsWithoutEscrow.customTokenAddress}
+                          onChange={(e) => {
+                            setFundsWithoutEscrow((prev) => ({
+                              ...prev,
+                              customTokenAddress: e.target.value,
+                            }));
+                          }}
+                          placeholder="0x..."
+                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Amount */}
+                  {/* Amount */}
+                  <div>
+                    <label className="text-muted-foreground mb-2 block text-sm">
+                      Amount <span className="text-cyan-400">(Optional)</span>
+                    </label>
+                    <input
+                      value={formatNumberWithCommas(fundsWithoutEscrow.amount)}
+                      onChange={(e) => {
+                        const rawValue = parseFormattedNumber(e.target.value);
+                        setFundsWithoutEscrow((prev) => ({
+                          ...prev,
+                          amount: rawValue,
+                        }));
+                      }}
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                      placeholder="10,000 or 0.5"
+                      type="text"
+                      inputMode="decimal"
+                    />
+                  </div>
+
+                  {/* Information text */}
+                  <div className="md:col-span-3">
+                    <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                      <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                      <div>
+                        <p className="text-sm text-cyan-300">
+                          Funds information is for reference only in
+                          reputational agreements.
+                        </p>
+                        <p className="mt-1 text-xs text-cyan-300/70">
+                          This helps track the financial scope of the agreement
+                          without automated fund handling.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Escrow Panel */}
+              {/* {includeFunds === "yes" && (
                 <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-4 transition-all">
                   <p className="text-sm text-white/90">
                     Would you like to secure the funds in an escrow contract?{" "}
@@ -1972,7 +2125,7 @@ export default function Agreements() {
                       type="button"
                       onClick={() => {
                         setSecureWithEscrow("yes");
-                        // Clear funds without escrow data when switching to escrow
+                       
                         setFundsWithoutEscrow({
                           token: "",
                           amount: "",
@@ -1991,7 +2144,7 @@ export default function Agreements() {
                       type="button"
                       onClick={() => {
                         setSecureWithEscrow("no");
-                        // Clear escrow-specific data when switching to no escrow
+                        
                         setSelectedToken("");
                         setCustomTokenAddress("");
                       }}
@@ -2005,11 +2158,11 @@ export default function Agreements() {
                     </button>
                   </div>
 
-                  {/* Funds Information Panel - Show for both escrow and non-escrow */}
+         
                   {(secureWithEscrow === "yes" ||
                     secureWithEscrow === "no") && (
                     <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                      {/* Token Dropdown */}
+                     
                       <div
                         className="relative flex w-full flex-col gap-2"
                         ref={tokenRef}
@@ -2097,7 +2250,7 @@ export default function Agreements() {
                         )}
                       </div>
 
-                      {/* Amount */}
+                    
                       <div>
                         <label className="text-muted-foreground mb-2 block text-sm">
                           Amount{" "}
@@ -2132,7 +2285,7 @@ export default function Agreements() {
                         />
                       </div>
 
-                      {/* Information text for non-escrow funds */}
+                    
                       {secureWithEscrow === "no" && (
                         <div className="md:col-span-3">
                           <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
@@ -2153,7 +2306,7 @@ export default function Agreements() {
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
 
               {/* Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4">

@@ -49,7 +49,14 @@ export function UserAvatar({
   const getInitials = (username: string) => {
     // Handle empty or undefined usernames
     if (!username || username === "unknown") return "?";
-    return username.charAt(0).toUpperCase();
+
+    // 🆕 FIX: Remove @ symbol and get the first character of the actual username
+    const cleanUsername = username.replace(/^@/, "").trim();
+
+    // Handle case where username might be empty after cleaning
+    if (!cleanUsername) return "?";
+
+    return cleanUsername.charAt(0).toUpperCase();
   };
 
   const fallbackColor = getFallbackColor(username);

@@ -491,7 +491,8 @@ function DisputesInfiniteCards() {
         quote:
           dispute.claim || dispute.description || `Dispute: ${dispute.title}`,
         name: dispute.parties,
-        title: `${dispute.status} • ${dispute.request}`,
+        title: dispute.title,
+        // title: `${dispute.status} • ${dispute.request}`,
         plaintiff: dispute.plaintiff,
         defendant: dispute.defendant,
         plaintiffData: dispute.plaintiffData,
@@ -505,6 +506,8 @@ function DisputesInfiniteCards() {
       })),
     [disputes],
   );
+
+  console.log("disputeItems", disputeItems);
   if (loading) {
     return (
       <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -726,13 +729,15 @@ function SignedAgreementsInfiniteCards() {
     [agreements],
   );
 
+  console.log("🔍 SIGNED AGREEMENTS:", signedAgreements);
+
   const agreementItems = useMemo(
     () =>
       signedAgreements.map((agreement) => ({
         id: agreement.id,
         quote: agreement.description, // This should now show the actual description
         name: `${agreement.createdBy} ↔ ${agreement.counterparty}`,
-        title: `${agreement.amount ? `${agreement.amount} ${agreement.token} • ` : ""}${agreement.status}`,
+        title: agreement.title,
         createdBy: agreement.createdBy,
         counterparty: agreement.counterparty,
         createdByUserId: agreement.createdByUserId,
@@ -780,7 +785,7 @@ function SignedAgreementsInfiniteCards() {
         <InfiniteMovingAgreements
           items={agreementItems}
           direction="left"
-          speed="slow"
+          speed="normal"
           pauseOnHover={true}
           className="max-w-full"
         />

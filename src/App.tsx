@@ -40,7 +40,7 @@ function AutoLoginModal() {
       // Small delay to ensure the page is loaded
       const timer = setTimeout(() => {
         setShowModal(true);
-      }, 1000);
+      }, 3000);
 
       return () => clearTimeout(timer);
     }

@@ -552,8 +552,8 @@ export default function UserProfile() {
 
       {/* Profile Summary */}
       <section className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-        <div className="glass card-cyan flex justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
-          <div className="flex items-center gap-2">
+        <div className="glass card-cyan grid items-center rounded-2xl px-6 py-3 ring-1 ring-white/10">
+          <div className="flex items-center justify-between gap-2">
             <UserAvatar
               userId={user.id}
               avatarId={user.avatarId}

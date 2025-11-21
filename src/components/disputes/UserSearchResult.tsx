@@ -3,8 +3,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { UserAvatar } from "../UserAvatar";
 import { ChevronRight } from "lucide-react";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const UserSearchResult = ({
+export /* eslint-disable @typescript-eslint/no-explicit-any */
+const UserSearchResult = ({
   user,
   onSelect,
 }: {
@@ -28,7 +28,7 @@ export const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(telegramUsername)}
+      onClick={() => onSelect(`@${telegramUsername}`)} // 🆕 FIX: Add @ symbol here
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}
