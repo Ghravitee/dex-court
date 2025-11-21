@@ -55,6 +55,7 @@ export default function Index() {
       <div className="absolute top-[300px] right-0 block rounded-md bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
       <div className="absolute inset-0 -z-[50] bg-cyan-300/1 blur-3xl"></div> */}
       <WalletLoginDebug />
+      {/* <AgreementsDebug /> */}
       <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-x-4">
         <div className="col-span-2 flex h-fit w-full flex-col gap-4">
           <HeroSection />
@@ -84,7 +85,7 @@ function HeroSection() {
     <section className="w-full">
       <div className="glass relative items-center gap-6 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
         <div className="relative z-[1]">
-          <h1 className="glow-text space text-3xl font-bold tracking-tight text-white">
+          <h1 className="space text-3xl font-bold tracking-tight text-white">
             DexCourt dApp
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
@@ -490,7 +491,8 @@ function DisputesInfiniteCards() {
         quote:
           dispute.claim || dispute.description || `Dispute: ${dispute.title}`,
         name: dispute.parties,
-        title: `${dispute.status} • ${dispute.request}`,
+        title: dispute.title,
+        // title: `${dispute.status} • ${dispute.request}`,
         plaintiff: dispute.plaintiff,
         defendant: dispute.defendant,
         plaintiffData: dispute.plaintiffData,
@@ -504,6 +506,8 @@ function DisputesInfiniteCards() {
       })),
     [disputes],
   );
+
+  console.log("disputeItems", disputeItems);
   if (loading) {
     return (
       <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -718,24 +722,22 @@ function LiveVotingInfiniteCards() {
 
 // NEW: Signed Agreements Infinite Cards Component WITH AVATARS
 function SignedAgreementsInfiniteCards() {
-  const { agreements: allAgreements, loading } = usePublicAgreements();
+  const { agreements, loading } = usePublicAgreements();
 
   const signedAgreements = useMemo(
-    () =>
-      allAgreements.filter(
-        (agreement) =>
-          agreement.status === "signed" || agreement.status === "completed",
-      ),
-    [allAgreements],
+    () => agreements.filter((agreement) => agreement.status === "signed"),
+    [agreements],
   );
+
+  console.log("🔍 SIGNED AGREEMENTS:", signedAgreements);
 
   const agreementItems = useMemo(
     () =>
       signedAgreements.map((agreement) => ({
         id: agreement.id,
-        quote: agreement.description,
+        quote: agreement.description, // This should now show the actual description
         name: `${agreement.createdBy} ↔ ${agreement.counterparty}`,
-        title: `${agreement.amount ? `${agreement.amount} ${agreement.token} • ` : ""}${agreement.status}`,
+        title: agreement.title,
         createdBy: agreement.createdBy,
         counterparty: agreement.counterparty,
         createdByUserId: agreement.createdByUserId,
@@ -765,15 +767,29 @@ function SignedAgreementsInfiniteCards() {
   return (
     <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
       <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
-        Signed Agreements
+        Signed Agreements ({signedAgreements.length})
       </h3>
-      <InfiniteMovingAgreements
-        items={agreementItems}
-        direction="left"
-        speed="slow"
-        pauseOnHover={true}
-        className="max-w-full"
-      />
+      {signedAgreements.length === 0 ? (
+        <div className="flex h-32 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 text-4xl">🤝</div>
+            <h4 className="mb-1 text-lg font-semibold text-cyan-300">
+              No Signed Agreements
+            </h4>
+            <p className="text-sm text-cyan-200/70">
+              There are currently no signed agreements to display.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <InfiniteMovingAgreements
+          items={agreementItems}
+          direction="left"
+          speed="normal"
+          pauseOnHover={true}
+          className="max-w-full"
+        />
+      )}
     </div>
   );
 }
@@ -841,3 +857,48 @@ function RenownedJudgesInfiniteCards() {
     </div>
   );
 }
+
+// function AgreementsDebug() {
+//   const { agreements, loading } = usePublicAgreements();
+
+//   if (loading) return <div>Loading debug info...</div>;
+
+//   return (
+//     <div className="mt-4 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-4">
+//       <h4 className="font-semibold text-yellow-300">Debug Info - Agreements</h4>
+//       <div className="mt-2 text-sm text-yellow-200">
+//         <div>Total agreements: {agreements.length}</div>
+//         <div>
+//           Signed agreements:{" "}
+//           {agreements.filter((a) => a.status === "signed").length}
+//         </div>
+//         <div>
+//           Sample agreement description:{" "}
+//           {agreements[0]?.description || "No description"}
+//         </div>
+//       </div>
+//       {/* Show first few agreements for debugging */}
+//       <div className="mt-3 max-h-40 overflow-y-auto">
+//         {agreements.slice(0, 3).map((agreement) => (
+//           <div
+//             key={agreement.id}
+//             className="mb-2 border-b border-yellow-400/20 pb-2 text-xs"
+//           >
+//             <div>
+//               <strong>ID:</strong> {agreement.id}
+//             </div>
+//             <div>
+//               <strong>Title:</strong> {agreement.title}
+//             </div>
+//             <div>
+//               <strong>Description:</strong> {agreement.description}
+//             </div>
+//             <div>
+//               <strong>Status:</strong> {agreement.status}
+//             </div>
+//           </div>
+//         ))}
+//       </div>
+//     </div>
+//   );
+// }

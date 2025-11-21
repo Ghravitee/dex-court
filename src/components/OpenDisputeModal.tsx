@@ -23,7 +23,7 @@ import {
   getCurrentUserTelegram,
   isValidTelegramUsername,
 } from "../lib/usernameUtils";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Add debounce hook at the top

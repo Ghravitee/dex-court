@@ -1,26 +1,45 @@
-// Topbar.tsx - IMPROVED VERSION
-import { Menu, Wallet, Loader2, ArrowRight } from "lucide-react";
+// Topbar.tsx - UPDATED WITH LOGOUT BUTTON
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useState, useEffect } from "react";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { useAccount, useConnect } from "wagmi";
 import { useWalletLogin } from "../../hooks/useWalletLogin";
+import {
+  Menu,
+  Wallet,
+  Loader2,
+  ArrowRight,
+  AlertTriangle,
+  LogOut,
+} from "lucide-react";
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const { isAuthenticated, user, logout } = useAuth();
   const { isConnected, isDisconnected } = useAccount();
   const { connect, connectors } = useConnect();
-  // const { disconnect } = useDisconnect();
-  const { loginWithConnectedWallet, isLoggingIn } = useWalletLogin();
+  const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
+    useWalletLogin();
 
-  // NEW: Auto-logout when wallet disconnects
+  // NEW: Get wallet validation status
+  const walletValidation = getWalletValidationStatus();
+
+  // FIXED: Better auto-logout logic
   useEffect(() => {
-    if (isAuthenticated && isDisconnected) {
-      console.log("🔐 Wallet disconnected, logging out user");
+    // Only auto-logout if:
+    // 1. User is authenticated
+    // 2. Wallet is disconnected
+    // 3. User originally logged in via wallet (has wallet address but NO telegram)
+    // OR User has both wallet and telegram but wallet was their primary login method
+    const isPrimaryWalletUser =
+      user?.walletAddress &&
+      (!user?.telegram || user.telegram.username === null);
+
+    if (isAuthenticated && isDisconnected && isPrimaryWalletUser) {
+      console.log("🔐 Primary wallet user disconnected, logging out");
       logout();
     }
-  }, [isAuthenticated, isDisconnected, logout]);
+  }, [isAuthenticated, isDisconnected, logout, user]);
 
   const handleWalletAuth = async () => {
     if (!isConnected) {
@@ -29,6 +48,12 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         connect({ connector: connectors[0] });
       }
       return;
+    }
+
+    // NEW: Don't validate for Telegram users trying to link wallet
+    // Only validate if user already has a linked wallet
+    if (user?.walletAddress && !walletValidation.isValid) {
+      return; // Don't proceed if wallet validation fails for users with existing linked wallets
     }
 
     // Then authenticate (this handles both registration and login)
@@ -46,11 +71,26 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     }
 
     if (isAuthenticated && user) {
-      return "Connected";
+      // Show different text based on wallet validation status
+      const validation = getWalletValidationStatus();
+
+      if (!validation.isValid) {
+        return "Wrong Wallet";
+      }
+
+      // Show appropriate text based on the action
+      switch (validation.action) {
+        case "link":
+          return isConnected ? "Link Wallet" : "Connect Wallet";
+        case "verify":
+          return isConnected ? "Verify Wallet" : "Connect Wallet";
+        default:
+          return "Connected";
+      }
     }
 
     if (isConnected) {
-      return "Verify & Continue";
+      return "Login with Wallet";
     }
 
     return "Connect Wallet";
@@ -65,13 +105,38 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       return <ArrowRight className="h-4 w-4" />;
     }
 
+    // Show warning icon for wrong wallet
+    if (isAuthenticated && !walletValidation.isValid) {
+      return <AlertTriangle className="h-4 w-4" />;
+    }
+
     return <Wallet className="h-4 w-4" />;
   };
 
   const getButtonVariant = () => {
+    // Show error state for wrong wallet
+    if (isAuthenticated && !walletValidation.isValid) {
+      return "border-red-500/30 bg-red-500/10 text-red-300 hover:border-red-400 hover:bg-red-500/20";
+    }
+
+    // Show different colors based on the action
+    if (isAuthenticated && user) {
+      const validation = getWalletValidationStatus();
+
+      switch (validation.action) {
+        case "link":
+          return "border-green-500/30 bg-green-500/10 text-green-300 hover:border-green-400 hover:bg-green-500/20";
+        case "verify":
+          return "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-400 hover:bg-amber-500/20";
+        default:
+          return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
+      }
+    }
+
     if (isConnected && !isAuthenticated) {
       return "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-400 hover:bg-amber-500/20";
     }
+
     return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
   };
 
@@ -89,8 +154,31 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         Menu
       </button>
 
+      {/* Wallet validation warning */}
+      {isAuthenticated &&
+        walletValidation.isValid &&
+        walletValidation.message && (
+          <div className="mr-4 flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1">
+            <span className="text-xs text-blue-300">
+              {walletValidation.message}
+            </span>
+          </div>
+        )}
+
       {/* Custom Connect Wallet Button with Auth */}
       <div className="ml-auto flex items-center gap-3">
+        {/* NEW: Logout Button - Only show when authenticated */}
+        {isAuthenticated && (
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:border-red-400 hover:bg-red-500/20"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+        )}
+
         <ConnectButton.Custom>
           {({ account, chain, openAccountModal, mounted }) => {
             const ready = mounted;
@@ -102,22 +190,16 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 <div className="flex flex-col items-end">
                   <button
                     onClick={handleWalletAuth}
-                    disabled={isAuthenticating || isLoggingIn}
+                    disabled={
+                      isAuthenticating ||
+                      isLoggingIn ||
+                      (isConnected && !walletValidation.isValid)
+                    }
                     className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${getButtonVariant()}`}
                   >
                     {getButtonIcon()}
                     {getButtonText()}
                   </button>
-
-                  {/* NEW: Clean status indicator */}
-                  {/* {isConnected && !isAuthenticated && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></div>
-                      <span className="text-xs text-amber-300/80">
-                        Click to verify ownership
-                      </span>
-                    </div>
-                  )} */}
                 </div>
               );
             }
@@ -126,9 +208,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             return (
               <button
                 onClick={openAccountModal}
-                className="flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 transition hover:border-cyan-400 hover:bg-cyan-500/20"
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getButtonVariant()}`}
               >
-                <Wallet className="h-4 w-4" />
+                {getButtonIcon()}
                 {connected ? (
                   <>
                     <span className="max-w-[100px] truncate">

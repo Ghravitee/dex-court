@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
-import { useAuth } from "../../../context/AuthContext";
+import { useAuth } from "../../../hooks/useAuth";
 import { UserSearchResult } from "../UserSearchResult";
 
 // Plaintiff Reply Modal Component

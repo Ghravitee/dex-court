@@ -18,7 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { disputeService } from "../services/disputeServices";
@@ -230,7 +230,7 @@ export default function DisputeDetails() {
         const agreementDetails = await agreementService.getAgreementDetails(
           dispute.agreementId,
         );
-        setSourceAgreement(agreementDetails.data);
+        setSourceAgreement(agreementDetails);
       } catch (error) {
         console.error("Failed to fetch source agreement:", error);
       } finally {

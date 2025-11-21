@@ -21,9 +21,13 @@ export class AvatarErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Don't log AbortErrors
-    if (error.name !== "AbortError") {
-      console.error("Avatar Error Boundary caught an error:", error, errorInfo);
+    console.warn("Avatar Error Boundary caught an error:", error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: Props) {
+    // Reset error boundary if children change
+    if (prevProps.children !== this.props.children) {
+      this.setState({ hasError: false });
     }
   }
 
@@ -31,8 +35,8 @@ export class AvatarErrorBoundary extends React.Component<Props, State> {
     if (this.state.hasError) {
       return (
         this.props.fallback || (
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-xs">
-            ️
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500/20 text-xs text-gray-400">
+            ?
           </div>
         )
       );

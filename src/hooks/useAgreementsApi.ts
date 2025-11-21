@@ -28,7 +28,7 @@ export const useAgreementsApi = () => {
             const detailResponse = await agreementService.getAgreementDetails(
               agreement.id,
             );
-            details[agreement.id] = detailResponse.data;
+            details[agreement.id] = detailResponse;
           } catch (err) {
             console.error(
               `Failed to fetch details for agreement ${agreement.id}:`,

@@ -1,5 +1,5 @@
-// Temporary Debug Component
-import { useAuth } from "../context/AuthContext";
+// Temporary Debug Componen
+import { useAuth } from "../hooks/useAuth";
 import { useAccount } from "wagmi";
 
 export function WalletLoginDebug() {

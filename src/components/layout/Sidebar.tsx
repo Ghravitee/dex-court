@@ -13,7 +13,7 @@ import {
   LogIn,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 
 const nav = [
   { to: "/", label: "Home", icon: <Home size={18} /> },

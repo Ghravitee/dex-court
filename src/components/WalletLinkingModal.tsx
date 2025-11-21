@@ -2,7 +2,7 @@
 // src/components/WalletLinkingModal.tsx
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { X, Loader2 } from "lucide-react";
 import { useAccount, useSignMessage } from "wagmi";
 

@@ -18,7 +18,8 @@ import EscrowDetails from "./pages/EscrowDetails";
 import UserProfile from "./pages/UserProfile";
 import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./hooks/useAuth";
 import Web3Vote from "./pages/Web3Vote";
 import Web3Escrow from "./pages/Web3Escrow";
 import { useEffect, useState } from "react";
@@ -39,7 +40,7 @@ function AutoLoginModal() {
       // Small delay to ensure the page is loaded
       const timer = setTimeout(() => {
         setShowModal(true);
-      }, 1000);
+      }, 3000);
 
       return () => clearTimeout(timer);
     }

@@ -1,7 +1,7 @@
 // hooks/useVotingStatus.ts - UPDATED
 import { useCallback, useEffect, useState } from "react";
 import { disputeService } from "../services/disputeServices";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 
 export const useVotingStatus = (
   disputeId: number | null,

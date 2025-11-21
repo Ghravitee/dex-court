@@ -247,15 +247,19 @@ export const InfiniteMovingCardsWithAvatars = ({
         <div className="flex flex-col">
           {/* Avatars Section for Disputes */}
 
+          <h2 className="mb-4 block text-[16px] leading-[1.6] font-normal text-amber-300">
+            {disputeItem.title}
+          </h2>
+
           {/* Quote */}
           <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
             {disputeItem.quote}
           </span>
 
           {/* Additional Info */}
-          <div className="flex items-center justify-between text-sm leading-[1.6] font-normal text-cyan-200/70">
+          {/* <div className="flex items-center justify-between text-sm leading-[1.6] font-normal text-cyan-200/70">
             <p>{disputeItem.title}</p>
-          </div>
+          </div> */}
 
           <div className="relative z-20 mt-10 flex items-center justify-center gap-3">
             <div className="flex flex-col items-center gap-2">

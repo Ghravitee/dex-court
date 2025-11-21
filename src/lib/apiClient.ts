@@ -143,9 +143,40 @@ export class ApiService {
 export const apiService = new ApiService();
 
 // Telegram Login
+// src/lib/apiClient.ts - Update the loginTelegram function
 export async function loginTelegram(otp: string) {
-  const response = await api.post(`/login/telegram`, { otp });
-  return response.data;
+  try {
+    console.log("🔐 [API] Attempting Telegram login with OTP:", otp);
+
+    const response = await api.post(`/login/telegram`, { otp });
+
+    console.log("🔐 [API] Telegram login response:", response.data);
+
+    if (!response.data.token) {
+      throw new Error("No authentication token received from server");
+    }
+
+    return response.data;
+  } catch (error: any) {
+    console.error("🔐 [API] Telegram login failed:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+
+    // Re-throw with more descriptive error
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    if (error.response?.status === 401) {
+      throw new Error("Invalid OTP or authentication failed");
+    }
+    if (error.response?.status === 404) {
+      throw new Error("Telegram authentication service unavailable");
+    }
+
+    throw error;
+  }
 }
 
 // Telegram OTP

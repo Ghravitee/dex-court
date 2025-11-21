@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../../context/AuthContext";
+import { useAuth } from "../../../hooks/useAuth";
 import type { DisputeRow, UploadedFile } from "../../../types";
 import { disputeService } from "../../../services/disputeServices";
 import {

@@ -842,6 +842,21 @@ Created: ${new Date().toISOString()}
           areEqual: firstPartyAddr === counterPartyAddr,
         });
 
+        console.log("🔍 Final Party Assignment for Backend:", {
+          firstParty: firstPartyAddr,
+          counterParty: counterPartyAddr,
+          areEqual: firstPartyAddr === counterPartyAddr,
+          firstPartyLower: firstPartyAddr.toLowerCase(),
+          counterPartyLower: counterPartyAddr.toLowerCase(),
+        });
+
+        // Add this new validation
+        if (firstPartyAddr.toLowerCase() === counterPartyAddr.toLowerCase()) {
+          throw new Error(
+            "Service provider and recipient cannot be the same address",
+          );
+        }
+
         // Convert the deadline Date object to ISO string for backend
         const deadlineForBackend = deadline?.toISOString();
 

@@ -38,7 +38,7 @@ import {
 import type { Agreement } from "../types";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/apiClient";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import OpenDisputeModal from "../components/OpenDisputeModal";
@@ -690,8 +690,9 @@ export default function AgreementDetails() {
     setLoading(true);
     try {
       const agreementId = parseInt(id);
-      const response = await agreementService.getAgreementDetails(agreementId);
-      const agreementData = response.data;
+      // Remove .data here - the service returns the data directly
+      const agreementData =
+        await agreementService.getAgreementDetails(agreementId);
 
       console.log("📋 AgreementDetails API Response:", agreementData);
 
@@ -798,8 +799,9 @@ export default function AgreementDetails() {
     setIsRefreshing(true);
     try {
       const agreementId = parseInt(id);
-      const response = await agreementService.getAgreementDetails(agreementId);
-      const agreementData = response.data;
+      // Remove .data here too
+      const agreementData =
+        await agreementService.getAgreementDetails(agreementId);
 
       // Use the same transformation logic but WITHOUT setting loading state
       const getAvatarIdFromParty = (party: any): number | null => {
