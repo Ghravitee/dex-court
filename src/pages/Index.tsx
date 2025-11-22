@@ -57,7 +57,7 @@ export default function Index() {
       <WalletLoginDebug />
       {/* <AgreementsDebug /> */}
       <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-x-4">
-        <div className="col-span-2 flex h-fit w-full flex-col gap-4">
+        <div className="col-span-2 mb-4 flex h-fit w-full flex-col gap-4">
           <HeroSection />
           <RevenueChart />
         </div>

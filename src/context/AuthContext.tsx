@@ -144,6 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const initializedRef = useRef(false);
+  const [loginMethod, setLoginMethod] = useState<"telegram" | "wallet" | null>(
+    null,
+  );
 
   const {
     data: userData,
@@ -168,11 +171,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = response.token?.trim();
       if (!token) throw new Error("No token received from server");
       storeAuthToken(token);
+      setLoginMethod("telegram"); // Track that user logged in via Telegram
       queryClient.invalidateQueries({ queryKey: authQueryKeys.user });
       refetchUser();
     },
     onError: () => {
       clearAuthToken();
+      setLoginMethod(null);
     },
   });
 
@@ -188,11 +193,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = response.token?.trim();
       if (!token) throw new Error("No token received from server");
       storeAuthToken(token);
+      setLoginMethod("wallet"); // Track that user logged in via wallet
       queryClient.invalidateQueries({ queryKey: authQueryKeys.user });
       refetchUser();
     },
     onError: () => {
       clearAuthToken();
+      setLoginMethod(null);
     },
   });
 
@@ -270,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = (): void => {
     clearAuthToken();
+    setLoginMethod(null);
     queryClient.removeQueries({ queryKey: authQueryKeys.user });
     setUser(null);
     setIsAuthenticated(false);
@@ -344,6 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     generateLinkingNonce,
     loginWithWallet,
     generateLoginNonce,
+    loginMethod,
   };
 
   return (

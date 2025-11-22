@@ -1,4 +1,4 @@
-// Temporary Debug Componen
+// Temporary Debug Component
 import { useAuth } from "../hooks/useAuth";
 import { useAccount } from "wagmi";
 
@@ -13,7 +13,10 @@ export function WalletLoginDebug() {
       <div>Authenticated: {isAuthenticated ? "✅" : "❌"}</div>
       <div>User ID: {user?.id || "None"}</div>
       <div>Username: {user?.username || "None"}</div>
-      <div>Wallet: {user?.walletAddress || "None"}</div>
+      <div>
+        Wallet:{" "}
+        {user?.walletAddress ? `${user.walletAddress.slice(0, 8)}...` : "None"}
+      </div>
     </div>
   );
 }

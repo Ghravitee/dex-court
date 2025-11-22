@@ -47,4 +47,5 @@ export interface AuthContextType {
   generateLinkingNonce: (walletAddress: string) => Promise<string>;
   loginWithWallet: (walletAddress: string, signature: string) => Promise<void>;
   generateLoginNonce: (walletAddress: string) => Promise<string>;
+  loginMethod: "telegram" | "wallet" | null; // Add this line
 }
