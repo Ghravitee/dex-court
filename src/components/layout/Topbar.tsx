@@ -15,7 +15,8 @@ import {
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, loginMethod } = useAuth();
+
   const { isConnected, isDisconnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
@@ -27,19 +28,15 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   // FIXED: Better auto-logout logic
   useEffect(() => {
     // Only auto-logout if:
-    // 1. User is authenticated
-    // 2. Wallet is disconnected
-    // 3. User originally logged in via wallet (has wallet address but NO telegram)
-    // OR User has both wallet and telegram but wallet was their primary login method
-    const isPrimaryWalletUser =
-      user?.walletAddress &&
-      (!user?.telegram || user.telegram.username === null);
-
-    if (isAuthenticated && isDisconnected && isPrimaryWalletUser) {
-      console.log("🔐 Primary wallet user disconnected, logging out");
+    // 1. User is authenticated via wallet
+    // 2. Wallet gets disconnected
+    if (isAuthenticated && loginMethod === "wallet" && isDisconnected) {
+      console.log(
+        "🔐 Wallet disconnected for wallet-authenticated user, logging out",
+      );
       logout();
     }
-  }, [isAuthenticated, isDisconnected, logout, user]);
+  }, [isAuthenticated, isDisconnected, logout, loginMethod]);
 
   const handleWalletAuth = async () => {
     if (!isConnected) {
@@ -50,13 +47,12 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       return;
     }
 
-    // NEW: Don't validate for Telegram users trying to link wallet
-    // Only validate if user already has a linked wallet
+    // Existing logic for wallet authentication
     if (user?.walletAddress && !walletValidation.isValid) {
-      return; // Don't proceed if wallet validation fails for users with existing linked wallets
+      return;
     }
 
-    // Then authenticate (this handles both registration and login)
+    // Wallet login flow
     setIsAuthenticating(true);
     try {
       await loginWithConnectedWallet();
@@ -65,28 +61,35 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     }
   };
 
+  // Update button text to be clearer
   const getButtonText = () => {
     if (isAuthenticating || isLoggingIn) {
       return "Signing...";
     }
 
     if (isAuthenticated && user) {
-      // Show different text based on wallet validation status
       const validation = getWalletValidationStatus();
 
       if (!validation.isValid) {
         return "Wrong Wallet";
       }
 
-      // Show appropriate text based on the action
-      switch (validation.action) {
-        case "link":
-          return isConnected ? "Link Wallet" : "Connect Wallet";
-        case "verify":
-          return isConnected ? "Verify Wallet" : "Connect Wallet";
-        default:
-          return "Connected";
+      // SPECIAL CASE: Telegram user with correct wallet
+      if (loginMethod === "telegram" && isConnected && validation.isValid) {
+        return "Web3 Ready";
       }
+
+      if (isConnected) {
+        switch (validation.action) {
+          case "link":
+            return "Link Wallet";
+          case "verify":
+            return "Verify Wallet";
+          default:
+            return user.walletAddress ? "Wallet Connected" : "Connected";
+        }
+      }
+      return user.walletAddress ? "Connect Wallet" : "Connect Wallet";
     }
 
     if (isConnected) {
@@ -178,7 +181,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             <span className="hidden sm:inline">Logout</span>
           </button>
         )}
-
         <ConnectButton.Custom>
           {({ account, chain, openAccountModal, mounted }) => {
             const ready = mounted;
@@ -204,7 +206,39 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               );
             }
 
-            // Use RainbowKit for authenticated users (account management)
+            // UPDATED: Use our custom handler for authenticated Telegram users
+            // UPDATED: Use our custom handler for authenticated Telegram users
+            if (loginMethod === "telegram") {
+              return (
+                <div className="flex flex-col items-end">
+                  <button
+                    onClick={handleWalletAuth}
+                    disabled={
+                      isAuthenticating ||
+                      isLoggingIn ||
+                      (isConnected && !walletValidation.isValid)
+                    }
+                    className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${getButtonVariant()}`}
+                  >
+                    {getButtonIcon()}
+                    {connected ? (
+                      <>
+                        <span className="max-w-[100px] truncate">
+                          {account?.displayName}
+                        </span>
+                        <span className="opacity-80">
+                          {account?.displayBalance}
+                        </span>
+                      </>
+                    ) : (
+                      getButtonText()
+                    )}
+                  </button>
+                </div>
+              );
+            }
+
+            // Use RainbowKit for wallet-authenticated users (account management)
             return (
               <button
                 onClick={openAccountModal}
