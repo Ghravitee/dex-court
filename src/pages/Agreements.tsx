@@ -1296,9 +1296,11 @@ export default function Agreements() {
                                   }}
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
-                                  {formatTelegramUsernameForDisplay(
-                                    a.createdBy,
-                                  )}
+                                  {a.createdBy.startsWith("@0x")
+                                    ? `${a.createdBy.slice(1, 5)}..${a.createdBy.slice(-5)}`
+                                    : formatTelegramUsernameForDisplay(
+                                        a.createdBy,
+                                      )}
                                 </button>
                               </div>
                               <span className="text-cyan-400">
@@ -1328,9 +1330,11 @@ export default function Agreements() {
                                   }}
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
-                                  {formatTelegramUsernameForDisplay(
-                                    a.counterparty,
-                                  )}
+                                  {a.counterparty.startsWith("@0x")
+                                    ? `${a.counterparty.slice(1, 4)}..${a.counterparty.slice(-2)}`
+                                    : formatTelegramUsernameForDisplay(
+                                        a.counterparty,
+                                      )}
                                 </button>
                               </div>
                             </div>

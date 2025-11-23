@@ -1698,7 +1698,9 @@ export default function AgreementDetails() {
                             }}
                             className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
-                            {agreement.createdBy}
+                            {agreement.createdBy.startsWith("@0x")
+                              ? `${agreement.createdBy.slice(1, 5)}..${agreement.createdBy.slice(-5)}`
+                              : agreement.createdBy}
                           </button>
                           {isFirstParty && (
                             <VscVerifiedFilled className="size-5 text-green-400" />
@@ -1727,7 +1729,9 @@ export default function AgreementDetails() {
                             }}
                             className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
-                            {agreement.counterparty}
+                            {agreement.counterparty.startsWith("@0x")
+                              ? `${agreement.counterparty.slice(1, 4)}..${agreement.counterparty.slice(-2)}`
+                              : agreement.counterparty}
                           </button>
                           {isCounterparty && (
                             <VscVerifiedFilled className="size-5 text-green-400" />

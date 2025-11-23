@@ -18,6 +18,7 @@ import {
   Calendar,
   User,
   Users,
+  Send,
 } from "lucide-react";
 import type { Escrow, ExtendedEscrow } from "../types";
 import { Link } from "react-router-dom";
@@ -813,26 +814,35 @@ Created: ${new Date().toISOString()}
 
         if (escrowType === "myself") {
           if (form.payer === "me") {
-            // Current user pays (service recipient), counterparty provides service
-            firstPartyAddr = normalizedServiceProvider; // Service provider (counterparty)
-            counterPartyAddr = address!.toLowerCase(); // Service recipient (me)
+            // Creator pays - creator is service recipient, counterparty is service provider
+            // FIXED: Make connected address firstParty (service provider) and counterparty counterParty (service recipient)
+            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
+            counterPartyAddr = normalizedServiceProvider; // Service recipient (counterparty)
           } else {
-            // Counterparty pays (service recipient), current user provides service
-            firstPartyAddr = address!.toLowerCase(); // Service provider (me)
+            // Counterparty pays - creator is service provider, counterparty is service recipient
+            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
             counterPartyAddr = normalizedServiceRecipient; // Service recipient (counterparty)
           }
         } else {
-          // Two other parties
+          // Two other parties - creator is not involved as a party
           if (form.payerOther === "partyA") {
-            // Party A pays (service recipient), Party B provides service
-            firstPartyAddr = form.partyB.toLowerCase(); // Service provider (Party B)
-            counterPartyAddr = form.partyA.toLowerCase(); // Service recipient (Party A)
+            firstPartyAddr = form.partyB.toLowerCase();
+            counterPartyAddr = form.partyA.toLowerCase();
           } else {
-            // Party B pays (service recipient), Party A provides service
-            firstPartyAddr = form.partyA.toLowerCase(); // Service provider (Party A)
-            counterPartyAddr = form.partyB.toLowerCase(); // Service recipient (Party B)
+            firstPartyAddr = form.partyA.toLowerCase();
+            counterPartyAddr = form.partyB.toLowerCase();
           }
         }
+
+        console.log("🔍 CREATOR PARTY ASSIGNMENT:", {
+          creatorAddress: address!.toLowerCase(),
+          firstParty: firstPartyAddr,
+          counterParty: counterPartyAddr,
+          isCreatorFirstParty: firstPartyAddr === address!.toLowerCase(),
+          isCreatorCounterParty: counterPartyAddr === address!.toLowerCase(),
+          escrowType,
+          payer: form.payer,
+        });
 
         console.log("🎯 Party Assignment:", {
           firstParty: firstPartyAddr,
@@ -2106,10 +2116,16 @@ Created: ${new Date().toISOString()}
                         variant="neon"
                         className="neon-hover"
                         disabled={
-                          isSubmitting || isTxPending || isApprovalPending
+                          isSubmitting ||
+                          isTxPending ||
+                          isApprovalPending ||
+                          createApprovalState.isApprovingToken
                         }
                       >
-                        {isSubmitting || isTxPending || isApprovalPending ? (
+                        {isSubmitting ||
+                        isTxPending ||
+                        isApprovalPending ||
+                        createApprovalState.isApprovingToken ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             {createApprovalState.isApprovingToken
@@ -2118,7 +2134,7 @@ Created: ${new Date().toISOString()}
                           </>
                         ) : (
                           <>
-                            <Paperclip className="mr-2 h-4 w-4" />
+                            <Send className="mr-2 h-4 w-4" />
                             Create Escrow
                           </>
                         )}
