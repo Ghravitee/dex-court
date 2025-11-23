@@ -1,4 +1,3 @@
-// src/pages/Web3Escrow.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
 // import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
@@ -13,6 +12,28 @@ import { parseEther, formatEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { MilestoneTableRow } from "../web3/MilestoneTableRow";
 import { formatAmount } from "../web3/helper";
+import {
+  FileText,
+  Calendar,
+  Users,
+  DollarSign,
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Shield,
+  Lock,
+  Upload,
+  UserCheck,
+  X,
+  Package,
+  PackageCheck,
+  Ban,
+  Info,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
+import { Button } from "../components/ui/button";
 
 function isValidAddress(addr: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -27,7 +48,26 @@ interface MilestoneData {
   amount: bigint;
 }
 
+interface LoadingStates {
+  createAgreement: boolean;
+  signAgreement: boolean;
+  depositFunds: boolean;
+  submitDelivery: boolean;
+  approveDelivery: boolean;
+  rejectDelivery: boolean;
+  cancelOrder: boolean;
+  approveCancellation: boolean;
+  partialRelease: boolean;
+  finalRelease: boolean;
+  cancellationTimeout: boolean;
+  claimMilestone: boolean;
+  setMilestoneHold: boolean;
+  raiseDispute: boolean;
+  loadAgreement: boolean;
+}
+
 // Add CountdownTimer component
+// Replace the existing CountdownTimer component with this improved version
 function CountdownTimer({
   targetTimestamp,
   onComplete,
@@ -49,16 +89,30 @@ function CountdownTimer({
         return;
       }
 
+      // Convert to appropriate time units
       const days = Math.floor(difference / (60 * 60 * 24));
       const hours = Math.floor((difference % (60 * 60 * 24)) / (60 * 60));
       const minutes = Math.floor((difference % (60 * 60)) / 60);
       const seconds = difference % 60;
 
-      setTimeLeft(
-        `${days > 0 ? `${days}d ` : ""}${hours.toString().padStart(2, "0")}:${minutes
-          .toString()
-          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`,
-      );
+      // Format based on the time remaining
+      if (days > 0) {
+        // Show days + hours for periods longer than a day
+        setTimeLeft(
+          `${days}d ${hours.toString().padStart(2, "0")}h ${minutes.toString().padStart(2, "0")}m`,
+        );
+      } else if (hours > 0) {
+        // Show hours + minutes for periods less than a day but more than an hour
+        setTimeLeft(
+          `${hours}h ${minutes.toString().padStart(2, "0")}m ${seconds.toString().padStart(2, "0")}s`,
+        );
+      } else if (minutes > 0) {
+        // Show minutes + seconds for periods less than an hour
+        setTimeLeft(`${minutes}m ${seconds.toString().padStart(2, "0")}s`);
+      } else {
+        // Show only seconds for very short periods
+        setTimeLeft(`${seconds}s`);
+      }
     };
 
     updateTimer();
@@ -74,6 +128,27 @@ function CountdownTimer({
       {timeLeft}
     </span>
   );
+}
+
+function formatSecondsToDetailed(seconds: bigint): string {
+  const totalSeconds = Number(seconds);
+
+  if (totalSeconds <= 0) return "0s";
+
+  const days = Math.floor(totalSeconds / (60 * 60 * 24));
+  const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
+  const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  const parts = [];
+
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (remainingSeconds > 0 || parts.length === 0)
+    parts.push(`${remainingSeconds}s`);
+
+  return parts.join(" ");
 }
 
 function Web3Escrow() {
@@ -116,6 +191,53 @@ function Web3Escrow() {
     milestonePercs: ["50", "50"], // Default: 50%, 50%
     milestoneOffsets: ["0", "302400"], // Default: immediate, 3.5 days
   });
+
+  const [loadingStates, setLoadingStates] = useState<LoadingStates>({
+    createAgreement: false,
+    signAgreement: false,
+    depositFunds: false,
+    submitDelivery: false,
+    approveDelivery: false,
+    rejectDelivery: false,
+    cancelOrder: false,
+    approveCancellation: false,
+    partialRelease: false,
+    finalRelease: false,
+    cancellationTimeout: false,
+    claimMilestone: false,
+    setMilestoneHold: false,
+    raiseDispute: false,
+    loadAgreement: false,
+  });
+
+  // Helper function to set loading states
+  const setLoading = (action: keyof LoadingStates, isLoading: boolean) => {
+    setLoadingStates((prev) => ({
+      ...prev,
+      [action]: isLoading,
+    }));
+  };
+
+  // Reset all loading states
+  const resetAllLoading = () => {
+    setLoadingStates({
+      createAgreement: false,
+      signAgreement: false,
+      depositFunds: false,
+      submitDelivery: false,
+      approveDelivery: false,
+      rejectDelivery: false,
+      cancelOrder: false,
+      approveCancellation: false,
+      partialRelease: false,
+      finalRelease: false,
+      cancellationTimeout: false,
+      claimMilestone: false,
+      setMilestoneHold: false,
+      raiseDispute: false,
+      loadAgreement: false,
+    });
+  };
 
   // Enhanced dispute handler with modal
   const openDisputeModal = () => {
@@ -424,6 +546,7 @@ function Web3Escrow() {
   // ===================== VALIDATED ACTIONS ===================== //
   const handleCreateAgreement = async () => {
     resetMessages();
+    setLoading("createAgreement", true);
     try {
       if (!isConnected) return setUiError("Connect your wallet");
       if (!createForm.agreementId)
@@ -563,6 +686,7 @@ function Web3Escrow() {
 
       setUiSuccess("Transaction submitted — check your wallet");
     } catch (error: unknown) {
+      setLoading("createAgreement", false);
       setUiError(
         typeof error === "string"
           ? error
@@ -605,29 +729,35 @@ function Web3Escrow() {
     }));
   };
 
-  // Vesting management functions
   const handleClaimMilestone = async (index: number) => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceProvider)
-      return setUiError("Only serviceProvider can claim milestones");
-    if (!getBoolField(24))
-      return setUiError("Agreement is not in vesting mode");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (!getBoolField(15)) return setUiError("Agreement not signed completely");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
+    setLoading("claimMilestone", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider)
+        return setUiError("Only serviceProvider can claim milestones");
+      if (!getBoolField(24))
+        return setUiError("Agreement is not in vesting mode");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (!getBoolField(15))
+        return setUiError("Agreement not signed completely");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
 
-    if (now > getBigIntField(10) && !getBoolField(18))
-      return setUiError("Can not claim after cancellation expired");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "claimMilestone",
-      args: [BigInt(viewId), BigInt(index)],
-    });
-    setUiSuccess("Claim milestone transaction submitted");
+      if (now > getBigIntField(10) && !getBoolField(18))
+        return setUiError("Can not claim after cancellation expired");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "claimMilestone",
+        args: [BigInt(viewId), BigInt(index)],
+      });
+      setUiSuccess("Claim milestone transaction submitted");
+    } catch (error) {
+      setLoading("claimMilestone", false);
+      setUiError("Error claiming milestone");
+      console.error("Error claiming milestone:", error);
+    }
   };
 
   const handleSetMilestoneHold = async (index: number, hold: boolean) => {
@@ -640,6 +770,7 @@ function Web3Escrow() {
     });
 
     resetMessages();
+    setLoading("setMilestoneHold", true);
     try {
       if (!viewId) return setUiError("Agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
@@ -675,6 +806,7 @@ function Web3Escrow() {
       );
       triggerMilestoneRefetch();
     } catch (error: unknown) {
+      setLoading("setMilestoneHold", false);
       const msg = error instanceof Error ? error.message : String(error);
       setUiError(`Failed to set milestone hold: ${msg}`);
       console.error("handleSetMilestoneHold error:", error);
@@ -683,12 +815,18 @@ function Web3Escrow() {
 
   const handleLoadAgreementForManage = async () => {
     resetMessages();
-    if (!agreementId) return setUiError("Enter an agreement id to load");
-    setViewId(agreementId);
+    setLoading("loadAgreement", true);
     try {
+      if (!agreementId) {
+        setLoading("loadAgreement", false);
+        return setUiError("Enter an agreement id to load");
+      }
+      setViewId(agreementId);
       await refetchAgreement();
       setUiSuccess("Agreement loaded");
+      setLoading("loadAgreement", false);
     } catch (err) {
+      setLoading("loadAgreement", false);
       setUiError("Unable to load agreement");
       console.error(err);
       return;
@@ -697,81 +835,112 @@ function Web3Escrow() {
 
   const handleSignAgreement = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceProvider && !isServiceRecipient)
-      return setUiError("Only parties to the agreement can sign");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (getBoolField(15) && !getBoolField(18))
-      return setUiError("Agreement already signed");
-    if (isServiceProvider && getBoolField(16) && !getBoolField(18))
-      return setUiError("You already signed the Agreement");
-    if (isServiceRecipient && getBoolField(17) && !getBoolField(18))
-      return setUiError("You already signed the Agreement");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
+    setLoading("signAgreement", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can sign");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (getBoolField(15) && !getBoolField(18))
+        return setUiError("Agreement already signed");
+      if (isServiceProvider && getBoolField(16) && !getBoolField(18))
+        return setUiError("You already signed the Agreement");
+      if (isServiceRecipient && getBoolField(17) && !getBoolField(18))
+        return setUiError("You already signed the Agreement");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
 
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "signAgreement",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("Sign transaction submitted");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "signAgreement",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("Sign transaction submitted");
+    } catch (error) {
+      setLoading("signAgreement", false);
+      setUiError("Error signing agreement");
+      console.error("Error signing agreement:", error);
+    }
   };
 
   const handleSubmitDelivery = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceProvider && !getBoolField(18))
-      return setUiError("Only serviceProvider can submit delivery");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (!getBoolField(15)) return setUiError("Agreement not signed");
-    if (getBigIntField(10) !== 0n && !getBoolField(22) && !getBoolField(18))
-      return setUiError("Submission is pending already");
-    if (getBoolField(22)) return setUiError("Cancellation requested");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
+    setLoading("submitDelivery", true);
+    try {
+      // ... existing validation logic
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !getBoolField(18))
+        return setUiError("Only serviceProvider can submit delivery");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (!getBoolField(15)) return setUiError("Agreement not signed");
+      if (getBigIntField(10) !== 0n && !getBoolField(22) && !getBoolField(18))
+        return setUiError("Submission is pending already");
+      if (getBoolField(22)) return setUiError("Cancellation requested");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
 
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "submitDelivery",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("Submit delivery transaction sent");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "submitDelivery",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("Submit delivery transaction sent");
+    } catch (error) {
+      setLoading("submitDelivery", false);
+      setUiError("Error submitting delivery");
+      console.error("Error submitting delivery:", error);
+    }
   };
 
   const handleApproveDelivery = (final: boolean) => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceRecipient && final)
-      return setUiError("Only serviceRecipient can approve delivery");
-    if (!isServiceRecipient && !final)
-      return setUiError("Only serviceRecipient can reject delivery");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (!getBoolField(15)) return setUiError("Agreement not signed");
-    if (getBigIntField(10) === 0n && final)
-      return setUiError("There are no pending delivery to approve");
-    if (getBigIntField(10) === 0n && !final)
-      return setUiError("There are no pending delivery to reject");
-    if (getBoolField(22)) return setUiError("Cancellation requested");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "approveDelivery",
-      args: [BigInt(agreementId), final],
-    });
-    setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
+    if (final) {
+      setLoading("approveDelivery", true);
+    } else {
+      setLoading("rejectDelivery", true);
+    }
+    try {
+      // ... existing validation logic
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceRecipient && final)
+        return setUiError("Only serviceRecipient can approve delivery");
+      if (!isServiceRecipient && !final)
+        return setUiError("Only serviceRecipient can reject delivery");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (!getBoolField(15)) return setUiError("Agreement not signed");
+      if (getBigIntField(10) === 0n && final)
+        return setUiError("There are no pending delivery to approve");
+      if (getBigIntField(10) === 0n && !final)
+        return setUiError("There are no pending delivery to reject");
+      if (getBoolField(22)) return setUiError("Cancellation requested");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "approveDelivery",
+        args: [BigInt(agreementId), final],
+      });
+      setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
+    } catch (error) {
+      if (final) {
+        setLoading("approveDelivery", false);
+      } else {
+        setLoading("rejectDelivery", false);
+      }
+      setUiError("Error processing delivery approval");
+      console.error("Error processing delivery approval:", error);
+    }
   };
 
   const handleDepositFunds = async () => {
     resetMessages();
+    setLoading("depositFunds", true);
     try {
       if (!agreementId) return setUiError("Agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
@@ -807,6 +976,7 @@ function Web3Escrow() {
         depositDirectly();
       }
     } catch (error) {
+      setLoading("depositFunds", false);
       setUiError(
         typeof error === "string"
           ? error
@@ -863,155 +1033,186 @@ function Web3Escrow() {
 
   const handleApproveCancellation = (final: boolean) => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceProvider && !isServiceRecipient)
-      return setUiError("Only parties to the agreement can cancel the order");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (!getBoolField(15)) return setUiError("Agreement not signed");
-    if (getBigIntField(10) === 0n && final)
-      return setUiError("There are no pending order cancellation to approve");
-    if (getBigIntField(10) === 0n && !final)
-      return setUiError("There are no pending order cancellation to reject");
-    if (!getBoolField(22) && !getBoolField(18))
-      return setUiError("No Cancellation requested");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
+    setLoading("approveCancellation", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can cancel the order");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (!getBoolField(15)) return setUiError("Agreement not signed");
+      if (getBigIntField(10) === 0n && final)
+        return setUiError("There are no pending order cancellation to approve");
+      if (getBigIntField(10) === 0n && !final)
+        return setUiError("There are no pending order cancellation to reject");
+      if (!getBoolField(22) && !getBoolField(18))
+        return setUiError("No Cancellation requested");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
 
-    if (now > getBigIntField(10) && !getBoolField(18))
-      return setUiError("24 hour Grace period not yet ended");
+      if (now > getBigIntField(10) && !getBoolField(18))
+        return setUiError("24 hour Grace period not yet ended");
 
-    const initiator = getField(12);
-    if (
-      initiator &&
-      address &&
-      address.toLowerCase() === initiator.toString().toLowerCase() &&
-      final
-    )
-      return setUiError("You can't approve your own cancellation request");
-    if (
-      initiator &&
-      address &&
-      address.toLowerCase() === initiator.toString().toLowerCase() &&
-      !final
-    )
-      return setUiError("You can't reject your own cancellation request");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "approveCancellation",
-      args: [BigInt(agreementId), final],
-    });
-    setUiSuccess(
-      final
-        ? "Cancellation approval submitted"
-        : "Cancellation rejection submitted",
-    );
+      const initiator = getField(12);
+      if (
+        initiator &&
+        address &&
+        address.toLowerCase() === initiator.toString().toLowerCase() &&
+        final
+      )
+        return setUiError("You can't approve your own cancellation request");
+      if (
+        initiator &&
+        address &&
+        address.toLowerCase() === initiator.toString().toLowerCase() &&
+        !final
+      )
+        return setUiError("You can't reject your own cancellation request");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "approveCancellation",
+        args: [BigInt(agreementId), final],
+      });
+      setUiSuccess(
+        final
+          ? "Cancellation approval submitted"
+          : "Cancellation rejection submitted",
+      );
+    } catch (error) {
+      setLoading("approveCancellation", false);
+      setUiError("Error processing cancellation");
+      console.error("Error processing cancellation:", error);
+    }
   };
 
   const handleCancelOrder = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (!isServiceProvider && !isServiceRecipient)
-      return setUiError("Only parties to the agreement can cancel the order");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (!getBoolField(15)) return setUiError("Agreement not signed");
-    if (getBigIntField(10) !== 0n && !getBoolField(22) && !getBoolField(18))
-      return setUiError("Submission is pending");
-    if (getBoolField(22)) return setUiError("Cancellation requested Already");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "cancelOrder",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("Cancel transaction submitted");
+    setLoading("cancelOrder", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can cancel the order");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (!getBoolField(15)) return setUiError("Agreement not signed");
+      if (getBigIntField(10) !== 0n && !getBoolField(22) && !getBoolField(18))
+        return setUiError("Submission is pending");
+      if (getBoolField(22)) return setUiError("Cancellation requested Already");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "cancelOrder",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("Cancel transaction submitted");
+    } catch (error) {
+      setLoading("cancelOrder", false);
+      setUiError("Error cancelling order");
+      console.error("Error cancelling order:", error);
+    }
   };
 
   const handlePartialRelease = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (getBigIntField(10) === 0n)
-      return setUiError("No approved delivery yet");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (getBoolField(22)) return setUiError("Cancellation is in process");
-    if (getBoolField(24))
-      return setUiError("You cannot release partial funds on Vesting");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
+    setLoading("partialRelease", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (getBigIntField(10) === 0n)
+        return setUiError("No approved delivery yet");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (getBoolField(22)) return setUiError("Cancellation is in process");
+      if (getBoolField(24))
+        return setUiError("You cannot release partial funds on Vesting");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
 
-    if (now < getBigIntField(10) && !getBoolField(18))
-      return setUiError("24 hours Grace period not yet ended");
+      if (now < getBigIntField(10) && !getBoolField(18))
+        return setUiError("24 hours Grace period not yet ended");
 
-    const remaining = getBigIntField(6);
-    if (remaining / 2n === 0n)
-      return setUiError("Not enough funds to partial release");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "partialAutoRelease",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("Partial release tx submitted");
+      const remaining = getBigIntField(6);
+      if (remaining / 2n === 0n)
+        return setUiError("Not enough funds to partial release");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "partialAutoRelease",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("Partial release tx submitted");
+    } catch (error) {
+      setLoading("partialRelease", false);
+      setUiError("Error processing partial release");
+      console.error("Error processing partial release:", error);
+    }
   };
 
   const handleCancellationTImeout = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (getBigIntField(10) === 0n)
-      return setUiError("No approved delivery yet");
-    if (now < getBigIntField(10) && !getBoolField(18))
-      return setUiError("24 hours Grace period not yet ended");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (!getBoolField(22) && !getBoolField(18))
-      return setUiError("There is not pending cancellation");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "enforceCancellationTimeout",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("enforceCancellationTimeout tx submitted");
+    setLoading("cancellationTimeout", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (getBigIntField(10) === 0n)
+        return setUiError("No approved delivery yet");
+      if (now < getBigIntField(10) && !getBoolField(18))
+        return setUiError("24 hours Grace period not yet ended");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (!getBoolField(22) && !getBoolField(18))
+        return setUiError("There is not pending cancellation");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "enforceCancellationTimeout",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("enforceCancellationTimeout tx submitted");
+    } catch (error) {
+      setLoading("cancellationTimeout", false);
+      setUiError("Error processing cancellation timeout");
+      console.error("Error processing cancellation timeout:", error);
+    }
   };
 
   const handleFinalRelease = () => {
     resetMessages();
-    if (!agreementId) return setUiError("Agreement ID required");
-    if (!isLoadedAgreement) return setUiError("Load the agreement first");
-    if (getBigIntField(11) === 0n && !getBoolField(18))
-      return setUiError("48 hours grace period has not started");
-    if (!getBoolField(14)) return setUiError("Agreement not funded");
-    if (getBoolField(24))
-      return setUiError("You cannot release full funds on vesting");
-    if (getBigIntField(6) === 0n && !getBoolField(18))
-      return setUiError("Not enough funds to release");
-    if (now < getBigIntField(11) && !getBoolField(18))
-      return setUiError("48 hours Grace period not yet ended");
-    if (getBoolField(18)) return setUiError("The agreement is completed");
-    if (getBoolField(21)) return setUiError("The agreement is frozen");
-
-    writeContract({
-      address: contractAddress,
-      abi: ESCROW_ABI.abi,
-      functionName: "finalAutoRelease",
-      args: [BigInt(agreementId)],
-    });
-    setUiSuccess("Final release tx submitted");
+    setLoading("finalRelease", true);
+    try {
+      if (!agreementId) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (getBigIntField(11) === 0n && !getBoolField(18))
+        return setUiError("48 hours grace period has not started");
+      if (!getBoolField(14)) return setUiError("Agreement not funded");
+      if (getBoolField(24))
+        return setUiError("You cannot release full funds on vesting");
+      if (getBigIntField(6) === 0n && !getBoolField(18))
+        return setUiError("Not enough funds to release");
+      if (now < getBigIntField(11) && !getBoolField(18))
+        return setUiError("48 hours Grace period not yet ended");
+      if (getBoolField(18)) return setUiError("The agreement is completed");
+      if (getBoolField(21)) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "finalAutoRelease",
+        args: [BigInt(agreementId)],
+      });
+      setUiSuccess("Final release tx submitted");
+    } catch (error) {
+      setLoading("finalRelease", false);
+      setUiError("Error processing final release");
+      console.error("Error processing final release:", error);
+    }
   };
 
   const handleRaiseDisputeWithModal = async () => {
     resetMessages();
+    setLoading("raiseDispute", true);
     try {
       if (!agreementId) return setUiError("Agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
@@ -1061,6 +1262,7 @@ function Web3Escrow() {
       setUiSuccess("Dispute raised successfully!");
       setShowDisputeModal(false);
     } catch (error: unknown) {
+      setLoading("raiseDispute", false);
       setUiError(
         typeof error === "string"
           ? error
@@ -1090,6 +1292,7 @@ function Web3Escrow() {
 
   useEffect(() => {
     if (writeError) {
+      resetAllLoading();
       setUiError("Transaction was rejected or failed");
       setCreateApprovalState({ isApprovingToken: false, needsApproval: false });
       setDepositState({
@@ -1103,6 +1306,8 @@ function Web3Escrow() {
 
   useEffect(() => {
     if (approvalError) {
+      resetAllLoading();
+
       setUiError("Token approval was rejected or failed");
       setCreateApprovalState({ isApprovingToken: false, needsApproval: false });
       setDepositState({
@@ -1135,6 +1340,8 @@ function Web3Escrow() {
   // Add this useEffect hook after your existing useEffect hooks
   useEffect(() => {
     if (isSuccess) {
+      resetAllLoading();
+
       // Small delay to ensure blockchain state is updated
       const timer = setTimeout(() => {
         refetchStats();
@@ -1201,239 +1408,331 @@ function Web3Escrow() {
   ]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen">
+      <div className="container mx-auto py-8 lg:px-4">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
-          <h1 className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-4xl font-bold text-transparent">
-            DexCourt Escrow
-          </h1>
+          <div className="flex items-center space-x-4">
+            <h1 className="text-3xl font-bold text-cyan-300">Escrow Center</h1>
+          </div>
         </div>
 
         {/* <ConnectButton /> */}
         {!isConnected ? (
-          <div className="py-20 text-center">
-            <p className="text-xl text-gray-400">
-              Please connect your wallet to continue
-            </p>
+          <div className="card-cyan glass mx-auto mt-20 max-w-[1000px] rounded-xl p-4 lg:p-8">
+            <div className="flex flex-col justify-center text-center">
+              <h2 className="mb-4 text-2xl font-bold text-white">
+                Welcome to Escrow Platform
+              </h2>
+              <p className="mx-auto mb-6 max-w-[600px] text-cyan-200/80">
+                Connect your wallet to create and manage secure escrow
+                agreements with milestone-based payments, dispute resolution,
+                and automated releases.
+              </p>
+              <div className="mx-auto mb-8 grid max-w-2xl grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="rounded-lg border border-green-400/30 bg-green-500/10 p-4">
+                  <CheckCircle className="mx-auto mb-2 h-8 w-8 text-green-400" />
+                  <h3 className="font-semibold text-green-300">
+                    Secure Payments
+                  </h3>
+                  <p className="text-sm text-green-200/70">
+                    Funds held in escrow until conditions are met
+                  </p>
+                </div>
+                <div className="rounded-lg border border-blue-400/30 bg-blue-500/10 p-4">
+                  <Package className="mx-auto mb-2 h-8 w-8 text-blue-400" />
+                  <h3 className="font-semibold text-blue-300">
+                    Milestone Tracking
+                  </h3>
+                  <p className="text-sm text-blue-200/70">
+                    Release payments as work progresses
+                  </p>
+                </div>
+                <div className="rounded-lg border border-purple-400/30 bg-purple-500/10 p-4">
+                  <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-purple-400" />
+                  <h3 className="font-semibold text-purple-300">
+                    Dispute Resolution
+                  </h3>
+                  <p className="text-sm text-purple-200/70">
+                    Fair resolution process for disagreements
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <>
             {/* Stats Dashboard */}
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-5">
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Total Agreements</p>
-                <p className="text-2xl font-bold">
+            <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
+              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+                <p className="text-sm text-cyan-300">Total Agreements</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? stats[0].toString() : "0"}
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Total Disputes</p>
-                <p className="text-2xl font-bold">
+              <div className="glass rounded-xl border border-purple-400/30 bg-gradient-to-br from-purple-500/20 to-transparent p-4">
+                <p className="text-sm text-purple-300">Total Disputes</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? stats[1].toString() : "0"}
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Smooth Completions</p>
-                <p className="text-2xl font-bold">
+              <div className="glass rounded-xl border border-green-400/30 bg-gradient-to-br from-green-500/20 to-transparent p-4">
+                <p className="text-sm text-green-300">Smooth Completions</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? stats[2].toString() : "0"}
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Fees Collected</p>
-                <p className="text-2xl font-bold">
+              <div className="glass rounded-xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-4">
+                <p className="text-sm text-yellow-300">Fees Collected</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? formatEther(stats[3]).slice(0, 6) : "0"} ETH
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Escrowed ETH</p>
-                <p className="text-2xl font-bold">
+              <div className="glass rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-4">
+                <p className="text-sm text-blue-300">Escrowed ETH</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? formatEther(stats[4]).slice(0, 6) : "0"} ETH
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Platform Fees</p>
-                <p className="text-2xl font-bold">
+              <div className="glass rounded-xl border border-orange-400/30 bg-gradient-to-br from-orange-500/20 to-transparent p-4">
+                <p className="text-sm text-orange-300">Platform Fees</p>
+                <p className="text-2xl font-bold text-white">
                   {stats ? stats[5].toString() : "0"}
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Grace 1 Duration</p>
-                <p className="text-2xl font-bold">
-                  {stats ? stats[6].toString() : "0"}
+              <div className="glass rounded-xl border border-pink-400/30 bg-gradient-to-br from-pink-500/20 to-transparent p-4">
+                <p className="text-sm text-pink-300">Grace 1 Duration</p>
+                <p className="text-2xl font-bold text-white">
+                  {stats ? formatSecondsToDetailed(stats[6]) : "0s"}
+                </p>
+                <p className="mt-1 text-xs text-pink-400/70">
+                  {stats ? `${stats[6].toString()} seconds` : ""}
                 </p>
               </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Grace 2 Duration</p>
-                <p className="text-2xl font-bold">
-                  {stats ? stats[7].toString() : "0"}
+              <div className="glass rounded-xl border border-indigo-400/30 bg-gradient-to-br from-indigo-500/20 to-transparent p-4">
+                <p className="text-sm text-indigo-300">Grace 2 Duration</p>
+                <p className="text-2xl font-bold text-white">
+                  {stats ? formatSecondsToDetailed(stats[7]) : "0s"}
+                </p>
+                <p className="mt-1 text-xs text-indigo-400/70">
+                  {stats ? `${stats[7].toString()} seconds` : ""}
                 </p>
               </div>
             </div>
 
             {/* Tabs */}
-            <div className="mb-6 flex gap-2 border-b border-gray-700">
+            <div className="mb-6 flex gap-2 border-b border-cyan-400/30">
               {["create", "manage", "view"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-3 font-medium transition-colors ${activeTab === tab ? "border-b-2 border-purple-400 text-purple-400" : "text-gray-400 hover:text-gray-300"}`}
+                  className={`px-6 py-3 font-medium transition-colors ${activeTab === tab ? "border-b-2 border-cyan-400 text-cyan-400" : "text-cyan-300 hover:text-cyan-200"}`}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </div>
 
-            {/* Create Agreement Tab - UPDATED */}
+            {/* Create Agreement Tab - TRANSFORMED */}
             {activeTab === "create" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">
+              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h2 className="mb-6 text-2xl font-bold text-white">
                   Create New Agreement
                 </h2>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <input
-                    type="text"
-                    placeholder="Agreement ID"
-                    value={createForm.agreementId}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        agreementId: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="serviceProvider Address"
-                    value={createForm.serviceProvider}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        serviceProvider: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="serviceRecipient Address"
-                    value={createForm.serviceRecipient}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        serviceRecipient: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="token Address"
-                    value={createForm.token}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, token: e.target.value })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder={`Amount ${createForm.token === ZERO_ADDRESS ? "(ETH)" : "(Tokens)"}`}
-                    value={createForm.amount}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, amount: e.target.value })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Deadline Duration (seconds)"
-                    value={createForm.deadlineDuration}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        deadlineDuration: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <label className="flex items-center gap-2">
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Agreement ID
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={createForm.privateMode}
+                      type="text"
+                      placeholder="Enter unique agreement ID"
+                      value={createForm.agreementId}
                       onChange={(e) =>
                         setCreateForm({
                           ...createForm,
-                          privateMode: e.target.checked,
+                          agreementId: e.target.value,
                         })
                       }
-                      className="h-5 w-5"
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
                     />
-                    <span>Private Mode</span>
-                  </label>
-                  <label className="flex items-center gap-2">
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Service Provider Address
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={createForm.vestingMode}
+                      type="text"
+                      placeholder="0x..."
+                      value={createForm.serviceProvider}
                       onChange={(e) =>
                         setCreateForm({
                           ...createForm,
-                          vestingMode: e.target.checked,
+                          serviceProvider: e.target.value,
                         })
                       }
-                      className="h-5 w-5"
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
                     />
-                    <span>Vesting Mode</span>
-                  </label>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Service Recipient Address
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="0x..."
+                      value={createForm.serviceRecipient}
+                      onChange={(e) =>
+                        setCreateForm({
+                          ...createForm,
+                          serviceRecipient: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Token Address
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="0x... or leave empty for ETH"
+                      value={createForm.token}
+                      onChange={(e) =>
+                        setCreateForm({ ...createForm, token: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Amount{" "}
+                      {createForm.token === ZERO_ADDRESS ? "(ETH)" : "(Tokens)"}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Enter amount"
+                      value={createForm.amount}
+                      onChange={(e) =>
+                        setCreateForm({ ...createForm, amount: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-cyan-300">
+                      Deadline Duration (seconds)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="604800 (1 week)"
+                      value={createForm.deadlineDuration}
+                      onChange={(e) =>
+                        setCreateForm({
+                          ...createForm,
+                          deadlineDuration: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={createForm.privateMode}
+                        onChange={(e) =>
+                          setCreateForm({
+                            ...createForm,
+                            privateMode: e.target.checked,
+                          })
+                        }
+                        className="h-5 w-5 rounded border-white/10 bg-white/5 text-cyan-400 focus:ring-cyan-400/20"
+                      />
+                      <span className="text-cyan-300">Private Mode</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={createForm.vestingMode}
+                        onChange={(e) =>
+                          setCreateForm({
+                            ...createForm,
+                            vestingMode: e.target.checked,
+                          })
+                        }
+                        className="h-5 w-5 rounded border-white/10 bg-white/5 text-cyan-400 focus:ring-cyan-400/20"
+                      />
+                      <span className="text-cyan-300">Vesting Mode</span>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Vesting Configuration */}
                 {createForm.vestingMode && (
-                  <div className="mt-6 rounded-lg bg-gray-700/50 p-4">
-                    <h3 className="mb-4 text-lg font-semibold">
+                  <div className="glass mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+                    <h3 className="mb-4 text-lg font-semibold text-white">
                       Vesting Milestones
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {createForm.milestonePercs.map((perc, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            placeholder="Percentage (basis points, e.g., 50 for 50%)"
-                            value={perc}
-                            onChange={(e) =>
-                              updateMilestone(index, "percs", e.target.value)
-                            }
-                            className="flex-1 rounded-lg bg-gray-600 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Offset (seconds)"
-                            value={createForm.milestoneOffsets[index]}
-                            onChange={(e) =>
-                              updateMilestone(index, "offsets", e.target.value)
-                            }
-                            className="flex-1 rounded-lg bg-gray-600 px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                          />
+                        <div key={index} className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <label className="mb-2 block text-sm text-cyan-300">
+                              Percentage %
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g., 50 for 50%"
+                              value={perc}
+                              onChange={(e) =>
+                                updateMilestone(index, "percs", e.target.value)
+                              }
+                              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="mb-2 block text-sm text-cyan-300">
+                              Offset (seconds)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g., 302400 (3.5 days)"
+                              value={createForm.milestoneOffsets[index]}
+                              onChange={(e) =>
+                                updateMilestone(
+                                  index,
+                                  "offsets",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                            />
+                          </div>
                           {createForm.milestonePercs.length > 1 && (
-                            <button
-                              type="button"
+                            <Button
+                              variant="outline"
                               onClick={() => removeMilestone(index)}
-                              className="rounded-lg bg-red-600 px-3 py-2 hover:bg-red-700"
+                              className="mt-6 border-red-500/30 text-red-400 hover:bg-red-500/10"
                             >
-                              Remove
-                            </button>
+                              <X className="h-4 w-4" />
+                            </Button>
                           )}
                         </div>
                       ))}
                     </div>
-                    <button
-                      type="button"
+                    <Button
+                      variant="outline"
                       onClick={addMilestone}
-                      className="mt-3 rounded-lg bg-green-600 px-4 py-2 hover:bg-green-700"
+                      className="mt-4 border-green-500/30 text-green-400 hover:bg-green-500/10"
                     >
+                      <Package className="mr-2 h-4 w-4" />
                       Add Milestone
-                    </button>
-                    <p className="mt-2 text-sm text-gray-400">
+                    </Button>
+                    <p className="mt-3 text-sm text-cyan-300">
                       Total:{" "}
                       {createForm.milestonePercs.reduce(
                         (sum, perc) => sum + Number(perc),
@@ -1444,652 +1743,1001 @@ function Web3Escrow() {
                   </div>
                 )}
 
-                <button
+                <Button
                   onClick={handleCreateAgreement}
                   disabled={
                     isPending ||
                     isConfirming ||
                     createApprovalState.isApprovingToken ||
-                    isApprovalPending
+                    isApprovalPending ||
+                    loadingStates.createAgreement
                   }
-                  className="mt-6 w-full rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-medium transition-all hover:from-purple-600 hover:to-pink-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="neon-hover mt-6 w-full"
+                  variant="neon"
                 >
-                  {createApprovalState.isApprovingToken
-                    ? isApprovalPending
-                      ? "Approving Token..."
-                      : "Confirming Approval..."
-                    : isPending
-                      ? "Confirming..."
-                      : isConfirming
-                        ? "Creating..."
-                        : "Create Agreement"}
-                </button>
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
-                {isSuccess && (
-                  <p className="mt-4 text-green-400">
-                    Agreement created successfully!
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Manage Agreement Tab - UPDATED */}
-            {activeTab === "manage" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Manage Agreement</h2>
-                <div className="mb-4 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Agreement ID"
-                    value={agreementId}
-                    onChange={(e) => setAgreementId(e.target.value)}
-                    className="flex-1 rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={handleLoadAgreementForManage}
-                    className="rounded-lg bg-indigo-600 px-4 py-3 hover:bg-indigo-700"
-                  >
-                    Load
-                  </button>
-                </div>
-
-                {agreement && (
-                  <div className="mb-4 text-sm text-gray-300">
-                    Loaded agreement #{agreement[0].toString()} — provider:{" "}
-                    {agreement[2].toString()} recipient:{" "}
-                    {agreement[3].toString()} — Amount:{" "}
-                    {formatAmount(
-                      getBigIntField(5),
-                      manageTokenDecimals as unknown as number,
-                    )}{" "}
-                    {agreement[4] === ZERO_ADDRESS ? "ETH" : manageTokenSymbol}
-                    {getBoolField(24) && " — VESTING MODE"}
-                    {/* Grace Period Countdowns */}
-                    {getBigIntField(10) > 0n && getBoolField(22) && (
-                      <div className="mt-2">
-                        Pending Order Cancellation:{" "}
-                        <CountdownTimer
-                          targetTimestamp={getBigIntField(10)}
-                          onComplete={refetchAgreement}
-                        />
-                      </div>
-                    )}
-                    {getBoolField(21) && (
-                      <div className="mt-1 rounded-lg bg-yellow-600 px-4 py-3 hover:bg-yellow-700">
-                        Agreement is Frozen!
-                      </div>
-                    )}
-                    {getBigIntField(10) > 0n && getBoolField(22) && (
-                      <div className="mt-1 rounded-lg bg-yellow-600 px-4 py-3 hover:bg-yellow-700">
-                        {(() => {
-                          const initiator = getField(12); // grace1EndsCalledBy
-                          const serviceProvider = getField(2);
-                          const serviceRecipient = getField(3);
-
-                          if (
-                            initiator &&
-                            serviceProvider &&
-                            serviceRecipient
-                          ) {
-                            const initiatorLower = initiator
-                              .toString()
-                              .toLowerCase();
-                            const serviceProviderLower = serviceProvider
-                              .toString()
-                              .toLowerCase();
-                            const serviceRecipientLower = serviceRecipient
-                              .toString()
-                              .toLowerCase();
-
-                            if (initiatorLower === serviceRecipientLower) {
-                              return "Cancellation request sent, waiting for service provider";
-                            } else if (
-                              initiatorLower === serviceProviderLower
-                            ) {
-                              return "Cancellation request sent, waiting for service recipient";
-                            }
-                          }
-                          // Fallback message
-                          return "Cancellation request sent, waiting for the other party";
-                        })()}
-                      </div>
-                    )}
-                    {getBigIntField(10) > 0n &&
-                      getBoolField(25) &&
-                      !getBoolField(24) && (
-                        <div className="mt-1">
-                          Pending Delivery [Grace period 1] :{" "}
-                          <CountdownTimer
-                            targetTimestamp={getBigIntField(10)}
-                            onComplete={refetchAgreement}
-                          />
-                        </div>
-                      )}
-                    {getBigIntField(10) > 0n && getBoolField(25) && (
-                      <div className="mt-1 rounded-lg bg-yellow-600 px-4 py-3 hover:bg-yellow-700">
-                        Delivery submitted, waiting for service recipient
-                      </div>
-                    )}
-                    {!getBoolField(16) && (
-                      <div className="mt-1 rounded-lg bg-yellow-600 px-4 py-3 hover:bg-yellow-700">
-                        Waiting for Service Provider Signature
-                      </div>
-                    )}
-                    {!getBoolField(17) && (
-                      <div className="mt-1 rounded-lg bg-yellow-600 px-4 py-3 hover:bg-yellow-700">
-                        Waiting for Service Recipient Signature
-                      </div>
-                    )}
-                    {getBigIntField(11) > 0n &&
-                      getBoolField(25) &&
-                      !getBoolField(24) && (
-                        <div className="mt-1">
-                          Pending Delivery [Grace period 2] :{" "}
-                          <CountdownTimer
-                            targetTimestamp={getBigIntField(11)}
-                            onComplete={refetchAgreement}
-                          />
-                        </div>
-                      )}
-                    {getBigIntField(8) > 0n && (
-                      <div className="mt-1">
-                        Delivery Deadline:{" "}
-                        <CountdownTimer
-                          targetTimestamp={getBigIntField(8)}
-                          onComplete={refetchAgreement}
-                        />
-                      </div>
-                    )}
+                  {loadingStates.createAgreement ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      Processing...
+                    </>
+                  ) : createApprovalState.isApprovingToken ? (
+                    isApprovalPending ? (
+                      "Approving Token..."
+                    ) : (
+                      "Confirming Approval..."
+                    )
+                  ) : isPending ? (
+                    "Confirming..."
+                  ) : isConfirming ? (
+                    "Creating..."
+                  ) : (
+                    "Create Agreement"
+                  )}
+                </Button>
+                {uiError && (
+                  <div className="mt-4 w-fit rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                    <p className="text-red-400">{uiError}</p>
                   </div>
                 )}
-
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                  {/* Existing buttons */}
-                  {agreement &&
-                    ((isServiceProvider && !getBoolField(16)) ||
-                      (isServiceRecipient && !getBoolField(17))) &&
-                    getBoolField(14) && (
-                      <button
-                        onClick={handleSignAgreement}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-blue-600 px-4 py-3 transition-colors hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Sign Agreement
-                      </button>
-                    )}
-
-                  {agreement && !getBoolField(14) && !getBoolField(15) && (
-                    <button
-                      onClick={handleDepositFunds}
-                      disabled={!agreementId || isPending || isApprovalPending}
-                      className="rounded-lg bg-blue-600 px-4 py-3 transition-colors hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {depositState.isApprovingToken
-                        ? isApprovalPending
-                          ? "Approving..."
-                          : "Confirming..."
-                        : "Deposit Fund"}
-                    </button>
-                  )}
-                  {agreement &&
-                    getBoolField(15) &&
-                    isServiceProvider &&
-                    !getBoolField(21) &&
-                    !getBoolField(22) &&
-                    !getBoolField(25) && (
-                      <button
-                        onClick={handleSubmitDelivery}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-green-600 px-4 py-3 transition-colors hover:bg-green-700 disabled:opacity-50"
-                      >
-                        Submit Delivery
-                      </button>
-                    )}
-                  {agreement &&
-                    getBoolField(15) &&
-                    isServiceRecipient &&
-                    !getBoolField(22) &&
-                    getBoolField(25) && (
-                      <button
-                        onClick={() => handleApproveDelivery(true)}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-emerald-600 px-4 py-3 transition-colors hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        Approve Delivery
-                      </button>
-                    )}
-
-                  {agreement &&
-                    getBoolField(15) &&
-                    isServiceRecipient &&
-                    !getBoolField(22) &&
-                    getBoolField(25) && (
-                      <button
-                        onClick={() => handleApproveDelivery(false)}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-yellow-600 px-4 py-3 transition-colors hover:bg-yellow-700 disabled:opacity-50"
-                      >
-                        Reject Delivery
-                      </button>
-                    )}
-
-                  {agreement &&
-                    now < getBigIntField(10) &&
-                    getBoolField(15) &&
-                    getBoolField(22) &&
-                    address &&
-                    address.toLowerCase() !==
-                      String(getField(12)).toLowerCase() &&
-                    !getBoolField(25) && (
-                      <button
-                        onClick={() => handleApproveCancellation(true)}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-emerald-600 px-4 py-3 transition-colors hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        Approve Order Cancellation
-                      </button>
-                    )}
-                  {agreement &&
-                    now < getBigIntField(10) &&
-                    getBoolField(15) &&
-                    getBoolField(22) &&
-                    address &&
-                    address.toLowerCase() !==
-                      String(getField(12)).toLowerCase() &&
-                    !getBoolField(25) && (
-                      <button
-                        onClick={() => handleApproveCancellation(false)}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-yellow-600 px-4 py-3 transition-colors hover:bg-yellow-700 disabled:opacity-50"
-                      >
-                        Reject Order Cancellation
-                      </button>
-                    )}
-                  {agreement &&
-                    getBoolField(15) &&
-                    !getBoolField(22) &&
-                    !getBoolField(25) &&
-                    !getBoolField(21) && (
-                      <button
-                        onClick={handleCancelOrder}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-red-600 px-4 py-3 transition-colors hover:bg-red-700 disabled:opacity-50"
-                      >
-                        Cancel Order
-                      </button>
-                    )}
-
-                  {agreement &&
-                    getBigIntField(10) !== BigInt(0) &&
-                    !getBoolField(24) &&
-                    now > getBigIntField(10) &&
-                    getBoolField(14) &&
-                    !getBoolField(22) &&
-                    getBoolField(15) && (
-                      <button
-                        onClick={handlePartialRelease}
-                        disabled={!agreementId || isPending || getBoolField(24)}
-                        className="rounded-lg bg-orange-600 px-4 py-3 transition-colors hover:bg-orange-700 disabled:opacity-50"
-                      >
-                        Partial Release
-                      </button>
-                    )}
-                  {agreement &&
-                    getBoolField(15) &&
-                    !getBoolField(24) &&
-                    now > getBigIntField(11) &&
-                    getBigIntField(11) !== BigInt(0) &&
-                    getBoolField(14) &&
-                    getBoolField(22) && (
-                      <button
-                        onClick={handleFinalRelease}
-                        disabled={!agreementId || isPending || getBoolField(24)}
-                        className="rounded-lg bg-purple-600 px-4 py-3 transition-colors hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        Final Release
-                      </button>
-                    )}
-                  {agreement &&
-                    getBoolField(15) &&
-                    now > getBigIntField(10) &&
-                    getBoolField(22) &&
-                    getBigIntField(10) !== BigInt(0) && (
-                      <button
-                        onClick={handleCancellationTImeout}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-purple-600 px-4 py-3 transition-colors hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        Cancellation Timeout
-                      </button>
-                    )}
-                  {agreement &&
-                    getBoolField(14) &&
-                    getBoolField(15) &&
-                    !getBoolField(19) &&
-                    !getBoolField(18) &&
-                    !getBoolField(21) &&
-                    !getBoolField(22) && (
-                      <button
-                        onClick={openDisputeModal}
-                        disabled={!agreementId || isPending}
-                        className="rounded-lg bg-red-600 px-4 py-3 transition-colors hover:bg-red-700 disabled:opacity-50"
-                      >
-                        Raise Dispute
-                      </button>
-                    )}
-
-                  {/* Milestones Section */}
-                  {agreement &&
-                    getBoolField(24) &&
-                    milestoneCount! > 0 &&
-                    getBoolField(15) && (
-                      <div className="col-span-full mt-4 border-t border-gray-600 pt-4">
-                        <h3 className="mb-4 text-xl font-bold">
-                          Vesting Milestones
-                        </h3>
-
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse rounded-lg bg-gray-700/50">
-                            <thead>
-                              <tr className="border-b border-gray-600">
-                                <th className="p-4 text-left">Milestone</th>
-                                <th className="p-4 text-left">Percentage</th>
-                                <th className="p-4 text-left">Amount</th>
-                                <th className="p-4 text-left">Unlock Time</th>
-                                <th className="p-4 text-left">
-                                  Time Remaining
-                                </th>
-                                <th className="p-4 text-left">Status</th>
-                                <th className="p-4 text-left">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {milestones.map((milestone, index) => (
-                                <MilestoneTableRow
-                                  key={index}
-                                  milestone={milestone}
-                                  index={index}
-                                  agreement={agreement}
-                                  manageTokenDecimals={
-                                    manageTokenDecimals as number
-                                  }
-                                  manageTokenSymbol={
-                                    manageTokenSymbol as string
-                                  }
-                                  isServiceProvider={
-                                    isServiceProvider as boolean
-                                  }
-                                  isServiceRecipient={
-                                    isServiceRecipient as boolean
-                                  }
-                                  onClaimMilestone={handleClaimMilestone}
-                                  onSetMilestoneHold={handleSetMilestoneHold}
-                                />
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                </div>
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
                 {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
+                  <div className="mt-4 w-fit rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                    <p className="text-green-400">{uiSuccess}</p>
+                  </div>
                 )}
                 {isSuccess && (
-                  <p className="mt-4 text-green-400">Transaction successful!</p>
+                  <div className="mt-4 w-fit rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                    <p className="text-green-400">
+                      Agreement created successfully!
+                    </p>
+                  </div>
                 )}
               </div>
             )}
 
-            {/* View Agreement Tab - UPDATED */}
-            {activeTab === "view" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">
-                  View Agreement Details
+            {/* Manage Agreement Tab - TRANSFORMED */}
+            {activeTab === "manage" && (
+              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h2 className="mb-6 text-2xl font-bold text-white">
+                  Manage Agreement
                 </h2>
-                <div className="mb-6 flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="Enter Agreement ID"
-                    value={viewId}
-                    onChange={(e) => setViewId(e.target.value)}
-                    className="flex-1 rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={() => refetchAgreement()}
-                    className="rounded-lg bg-purple-600 px-6 py-3 transition-colors hover:bg-purple-700"
+                <div className="mb-6 flex gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Enter Agreement ID"
+                      value={agreementId}
+                      onChange={(e) => setAgreementId(e.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleLoadAgreementForManage}
+                    disabled={loadingStates.loadAgreement}
+                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                    variant="outline"
                   >
-                    Fetch
-                  </button>
+                    {loadingStates.loadAgreement ? (
+                      <>
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+                        Loading...
+                      </>
+                    ) : (
+                      "Load Agreement"
+                    )}
+                  </Button>
                 </div>
 
                 {agreement && (
-                  <>
-                    <div className="mb-6 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">ID:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[0].toString()}
-                        </span>
+                  <div className="glass mb-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+                    <h3 className="mb-4 text-lg font-semibold text-white">
+                      Agreement Overview
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="flex items-center space-x-3">
+                        <FileText className="h-5 w-5 text-cyan-400" />
+                        <div>
+                          <div className="text-sm text-cyan-300">
+                            Agreement ID
+                          </div>
+                          <div className="font-mono text-white">
+                            {agreement[0].toString()}
+                          </div>
+                        </div>
                       </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Creator:</span>{" "}
-                        <span className="font-mono text-xs">
-                          {agreement[1].toString()}
-                        </span>
+                      <div className="flex items-center space-x-3">
+                        <Users className="h-5 w-5 text-purple-400" />
+                        <div>
+                          <div className="text-sm text-cyan-300">Parties</div>
+                          <div className="text-white">
+                            Provider: {agreement[2].toString().slice(0, 8)}...
+                            <br />
+                            Recipient: {agreement[3].toString().slice(0, 8)}...
+                          </div>
+                        </div>
                       </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">serviceProvider:</span>{" "}
-                        <span className="font-mono text-xs">
-                          {agreement[2].toString()}
-                        </span>
+                      <div className="flex items-center space-x-3">
+                        <DollarSign className="h-5 w-5 text-emerald-400" />
+                        <div>
+                          <div className="text-sm text-cyan-300">Amount</div>
+                          <div className="text-white">
+                            {formatAmount(
+                              getBigIntField(5),
+                              manageTokenDecimals as unknown as number,
+                            )}{" "}
+                            {agreement[4] === ZERO_ADDRESS
+                              ? "ETH"
+                              : manageTokenSymbol}
+                          </div>
+                        </div>
                       </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">serviceRecipient:</span>{" "}
-                        <span className="font-mono text-xs">
-                          {agreement[3].toString()}
-                        </span>
+                      <div className="flex items-center space-x-3">
+                        <Shield className="h-5 w-5 text-cyan-400" />
+                        <div>
+                          <div className="text-sm text-cyan-300">Mode</div>
+                          <div className="text-white">
+                            {getBoolField(24) ? "Vesting" : "Standard"}
+                            {getBoolField(20) ? " • Private" : " • Public"}
+                          </div>
+                        </div>
                       </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">token:</span>{" "}
-                        <span className="font-mono text-xs">
-                          {agreement[4].toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Amount:</span>{" "}
-                        <span className="font-mono text-xs">
-                          {formatAmount(
-                            getBigIntField(5),
-                            manageTokenDecimals as unknown as number,
-                          )}{" "}
-                          {agreement[4] === ZERO_ADDRESS
-                            ? "ETH"
-                            : manageTokenSymbol}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Remaining:</span>{" "}
-                        <span className="font-mono">
-                          {formatAmount(
-                            getBigIntField(6),
-                            manageTokenDecimals as unknown as number,
-                          )}{" "}
-                          {agreement[4] === ZERO_ADDRESS
-                            ? "ETH"
-                            : manageTokenSymbol}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">createdAt:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[7].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">deadline:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[8].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">deadlineDuration:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[9].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">grace1Ends:</span>
-                        <span className="font-mono">
-                          {agreement[10].toString()}{" "}
-                        </span>
-                        {getBigIntField(10) > 0n && (
-                          <span className="ml-2">
-                            (
+                    </div>
+
+                    {/* Status Indicators */}
+                    <div className="mt-4 space-y-2">
+                      {getBigIntField(10) > 0n && getBoolField(22) && (
+                        <div className="flex items-center gap-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
+                          <Clock className="h-4 w-4 text-orange-400" />
+                          <span className="text-orange-300">
+                            Pending Order Cancellation:{" "}
                             <CountdownTimer
                               targetTimestamp={getBigIntField(10)}
                               onComplete={refetchAgreement}
                             />
-                            )
                           </span>
-                        )}
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">grace2Ends:</span>
-                        <span className="font-mono">
-                          {agreement[11].toString()}{" "}
-                        </span>
-                        {getBigIntField(11) > 0n && (
-                          <span className="ml-2">
-                            (
-                            <CountdownTimer
-                              targetTimestamp={getBigIntField(11)}
-                              onComplete={refetchAgreement}
-                            />
-                            )
+                        </div>
+                      )}
+                      {getBoolField(21) && (
+                        <div className="flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                          <AlertTriangle className="h-4 w-4 text-red-400" />
+                          <span className="text-red-300">
+                            Agreement is Frozen!
                           </span>
+                        </div>
+                      )}
+                      {getBigIntField(10) > 0n && getBoolField(22) && (
+                        <div className="flex items-center gap-2 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-3">
+                          <Info className="h-4 w-4 text-yellow-400" />
+                          <span className="text-yellow-300">
+                            {(() => {
+                              const initiator = getField(12);
+                              const serviceProvider = getField(2);
+                              const serviceRecipient = getField(3);
+
+                              if (
+                                initiator &&
+                                serviceProvider &&
+                                serviceRecipient
+                              ) {
+                                const initiatorLower = initiator
+                                  .toString()
+                                  .toLowerCase();
+                                const serviceProviderLower = serviceProvider
+                                  .toString()
+                                  .toLowerCase();
+                                const serviceRecipientLower = serviceRecipient
+                                  .toString()
+                                  .toLowerCase();
+
+                                if (initiatorLower === serviceRecipientLower) {
+                                  return "Cancellation request sent, waiting for service provider";
+                                } else if (
+                                  initiatorLower === serviceProviderLower
+                                ) {
+                                  return "Cancellation request sent, waiting for service recipient";
+                                }
+                              }
+                              return "Cancellation request sent, waiting for the other party";
+                            })()}
+                          </span>
+                        </div>
+                      )}
+                      {getBigIntField(10) > 0n &&
+                        getBoolField(25) &&
+                        !getBoolField(24) && (
+                          <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                            <Clock className="h-4 w-4 text-blue-400" />
+                            <span className="text-blue-300">
+                              Pending Delivery [Grace period 1]:{" "}
+                              <CountdownTimer
+                                targetTimestamp={getBigIntField(10)}
+                                onComplete={refetchAgreement}
+                              />
+                            </span>
+                          </div>
                         )}
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          grace1EndsCalledBy:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[12].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          grace2EndsCalledBy:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[13].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">funded:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[14].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">signed:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[15].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          acceptedByServiceProvider:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[16].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          acceptedByServiceRecipient:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[17].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">completed:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[18].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">disputed:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[19].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">privateMode:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[20].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">frozen:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[21].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          pendingCancellation:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[22].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">orderCancelled:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[23].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Vesting State:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[24].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">
-                          deliverySubmitted:
-                        </span>{" "}
-                        <span className="font-mono">
-                          {agreement[25].toString()}{" "}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">votingId:</span>{" "}
-                        <span className="font-mono">
-                          {agreement[26].toString()}{" "}
-                        </span>
+                      {getBigIntField(10) > 0n && getBoolField(25) && (
+                        <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                          <Package className="h-4 w-4 text-green-400" />
+                          <span className="text-green-300">
+                            Delivery submitted, waiting for service recipient
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex flex-col items-center gap-4 sm:flex-row">
+                        {!getBoolField(16) && (
+                          <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                            <UserCheck className="h-4 w-4 text-blue-400" />
+                            <span className="text-blue-300">
+                              Waiting for Service Provider Signature
+                            </span>
+                          </div>
+                        )}
+                        {!getBoolField(17) && (
+                          <div className="flex items-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 p-3">
+                            <UserCheck className="h-4 w-4 text-purple-400" />
+                            <span className="text-purple-300">
+                              Waiting for Service Recipient Signature
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {agreement && (
+                  <>
+                    {/* Check if any action buttons are available */}
+                    {(((isServiceProvider && !getBoolField(16)) ||
+                      (isServiceRecipient && !getBoolField(17))) &&
+                      getBoolField(14)) ||
+                    (!getBoolField(14) && !getBoolField(15)) ||
+                    (getBoolField(15) &&
+                      isServiceProvider &&
+                      !getBoolField(21) &&
+                      !getBoolField(22) &&
+                      !getBoolField(25)) ||
+                    (getBoolField(15) &&
+                      isServiceRecipient &&
+                      !getBoolField(22) &&
+                      getBoolField(25)) ||
+                    (now < getBigIntField(10) &&
+                      getBoolField(15) &&
+                      getBoolField(22) &&
+                      address &&
+                      address.toLowerCase() !==
+                        String(getField(12)).toLowerCase() &&
+                      !getBoolField(25)) ||
+                    (getBoolField(15) &&
+                      !getBoolField(22) &&
+                      !getBoolField(25) &&
+                      !getBoolField(21)) ||
+                    (getBigIntField(10) !== BigInt(0) &&
+                      !getBoolField(24) &&
+                      now > getBigIntField(10) &&
+                      getBoolField(14) &&
+                      !getBoolField(22) &&
+                      getBoolField(15)) ||
+                    (getBoolField(15) &&
+                      !getBoolField(24) &&
+                      now > getBigIntField(11) &&
+                      getBigIntField(11) !== BigInt(0) &&
+                      getBoolField(14) &&
+                      getBoolField(22)) ||
+                    (getBoolField(15) &&
+                      now > getBigIntField(10) &&
+                      getBoolField(22) &&
+                      getBigIntField(10) !== BigInt(0)) ||
+                    (getBoolField(14) &&
+                      getBoolField(15) &&
+                      !getBoolField(19) &&
+                      !getBoolField(18) &&
+                      !getBoolField(21) &&
+                      !getBoolField(22)) ? (
+                      <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                        <h3 className="mb-4 text-lg font-semibold text-white">
+                          Agreement Actions
+                        </h3>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          {/* Action Buttons */}
+
+                          {agreement &&
+                            ((isServiceProvider && !getBoolField(16)) ||
+                              (isServiceRecipient && !getBoolField(17))) &&
+                            getBoolField(14) && (
+                              <>
+                                <Button
+                                  onClick={handleSignAgreement}
+                                  disabled={
+                                    !agreementId ||
+                                    isPending ||
+                                    loadingStates.signAgreement
+                                  }
+                                  className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                                  variant="outline"
+                                >
+                                  {loadingStates.signAgreement ? (
+                                    <>
+                                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+                                      Signing Agreement...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserCheck className="mr-2 h-4 w-4" />
+                                      Sign Agreement
+                                    </>
+                                  )}
+                                </Button>
+                              </>
+                            )}
+
+                          {agreement &&
+                            !getBoolField(14) &&
+                            !getBoolField(15) && (
+                              <Button
+                                onClick={handleDepositFunds}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  isApprovalPending ||
+                                  loadingStates.depositFunds
+                                }
+                                className="neon-hover w-fit border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30 hover:text-green-400"
+                                variant="outline"
+                              >
+                                {loadingStates.depositFunds ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-green-400 border-t-transparent"></div>
+                                    Depositing...
+                                  </>
+                                ) : depositState.isApprovingToken ? (
+                                  isApprovalPending ? (
+                                    "Approving..."
+                                  ) : (
+                                    "Confirming..."
+                                  )
+                                ) : (
+                                  <>
+                                    <DollarSign className="mr-2 h-4 w-4" />
+                                    Deposit Funds
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          {agreement &&
+                            getBoolField(15) &&
+                            isServiceProvider &&
+                            !getBoolField(21) &&
+                            !getBoolField(22) &&
+                            !getBoolField(25) && (
+                              <Button
+                                onClick={handleSubmitDelivery}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.submitDelivery
+                                }
+                                className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.submitDelivery ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-green-400 border-t-transparent"></div>
+                                    Submitting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Package className="mr-2 h-4 w-4" />
+                                    Submit Delivery
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          {agreement &&
+                            getBoolField(15) &&
+                            isServiceRecipient &&
+                            !getBoolField(22) &&
+                            getBoolField(25) &&
+                            !getBoolField(18) && (
+                              <Button
+                                onClick={() => handleApproveDelivery(true)}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.approveDelivery
+                                }
+                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.approveDelivery ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"></div>
+                                    Approving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <PackageCheck className="mr-2 h-4 w-4" />
+                                    Approve Delivery
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBoolField(15) &&
+                            isServiceRecipient &&
+                            !getBoolField(22) &&
+                            getBoolField(25) &&
+                            !getBoolField(18) && (
+                              <Button
+                                onClick={() => handleApproveDelivery(false)}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.rejectDelivery
+                                }
+                                className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.rejectDelivery ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                    Rejecting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="mr-2 h-4 w-4" />
+                                    Reject Delivery
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            now < getBigIntField(10) &&
+                            getBoolField(15) &&
+                            getBoolField(22) &&
+                            address &&
+                            address.toLowerCase() !==
+                              String(getField(12)).toLowerCase() &&
+                            !getBoolField(25) && (
+                              <Button
+                                onClick={() => handleApproveCancellation(true)}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.approveCancellation
+                                }
+                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.approveCancellation ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"></div>
+                                    Approving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Approve Cancellation
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            now < getBigIntField(10) &&
+                            getBoolField(15) &&
+                            getBoolField(22) &&
+                            address &&
+                            address.toLowerCase() !==
+                              String(getField(12)).toLowerCase() &&
+                            !getBoolField(25) && (
+                              <Button
+                                onClick={() => handleApproveCancellation(false)}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.approveCancellation
+                                }
+                                className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.approveCancellation ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                    Rejecting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <XCircle className="mr-2 h-4 w-4" />
+                                    Reject Cancellation
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBoolField(15) &&
+                            !getBoolField(22) &&
+                            !getBoolField(25) &&
+                            !getBoolField(21) && (
+                              <Button
+                                onClick={handleCancelOrder}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.cancelOrder
+                                }
+                                className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.cancelOrder ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                    Cancelling...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="mr-2 h-4 w-4" />
+                                    Cancel Order
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBigIntField(10) !== BigInt(0) &&
+                            !getBoolField(24) &&
+                            now > getBigIntField(10) &&
+                            getBoolField(14) &&
+                            !getBoolField(22) &&
+                            getBoolField(15) && (
+                              <Button
+                                onClick={handlePartialRelease}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  getBoolField(24) ||
+                                  loadingStates.partialRelease
+                                }
+                                className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.partialRelease ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent"></div>
+                                    Releasing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Partial Release
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBoolField(15) &&
+                            !getBoolField(24) &&
+                            now > getBigIntField(11) &&
+                            getBigIntField(11) !== BigInt(0) &&
+                            getBoolField(14) &&
+                            getBoolField(22) && (
+                              <Button
+                                onClick={handleFinalRelease}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  getBoolField(24) ||
+                                  loadingStates.finalRelease
+                                }
+                                className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.finalRelease ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                    Releasing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Final Release
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBoolField(15) &&
+                            now > getBigIntField(10) &&
+                            getBoolField(22) &&
+                            getBigIntField(10) !== BigInt(0) && (
+                              <Button
+                                onClick={handleCancellationTImeout}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.cancellationTimeout
+                                }
+                                className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                                variant="outline"
+                              >
+                                {loadingStates.cancellationTimeout ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                    Processing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Cancellation Timeout
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {agreement &&
+                            getBoolField(14) &&
+                            getBoolField(15) &&
+                            !getBoolField(19) &&
+                            !getBoolField(18) &&
+                            !getBoolField(21) &&
+                            !getBoolField(22) && (
+                              <Button
+                                onClick={openDisputeModal}
+                                disabled={
+                                  !agreementId ||
+                                  isPending ||
+                                  loadingStates.raiseDispute
+                                }
+                                className="border-purple-500/30 text-purple-400 hover:bg-purple-300/15"
+                                variant="outline"
+                              >
+                                {loadingStates.raiseDispute ? (
+                                  <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                    Opening...
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    Raise Dispute
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                          {/* Milestones Section */}
+                          {agreement &&
+                            getBoolField(24) &&
+                            milestoneCount! > 0 &&
+                            getBoolField(15) && (
+                              <div className="glass col-span-full mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+                                <h3 className="mb-4 text-xl font-bold text-white">
+                                  Vesting Milestones
+                                </h3>
+
+                                <div className="overflow-x-auto">
+                                  <table className="w-full border-collapse rounded-lg bg-white/5">
+                                    <thead>
+                                      <tr className="border-b border-cyan-400/30">
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Milestone
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Percentage
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Amount
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Unlock Time
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Time Remaining
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Status
+                                        </th>
+                                        <th className="p-4 text-left text-cyan-300">
+                                          Actions
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {milestones.map((milestone, index) => (
+                                        <MilestoneTableRow
+                                          key={index}
+                                          milestone={milestone}
+                                          index={index}
+                                          agreement={agreement}
+                                          manageTokenDecimals={
+                                            manageTokenDecimals as number
+                                          }
+                                          manageTokenSymbol={
+                                            manageTokenSymbol as string
+                                          }
+                                          isServiceProvider={
+                                            isServiceProvider as boolean
+                                          }
+                                          isServiceRecipient={
+                                            isServiceRecipient as boolean
+                                          }
+                                          onClaimMilestone={
+                                            handleClaimMilestone
+                                          }
+                                          onSetMilestoneHold={
+                                            handleSetMilestoneHold
+                                          }
+                                          isLoadingClaim={
+                                            loadingStates.claimMilestone
+                                          }
+                                          isLoadingHold={
+                                            loadingStates.setMilestoneHold
+                                          }
+                                        />
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    ) : null}
                   </>
+                )}
+                {uiError && (
+                  <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-400" />
+                    <p className="text-red-400">{uiError}</p>
+                  </div>
+                )}
+                {uiSuccess && (
+                  <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
+                    <p className="text-green-400">{uiSuccess}</p>
+                  </div>
+                )}
+                {isSuccess && (
+                  <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                    <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
+                    <p className="text-green-400">Transaction successful!</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* View Agreement Tab - TRANSFORMED */}
+            {activeTab === "view" && (
+              <div className="glass max-w-[1000px] rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h2 className="mb-6 text-2xl font-bold text-white">
+                  View Agreement Details
+                </h2>
+                <div className="mb-6 flex gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Enter Agreement ID"
+                      value={viewId}
+                      onChange={(e) => setViewId(e.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => refetchAgreement()}
+                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                    variant="outline"
+                  >
+                    Fetch Details
+                  </Button>
+                </div>
+
+                {agreement && (
+                  <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+                    <h3 className="mb-4 text-xl font-bold text-white">
+                      Agreement Information
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {[
+                        {
+                          label: "ID",
+                          value: agreement[0].toString(),
+                          icon: FileText,
+                        },
+                        {
+                          label: "Creator",
+                          value: agreement[1].toString(),
+                          icon: Users,
+                        },
+                        {
+                          label: "serviceProvider",
+                          value: agreement[2].toString(),
+                          icon: UserCheck,
+                        },
+                        {
+                          label: "serviceRecipient",
+                          value: agreement[3].toString(),
+                          icon: Users,
+                        },
+                        {
+                          label: "token",
+                          value: agreement[4].toString(),
+                          icon: DollarSign,
+                        },
+                        {
+                          label: "Amount",
+                          value: `${formatAmount(getBigIntField(5), manageTokenDecimals as unknown as number)} ${agreement[4] === ZERO_ADDRESS ? "ETH" : manageTokenSymbol}`,
+                          icon: DollarSign,
+                        },
+                        {
+                          label: "Remaining",
+                          value: `${formatAmount(getBigIntField(6), manageTokenDecimals as unknown as number)} ${agreement[4] === ZERO_ADDRESS ? "ETH" : manageTokenSymbol}`,
+                          icon: DollarSign,
+                        },
+                        {
+                          label: "createdAt",
+                          value: agreement[7].toString(),
+                          icon: Calendar,
+                        },
+                        {
+                          label: "deadline",
+                          value: agreement[8].toString(),
+                          icon: Clock,
+                        },
+                        {
+                          label: "deadlineDuration",
+                          value: agreement[9].toString(),
+                          icon: Clock,
+                        },
+                        {
+                          label: "grace1Ends",
+                          value: (
+                            <span>
+                              {agreement[10].toString()}
+                              {getBigIntField(10) > 0n && (
+                                <span className="ml-2">
+                                  (
+                                  <CountdownTimer
+                                    targetTimestamp={getBigIntField(10)}
+                                    onComplete={refetchAgreement}
+                                  />
+                                  )
+                                </span>
+                              )}
+                            </span>
+                          ),
+                          icon: Clock,
+                        },
+                        {
+                          label: "grace2Ends",
+                          value: (
+                            <span>
+                              {agreement[11].toString()}
+                              {getBigIntField(11) > 0n && (
+                                <span className="ml-2">
+                                  (
+                                  <CountdownTimer
+                                    targetTimestamp={getBigIntField(11)}
+                                    onComplete={refetchAgreement}
+                                  />
+                                  )
+                                </span>
+                              )}
+                            </span>
+                          ),
+                          icon: Clock,
+                        },
+                        {
+                          label: "grace1EndsCalledBy",
+                          value: agreement[12].toString(),
+                          icon: Users,
+                        },
+                        {
+                          label: "grace2EndsCalledBy",
+                          value: agreement[13].toString(),
+                          icon: Users,
+                        },
+                        {
+                          label: "funded",
+                          value: agreement[14].toString(),
+                          icon: DollarSign,
+                        },
+                        {
+                          label: "signed",
+                          value: agreement[15].toString(),
+                          icon: FileText,
+                        },
+                        {
+                          label: "acceptedByServiceProvider",
+                          value: agreement[16].toString(),
+                          icon: UserCheck,
+                        },
+                        {
+                          label: "acceptedByServiceRecipient",
+                          value: agreement[17].toString(),
+                          icon: UserCheck,
+                        },
+                        {
+                          label: "completed",
+                          value: agreement[18].toString(),
+                          icon: CheckCircle,
+                        },
+                        {
+                          label: "disputed",
+                          value: agreement[19].toString(),
+                          icon: AlertTriangle,
+                        },
+                        {
+                          label: "privateMode",
+                          value: agreement[20].toString(),
+                          icon: Lock,
+                        },
+                        {
+                          label: "frozen",
+                          value: agreement[21].toString(),
+                          icon: Shield,
+                        },
+                        {
+                          label: "pendingCancellation",
+                          value: agreement[22].toString(),
+                          icon: Ban,
+                        },
+                        {
+                          label: "orderCancelled",
+                          value: agreement[23].toString(),
+                          icon: XCircle,
+                        },
+                        {
+                          label: "Vesting State",
+                          value: agreement[24].toString(),
+                          icon: Package,
+                        },
+                        {
+                          label: "deliverySubmitted",
+                          value: agreement[25].toString(),
+                          icon: PackageCheck,
+                        },
+                        {
+                          label: "votingId",
+                          value: agreement[26].toString(),
+                          icon: FileText,
+                        },
+                      ].map((item, index) => (
+                        <div
+                          key={index}
+                          className="flex items-start space-x-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                        >
+                          <item.icon className="mt-0.5 h-4 w-4 text-cyan-400" />
+                          <div>
+                            <div className="text-sm text-cyan-300">
+                              {item.label}:
+                            </div>
+                            <div className="font-mono text-xs break-all text-white">
+                              {item.value}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
 
             {showDisputeModal && (
               <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-                <div className="w-full max-w-md rounded-lg bg-gray-800 p-6">
-                  <h3 className="mb-4 text-xl font-bold">Raise Dispute</h3>
+                <div className="glass w-full max-w-md rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                  <h3 className="mb-4 text-xl font-bold text-white">
+                    Raise Dispute
+                  </h3>
 
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1 block text-sm font-medium">
+                      <label className="mb-2 block text-sm text-cyan-300">
                         Voting ID
                       </label>
                       <input
@@ -2101,7 +2749,7 @@ function Web3Escrow() {
                             votingId: e.target.value,
                           })
                         }
-                        className="w-full rounded-lg bg-gray-700 px-3 py-2"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
                         placeholder="Unique voting ID"
                       />
                     </div>
@@ -2116,15 +2764,17 @@ function Web3Escrow() {
                             proBono: e.target.checked,
                           })
                         }
-                        className="h-4 w-4"
+                        className="h-4 w-4 rounded border-white/10 bg-white/5 text-cyan-400 focus:ring-cyan-400/20"
                       />
-                      <label>Pro Bono (Free of charge)</label>
+                      <label className="text-cyan-300">
+                        Pro Bono (Free of charge)
+                      </label>
                     </div>
 
                     {!disputeForm.proBono && (
                       <>
                         <div>
-                          <label className="mb-1 block text-sm font-medium">
+                          <label className="mb-2 block text-sm text-cyan-300">
                             Fee Amount
                           </label>
                           <input
@@ -2136,7 +2786,7 @@ function Web3Escrow() {
                                 feeAmount: e.target.value,
                               })
                             }
-                            className="w-full rounded-lg bg-gray-700 px-3 py-2"
+                            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
                             placeholder="0.01"
                           />
                         </div>
@@ -2145,19 +2795,33 @@ function Web3Escrow() {
                   </div>
 
                   <div className="mt-6 flex gap-3">
-                    <button
+                    <Button
                       onClick={handleRaiseDisputeWithModal}
-                      disabled={isPending}
-                      className="flex-1 rounded-lg bg-red-600 px-4 py-2 hover:bg-red-700 disabled:opacity-50"
+                      disabled={
+                        !agreementId || isPending || loadingStates.raiseDispute
+                      }
+                      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      variant="outline"
                     >
-                      {isPending ? "Raising Dispute..." : "Raise Dispute"}
-                    </button>
-                    <button
+                      {loadingStates.raiseDispute ? (
+                        <>
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                          Raising Dispute...
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Raise Dispute
+                        </>
+                      )}
+                    </Button>
+                    <Button
                       onClick={() => setShowDisputeModal(false)}
-                      className="flex-1 rounded-lg bg-gray-600 px-4 py-2 hover:bg-gray-700"
+                      className="flex-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                      variant="outline"
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

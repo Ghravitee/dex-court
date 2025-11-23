@@ -1275,13 +1275,21 @@ export default function Profile() {
                         <div className="flex justify-between">
                           <span>First Party:</span>
                           <span className="text-white/80">
-                            @{agreement.firstParty.telegramUsername}
+                            {agreement.firstParty.telegramUsername
+                              ? `@${agreement.firstParty.telegramUsername}`
+                              : agreement.firstParty.wallet
+                                ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
+                                : "Unknown User"}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Counter Party:</span>
                           <span className="text-white/80">
-                            @{agreement.counterParty.telegramUsername}
+                            {agreement.counterParty.telegramUsername
+                              ? `@${agreement.counterParty.telegramUsername}`
+                              : agreement.counterParty.wallet
+                                ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
+                                : "Unknown User"}
                           </span>
                         </div>
 
