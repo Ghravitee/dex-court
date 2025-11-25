@@ -1,6 +1,6 @@
 // src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { agreementService } from "../services/agreementServices";
 import { cleanTelegramUsername } from "../lib/usernameUtils";
+import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
 
 // API Enum Mappings
 const AgreementTypeEnum = {
@@ -65,6 +66,39 @@ const extractOnChainIdFromDescription = (
 ): string | undefined => {
   const match = description?.match(/Contract Agreement ID: (\d+)/);
   return match?.[1];
+};
+
+const extractServiceProviderFromDescription = (
+  description: string,
+): string | undefined => {
+  const match = description?.match(/Service Provider: (0x[a-fA-F0-9]{40})/i);
+  return match?.[1];
+};
+
+// Helper function to extract service recipient from description
+const extractServiceRecipientFromDescription = (
+  description: string,
+): string | undefined => {
+  const match = description?.match(/Service Recipient: (0x[a-fA-F0-9]{40})/i);
+  return match?.[1];
+};
+
+// Helper function to format wallet addresses for display
+const formatWalletAddress = (address: string): string => {
+  if (!address) return "@unknown";
+
+  // If it's already a short format like "@you" or Telegram handle, return as is
+  if (address.startsWith("@") || address.length <= 15) {
+    return address;
+  }
+
+  // If it's a wallet address (0x...), slice it
+  if (address.startsWith("0x") && address.length === 42) {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  // Return original for any other case
+  return address;
 };
 
 const normalizeAddress = (address: string): string => {
@@ -155,28 +189,56 @@ const mapAgreementStatusToEscrow = (
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
+  // Extract from on-chain metadata in description - this is the most reliable source
+  const serviceProvider = extractServiceProviderFromDescription(
+    apiAgreement.description,
+  );
+  const serviceRecipient = extractServiceRecipientFromDescription(
+    apiAgreement.description,
+  );
+
+  console.log("🔍 Extracted parties from description:", {
+    serviceProvider,
+    serviceRecipient,
+    description: apiAgreement.description?.substring(0, 200) + "...",
+  });
+
+  // Fallback to API party data if description extraction fails
   const getPartyIdentifier = (party: any): string => {
-    // For escrow, prefer wallet address, fallback to Telegram
+    // Try multiple possible field names
     return (
       party?.walletAddress ||
+      party?.wallet || // This might be the correct field name
       party?.WalletAddress ||
       cleanTelegramUsername(party?.telegramUsername) ||
       "@unknown"
     );
   };
 
-  // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
-  const hasAmountOrToken = apiAgreement.amount || apiAgreement.tokenSymbol;
-  const includeFunds = hasAmountOrToken ? "yes" : "no";
+  const fallbackServiceProvider = getPartyIdentifier(apiAgreement.firstParty);
+  const fallbackServiceRecipient = getPartyIdentifier(
+    apiAgreement.counterParty,
+  );
 
-  // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
-  const useEscrow = apiAgreement.type === AgreementTypeEnum.ESCROW;
+  console.log("🔍 Fallback parties from API:", {
+    fallbackServiceProvider,
+    fallbackServiceRecipient,
+    firstParty: apiAgreement.firstParty,
+    counterParty: apiAgreement.counterParty,
+  });
+
+  // Use extracted addresses first, fallback to API data
+  const finalServiceProvider = serviceProvider || fallbackServiceProvider;
+  const finalServiceRecipient = serviceRecipient || fallbackServiceRecipient;
+
+  const includeFunds = apiAgreement.includesFunds ? "yes" : "no";
+  const useEscrow = apiAgreement.hasSecuredFunds;
 
   return {
-    id: `E-${apiAgreement.id}`,
+    id: `${apiAgreement.id}`,
     title: apiAgreement.title,
-    from: getPartyIdentifier(apiAgreement.counterParty), // Service Recipient (payer)
-    to: getPartyIdentifier(apiAgreement.firstParty), // Service Provider (payee)
+    from: finalServiceRecipient, // Service Recipient = Payer (sends funds)
+    to: finalServiceProvider, // Service Provider = Payee (receives funds)
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
     status: mapAgreementStatusToEscrow(apiAgreement.status),
@@ -236,39 +298,45 @@ export default function Escrow() {
   const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
     hash: approvalHash,
   });
+  const {
+    data: agreementsWithSecuredFunds,
+    isLoading: agreementsLoading,
+    error: agreementsError,
+    refetch: refetchAgreements,
+  } = useAgreementsWithDetailsAndFundsFilter({
+    includesFunds: true,
+    hasSecuredFunds: true,
+  });
 
   // Enhanced error handling for contract errors
   const [uiError, setUiError] = useState<string | null>(null);
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
 
-  // Enhanced loadEscrows function
-  const loadEscrows = useCallback(async () => {
-    try {
-      const response = await agreementService.getAgreements({
-        top: 100,
-        skip: 0,
-        sort: "desc",
-      });
+  // Replace the useEffect that loads escrows
+  useEffect(() => {
+    if (agreementsWithSecuredFunds) {
+      console.log(
+        "📥 Loaded agreements with secured funds:",
+        agreementsWithSecuredFunds,
+      );
 
-      console.log("📥 Loaded agreements for escrow:", response);
-
-      // Filter for escrow type (type = 2) and transform
-      const escrowAgreements = response.results
+      const escrowAgreements = agreementsWithSecuredFunds
         .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
         .map(transformApiAgreementToEscrow);
 
-      console.log("📊 Escrow agreements transformed:", escrowAgreements);
-
-      // If no escrows found, show initial mock data or empty
-
+      console.log("📊 Transformed escrow agreements:", escrowAgreements);
       setEscrows(escrowAgreements);
-    } catch (err) {
-      console.error("Failed to load escrows:", err);
+    }
+  }, [agreementsWithSecuredFunds]);
+
+  // Also handle loading and error states
+  useEffect(() => {
+    if (agreementsError) {
+      console.error("Failed to load escrows:", agreementsError);
       toast.error("Failed to load escrows from backend");
-      // Fallback to initial data
       setEscrows([]);
     }
-  }, []);
+  }, [agreementsError]);
 
   // Effect to handle write errors from smart contract
   useEffect(() => {
@@ -707,11 +775,6 @@ export default function Escrow() {
   } | null>(null);
 
   // 6. Load escrows on component mount
-  useEffect(() => {
-    if (isConnected) {
-      loadEscrows();
-    }
-  }, [isConnected, loadEscrows]);
 
   useEffect(() => {
     // Replace your current syncEscrowToBackend function with this enhanced version
@@ -925,7 +988,7 @@ Created: ${new Date().toISOString()}
         setTimeout(() => {
           setOpen(false);
           resetForm();
-          loadEscrows(); // Reload the list
+          refetchAgreements();
         }, 1500);
       } catch (err: any) {
         console.error("❌ Backend sync failed:", err);
@@ -1073,7 +1136,7 @@ Created: ${new Date().toISOString()}
     deadline,
     address,
     resetWrite,
-    loadEscrows,
+    refetchAgreements,
     chainId,
   ]);
 
@@ -1483,21 +1546,6 @@ Created: ${new Date().toISOString()}
     }
   };
 
-  // ---------- Small utility: connect wallet hint (we keep UI unchanged) ----------
-  const connectHint = !isConnected ? (
-    <Button
-      variant="outline"
-      className="mb-4 w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-      onClick={() => toast("Please open your wallet and connect")}
-    >
-      Connect Wallet
-    </Button>
-  ) : (
-    <div className="mb-4 rounded-md border border-white/10 px-3 py-2 text-xs text-white/70">
-      {address?.slice(0, 6)}...{address?.slice(-4)}
-    </div>
-  );
-
   const StatusMessages = () => (
     <div className="space-y-2">
       {uiError && (
@@ -1519,12 +1567,79 @@ Created: ${new Date().toISOString()}
     </div>
   );
 
+  // Temporary debug component - add it somewhere in your JSX
+  // Enhanced debug component to show what's actually being loaded
+  const DebugAgreementInfo = () => {
+    const { data, isLoading, error } = useAgreementsWithDetailsAndFundsFilter({
+      includesFunds: true,
+      hasSecuredFunds: true,
+    });
+
+    if (isLoading) {
+      return <div className="text-cyan-300">Loading agreements...</div>;
+    }
+
+    if (error) {
+      return (
+        <div className="text-red-300">
+          Error loading agreements: {error.message}
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+        <h3 className="font-semibold text-yellow-300">
+          Debug: Party Information
+        </h3>
+        <div className="mt-2 text-xs text-yellow-200/70">
+          Showing {data?.length || 0} agreements with hasSecuredFunds=true
+        </div>
+        <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+          {data?.map((agreement) => {
+            const serviceProvider = agreement.firstParty?.wallet;
+            const serviceRecipient = agreement.counterParty?.wallet;
+
+            return (
+              <div
+                key={agreement.id}
+                className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
+              >
+                <div>
+                  <strong>ID:</strong> {agreement.id}
+                </div>
+                <div>
+                  <strong>Title:</strong> {agreement.title}
+                </div>
+                <div>
+                  <strong>First Party (Service Provider = Payee):</strong>{" "}
+                  {serviceProvider}
+                </div>
+                <div>
+                  <strong>Counter Party (Service Recipient = Payer):</strong>{" "}
+                  {serviceRecipient}
+                </div>
+                <div>
+                  <strong>Displayed as:</strong> {serviceRecipient} →{" "}
+                  {serviceProvider}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Add <DebugAgreementInfo /> temporarily to your JSX to see what agreements are available
+
   return (
     <div className="relative">
       {/* Main */}
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
       <div className="space-y-4">
+        <DebugAgreementInfo />
         <div className="justify-between lg:flex">
           <header className="flex flex-col gap-3">
             <div>
@@ -1540,7 +1655,7 @@ Created: ${new Date().toISOString()}
                   Create Escrow
                 </Button>
 
-                {connectHint}
+                {/* {connectHint} */}
               </div>
 
               <p className="text-muted-foreground max-w-[20rem] text-lg">
@@ -2212,6 +2327,13 @@ Created: ${new Date().toISOString()}
           </aside>
         </div>
 
+        {agreementsLoading && (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="mr-2 h-6 w-6 animate-spin text-cyan-300" />
+            <span className="text-cyan-200">Loading escrows...</span>
+          </div>
+        )}
+
         {/* Cards grid (unchanged) */}
         {listed.length === 0 ? (
           <div className="text-muted-foreground rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
@@ -2220,34 +2342,33 @@ Created: ${new Date().toISOString()}
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {listed.map((e) => (
-              <div
+              <Link
+                to={`/escrow/${e.id}`}
                 key={e.id}
-                className={`rounded-xl p-5 ring-2 ring-white/10 ${
-                  e.status === "completed"
-                    ? "shadow-[0_0_24px_rgba(16,185,129,0.25)] ring-emerald-400/40"
-                    : e.status === "frozen"
-                      ? "shadow-[0_0_24px_rgba(244,63,94,0.25)] ring-rose-400/40"
-                      : "shadow-[0_0_24px_rgba(56,189,248,0.25)] ring-sky-400/40"
-                }`}
+                className="web3-corner-border group relative rounded-3xl p-[2px]"
               >
-                <div className="gap-3">
+                <div className="h-fit rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
                   <div>
-                    <div className="text-lg font-semibold tracking-wide text-[#0891b2] drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+                    <div className="text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
                       {e.title}
                     </div>
 
                     <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                       <div>
                         <div className="text-muted-foreground">Payer</div>
-                        <div className="text-cyan-300/90">{e.from}</div>
+                        <div className="text-cyan-300/90">
+                          {formatWalletAddress(e.from)}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">Payee</div>
-                        <div className="text-pink-300/90">{e.to}</div>
+                        <div className="text-pink-300/90">
+                          {formatWalletAddress(e.to)}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">Amount</div>
-                        <div className="text-green-500/90">
+                        <div className="font-bold text-green-500/90">
                           {e.amount} {e.token}
                         </div>
                       </div>
@@ -2270,24 +2391,25 @@ Created: ${new Date().toISOString()}
                       </div>
                     </div>
                   </div>
-                </div>
-                <p className="text-muted-foreground mt-3 line-clamp-2 text-sm">
-                  {e.description}
-                </p>
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="text-muted-foreground text-xs">
-                    Deadline: {e.deadline}
+
+                  <p className="text-muted-foreground mt-3 line-clamp-2 text-sm">
+                    {e.description}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="text-muted-foreground text-xs">
+                      Deadline: {e.deadline}
+                    </div>
+                    <Link to={`/escrow/${e.id}`}>
+                      <Button
+                        variant="outline"
+                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      >
+                        <Eye className="mr-2 h-4 w-4" /> View
+                      </Button>
+                    </Link>
                   </div>
-                  <Link to={`/escrow/${e.id}`}>
-                    <Button
-                      variant="outline"
-                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    >
-                      <Eye className="mr-2 h-4 w-4" /> View
-                    </Button>
-                  </Link>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

@@ -338,33 +338,66 @@ export default function Agreements() {
       try {
         setLoading(true);
 
-        // ✅ FIXED: Use correct API parameters (top and skip instead of page/page_size)
-        const skip = (page - 1) * size;
-
-        const allAgreements = await agreementService.getAgreements({
-          top: size,
-          skip: skip,
-          sort: "desc", // Add sort parameter for consistency
+        // First, get ALL agreements without pagination to filter properly
+        const allAgreementsResponse = await agreementService.getAgreements({
+          top: 1000, // Get a large number to ensure we get all agreements
+          skip: 0,
+          sort: "desc",
         });
 
-        console.log("📋 Agreements response:", allAgreements);
+        console.log("📋 All agreements response:", allAgreementsResponse);
 
-        setTotalAgreements(allAgreements.totalAgreements || 0);
-        setTotalResults(allAgreements.totalResults || 0);
+        const allAgreementsList = allAgreementsResponse.results || [];
 
-        const agreementsList = allAgreements.results || [];
-        const transformedAgreements = agreementsList.map(transformApiAgreement);
+        // Get agreement details to check for secured funds for ALL agreements
+        const agreementsWithDetails = await Promise.all(
+          allAgreementsList.map(async (agreement) => {
+            try {
+              const details = await agreementService.getAgreementDetails(
+                agreement.id,
+              );
+              return { ...agreement, details };
+            } catch (err) {
+              console.warn(
+                `Failed fetching details for agreement ${agreement.id}`,
+                err,
+              );
+              return { ...agreement, details: null };
+            }
+          }),
+        );
 
-        console.log("🔍 TRANSFORMED AGREEMENTS:", transformedAgreements);
-        if (transformedAgreements.length > 0) {
-          console.log("🔍 FIRST AGREEMENT AMOUNT:", {
-            originalAmount: agreementsList[0]?.amount,
-            transformedAmount: transformedAgreements[0]?.amount,
-            token: transformedAgreements[0]?.token,
-            includeFunds: transformedAgreements[0]?.includeFunds,
-            useEscrow: transformedAgreements[0]?.useEscrow,
-          });
-        }
+        // Filter out agreements with secured funds from ALL agreements
+        const filteredAgreements = agreementsWithDetails.filter(
+          // (item) => item.details && !item.details.hasSecuredFunds,
+          (item) => item.details,
+        );
+
+        console.log(
+          "🔍 Total agreements after filtering:",
+          filteredAgreements.length,
+        );
+
+        // Now apply pagination to the FILTERED results
+        const startIndex = (page - 1) * size;
+        const endIndex = startIndex + size;
+        const paginatedAgreements = filteredAgreements.slice(
+          startIndex,
+          endIndex,
+        );
+
+        // Set the total count based on filtered agreements
+        setTotalAgreements(filteredAgreements.length);
+        setTotalResults(filteredAgreements.length);
+
+        const transformedAgreements = paginatedAgreements.map((item) =>
+          transformApiAgreement(item),
+        );
+
+        console.log(
+          "🔍 PAGINATED FILTERED AGREEMENTS (no secured funds):",
+          transformedAgreements,
+        );
 
         setAgreements(transformedAgreements);
       } catch (error: any) {
@@ -428,12 +461,26 @@ export default function Agreements() {
         : `@${telegramUsername}`;
     };
 
-    // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
-    const hasAmountOrToken = apiAgreement.amount || apiAgreement.tokenSymbol;
-    const includeFunds = hasAmountOrToken ? "yes" : "no";
+    // 🆕 FIXED: Use the detailed data to detect escrow usage
+    // Check if we have detailed data with hasSecuredFunds property
+    const hasSecuredFunds = apiAgreement.details?.hasSecuredFunds || false;
 
-    // 🆕 FIXED: Detect escrow usage based on type since API doesn't return secureTheFunds
-    const useEscrow = apiAgreement.type === AgreementTypeEnum.ESCROW;
+    const includesFunds =
+      apiAgreement.details?.includesFunds === true ||
+      apiAgreement.details?.hasSecuredFunds === true ||
+      Boolean(
+        apiAgreement.amount ||
+          apiAgreement.tokenSymbol ||
+          apiAgreement.details?.amount ||
+          apiAgreement.details?.tokenSymbol ||
+          apiAgreement.fundsWithoutEscrow?.amount ||
+          apiAgreement.fundsWithoutEscrow?.token,
+      );
+
+    const includeFunds = includesFunds ? "yes" : "no";
+
+    // 🆕 FIXED: Use hasSecuredFunds from detailed data as the source of truth
+    const useEscrow = hasSecuredFunds;
 
     const formatDateSafely = (dateString: string) => {
       if (!dateString) return "No deadline";
@@ -487,15 +534,17 @@ export default function Agreements() {
       apiAgreement.counterParty,
     );
 
-    // 🆕 FIXED: Better amount handling
     let amountValue: string | undefined;
-    if (apiAgreement.amount) {
-      // Handle both string and number amounts
-      if (typeof apiAgreement.amount === "string") {
-        // Remove trailing zeros for cleaner display
-        amountValue = parseFloat(apiAgreement.amount).toString();
-      } else if (typeof apiAgreement.amount === "number") {
-        amountValue = apiAgreement.amount.toString();
+
+    if (includesFunds) {
+      if (apiAgreement.amount) {
+        if (typeof apiAgreement.amount === "string") {
+          amountValue = parseFloat(apiAgreement.amount).toString();
+        } else if (typeof apiAgreement.amount === "number") {
+          amountValue = apiAgreement.amount.toString();
+        }
+      } else {
+        amountValue = "0";
       }
     }
 
@@ -515,8 +564,8 @@ export default function Agreements() {
       token: apiAgreement.tokenSymbol || undefined,
       files: apiAgreement.files?.length || 0,
 
-      includeFunds: includeFunds, // 🆕 Now correctly detects funds based on amount/token
-      useEscrow: useEscrow, // 🆕 Now correctly detects escrow based on type
+      includeFunds: includeFunds, // 🆕 Now correctly detects funds based on detailed data
+      useEscrow: useEscrow, // 🆕 Now correctly detects escrow based on detailed data
       escrowAddress: apiAgreement.escrowContract || undefined,
 
       createdByAvatarId: createdByAvatarId,
@@ -1340,11 +1389,11 @@ export default function Agreements() {
                             </div>
                           </td>
                           <td className="px-5 py-4 text-white/90">
-                            {a.includeFunds === "yes"
-                              ? a.useEscrow
-                                ? `${a.amount || "0"} ${a.token || ""} (Escrow)`
-                                : `Funds involved (no escrow)`
-                              : "No amount"}
+                            {a.useEscrow
+                              ? `${a.amount || "0"} ${a.token || ""} (Escrow)`
+                              : a.includeFunds === "yes"
+                                ? `${a.amount || "0"} ${a.token || ""} (No escrow)`
+                                : "No amount"}
                           </td>
                           <td className="px-5 py-4 text-white/90">
                             {a.deadline}

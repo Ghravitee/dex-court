@@ -82,7 +82,7 @@ export interface AgreementDetailsDTO {
   deadline: string;
   createdAt: string;
   includesFunds?: boolean;
-  secureTheFunds?: boolean;
+  hasSecuredFunds?: boolean;
   escrowContract?: string;
   creator: PartyDTO;
   firstParty: PartyDTO;
@@ -179,6 +179,7 @@ class AgreementService {
   }
 
   // Create new agreement
+  // Create new agreement
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
     console.log("🔄 Creating agreement with data:", data);
 
@@ -191,12 +192,27 @@ class AgreementService {
     formData.append("counterParty", data.counterParty);
     formData.append("deadline", data.deadline);
 
+    if (data.includesFunds !== undefined) {
+      formData.append("includesFunds", data.includesFunds.toString());
+    }
+
+    if (data.secureTheFunds !== undefined) {
+      formData.append("secureTheFunds", data.secureTheFunds.toString());
+    }
+
+    // for escrow-only behavior
+    if ((data as any).useEscrow !== undefined) {
+      formData.append("useEscrow", (data as any).useEscrow.toString());
+    }
+
     if (data.tokenSymbol) {
       formData.append("tokenSymbol", data.tokenSymbol);
     }
+
     if (data.amount) {
       formData.append("amount", data.amount.toString());
     }
+
     if (data.contractAddress) {
       formData.append("contractAddress", data.contractAddress);
     }
@@ -213,8 +229,9 @@ class AgreementService {
       firstParty: data.firstParty,
       counterParty: data.counterParty,
       deadline: data.deadline,
+      includesFunds: data.includesFunds,
+      secureTheFunds: data.secureTheFunds,
       files: files.map((f) => f.name),
-      filesCount: files.length,
     });
 
     const response = await api.post("/agreement", formData, {
@@ -222,6 +239,7 @@ class AgreementService {
         "Content-Type": "multipart/form-data",
       },
     });
+
     console.log("✅ Agreement created successfully:", response.data);
     return response.data;
   }
