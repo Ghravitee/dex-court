@@ -750,7 +750,7 @@ export default function AgreementDetails() {
         includeFunds: includeFunds,
         hasFundsWithoutEscrow: hasFundsWithoutEscrow,
         useEscrow: useEscrow,
-        secureTheFunds: agreementData.secureTheFunds || false,
+        secureTheFunds: agreementData.hasSecuredFunds || false,
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],

@@ -21,6 +21,8 @@ import { useNavigate } from "react-router-dom";
 import { useDisputesApi } from "../hooks/useDisputesApi";
 import type { DisputeRow } from "../types";
 import { WalletLinkingModal } from "../components/WalletLinkingModal";
+import TrustMeter from "../components/TrustMeter";
+import useTrustScore from "../hooks/useTrustScore";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -243,49 +245,6 @@ const RoleBadge = ({
   );
 };
 
-// Update the MiniTrust component to handle undefined roles
-function MiniTrust({
-  score,
-  roles = { judge: false, community: false, user: true },
-}: {
-  score: number;
-  roles?: { judge: boolean; community: boolean; user: boolean };
-}) {
-  const pct = Math.max(0, Math.min(100, score));
-
-  const getTrustBreakdown = () => {
-    // Ensure roles is defined
-    const safeRoles = roles || { judge: false, community: false, user: true };
-
-    let breakdown = "Base Score: 50";
-    if (safeRoles.judge) breakdown += " + Judge Bonus: 15";
-    if (safeRoles.community) breakdown += " + Community Bonus: 10";
-    if (!safeRoles.judge && !safeRoles.community)
-      breakdown += " (No role bonuses)";
-    return breakdown;
-  };
-
-  return (
-    <Tooltip content={getTrustBreakdown()}>
-      <div className="relative h-28 w-28">
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: `conic-gradient(rgba(16,185,129,.8) ${
-              pct * 3.6
-            }deg, rgba(244,63,94,.6) 0)`,
-            filter: "drop-shadow(0 0 12px rgba(34,211,238,.25))",
-          }}
-        />
-        <div className="absolute inset-1 grid place-items-center rounded-full bg-black/50 ring-1 ring-white/10">
-          <div className="text-lg font-bold text-white">{pct}</div>
-          <div className="text-[10px] text-cyan-300">Trust</div>
-        </div>
-      </div>
-    </Tooltip>
-  );
-}
-
 // Add the BentoCard component here since it's used in this file
 export function BentoCard({
   title,
@@ -342,6 +301,9 @@ export default function Profile() {
   const { isAuthenticated, user, login } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
+  const { trustScore, loading: trustScoreLoading } = useTrustScore(
+    user?.id?.toString() || null,
+  );
   const [showLinkModal, setShowLinkModal] = useState<{
     type: "telegram" | "wallet";
     open: boolean;
@@ -526,7 +488,7 @@ export default function Profile() {
       // Use the formatted handle that works for both Telegram and wallet
       handle: formatHandle(user),
       wallet: formatWallet(user),
-      score: user?.trustScore || 72,
+      score: trustScore,
       roles: user?.roles || { judge: false, community: false, user: true },
       isVerified: user?.isVerified || false,
       stats: user?.stats || {
@@ -536,7 +498,7 @@ export default function Profile() {
         revenue: { "7d": 0, "30d": 0, "90d": 0 },
       },
     };
-  }, [user]);
+  }, [user, trustScore]);
 
   // Format date for display - memoized callback
   const formatDate = useCallback((dateString: string) => {
@@ -823,7 +785,13 @@ export default function Profile() {
               </div>
 
               <div className="self-center">
-                <MiniTrust score={userData.score} roles={userData.roles} />
+                {trustScoreLoading ? (
+                  <div className="flex h-32 w-32 items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                  </div>
+                ) : (
+                  <TrustMeter score={trustScore} />
+                )}
               </div>
             </div>
           </div>

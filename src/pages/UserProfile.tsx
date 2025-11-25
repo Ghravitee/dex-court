@@ -21,6 +21,8 @@ import { useDisputesApi } from "../hooks/useDisputesApi"; // ADD THIS IMPORT
 import type { AgreementSummaryDTO } from "../services/agreementServices"; // UPDATE IMPORT
 import type { DisputeRow } from "../types"; // UPDATE IMPORT
 import { Loader2, Wallet } from "lucide-react";
+import TrustMeter from "../components/TrustMeter";
+import useTrustScore from "../hooks/useTrustScore";
 
 // Add AgreementStatusBadge component (same as in Profile)
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -123,94 +125,6 @@ const RoleBadge = ({
   );
 };
 
-// MiniTrust Component for UserProfile
-function MiniTrust({ score }: { score: number }) {
-  const pct = Math.max(0, Math.min(100, score));
-  return (
-    <div className="relative h-28 w-28">
-      <div
-        className="absolute inset-0 rounded-full"
-        style={{
-          background: `conic-gradient(rgba(16,185,129,.8) ${
-            pct * 3.6
-          }deg, rgba(244,63,94,.6) 0)`,
-          filter: "drop-shadow(0 0 12px rgba(34,211,238,.25))",
-        }}
-      />
-      <div className="absolute inset-1 grid place-items-center rounded-full bg-black/50 ring-1 ring-white/10">
-        <div className="text-lg font-bold text-white">{pct}</div>
-        <div className="text-[10px] text-cyan-300">Trust</div>
-      </div>
-    </div>
-  );
-}
-
-// Helper function to convert API user to your User interface
-// UserProfile.tsx - UPDATED TO PRIORITIZE TELEGRAM USERNAME
-function mapApiUserToUser(apiUser: any): User {
-  // Determine roles based on the role number from API
-  const getRolesFromRoleNumber = (role: number) => {
-    return {
-      judge: role === 2 || role === 3,
-      community: role === 1 || role === 3,
-      user: true,
-    };
-  };
-
-  // Calculate trust score based on verification and other factors
-  const calculateTrustScore = (isVerified: boolean, role: number) => {
-    let score = 50; // Base score
-    if (isVerified) score += 20;
-    if (role === 2 || role === 3) score += 15;
-    if (role === 1 || role === 3) score += 10;
-    return Math.min(score, 100);
-  };
-
-  const roles = getRolesFromRoleNumber(apiUser.role || 0);
-  const trustScore = calculateTrustScore(apiUser.isVerified, apiUser.role || 0);
-
-  const avatarUrl =
-    apiUser.avatarId && apiUser.id
-      ? `https://dev-api.dexcourt.com/accounts/${apiUser.id}/file/${apiUser.avatarId}`
-      : undefined;
-
-  // UPDATED: Use Telegram username as primary identifier
-  const primaryUsername = apiUser.telegram?.username
-    ? `@${apiUser.telegram.username}`
-    : `@${apiUser.username || "user"}`;
-
-  return {
-    id: apiUser.id.toString(),
-    username: apiUser.telegram?.username || apiUser.username || "", // Telegram username first
-    bio: apiUser.bio || null,
-    isVerified: apiUser.isVerified,
-    telegram: apiUser.telegram
-      ? {
-          username: apiUser.telegram.username,
-          id: apiUser.telegram.id,
-        }
-      : undefined,
-    walletAddress: apiUser.walletAddress,
-    role: apiUser.role || 0,
-    avatarId: apiUser.avatarId || null,
-    handle: primaryUsername, // Use Telegram username for display
-    wallet: apiUser.walletAddress
-      ? `${apiUser.walletAddress.slice(0, 6)}…${apiUser.walletAddress.slice(-4)}`
-      : "Not connected",
-    trustScore,
-    roles,
-    stats: {
-      deals: 0,
-      agreements: 0,
-      disputes: 0,
-      revenue: { "7d": 0, "30d": 0, "90d": 0 },
-    },
-    joinedDate: new Date().toISOString().split("T")[0],
-    verified: apiUser.isVerified,
-    avatarUrl: avatarUrl, // Use the correct URL pattern
-  };
-}
-
 export default function UserProfile() {
   const { handle } = useParams<{ handle: string }>();
   const { isAuthenticated, user: currentUser } = useAuth();
@@ -219,6 +133,9 @@ export default function UserProfile() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { trustScore, loading: trustScoreLoading } = useTrustScore(
+    user?.id || null,
+  );
 
   const {
     agreements,
@@ -318,6 +235,90 @@ export default function UserProfile() {
     }),
     [disputes],
   );
+
+  // Helper function to convert API user to your User interface
+  // UserProfile.tsx - UPDATED TO PRIORITIZE TELEGRAM USERNAME
+  function mapApiUserToUser(apiUser: any): User {
+    const getRolesFromRoleNumber = (role: number) => {
+      return {
+        judge: role === 2 || role === 3,
+        community: role === 1 || role === 3,
+        user: true,
+      };
+    };
+
+    const roles = getRolesFromRoleNumber(apiUser.role || 0);
+
+    const avatarUrl =
+      apiUser.avatarId && apiUser.id
+        ? `https://dev-api.dexcourt.com/accounts/${apiUser.id}/file/${apiUser.avatarId}`
+        : undefined;
+
+    const primaryUsername = apiUser.telegram?.username
+      ? `@${apiUser.telegram.username}`
+      : `@${apiUser.username || "user"}`;
+
+    return {
+      id: apiUser.id.toString(),
+      username: apiUser.telegram?.username || apiUser.username || "",
+      bio: apiUser.bio || null,
+      isVerified: apiUser.isVerified,
+      telegram: apiUser.telegram
+        ? {
+            username: apiUser.telegram.username,
+            id: apiUser.telegram.id,
+          }
+        : undefined,
+      walletAddress: apiUser.walletAddress,
+      role: apiUser.role || 0,
+      avatarId: apiUser.avatarId || null,
+      handle: primaryUsername,
+      wallet: apiUser.walletAddress
+        ? `${apiUser.walletAddress.slice(0, 6)}…${apiUser.walletAddress.slice(-4)}`
+        : "Not connected",
+      trustScore: 0, // This will be overridden by the real trust score from the hook
+      roles,
+      stats: {
+        deals: 0,
+        agreements: 0,
+        disputes: 0,
+        revenue: { "7d": 0, "30d": 0, "90d": 0 },
+      },
+      joinedDate: new Date().toISOString().split("T")[0],
+      verified: apiUser.isVerified,
+      avatarUrl: avatarUrl,
+    };
+  }
+
+  // Safe calculations for user stats - use real trust score
+  const safeStats = user?.stats || {
+    deals: 0,
+    agreements: 0,
+    disputes: disputeStats.total,
+    revenue: { "7d": 0, "30d": 0, "90d": 0 },
+  };
+
+  const safeRoles = user?.roles || {
+    judge: false,
+    community: false,
+    user: true,
+  };
+
+  // Use the real trust score from the hook instead of the mock one
+  const safeTrustScore = trustScore; // This is the real trust score from API
+  const safeJoinedDate =
+    user?.joinedDate || new Date().toISOString().split("T")[0];
+
+  // Calculate rates safely to avoid division by zero
+  const disputeRate =
+    safeStats.deals > 0
+      ? Math.round((disputeStats.total / safeStats.deals) * 100)
+      : 0;
+
+  const successRate =
+    safeStats.deals > 0
+      ? Math.round((safeStats.agreements / safeStats.deals) * 100)
+      : 0;
 
   // Check if this is the current user's profile - UPDATED TO USE TELEGRAM USERNAME
   const isOwnProfile = useMemo(() => {
@@ -500,35 +501,6 @@ export default function UserProfile() {
     );
   }
 
-  // Safe calculations for user stats
-  const safeStats = user?.stats || {
-    deals: 0,
-    agreements: 0,
-    disputes: disputeStats.total, // Use real dispute count from API
-    revenue: { "7d": 0, "30d": 0, "90d": 0 },
-  };
-
-  const safeRoles = user?.roles || {
-    judge: false,
-    community: false,
-    user: true,
-  };
-
-  const safeTrustScore = user?.trustScore || 50;
-  const safeJoinedDate =
-    user?.joinedDate || new Date().toISOString().split("T")[0];
-
-  // Calculate rates safely to avoid division by zero
-  const disputeRate =
-    safeStats.deals > 0
-      ? Math.round((disputeStats.total / safeStats.deals) * 100) // Use real dispute count
-      : 0;
-
-  const successRate =
-    safeStats.deals > 0
-      ? Math.round((safeStats.agreements / safeStats.deals) * 100)
-      : 0;
-
   return (
     <div className="relative space-y-8">
       <header className="flex items-center justify-between">
@@ -605,7 +577,13 @@ export default function UserProfile() {
               </div>
             </div>
             <div className="self-center">
-              <MiniTrust score={safeTrustScore} />
+              {trustScoreLoading ? (
+                <div className="flex h-32 w-32 items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                </div>
+              ) : (
+                <TrustMeter score={safeTrustScore} />
+              )}
             </div>
           </div>
         </div>

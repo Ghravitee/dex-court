@@ -560,3 +560,69 @@ button {
     padding: 0.8rem 1rem;
   }
 }
+
+.web3-corner-border {
+  position: relative;
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+/* Top-Right Gradient Corner */
+.web3-corner-border::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 130px;
+  height: 130px;
+  border-radius: 0 1.5rem 0 0;
+  background: radial-gradient(
+    circle at top right,
+    rgba(0, 255, 255, 0.6),
+    rgba(0, 200, 255, 0.2),
+    transparent
+  );
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+/* Bottom-Left Gradient Corner */
+.web3-corner-border::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: -2px;
+  width: 130px;
+  height: 130px;
+  border-radius: 0 0 0 1.5rem;
+  background: radial-gradient(
+    circle at bottom left,
+    rgba(0, 220, 255, 0.6),
+    rgba(10, 172, 242, 0.2),
+    transparent
+  );
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.web3-corner-border:hover::before,
+.web3-corner-border:hover::after {
+  transform: scale(1.15);
+  opacity: 1;
+  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.web3-corner-border::before,
+.web3-corner-border::after {
+  opacity: 0.8;
+  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Optional: Add a smooth transition for the card content too */
+.web3-corner-border .rounded-\[1\.4rem\] {
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.web3-corner-border:hover .rounded-\[1\.4rem\] {
+  transform: translateY(-2px);
+}
