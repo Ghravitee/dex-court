@@ -21,7 +21,7 @@ import {
 import { Button } from "../components/ui/button";
 import { getAgreement } from "../web3/readContract"; // adjust path if needed
 import type { Agreement } from "../web3/interfaces";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { useNetworkEnvironment, } from "../config/useNetworkEnvironment";
 
 // CountdownTimer unchanged except styling bits kept
 function CountdownTimer({
