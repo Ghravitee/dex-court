@@ -1801,6 +1801,38 @@ function Web3Escrow() {
                   Manage Agreement
                 </h2>
                 <div className="mb-6 flex gap-3">
+                  {agreement && (
+                    <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                      <h4 className="mb-2 font-semibold text-yellow-400">
+                        Debug Info:
+                      </h4>
+                      <div className="space-y-1 text-sm text-yellow-300">
+                        <div>
+                          isServiceProvider: {isServiceProvider ? "Yes" : "No"}
+                        </div>
+                        <div>
+                          isServiceRecipient:{" "}
+                          {isServiceRecipient ? "Yes" : "No"}
+                        </div>
+                        <div>
+                          Provider Signed (field 16):{" "}
+                          {getBoolField(16) ? "Yes" : "No"}
+                        </div>
+                        <div>
+                          Recipient Signed (field 17):{" "}
+                          {getBoolField(17) ? "Yes" : "No"}
+                        </div>
+                        <div>
+                          Funded (field 14): {getBoolField(14) ? "Yes" : "No"}
+                        </div>
+                        <div>Agreement ID: {agreementId}</div>
+                        <div>Your Address: {address}</div>
+                        <div>
+                          Service Provider Address: {getField(2)?.toString()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex-1">
                     <input
                       type="text"
