@@ -9,7 +9,7 @@ import {
   DollarSign,
   Clock,
   Eye,
-  EyeOff,
+  // EyeOff,
   Shield,
   CheckCircle,
   XCircle,
@@ -17,13 +17,12 @@ import {
   Loader2,
   Globe,
   Lock,
-  Ban,
-  Info,
-  Send,
-  ThumbsUp,
-  ThumbsDown,
   Package,
-  PackageCheck,
+  // Ban,
+  // Send,
+  // ThumbsUp,
+  // ThumbsDown,
+  // PackageCheck,
   UserCheck,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -120,44 +119,6 @@ const getAvatarIdFromParty = (party: any): number | null => {
   return avatarId ? Number(avatarId) : null;
 };
 
-// Helper to check if current user is counterparty
-const isCurrentUserCounterparty = (agreement: any, currentUser: any) => {
-  if (!agreement || !currentUser) return false;
-
-  const currentUserAddress = currentUser?.walletAddress?.toLowerCase();
-  console.log("currentUserAddress", currentUserAddress);
-  const counterpartyAddress = getWalletAddressFromParty(
-    agreement.counterParty,
-  )?.toLowerCase();
-  console.log("counterpartyAddress", counterpartyAddress);
-
-  return currentUserAddress === counterpartyAddress;
-};
-
-// Helper to check if current user is first party
-const isCurrentUserFirstParty = (agreement: any, currentUser: any) => {
-  if (!agreement || !currentUser) return false;
-
-  const currentUserAddress = currentUser?.walletAddress?.toLowerCase();
-  const firstPartyAddress = getWalletAddressFromParty(
-    agreement.firstParty.username,
-  )?.toLowerCase();
-
-  return currentUserAddress === firstPartyAddress;
-};
-
-// Helper to check if current user is creator
-const isCurrentUserCreator = (agreement: any, currentUser: any) => {
-  if (!agreement || !currentUser) return false;
-
-  const currentUserAddress = currentUser?.walletAddress?.toLowerCase();
-  const creatorAddress = getWalletAddressFromParty(
-    agreement.creator,
-  )?.toLowerCase();
-
-  return currentUserAddress === creatorAddress;
-};
-
 // Format date with time
 const formatDateWithTime = (dateString: string): string => {
   const date = new Date(dateString);
@@ -225,13 +186,59 @@ interface EscrowDetailsData {
   _raw: any;
 }
 
+// Helper badge components for better styling
+const StatusBadge = ({ value }: { value: boolean }) => (
+  <div
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+    }`}
+  >
+    <div
+      className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
+    ></div>
+    {value ? "Yes" : "No"}
+  </div>
+);
+
+const FeatureBadge = ({ value }: { value: boolean }) => (
+  <div
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-blue-400/30 bg-blue-500/20 text-blue-300"
+        : "border border-gray-400/30 bg-gray-500/20 text-gray-400"
+    }`}
+  >
+    <div
+      className={`h-1.5 w-1.5 rounded-full ${value ? "bg-blue-400" : "bg-gray-400"}`}
+    ></div>
+    {value ? "Enabled" : "Disabled"}
+  </div>
+);
+
+const SafetyBadge = ({ value }: { value: boolean }) => (
+  <div
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+    }`}
+  >
+    <div
+      className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
+    ></div>
+    {value ? "Yes" : "No"}
+  </div>
+);
+
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [escrow, setEscrow] = useState<EscrowDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showEscrowAddress, setShowEscrowAddress] = useState(false);
+  // const [showEscrowAddress, setShowEscrowAddress] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
 
@@ -299,10 +306,17 @@ export default function EscrowDetails() {
   };
 
   const fetchOnChainAgreement = useCallback(
-    async (agreementId?: number) => {
-      if (!agreementId) return;
+    async (agreementData: any) => {
+      if (!agreementData) return;
       if (!networkInfo.chainId) {
         console.warn("chainId not available - skipping on-chain fetch");
+        return;
+      }
+
+      // FIX: Use contractAgreementId instead of the database ID
+      const onChainId = agreementData.contractAgreementId;
+      if (!onChainId) {
+        console.warn("No contractAgreementId found - skipping on-chain fetch");
         return;
       }
 
@@ -310,7 +324,7 @@ export default function EscrowDetails() {
       try {
         const res = await getAgreement(
           networkInfo.chainId as number,
-          BigInt(agreementId),
+          BigInt(onChainId), // Use the contractAgreementId here
         );
         console.log("📦 On-chain agreement data:", res);
         setOnChainAgreement(res);
@@ -330,21 +344,18 @@ export default function EscrowDetails() {
 
     setLoading(true);
     try {
-      // FIX 1: Remove the "E-" prefix handling - use the ID directly
       const escrowId = parseInt(id);
       const agreementData =
         await agreementService.getAgreementDetails(escrowId);
 
       console.log("📋 EscrowDetails API Response:", agreementData);
-      console.log("🔍 Party Data:", {
-        firstParty: agreementData.firstParty,
-        counterParty: agreementData.counterParty,
-        creator: agreementData.creator,
-      });
+      console.log(
+        "🔍 Contract Agreement ID:",
+        agreementData.contractAgreementId,
+      );
 
-      // Transform API data to frontend format (same transformation as in Escrow.tsx)
+      // Transform API data to frontend format
       const transformedEscrow: EscrowDetailsData = {
-        // FIX 1: Use the actual ID without "E-" prefix
         id: `${agreementData.id}`,
         title: agreementData.title,
         description: agreementData.description,
@@ -352,9 +363,8 @@ export default function EscrowDetails() {
           agreementData.visibility === AgreementVisibilityEnum.PRIVATE
             ? "private"
             : "public",
-        // FIX 2: Use the improved wallet address extraction
-        from: getWalletAddressFromParty(agreementData.counterParty), // Service Recipient = Payer
-        to: getWalletAddressFromParty(agreementData.firstParty), // Service Provider = Payee
+        from: getWalletAddressFromParty(agreementData.counterParty),
+        to: getWalletAddressFromParty(agreementData.firstParty),
         status: apiStatusToFrontend(agreementData.status),
         dateCreated: agreementData.createdAt,
         deadline: agreementData.deadline,
@@ -379,10 +389,10 @@ export default function EscrowDetails() {
       };
 
       console.log("🔄 Transformed Escrow:", transformedEscrow);
-      console.log("🔗 Fetching on-chain agreement for ID:", agreementData.id);
 
-      // replace the agreementData.id with the Contract Agreement ID to fetch on-chain data
-      fetchOnChainAgreement(agreementData.id).catch((e) => console.warn(e));
+      // FIX: Pass the entire agreementData to fetchOnChainAgreement
+      // so it can extract the contractAgreementId
+      fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
       setEscrow(transformedEscrow);
     } catch (error) {
       console.error("Failed to fetch escrow:", error);
@@ -403,7 +413,7 @@ export default function EscrowDetails() {
       const agreementData =
         await agreementService.getAgreementDetails(escrowId);
 
-      // Transform data (same logic as above)
+      // Transform API data to frontend format
       const transformedEscrow: EscrowDetailsData = {
         id: `${agreementData.id}`,
         title: agreementData.title,
@@ -438,13 +448,16 @@ export default function EscrowDetails() {
       };
 
       setEscrow(transformedEscrow);
+
+      // FIX: Also update on-chain data in background refresh
+      fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
     } catch (error) {
       console.error("Background escrow fetch failed:", error);
     } finally {
       setIsRefreshing(false);
       setLastUpdate(Date.now());
     }
-  }, [id, isRefreshing]);
+  }, [id, isRefreshing, fetchOnChainAgreement]);
 
   useEffect(() => {
     fetchEscrowDetails();
@@ -508,16 +521,49 @@ export default function EscrowDetails() {
   };
 
   // Role detection
+  // Role detection - FIXED
+  // Role detection using ON-CHAIN data - FIXED
   const isCounterparty =
-    escrow && user ? isCurrentUserCounterparty(escrow._raw, user) : false;
+    onChainAgreement && user
+      ? user.walletAddress?.toLowerCase() ===
+        onChainAgreement.serviceProvider?.toLowerCase()
+      : false;
+
   const isFirstParty =
-    escrow && user ? isCurrentUserFirstParty(escrow._raw, user) : false;
+    onChainAgreement && user
+      ? user.walletAddress?.toLowerCase() ===
+        onChainAgreement.serviceRecipient?.toLowerCase()
+      : false;
+
   const isCreator =
-    escrow && user ? isCurrentUserCreator(escrow._raw, user) : false;
+    onChainAgreement && user
+      ? user.walletAddress?.toLowerCase() ===
+        onChainAgreement.creator?.toLowerCase()
+      : false;
+
   const isParticipant = isFirstParty || isCounterparty;
 
-  console.log("escrow", escrow);
-  console.log("user", user);
+  console.log("Role debug with on-chain data:", {
+    isFirstParty,
+    isCounterparty,
+    isCreator,
+    isParticipant,
+    userWallet: user?.walletAddress,
+    onChainServiceProvider: onChainAgreement?.serviceProvider,
+    onChainServiceRecipient: onChainAgreement?.serviceRecipient,
+    onChainCreator: onChainAgreement?.creator,
+  });
+
+  console.log("Role debug:", {
+    isFirstParty,
+    isCounterparty,
+    isCreator,
+    isParticipant,
+    userWallet: user?.walletAddress,
+    firstParty: escrow?._raw?.firstParty,
+    counterParty: escrow?._raw?.counterParty,
+    creator: escrow?._raw?.creator,
+  });
 
   // Calculate days remaining
   const daysRemaining = escrow
@@ -785,203 +831,281 @@ export default function EscrowDetails() {
                 </div>
               </div>
 
-              {/* Financial Details */}
-              {escrow.includeFunds === "yes" && (
-                <div
-                  className={`rounded-lg border ${
-                    escrow.useEscrow
-                      ? "border-emerald-400/30 bg-emerald-500/10"
-                      : "border-cyan-400/30 bg-cyan-500/10"
-                  } p-4`}
-                >
-                  <h3
-                    className={`mb-3 text-lg font-semibold ${
-                      escrow.useEscrow ? "text-emerald-300" : "text-cyan-300"
-                    }`}
-                  >
-                    Financial Details
-                  </h3>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* Complete On-Chain Agreement Details */}
+              {/* Complete On-Chain Agreement Details */}
+              {onChainAgreement && (
+                <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-6 backdrop-blur-sm">
+                  <div className="mb-6 flex items-center justify-between">
                     <div>
-                      <div
-                        className={`text-sm ${
-                          escrow.useEscrow
-                            ? "text-emerald-300"
-                            : "text-cyan-300"
-                        }`}
-                      >
-                        Funds Included
+                      <h3 className="flex items-center gap-2 text-xl font-bold text-white">
+                        <div className="h-2 w-2 animate-pulse rounded-full bg-cyan-400"></div>
+                        On-Chain Agreement Details
+                      </h3>
+                      <p className="mt-1 text-sm text-cyan-300/80">
+                        Live blockchain data • Contract ID:{" "}
+                        {escrow?._raw?.contractAgreementId || "N/A"}
+                      </p>
+                    </div>
+                    <div className="text-xs text-cyan-400/60">
+                      {onChainLoading ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Updating...
+                        </div>
+                      ) : (
+                        "Live"
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2">
+                    {/* Basic Information Card */}
+                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4 backdrop-blur-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-cyan-400" />
+                        <h4 className="text-sm font-semibold text-cyan-300">
+                          Parties & Basic Info
+                        </h4>
                       </div>
-                      <div className="text-lg font-semibold text-white">
-                        Yes
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-1 text-xs text-cyan-300/80">
+                            Creator
+                          </div>
+                          <div className="rounded bg-cyan-500/10 px-2 py-1 font-mono text-sm break-all text-white">
+                            {onChainAgreement.creator || "N/A"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-cyan-300/80">
+                            Service Provider
+                          </div>
+                          <div className="rounded bg-cyan-500/10 px-2 py-1 font-mono text-sm break-all text-white">
+                            {onChainAgreement.serviceProvider || "N/A"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-cyan-300/80">
+                            Service Recipient
+                          </div>
+                          <div className="rounded bg-cyan-500/10 px-2 py-1 font-mono text-sm break-all text-white">
+                            {onChainAgreement.serviceRecipient || "N/A"}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <div
-                        className={`text-sm ${
-                          escrow.useEscrow
-                            ? "text-emerald-300"
-                            : "text-cyan-300"
-                        }`}
-                      >
-                        Escrow Protection
+                    {/* Financial Details Card */}
+                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4 backdrop-blur-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-emerald-400" />
+                        <h4 className="text-sm font-semibold text-emerald-300">
+                          Financial Details
+                        </h4>
                       </div>
-                      <div className="text-lg font-semibold text-white">
-                        {escrow.useEscrow ? "Enabled" : "Not Used"}
-                      </div>
-                    </div>
-
-                    {escrow.amount && (
-                      <div className="md:col-span-2">
-                        <div
-                          className={`text-sm ${
-                            escrow.useEscrow
-                              ? "text-emerald-300"
-                              : "text-cyan-300"
-                          }`}
-                        >
-                          Amount
-                        </div>
-                        <div className="text-lg font-semibold text-white">
-                          {formatNumberWithCommas(escrow.amount)}{" "}
-                          {escrow.token || ""}
-                        </div>
-                      </div>
-                    )}
-
-                    {escrow.useEscrow && escrow.escrowAddress && (
-                      <div className="md:col-span-2">
-                        <div className="mb-2 text-sm text-emerald-300">
-                          Escrow Contract Address
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="flex-1 rounded bg-black/20 px-2 py-1 font-mono text-sm break-all text-white">
-                            {showEscrowAddress
-                              ? escrow.escrowAddress
-                              : `${escrow.escrowAddress.slice(0, 10)}...${escrow.escrowAddress.slice(-8)}`}
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-1 text-xs text-emerald-300/80">
+                            Token
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setShowEscrowAddress(!showEscrowAddress)
-                            }
-                            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          >
-                            {showEscrowAddress ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <div className="rounded bg-emerald-500/10 px-2 py-1 font-mono text-sm break-all text-white">
+                            {onChainAgreement.token === ZERO_ADDRESS
+                              ? "ETH"
+                              : onChainAgreement.token}
+                          </div>
                         </div>
-                      </div>
-                    )}
-
-                    {!escrow.useEscrow && escrow.includeFunds === "yes" && (
-                      <div className="md:col-span-2">
-                        <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-                          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+                        <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <p className="text-sm text-cyan-300">
-                              Funds information is for reference only and not
-                              secured in escrow.
-                            </p>
-                            <p className="mt-1 text-xs text-cyan-300/70">
-                              The amount and token details help track the
-                              financial scope without automated fund handling.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* On-chain Contract Snapshot */}
-                    {onChainAgreement && (
-                      <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4">
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="text-sm text-cyan-300">
-                            On-chain Snapshot
-                          </div>
-                          <div className="text-xs text-cyan-200/70">
-                            {onChainLoading ? "Loading..." : "Live"}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <div>
-                            <div className="text-xs text-cyan-300">
-                              Contract Token
+                            <div className="mb-1 text-xs text-emerald-300/80">
+                              Amount
                             </div>
-                            <div className="font-medium break-all text-white">
-                              {onChainAgreement.token ?? "ETH"}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-xs text-cyan-300">
-                              Amount (on-chain)
-                            </div>
-                            <div className="font-mono text-white">
+                            <div className="font-mono text-sm text-white">
                               {formatOnChainAmount(onChainAgreement.amount)}{" "}
                               {tokenSymbol}
                             </div>
                           </div>
-
                           <div>
-                            <div className="text-xs text-cyan-300">
+                            <div className="mb-1 text-xs text-emerald-300/80">
                               Remaining
                             </div>
-                            <div className="font-mono text-white">
+                            <div className="font-mono text-sm text-white">
                               {formatOnChainAmount(
                                 onChainAgreement.remainingAmount,
-                              )}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-xs text-cyan-300">Funded</div>
-                            <div className="font-mono text-white">
-                              {String(onChainAgreement.funded)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-xs text-cyan-300">Vesting</div>
-                            <div className="font-mono text-white">
-                              {String(onChainAgreement.vesting)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-xs text-cyan-300">
-                              Voting ID
-                            </div>
-                            <div className="font-mono text-white">
-                              {onChainAgreement.votingId?.toString?.() ?? "-"}
-                            </div>
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="text-xs text-cyan-300">
-                              Token Address
-                            </div>
-                            <div className="font-mono text-sm break-all text-white">
-                              {onChainAgreement.token ?? "-"}
+                              )}{" "}
+                              {tokenSymbol}
                             </div>
                           </div>
                         </div>
+                        <div>
+                          <div className="mb-1 text-xs text-emerald-300/80">
+                            Funded
+                          </div>
+                          <div
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                              onChainAgreement.funded
+                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                            }`}
+                          >
+                            <div
+                              className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
+                            ></div>
+                            {onChainAgreement.funded ? "Yes" : "No"}
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Agreement Status Card */}
+                    <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4 backdrop-blur-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-400" />
+                        <h4 className="text-sm font-semibold text-blue-300">
+                          Agreement Status
+                        </h4>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 text-xs text-blue-300/80">
+                              Signed
+                            </div>
+                            <StatusBadge value={onChainAgreement.signed} />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-blue-300/80">
+                              Completed
+                            </div>
+                            <StatusBadge value={onChainAgreement.completed} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 text-xs text-blue-300/80">
+                              Provider Accepted
+                            </div>
+                            <StatusBadge
+                              value={onChainAgreement.acceptedByServiceProvider}
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-blue-300/80">
+                              Recipient Accepted
+                            </div>
+                            <StatusBadge
+                              value={
+                                onChainAgreement.acceptedByServiceRecipient
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timeline & Features Card */}
+                    <div className="rounded-xl border border-purple-400/20 bg-purple-500/5 p-4 backdrop-blur-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-purple-400" />
+                        <h4 className="text-sm font-semibold text-purple-300">
+                          Timeline & Features
+                        </h4>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-1 text-xs text-purple-300/80">
+                            Deadline Duration
+                          </div>
+                          <div className="rounded bg-purple-500/10 px-2 py-1 font-mono text-sm text-white">
+                            {onChainAgreement.deadlineDuration?.toString() ||
+                              "N/A"}{" "}
+                            seconds
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 text-xs text-purple-300/80">
+                              Vesting
+                            </div>
+                            <FeatureBadge value={onChainAgreement.vesting} />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-purple-300/80">
+                              Private
+                            </div>
+                            <FeatureBadge
+                              value={onChainAgreement.privateMode}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-purple-300/80">
+                            Delivery Submitted
+                          </div>
+                          <StatusBadge
+                            value={onChainAgreement.deliverySubmitted}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dispute & Cancellation Card */}
+                    <div className="rounded-xl border border-rose-400/20 bg-rose-500/5 p-4 backdrop-blur-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-rose-400" />
+                        <h4 className="text-sm font-semibold text-rose-300">
+                          Dispute & Safety
+                        </h4>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 text-xs text-rose-300/80">
+                              Disputed
+                            </div>
+                            <SafetyBadge value={onChainAgreement.disputed} />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-rose-300/80">
+                              Frozen
+                            </div>
+                            <SafetyBadge value={onChainAgreement.frozen} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 text-xs text-rose-300/80">
+                              Pending Cancel
+                            </div>
+                            <SafetyBadge
+                              value={onChainAgreement.pendingCancellation}
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-rose-300/80">
+                              Cancelled
+                            </div>
+                            <SafetyBadge
+                              value={onChainAgreement.orderCancelled}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-rose-300/80">
+                            Voting ID
+                          </div>
+                          <div className="w-fit rounded bg-rose-500/10 px-2 py-1 font-mono text-sm text-white">
+                            {onChainAgreement.votingId?.toString() || "0"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Action Buttons Section */}
-            {(isParticipant || isCreator) &&
+            {/* {(isParticipant || isCreator) &&
               escrow?.status !== "completed" &&
               escrow?.status !== "disputed" && (
                 <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -1057,7 +1181,7 @@ export default function EscrowDetails() {
                     )}
                   </div>
                 </div>
-              )}
+              )} */}
 
             {/* Activity Timeline */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -1148,86 +1272,15 @@ export default function EscrowDetails() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Escrow Summary */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-              <h3 className="mb-4 text-lg font-semibold text-white">
-                Escrow Summary
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Escrow ID</span>
-                  <span className="text-white">{escrow.id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Type</span>
-                  <span className="text-white capitalize">{escrow.type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Status</span>
-                  <span
-                    className={`rounded px-2 py-1 text-xs font-medium ${statusInfo.bgColor} ${statusInfo.color}`}
-                  >
-                    {statusInfo.label}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Files Attached</span>
-                  <span className="text-white">
-                    {escrow.images?.length || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-cyan-300">Funds Involved</span>
-                  <span className="text-white">
-                    {escrow.includeFunds === "yes" ? "Yes" : "No"}
-                  </span>
-                </div>
-                {escrow.includeFunds === "yes" && (
-                  <div className="flex justify-between">
-                    <span className="text-cyan-300">Escrow Used</span>
-                    <span className="text-white">
-                      {escrow.useEscrow ? "Yes" : "No"}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
+            {/* Your Role Information */}
             {/* Your Role Information */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Your Role
               </h3>
               <div className="space-y-3">
-                {isFirstParty && (
-                  <div className="rounded-lg bg-blue-500/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-blue-400" />
-                      <span className="font-medium text-blue-300">
-                        Service Provider (Payee)
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-blue-200/80">
-                      You provide the service and receive payment upon
-                      completion.
-                    </p>
-                  </div>
-                )}
-                {isCounterparty && (
-                  <div className="rounded-lg bg-green-500/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <UserCheck className="h-4 w-4 text-green-400" />
-                      <span className="font-medium text-green-300">
-                        Service Recipient (Payer)
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-green-200/80">
-                      You receive the service and provide payment secured in
-                      escrow.
-                    </p>
-                  </div>
-                )}
-                {isCreator && !isFirstParty && !isCounterparty && (
+                {/* Show all applicable roles */}
+                {isCreator && (
                   <div className="rounded-lg bg-purple-500/10 p-3">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-purple-400" />
@@ -1237,6 +1290,34 @@ export default function EscrowDetails() {
                     </div>
                     <p className="mt-1 text-xs text-purple-200/80">
                       You created this escrow agreement in the system.
+                    </p>
+                  </div>
+                )}
+                {isFirstParty && (
+                  <div className="rounded-lg bg-blue-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-400" />
+                      <span className="font-medium text-blue-300">
+                        Service Recipient (Payer)
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-blue-200/80">
+                      You receive the service and provide payment secured in
+                      escrow.
+                    </p>
+                  </div>
+                )}
+                {isCounterparty && (
+                  <div className="rounded-lg bg-green-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4 text-green-400" />
+                      <span className="font-medium text-green-300">
+                        Service Provider (Payee)
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-green-200/80">
+                      You provide the service and receive payment upon
+                      completion.
                     </p>
                   </div>
                 )}

@@ -84,6 +84,7 @@ export interface AgreementDetailsDTO {
   tokenSymbol?: string;
   deadline: string;
   createdAt: string;
+  contractAgreementId?: string;
   includesFunds?: boolean;
   hasSecuredFunds?: boolean;
   escrowContract?: string;
