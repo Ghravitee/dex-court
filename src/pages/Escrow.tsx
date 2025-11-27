@@ -971,6 +971,9 @@ Created: ${new Date().toISOString()}
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true, // Always true for escrow
             secureTheFunds: true, // Always true for escrow
+            chainId: chainId,
+            contractAgreementId: agreementIdNumber.toString(),
+            txHash: txHash,
           },
           filesToUpload,
         );
