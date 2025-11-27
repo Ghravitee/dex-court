@@ -24,27 +24,37 @@ import Web3Vote from "./pages/Web3Vote";
 import Web3Escrow from "./pages/Web3Escrow";
 import { useEffect, useState } from "react";
 import { LoginModal } from "./components/LoginModal";
+import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
+import AdminUsers from "./pages/AdminUsers"; // NEW
+import AdminAnalytics from "./pages/AdminAnalytics"; // NEW
 
 // Auto Login Modal Component
 function AutoLoginModal() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isAuthInitialized } = useAuth();
   const location = useLocation();
   const [showModal, setShowModal] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
-    // Only show modal on homepage for unauthenticated users who haven't interacted yet
     const isHomepage = location.pathname === "/";
 
+    // ✅ Don't do anything until auth has initialized
+    if (!isAuthInitialized) return;
+
     if (isHomepage && !isAuthenticated && !isLoading && !hasInteracted) {
-      // Small delay to ensure the page is loaded
       const timer = setTimeout(() => {
         setShowModal(true);
       }, 3000);
 
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isLoading, location.pathname, hasInteracted]);
+  }, [
+    isAuthInitialized,
+    isAuthenticated,
+    isLoading,
+    location.pathname,
+    hasInteracted,
+  ]);
 
   const handleClose = () => {
     setShowModal(false);
@@ -67,6 +77,7 @@ function AppContent() {
         <ScrollToTop />
         <AutoLoginModal />
         <Routes>
+          {/* Regular User Routes */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Index />} />
             <Route path="agreements" element={<Agreements />} />
@@ -82,6 +93,14 @@ function AppContent() {
             <Route path="profile" element={<Profile />} />
             <Route path="profile/:handle" element={<UserProfile />} />
           </Route>
+
+          {/* Admin Routes - Separate Layout */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminUsers />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="analytics" element={<AdminAnalytics />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

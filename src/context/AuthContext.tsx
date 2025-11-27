@@ -29,11 +29,12 @@ function getAvatarUrl(
 }
 
 function mapApiResponseToUser(apiUser: AccountSummaryDTO): User {
-  function getRolesFromRoleNumber(role: number) {
+  function getRolesFromRoleNumber(role: number, isAdmin: boolean) {
     return {
-      judge: role === 2 || role === 3,
-      community: role === 1 || role === 3,
-      user: role >= 0,
+      admin: isAdmin, // Use the new isAdmin field directly
+      judge: role === 2, // 2 is judge
+      community: role === 1, // 1 is community
+      user: role >= 0, // Any non-negative role is a user
     };
   }
 
@@ -45,7 +46,10 @@ function mapApiResponseToUser(apiUser: AccountSummaryDTO): User {
     return Math.min(score, 100);
   };
 
-  const roles = getRolesFromRoleNumber(apiUser.role || 0);
+  const roles = getRolesFromRoleNumber(
+    apiUser.role || 0,
+    apiUser.isAdmin || false,
+  );
   const trustScore = calculateTrustScore(apiUser.isVerified, apiUser.role || 0);
 
   const telegram = apiUser.telegram
@@ -57,6 +61,7 @@ function mapApiResponseToUser(apiUser: AccountSummaryDTO): User {
     username: apiUser.username || "",
     bio: apiUser.bio || null,
     isVerified: apiUser.isVerified,
+    isAdmin: apiUser.isAdmin || false, //
     telegram,
     walletAddress: apiUser.walletAddress,
     role: apiUser.role || 0,
@@ -87,13 +92,14 @@ function createFallbackUser(): User {
     username: "",
     bio: null,
     isVerified: false,
+    isAdmin: false,
     walletAddress: null,
     role: 0,
     avatarId: null,
     handle: "@user",
     wallet: "Not connected",
     trustScore: 50,
-    roles: { judge: false, community: false, user: true },
+    roles: { judge: false, community: false, admin: false, user: true },
     stats: {
       deals: 0,
       agreements: 0,
@@ -144,6 +150,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const initializedRef = useRef(false);
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
+
   const [loginMethod, setLoginMethod] = useState<"telegram" | "wallet" | null>(
     null,
   );
@@ -239,9 +247,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (userData) {
       setUser(userData);
-      setIsAuthenticated(!!userData && userData.id !== "unknown");
+      setIsAuthenticated(userData.id !== "unknown");
     }
-  }, [userData]);
+
+    if (!userLoading) {
+      setIsAuthInitialized(true);
+    }
+  }, [userData, userLoading]);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -249,16 +261,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initializeAuth = async () => {
       const token = localStorage.getItem("authToken");
+
       if (token && !isValidToken(token)) {
-        console.warn("Clearing invalid token on app startup");
         clearAuthToken();
+        setIsAuthInitialized(true);
         return;
       }
 
       if (token) {
         agreementService.setAuthToken(token);
-        refetchUser();
+        await refetchUser();
       }
+
+      setIsAuthInitialized(true);
     };
 
     initializeAuth();
@@ -342,6 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const contextValue: AuthContextType = {
     isAuthenticated,
+    isAuthInitialized,
     isLoading,
     user,
     login,

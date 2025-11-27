@@ -10,6 +10,7 @@ export interface User {
   };
   telegramUsername?: string;
   walletAddress: string | null;
+  isAdmin: boolean;
   role: number;
   avatarId: number | null;
   handle?: string;
@@ -19,6 +20,7 @@ export interface User {
     judge: boolean;
     community: boolean;
     user: boolean;
+    admin?: boolean;
   };
   stats?: {
     deals: number;
@@ -37,6 +39,7 @@ export interface User {
 
 export interface AuthContextType {
   isAuthenticated: boolean;
+  isAuthInitialized: boolean;
   isLoading: boolean;
   user: User | null;
   login: (otp: string) => Promise<void>;

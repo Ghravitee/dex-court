@@ -194,6 +194,30 @@ const parseFormattedNumber = (formattedValue: string): string => {
   return formattedValue.replace(/,/g, "");
 };
 
+// Add skeleton loading component
+const AgreementSkeleton = () => (
+  <tr className="animate-pulse border-t border-white/10">
+    <td className="px-5 py-4">
+      <div className="h-4 w-20 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-40 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-32 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-24 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-16 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-6 w-16 rounded bg-white/10"></div>
+    </td>
+  </tr>
+);
+
 export default function Agreements() {
   const navigate = useNavigate();
   const [typeValue, setTypeValue] = useState<"Public" | "Private" | "">("");
@@ -1289,14 +1313,18 @@ export default function Agreements() {
                   </thead>
                   <tbody>
                     {loading ? (
+                      <>
+                        {Array.from({ length: pageSize }).map((_, index) => (
+                          <AgreementSkeleton key={index} />
+                        ))}
+                      </>
+                    ) : filteredTableAgreements.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-5 py-8 text-center">
-                          <div className="flex items-center justify-center">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin text-cyan-400" />
-                            <span className="text-cyan-300">
-                              Loading agreements...
-                            </span>
-                          </div>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-8 text-center text-cyan-300"
+                        >
+                          No agreements found.
                         </td>
                       </tr>
                     ) : filteredTableAgreements.length === 0 ? (
@@ -1565,7 +1593,7 @@ export default function Agreements() {
         {/* Create Agreement Modal */}
         {isModalOpen && (
           <div
-            onClick={() => setIsModalOpen(false)}
+            // onClick={() => setIsModalOpen(false)}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
             <form

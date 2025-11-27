@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { FaUser, FaInstagram, FaHandshake, FaEdit } from "react-icons/fa";
+import {
+  FaUser,
+  FaInstagram,
+  FaHandshake,
+  FaEdit,
+  FaCrown,
+} from "react-icons/fa";
 import { FaXTwitter, FaTiktok } from "react-icons/fa6";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { FiSend, FiAlertCircle } from "react-icons/fi";
@@ -227,6 +233,7 @@ const ProfileUpdateModal = ({
 };
 
 // Role Badge Component
+// Role Badge Component - UPDATED WITH ADMIN
 const RoleBadge = ({
   role,
   icon,
@@ -489,7 +496,12 @@ export default function Profile() {
       handle: formatHandle(user),
       wallet: formatWallet(user),
       score: trustScore,
-      roles: user?.roles || { judge: false, community: false, user: true },
+      roles: user?.roles || {
+        admin: false,
+        judge: false,
+        community: false,
+        user: true,
+      },
       isVerified: user?.isVerified || false,
       stats: user?.stats || {
         deals: 0,
@@ -755,6 +767,12 @@ export default function Profile() {
 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
+                  {/* ADMIN BADGE - Added first since it's highest role */}
+                  <RoleBadge
+                    role={userData.roles?.admin || false}
+                    icon={<FaCrown className="h-4 w-4 text-yellow-400" />}
+                    tooltip="Administrator"
+                  />
                   <RoleBadge
                     role={userData.roles?.judge || false}
                     icon={<Judge />}
@@ -768,6 +786,7 @@ export default function Profile() {
                   <RoleBadge
                     role={
                       (userData.roles?.user || false) &&
+                      !(userData.roles?.admin || false) &&
                       !(userData.roles?.judge || false) &&
                       !(userData.roles?.community || false)
                     }
@@ -978,7 +997,35 @@ export default function Profile() {
         {/* Judged Disputes & Reputation */}
         <div className="flex flex-col gap-4">
           {/* Show Judged Disputes only for judges */}
-          {userData.roles.judge && (
+          {/* Show Admin Panel Access for admins */}
+          {userData.roles.admin && (
+            <section className="glass rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white/90">
+                Administrator Access
+              </h3>
+              <div className="py-6 text-center">
+                <div className="mb-3 flex justify-center">
+                  <FaCrown className="h-8 w-8 text-yellow-400" />
+                </div>
+                <div className="mb-2 text-lg text-yellow-300">
+                  Platform Administrator
+                </div>
+                <div className="mb-4 text-sm text-white/50">
+                  You have full access to the admin panel for user management
+                  and platform analytics.
+                </div>
+                <Button
+                  onClick={() => navigate("/admin")}
+                  className="border-yellow-400/40 bg-yellow-600/20 text-yellow-100 hover:bg-yellow-500/30"
+                >
+                  Access Admin Panel
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {/* Show Judged Disputes only for judges (and not admins who aren't judges) */}
+          {userData.roles.judge && !userData.roles.admin && (
             <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white/90">
                 Judged Disputes
@@ -995,25 +1042,28 @@ export default function Profile() {
             </section>
           )}
 
-          {/* Show Community Stats for community members */}
-          {userData.roles.community && !userData.roles.judge && (
-            <section className="glass rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
-              <h3 className="mb-4 text-lg font-semibold text-white/90">
-                Community Contributions
-              </h3>
-              <div className="py-8 text-center">
-                <div className="mb-2 text-lg text-emerald-300">
-                  Active Community Member
+          {/* Show Community Stats for community members (and not admins/judges) */}
+          {userData.roles.community &&
+            !userData.roles.judge &&
+            !userData.roles.admin && (
+              <section className="glass rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white/90">
+                  Community Contributions
+                </h3>
+                <div className="py-8 text-center">
+                  <div className="mb-2 text-lg text-emerald-300">
+                    Active Community Member
+                  </div>
+                  <div className="text-sm text-white/50">
+                    Thank you for being part of the DexCourt community!
+                  </div>
                 </div>
-                <div className="text-sm text-white/50">
-                  Thank you for being part of the DexCourt community!
-                </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
-          {/* Show welcome for basic users */}
+          {/* Show welcome for basic users (no special roles) */}
           {userData.roles.user &&
+            !userData.roles.admin &&
             !userData.roles.judge &&
             !userData.roles.community && (
               <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -1043,18 +1093,22 @@ export default function Profile() {
           >
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
-                {userData.roles.judge
-                  ? "Judge Reputation"
-                  : userData.roles.community
-                    ? "Community Reputation"
-                    : "Building Reputation"}
+                {userData.roles.admin
+                  ? "Administrator"
+                  : userData.roles.judge
+                    ? "Judge Reputation"
+                    : userData.roles.community
+                      ? "Community Reputation"
+                      : "Building Reputation"}
               </div>
               <div className="text-sm text-white/50">
-                {userData.roles.judge
-                  ? "Your reputation as a judge will grow with each fair dispute resolution."
-                  : userData.roles.community
-                    ? "Your community reputation builds with active participation."
-                    : "Your reputation events will appear here as you participate in agreements and disputes."}
+                {userData.roles.admin
+                  ? "As an administrator, you have full platform access and oversight capabilities."
+                  : userData.roles.judge
+                    ? "Your reputation as a judge will grow with each fair dispute resolution."
+                    : userData.roles.community
+                      ? "Your community reputation builds with active participation."
+                      : "Your reputation events will appear here as you participate in agreements and disputes."}
               </div>
             </div>
           </BentoCard>
