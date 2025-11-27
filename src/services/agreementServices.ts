@@ -38,6 +38,9 @@ export interface AgreementsRequest {
   tokenSymbol?: string;
   contractAddress?: string;
   amount?: number;
+  chainId?: number;
+  contractAgreementId?: string;
+  txHash?: string;
 }
 
 export interface AgreementSignRequest {
@@ -81,6 +84,7 @@ export interface AgreementDetailsDTO {
   tokenSymbol?: string;
   deadline: string;
   createdAt: string;
+  contractAgreementId?: string;
   includesFunds?: boolean;
   hasSecuredFunds?: boolean;
   escrowContract?: string;
@@ -180,6 +184,7 @@ class AgreementService {
 
   // Create new agreement
   // Create new agreement
+  // Create new agreement
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
     console.log("🔄 Creating agreement with data:", data);
 
@@ -192,17 +197,9 @@ class AgreementService {
     formData.append("counterParty", data.counterParty);
     formData.append("deadline", data.deadline);
 
+    // === REQUIRED FIELDS FOR INCLUDES_FUNDS = true ===
     if (data.includesFunds !== undefined) {
       formData.append("includesFunds", data.includesFunds.toString());
-    }
-
-    if (data.secureTheFunds !== undefined) {
-      formData.append("secureTheFunds", data.secureTheFunds.toString());
-    }
-
-    // for escrow-only behavior
-    if ((data as any).useEscrow !== undefined) {
-      formData.append("useEscrow", (data as any).useEscrow.toString());
     }
 
     if (data.tokenSymbol) {
@@ -213,8 +210,27 @@ class AgreementService {
       formData.append("amount", data.amount.toString());
     }
 
-    if (data.contractAddress) {
+    if (data.tokenSymbol && data.contractAddress) {
       formData.append("contractAddress", data.contractAddress);
+    }
+
+    // === REQUIRED FIELDS FOR SECURED_FUNDS = true ===
+    if (data.secureTheFunds !== undefined) {
+      formData.append("secureTheFunds", data.secureTheFunds.toString());
+    }
+
+    // FIX: Use exact field names backend expects (lowercase)
+    if (data.chainId) {
+      formData.append("chainId", data.chainId.toString());
+    }
+
+    if (data.contractAgreementId) {
+      formData.append("contractAgreementId", data.contractAgreementId);
+    }
+
+    // FIX: Change txHash to txnhash (backend expects lowercase)
+    if (data.txHash) {
+      formData.append("txnhash", data.txHash); // ← Changed from txHash to txnhash
     }
 
     files.forEach((file) => {
@@ -231,6 +247,12 @@ class AgreementService {
       deadline: data.deadline,
       includesFunds: data.includesFunds,
       secureTheFunds: data.secureTheFunds,
+      tokenSymbol: data.tokenSymbol,
+      amount: data.amount,
+      contractAddress: data.contractAddress,
+      chainId: data.chainId,
+      contractAgreementId: data.contractAgreementId,
+      txnhash: data.txHash, // ← Updated to match backend field name
       files: files.map((f) => f.name),
     });
 
@@ -243,7 +265,6 @@ class AgreementService {
     console.log("✅ Agreement created successfully:", response.data);
     return response.data;
   }
-
   // User search - now with proper error handling
   async searchUsers(query: string): Promise<any[]> {
     try {

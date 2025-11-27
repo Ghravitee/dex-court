@@ -20,11 +20,22 @@ export interface AccountSummaryDTO {
     username: string;
     id: string;
   };
+  isAdmin?: boolean;
 }
 
 export interface AccountUpdateRequest {
   username?: string;
   bio?: string;
+}
+
+export interface UpdateRoleRequest {
+  accountsId: number[];
+}
+
+export interface AdminRoleUpdateResponse {
+  success: boolean;
+  message?: string;
+  errorCode?: number; // MissingData = 1, AccountNotFound = 7, SameAccount = 11, InternalServerError = 10
 }
 
 class ApiService {
@@ -290,6 +301,75 @@ class ApiService {
             }
           : undefined,
     };
+  }
+
+  /**
+   * Update accounts to judge role
+   */
+  /**
+   * Update accounts to judge role
+   */
+  async updateAccountsToJudge(
+    accountsId: number[],
+  ): Promise<AdminRoleUpdateResponse> {
+    return this.request<AdminRoleUpdateResponse>({
+      method: "PATCH",
+      url: "/admin/accounts-role/judge",
+      data: { accountsId },
+    });
+  }
+
+  /**
+   * Update accounts to community role
+   */
+  async updateAccountsToCommunity(
+    accountsId: number[],
+  ): Promise<AdminRoleUpdateResponse> {
+    return this.request<AdminRoleUpdateResponse>({
+      method: "PATCH",
+      url: "/admin/accounts-role/community",
+      data: { accountsId },
+    });
+  }
+
+  /**
+   * Get all users for admin management
+   */
+
+  async getAdminUsers(): Promise<AccountSummaryDTO[]> {
+    try {
+      console.log("🔐 [API] Fetching all users for admin...");
+
+      // Use the same endpoint as agreementService.getAllUsers()
+      const response = await this.request<any>({
+        method: "GET",
+        url: "/accounts",
+      });
+
+      console.log("🔐 [API] Raw users response:", response);
+
+      let users: any[] = [];
+
+      // Handle different response formats - same logic as agreementService
+      if (response && Array.isArray(response.accounts)) {
+        users = response.accounts;
+      } else if (response && Array.isArray(response.results)) {
+        users = response.results;
+      } else if (Array.isArray(response)) {
+        users = response;
+      } else {
+        console.warn("🔐 [API] Unexpected users response format:", response);
+        users = [];
+      }
+
+      console.log(`🔐 [API] Found ${users.length} users`);
+
+      // Transform to AccountSummaryDTO
+      return users.map((user) => this.transformToAccountSummaryDTO(user));
+    } catch (error) {
+      console.error("🔐 [API] Error getting admin users:", error);
+      throw new Error("Failed to fetch users list");
+    }
   }
 }
 

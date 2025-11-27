@@ -11,24 +11,11 @@ import {
   ChevronLeft,
   ChevronRight,
   LogIn,
+  Shield,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
-
-const nav = [
-  { to: "/", label: "Home", icon: <Home size={18} /> },
-  { to: "/agreements", label: "Agreements", icon: <FileText size={18} /> },
-  { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
-  { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
-  { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
-  {
-    to: "/web3escrow",
-    label: "Theo's Escrow",
-    icon: <BadgeDollarSign size={18} />,
-  }, // Added
-  { to: "/web3vote", label: "Theo's Voting", icon: <Vote size={18} /> }, // Added
-  { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
-];
+import { useAdminAccess } from "../../hooks/useAdmin";
 
 export function Sidebar({
   expanded,
@@ -44,7 +31,34 @@ export function Sidebar({
   onLoginClick: () => void;
 }) {
   const { isAuthenticated } = useAuth();
+  const { isAdmin } = useAdminAccess();
   const navigate = useNavigate();
+
+  const nav = [
+    { to: "/", label: "Home", icon: <Home size={18} /> },
+    { to: "/agreements", label: "Agreements", icon: <FileText size={18} /> },
+    { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
+    { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
+    { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
+    {
+      to: "/web3escrow",
+      label: "Theo's Escrow",
+      icon: <BadgeDollarSign size={18} />,
+    },
+    { to: "/web3vote", label: "Theo's Voting", icon: <Vote size={18} /> },
+    { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
+
+    // NEW: Admin link - only show for admin users
+    ...(isAdmin
+      ? [
+          {
+            to: "/admin",
+            label: "Admin",
+            icon: <Shield size={18} className="text-purple-300" />,
+          },
+        ]
+      : []),
+  ];
 
   const handleAuthButtonClick = () => {
     if (isAuthenticated) {

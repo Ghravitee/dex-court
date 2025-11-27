@@ -236,18 +236,21 @@ export default function UserProfile() {
     [disputes],
   );
 
-  // Helper function to convert API user to your User interface
-  // UserProfile.tsx - UPDATED TO PRIORITIZE TELEGRAM USERNAME
+  // pages/UserProfile.tsx - Update mapApiUserToUser
   function mapApiUserToUser(apiUser: any): User {
-    const getRolesFromRoleNumber = (role: number) => {
+    const getRolesFromRoleNumber = (role: number, isAdmin: boolean) => {
       return {
-        judge: role === 2 || role === 3,
-        community: role === 1 || role === 3,
+        admin: isAdmin, // Use isAdmin field
+        judge: role === 2,
+        community: role === 1,
         user: true,
       };
     };
 
-    const roles = getRolesFromRoleNumber(apiUser.role || 0);
+    const roles = getRolesFromRoleNumber(
+      apiUser.role || 0,
+      apiUser.isAdmin || false,
+    );
 
     const avatarUrl =
       apiUser.avatarId && apiUser.id
@@ -263,6 +266,7 @@ export default function UserProfile() {
       username: apiUser.telegram?.username || apiUser.username || "",
       bio: apiUser.bio || null,
       isVerified: apiUser.isVerified,
+      isAdmin: apiUser.isAdmin || false, // ADD THIS
       telegram: apiUser.telegram
         ? {
             username: apiUser.telegram.username,
@@ -276,7 +280,7 @@ export default function UserProfile() {
       wallet: apiUser.walletAddress
         ? `${apiUser.walletAddress.slice(0, 6)}…${apiUser.walletAddress.slice(-4)}`
         : "Not connected",
-      trustScore: 0, // This will be overridden by the real trust score from the hook
+      trustScore: 0,
       roles,
       stats: {
         deals: 0,
