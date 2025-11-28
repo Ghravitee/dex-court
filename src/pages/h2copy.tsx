@@ -2429,7 +2429,6 @@ function Web3Escrow() {
                                           key={index}
                                           milestone={milestone}
                                           index={index}
-                                          agreement={agreement}
                                           manageTokenDecimals={
                                             manageTokenDecimals as number
                                           }
