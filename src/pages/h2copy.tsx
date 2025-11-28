@@ -36,36 +36,10 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import type { LoadingStates, MilestoneData } from "@/web3/interfaces";
 
 function isValidAddress(addr: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(addr);
-}
-
-// In your main component, update the MilestoneData interface:
-interface MilestoneData {
-  percentBP: bigint;
-  unlockAt: bigint;
-  heldByRecipient: boolean;
-  claimed: boolean;
-  amount: bigint;
-}
-
-interface LoadingStates {
-  createAgreement: boolean;
-  signAgreement: boolean;
-  depositFunds: boolean;
-  submitDelivery: boolean;
-  approveDelivery: boolean;
-  rejectDelivery: boolean;
-  cancelOrder: boolean;
-  approveCancellation: boolean;
-  partialRelease: boolean;
-  finalRelease: boolean;
-  cancellationTimeout: boolean;
-  claimMilestone: boolean;
-  setMilestoneHold: boolean;
-  raiseDispute: boolean;
-  loadAgreement: boolean;
 }
 
 // Add CountdownTimer component

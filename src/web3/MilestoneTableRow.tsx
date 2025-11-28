@@ -1,4 +1,5 @@
-import { ZERO_ADDRESS } from "./config";
+// src/web3/MilestoneTableRow.tsx
+
 import { formatAmount, useCountdown } from "./helper";
 
 export type Milestone = {
@@ -12,7 +13,7 @@ export type Milestone = {
 type MilestoneTableRowProps = {
   milestone: Milestone;
   index: number;
-  agreement?: readonly unknown[];
+  // Remove agreement prop if not needed
   manageTokenDecimals?: number;
   manageTokenSymbol?: string;
   isServiceProvider?: boolean;
@@ -26,7 +27,6 @@ type MilestoneTableRowProps = {
 export function MilestoneTableRow({
   milestone,
   index,
-  agreement,
   manageTokenDecimals = 18,
   manageTokenSymbol = "TOKEN",
   isServiceProvider = false,
@@ -76,9 +76,7 @@ export function MilestoneTableRow({
       <td className="p-4">{(Number(milestone.percentBP) / 100).toFixed(0)}%</td>
       <td className="p-4 font-mono">
         {formatAmount(milestone.amount, manageTokenDecimals)}
-        {agreement && agreement[4] === ZERO_ADDRESS
-          ? " ETH"
-          : ` ${manageTokenSymbol}`}
+        {` ${manageTokenSymbol}`} {/* Just use manageTokenSymbol directly */}
       </td>
       <td className="p-4">
         {new Date(Number(milestone.unlockAt) * 1000).toLocaleString()}
@@ -87,15 +85,14 @@ export function MilestoneTableRow({
       <td className="p-4">
         <div className="flex flex-col space-y-1">
           <span
-            className={`inline-block rounded px-2 py-1 text-xs ${
-              milestone.claimed
+            className={`inline-block rounded px-2 py-1 text-xs ${milestone.claimed
                 ? "bg-green-500/20 text-green-300"
                 : isUnlocked && !milestone.heldByRecipient
                   ? "bg-blue-500/20 text-blue-300"
                   : milestone.heldByRecipient
                     ? "bg-yellow-500/20 text-yellow-300"
                     : "bg-gray-500/20 text-gray-300"
-            }`}
+              }`}
           >
             {milestone.claimed
               ? "Claimed"
@@ -132,11 +129,10 @@ export function MilestoneTableRow({
             <button
               onClick={handleHoldToggle}
               disabled={isLoadingHold}
-              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${
-                milestone.heldByRecipient
+              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${milestone.heldByRecipient
                   ? "bg-orange-600 hover:bg-orange-700"
                   : "bg-amber-600 hover:bg-amber-700"
-              } disabled:opacity-50`}
+                } disabled:opacity-50`}
             >
               {isLoadingHold ? (
                 <>

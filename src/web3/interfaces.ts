@@ -62,3 +62,29 @@ export const AGREEMENT_FALLBACK: Agreement = {
     deliverySubmited: false,
     votingId: 0n,
 };
+
+export interface MilestoneData {
+  percentBP: bigint;
+  unlockAt: bigint;
+  heldByRecipient: boolean;
+  claimed: boolean;
+  amount: bigint;
+}
+
+export interface LoadingStates {
+  createAgreement: boolean;
+  signAgreement: boolean;
+  depositFunds: boolean;
+  submitDelivery: boolean;
+  approveDelivery: boolean;
+  rejectDelivery: boolean;
+  cancelOrder: boolean;
+  approveCancellation: boolean;
+  partialRelease: boolean;
+  finalRelease: boolean;
+  cancellationTimeout: boolean;
+  claimMilestone: boolean;
+  setMilestoneHold: boolean;
+  raiseDispute: boolean;
+  loadAgreement: boolean;
+}

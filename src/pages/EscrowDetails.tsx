@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -24,6 +24,12 @@ import {
   // ThumbsDown,
   // PackageCheck,
   UserCheck,
+  CheckCircle2,
+  AlertCircle,
+  PackageCheck,
+  Ban,
+  Upload,
+  Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -35,10 +41,14 @@ import { FaArrowRightArrowLeft } from "react-icons/fa6";
 // Use the same services as Escrow.tsx
 import { agreementService } from "../services/agreementServices";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { getAgreement } from "../web3/readContract";
-import { ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
+import { getAgreement, getMilestoneCount, getTokenDecimals, getTokenSymbol } from "../web3/readContract";
+import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
 import { formatAmount } from "../web3/helper";
-import { useReadContract } from "wagmi";
+import { useAccount, useContractReads, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import type { LoadingStates, MilestoneData } from "../web3/interfaces";
+import { MilestoneTableRow } from "../web3/MilestoneTableRow";
+import { parseEther } from "ethers";
+import { CountdownTimer } from "../web3/Timer";
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -189,11 +199,10 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -202,28 +211,27 @@ const StatusBadge = ({ value }: { value: boolean }) => (
   </div>
 );
 
-const FeatureBadge = ({ value }: { value: boolean }) => (
-  <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-blue-400/30 bg-blue-500/20 text-blue-300"
-        : "border border-gray-400/30 bg-gray-500/20 text-gray-400"
-    }`}
-  >
-    <div
-      className={`h-1.5 w-1.5 rounded-full ${value ? "bg-blue-400" : "bg-gray-400"}`}
-    ></div>
-    {value ? "Enabled" : "Disabled"}
-  </div>
-);
+// const FeatureBadge = ({ value }: { value: boolean }) => (
+//   <div
+//     className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+//       value
+//         ? "border border-blue-400/30 bg-blue-500/20 text-blue-300"
+//         : "border border-gray-400/30 bg-gray-500/20 text-gray-400"
+//     }`}
+//   >
+//     <div
+//       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-blue-400" : "bg-gray-400"}`}
+//     ></div>
+//     {value ? "Enabled" : "Disabled"}
+//   </div>
+// );
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -235,16 +243,106 @@ const SafetyBadge = ({ value }: { value: boolean }) => (
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { address } = useAccount();
   const { user } = useAuth();
   const [escrow, setEscrow] = useState<EscrowDetailsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true);
   // const [showEscrowAddress, setShowEscrowAddress] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+  const [loadingStates, setLoadingStates] = useState<LoadingStates>({
+    createAgreement: false,
+    signAgreement: false,
+    depositFunds: false,
+    submitDelivery: false,
+    approveDelivery: false,
+    rejectDelivery: false,
+    cancelOrder: false,
+    approveCancellation: false,
+    partialRelease: false,
+    finalRelease: false,
+    cancellationTimeout: false,
+    claimMilestone: false,
+    setMilestoneHold: false,
+    raiseDispute: false,
+    loadAgreement: false,
+  });
+
+  const setLoading = (action: keyof LoadingStates, isLoading: boolean) => {
+    setLoadingStates((prev) => ({
+      ...prev,
+      [action]: isLoading,
+    }));
+  };
+
+  // Enhanced dispute handler with modal
+  const openDisputeModal = () => {
+    const votingId = Math.floor(Math.random() * 1000000).toString();
+    const newDisputeForm = {
+      votingId: votingId,
+      plaintiffIsServiceRecipient: isServiceRecipient as boolean,
+      proBono: true,
+      feeAmount: "0.01", // Default fee
+    };
+
+    setDisputeForm(newDisputeForm);
+    setShowDisputeModal(true);
+  };
+
+  // Reset all loading states
+  const resetAllLoading = () => {
+    setLoadingStates({
+      createAgreement: false,
+      signAgreement: false,
+      depositFunds: false,
+      submitDelivery: false,
+      approveDelivery: false,
+      rejectDelivery: false,
+      cancelOrder: false,
+      approveCancellation: false,
+      partialRelease: false,
+      finalRelease: false,
+      cancellationTimeout: false,
+      claimMilestone: false,
+      setMilestoneHold: false,
+      raiseDispute: false,
+      loadAgreement: false,
+    });
+  };
+
+  const [depositState, setDepositState] = useState({
+    isApprovingToken: false,
+    approvalHash: null,
+    needsApproval: false,
+  });
 
   const networkInfo = useNetworkEnvironment();
   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
   const [onChainLoading, setOnChainLoading] = useState(false);
+  const [uiError, setUiError] = useState<string | null>(null);
+  const [uiSuccess, setUiSuccess] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(
+    BigInt(Math.floor(Date.now() / 1000)),
+  );
+  const [milestones, setMilestones] = useState<MilestoneData[]>([]);
+
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+
+  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+
+  const [onChainTokenDecimalsState, setOnChainTokenDecimalsState] = useState<number | null>(null);
+  const [manageMilestoneCount, setManageMilestoneCount] = useState<bigint | null>(null);
+  const [onChainTokenSymbolState, setOnChainTokenSymbolState] = useState<string | null>(null);
+  const [tokenLoading, setTokenLoading] = useState(false);
+
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+
+  const [disputeForm, setDisputeForm] = useState({
+    votingId: "",
+    plaintiffIsServiceRecipient: true,
+    proBono: false,
+    feeAmount: "",
+  });
 
   // Status configuration
   const statusConfig = {
@@ -305,6 +403,16 @@ export default function EscrowDetails() {
     );
   };
 
+  // helper to reset messages
+  const resetMessages = () => {
+    setUiError(null);
+    setUiSuccess(null);
+  };
+
+  const triggerMilestoneRefetch = useCallback(() => {
+    setRefetchTrigger((prev) => prev + 1);
+  }, []);
+
   const fetchOnChainAgreement = useCallback(
     async (agreementData: any) => {
       if (!agreementData) return;
@@ -342,7 +450,7 @@ export default function EscrowDetails() {
   const fetchEscrowDetails = useCallback(async () => {
     if (!id) return;
 
-    setLoading(true);
+    setLoading("loadAgreement", true);
     try {
       const escrowId = parseInt(id);
       const agreementData =
@@ -399,7 +507,7 @@ export default function EscrowDetails() {
       toast.error("Failed to load escrow details");
       setEscrow(null);
     } finally {
-      setLoading(false);
+      setLoading("loadAgreement", false);
     }
   }, [id, fetchOnChainAgreement]);
 
@@ -459,6 +567,693 @@ export default function EscrowDetails() {
     }
   }, [id, isRefreshing, fetchOnChainAgreement]);
 
+  const isLoadedAgreement = !!onChainAgreement;
+  const isServiceProvider =
+    isLoadedAgreement &&
+    address &&
+    onChainAgreement &&
+    address.toLowerCase() === onChainAgreement.serviceProvider.toString().toLowerCase();
+  const isServiceRecipient =
+    isLoadedAgreement &&
+    address &&
+    onChainAgreement &&
+    address.toLowerCase() === onChainAgreement.serviceRecipient.toString().toLowerCase();
+  const now = currentTime;
+
+  const {
+    data: hash,
+    writeContract,
+    isPending,
+    error: writeError,
+    reset: resetWrite,
+  } = useWriteContract();
+  const { isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  // Approval hooks for ERC20
+  const {
+    data: approvalHash,
+    writeContract: writeApproval,
+    isPending: isApprovalPending,
+    error: approvalError,
+    reset: resetApproval,
+  } = useWriteContract();
+
+  const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  });
+
+  // Create contracts array for milestones ONLY when we have a valid count
+  const contractsForMilestones = useMemo(() => {
+    if (!manageMilestoneCount || !onChainAgreement?.id || !onChainAgreement.vesting) {
+      return [];
+    }
+
+    const count = Number(manageMilestoneCount);
+    if (count === 0) return [];
+
+    console.log(
+      `Creating ${count} milestone contracts, trigger: ${refetchTrigger}`,
+    );
+
+    return Array.from({ length: count }, (_, i) => ({
+      address: contractAddress as `0x${string}`,
+      abi: ESCROW_ABI.abi,
+      functionName: "getMilestone" as const,
+      args: [onChainAgreement.id, BigInt(i)],
+    }));
+  }, [manageMilestoneCount, onChainAgreement?.id, onChainAgreement?.vesting, refetchTrigger, contractAddress]);
+
+  // Fetch all milestones
+  const {
+    data: rawMilestonesData,
+    refetch: refetchMilestonesData,
+  } = useContractReads({
+    contracts: contractsForMilestones,
+    query: {
+      enabled: contractsForMilestones.length > 0,
+    },
+  });
+
+  const handleClaimMilestone = async (index: number) => {
+    resetMessages();
+    setLoading("claimMilestone", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider)
+        return setUiError("Only serviceProvider can claim milestones");
+      if (!onChainAgreement.vesting)
+        return setUiError("Agreement is not in vesting mode");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (!onChainAgreement.signed)
+        return setUiError("Agreement not signed completely");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      if (now > onChainAgreement.grace1Ends && !onChainAgreement.completed)
+        return setUiError("Can not claim after cancellation expired");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "claimMilestone",
+        args: [onChainAgreement.id, BigInt(index)],
+      });
+      setUiSuccess("Claim milestone transaction submitted");
+    } catch (error) {
+      setLoading("claimMilestone", false);
+      setUiError("Error claiming milestone");
+      console.error("Error claiming milestone:", error);
+    }
+  };
+
+  const handleSetMilestoneHold = async (index: number, hold: boolean) => {
+    resetMessages();
+    setLoading("setMilestoneHold", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceRecipient)
+        return setUiError("Only serviceRecipient can set milestone hold");
+      if (!onChainAgreement.vesting)
+        return setUiError("Agreement is not in vesting mode");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (!onChainAgreement.signed)
+        return setUiError("Agreement not signed completely");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      if (!manageMilestoneCount) return setUiError("Milestone count not loaded");
+      if (index >= Number(manageMilestoneCount))
+        return setUiError("Invalid milestone index");
+
+      // Check if milestone is already claimed
+      if (milestones[index]?.claimed)
+        return setUiError("Milestone already claimed");
+
+      console.log(
+        `Calling setMilestoneHold for agreement ${onChainAgreement.id}, milestone ${index}, hold: ${hold}`,
+      );
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "setMilestoneHold",
+        args: [onChainAgreement.id, BigInt(index), hold],
+      });
+
+      setUiSuccess(
+        `Milestone ${hold ? "held" : "unheld"} transaction submitted`,
+      );
+      triggerMilestoneRefetch();
+    } catch (error: unknown) {
+      setLoading("setMilestoneHold", false);
+      const msg = error instanceof Error ? error.message : String(error);
+      setUiError(`Failed to set milestone hold: ${msg}`);
+      console.error("handleSetMilestoneHold error:", error);
+    }
+  };
+
+  const handleSignAgreement = () => {
+    resetMessages();
+    setLoading("signAgreement", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can sign");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (onChainAgreement.signed && !onChainAgreement.completed)
+        return setUiError("Agreement already signed");
+      if (isServiceProvider && onChainAgreement.acceptedByServiceProvider && !onChainAgreement.completed)
+        return setUiError("You already signed the Agreement");
+      if (isServiceRecipient && onChainAgreement.acceptedByServiceRecipient && !onChainAgreement.completed)
+        return setUiError("You already signed the Agreement");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "signAgreement",
+        args: [onChainAgreement.id],
+      });
+      setUiSuccess("Sign transaction submitted");
+    } catch (error) {
+      setLoading("signAgreement", false);
+      setUiError("Error signing agreement");
+      console.error("Error signing agreement:", error);
+    }
+  };
+
+  const handleSubmitDelivery = () => {
+    resetMessages();
+    setLoading("submitDelivery", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !onChainAgreement.completed)
+        return setUiError("Only serviceProvider can submit delivery");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
+      if (onChainAgreement.grace1Ends !== 0n && !onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+        return setUiError("Submission is pending already");
+      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "submitDelivery",
+        args: [onChainAgreement.id],
+      });
+      setUiSuccess("Submit delivery transaction sent");
+    } catch (error) {
+      setLoading("submitDelivery", false);
+      setUiError("Error submitting delivery");
+      console.error("Error submitting delivery:", error);
+    }
+  };
+
+  const handleApproveDelivery = (final: boolean) => {
+    resetMessages();
+    if (final) {
+      setLoading("approveDelivery", true);
+    } else {
+      setLoading("rejectDelivery", true);
+    }
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceRecipient && final)
+        return setUiError("Only serviceRecipient can approve delivery");
+      if (!isServiceRecipient && !final)
+        return setUiError("Only serviceRecipient can reject delivery");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
+      if (onChainAgreement.grace1Ends === 0n && final)
+        return setUiError("There are no pending delivery to approve");
+      if (onChainAgreement.grace1Ends === 0n && !final)
+        return setUiError("There are no pending delivery to reject");
+      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "approveDelivery",
+        args: [onChainAgreement.id, final],
+      });
+      setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
+    } catch (error) {
+      if (final) {
+        setLoading("approveDelivery", false);
+      } else {
+        setLoading("rejectDelivery", false);
+      }
+      setUiError("Error processing delivery approval");
+      console.error("Error processing delivery approval:", error);
+    }
+  };
+
+  const handleDepositFunds = async () => {
+    resetMessages();
+    setLoading("depositFunds", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can deposit funds");
+      if (onChainAgreement.funded && !onChainAgreement.completed)
+        return setUiError("Agreement is funded already");
+      if (onChainAgreement.completed) return setUiError("Agreement is already completed");
+      if (onChainAgreement.frozen) return setUiError("Agreement is frozen already");
+
+      const isERC20 = onChainAgreement.token !== ZERO_ADDRESS;
+
+      if (isERC20) {
+        const amount = onChainAgreement.amount;
+        if (amount <= 0n) return setUiError("Invalid deposit amount");
+
+        setDepositState((prev) => ({
+          ...prev,
+          needsApproval: true,
+          isApprovingToken: true,
+        }));
+        setUiSuccess("Approving token for deposit...");
+
+        writeApproval({
+          address: onChainAgreement.token as `0x${string}`,
+          abi: ERC20_ABI.abi,
+          functionName: "approve",
+          args: [contractAddress as `0x${string}`, amount],
+        });
+      } else {
+        depositDirectly();
+      }
+    } catch (error) {
+      setLoading("depositFunds", false);
+      setUiError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Error preparing deposit",
+      );
+      console.error("Error in handleDepositFunds:", error);
+    }
+  };
+
+  const depositDirectly = useCallback(() => {
+    try {
+      if (!onChainAgreement) return setUiError("Agreement not loaded");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      const amount = onChainAgreement.amount;
+      const isERC20 = onChainAgreement.token !== ZERO_ADDRESS;
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "depositFunds",
+        args: [onChainAgreement.id],
+        value: isERC20 ? BigInt(0) : amount,
+      });
+
+      setUiSuccess("Deposit transaction submitted");
+      setDepositState((prev) => ({
+        ...prev,
+        needsApproval: false,
+        isApprovingToken: false,
+      }));
+    } catch (error) {
+      setUiError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Error submitting deposit",
+      );
+      console.error("Error depositing funds:", error);
+    }
+  }, [onChainAgreement, contractAddress, writeContract]);
+
+  const handleCancelOrder = () => {
+    resetMessages();
+    setLoading("cancelOrder", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can cancel the order");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
+      if (onChainAgreement.grace1Ends !== 0n && !onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+        return setUiError("Submission is pending");
+      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested Already");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "cancelOrder",
+        args: [onChainAgreement.id],
+      });
+      setUiSuccess("Cancel transaction submitted");
+    } catch (error) {
+      setLoading("cancelOrder", false);
+      setUiError("Error cancelling order");
+      console.error("Error cancelling order:", error);
+    }
+  };
+
+  const handleApproveCancellation = (final: boolean) => {
+    resetMessages();
+    setLoading("approveCancellation", true);
+    try {
+
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can cancel the order");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
+      if (onChainAgreement.grace1Ends === 0n && final)
+        return setUiError("There are no pending order cancellation to approve");
+      if (onChainAgreement.grace1Ends === 0n && !final)
+        return setUiError("There are no pending order cancellation to reject");
+      if (!onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+        return setUiError("No Cancellation requested");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      if (now > onChainAgreement.grace1Ends && !onChainAgreement.completed)
+        return setUiError("24 hour Grace period not yet ended");
+
+      const initiator = onChainAgreement.grace1EndsCalledBy;
+      if (
+        initiator &&
+        address &&
+        address.toLowerCase() === initiator.toString().toLowerCase() &&
+        final
+      )
+        return setUiError("You can't approve your own cancellation request");
+      if (
+        initiator &&
+        address &&
+        address.toLowerCase() === initiator.toString().toLowerCase() &&
+        !final
+      )
+        return setUiError("You can't reject your own cancellation request");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "approveCancellation",
+        args: [BigInt(onChainAgreement?.id), final],
+      });
+      setUiSuccess(
+        final
+          ? "Cancellation approval submitted"
+          : "Cancellation rejection submitted",
+      );
+    } catch (error) {
+      setLoading("approveCancellation", false);
+      setUiError("Error processing cancellation");
+      console.error("Error processing cancellation:", error);
+    }
+  };
+
+  const handlePartialRelease = () => {
+    resetMessages();
+    setLoading("partialRelease", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (onChainAgreement.grace1Ends === 0n)
+        return setUiError("No approved delivery yet");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation is in process");
+      if (onChainAgreement.vesting)
+        return setUiError("You cannot release partial funds on Vesting");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+
+      if (now < onChainAgreement.grace1Ends && !onChainAgreement.completed)
+        return setUiError("24 hours Grace period not yet ended");
+
+      const remaining = onChainAgreement.remainingAmount;
+      if (remaining / 2n === 0n)
+        return setUiError("Not enough funds to partial release");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "partialAutoRelease",
+        args: [BigInt(onChainAgreement?.id)],
+      });
+      setUiSuccess("Partial release tx submitted");
+    } catch (error) {
+      setLoading("partialRelease", false);
+      setUiError("Error processing partial release");
+      console.error("Error processing partial release:", error);
+    }
+  };
+
+  const handleCancellationTImeout = () => {
+    resetMessages();
+    setLoading("cancellationTimeout", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (onChainAgreement.grace1Ends === 0n)
+        return setUiError("No approved delivery yet");
+      if (now < onChainAgreement.grace1Ends && !onChainAgreement.completed)
+        return setUiError("24 hours Grace period not yet ended");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+        return setUiError("There is not pending cancellation");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "enforceCancellationTimeout",
+        args: [BigInt(onChainAgreement?.id)],
+      });
+      setUiSuccess("enforceCancellationTimeout tx submitted");
+    } catch (error) {
+      setLoading("cancellationTimeout", false);
+      setUiError("Error processing cancellation timeout");
+      console.error("Error processing cancellation timeout:", error);
+    }
+  };
+
+  const handleFinalRelease = () => {
+    resetMessages();
+    setLoading("finalRelease", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (onChainAgreement.grace2Ends === 0n && !onChainAgreement.completed)
+        return setUiError("48 hours grace period has not started");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (onChainAgreement.vesting)
+        return setUiError("You cannot release full funds on vesting");
+      if (onChainAgreement.remainingAmount === 0n && !onChainAgreement.completed)
+        return setUiError("Not enough funds to release");
+      if (now < onChainAgreement.grace2Ends && !onChainAgreement.completed)
+        return setUiError("48 hours Grace period not yet ended");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "finalAutoRelease",
+        args: [BigInt(onChainAgreement?.id)],
+      });
+      setUiSuccess("Final release tx submitted");
+    } catch (error) {
+      setLoading("finalRelease", false);
+      setUiError("Error processing final release");
+      console.error("Error processing final release:", error);
+    }
+  };
+
+  const handleRaiseDisputeWithModal = async () => {
+    resetMessages();
+    setLoading("raiseDispute", true);
+    try {
+      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!isLoadedAgreement) return setUiError("Load the agreement first");
+      if (!isServiceProvider && !isServiceRecipient)
+        return setUiError("Only parties to the agreement can raise a dispute");
+      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
+      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
+      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
+      if (onChainAgreement.disputed)
+        return setUiError("The agreement is already in dispute");
+
+      // Validate dispute form
+      if (!disputeForm.votingId) return setUiError("Voting ID is required");
+
+      const votingId = BigInt(disputeForm.votingId);
+
+      let feeAmount = 0n;
+      if (!disputeForm.proBono) {
+        if (!disputeForm.feeAmount || Number(disputeForm.feeAmount) <= 0)
+          return setUiError("Fee amount is required when not pro bono");
+
+        try {
+          feeAmount = parseEther(disputeForm.feeAmount);
+        } catch (err) {
+          setUiError("Invalid fee amount format");
+          return err;
+        }
+      }
+
+      const isETHFee = !disputeForm.proBono;
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "raiseDispute",
+        args: [
+          BigInt(onChainAgreement?.id),
+          votingId,
+          disputeForm.plaintiffIsServiceRecipient,
+          disputeForm.proBono,
+          feeAmount,
+        ],
+        value: isETHFee ? feeAmount : 0n,
+      });
+
+      setUiSuccess("Dispute raised successfully!");
+      setShowDisputeModal(false);
+    } catch (error: unknown) {
+      setLoading("raiseDispute", false);
+      setUiError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Error raising dispute",
+      );
+      console.error("Error raising dispute:", error);
+    }
+  };
+
+  // helper to safely convert various on-chain shapes to bigint
+  const toBigIntSafe = (v: unknown): bigint => {
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number") return BigInt(Math.floor(v));
+    if (typeof v === "string" && /^\d+$/.test(v)) return BigInt(v);
+    // some libs return objects with toString()
+    if (
+      v &&
+      typeof (v as { toString?: () => string }).toString === "function"
+    ) {
+      const s = (v as { toString: () => string }).toString();
+      if (/^\d+$/.test(s)) return BigInt(s);
+    }
+    return 0n;
+  };
+
+  useEffect(() => {
+    if (!rawMilestonesData || !Array.isArray(rawMilestonesData)) {
+      setMilestones([]);
+      return;
+    }
+
+    try {
+      const mapped = rawMilestonesData
+        .filter((item) => item.status === "success" && item.result)
+        .map((item): MilestoneData | null => {
+          const r = item.result;
+
+          if (Array.isArray(r)) {
+            const percentBP = toBigIntSafe(r[0]);
+            const unlockAt = toBigIntSafe(r[1]);
+            const heldByRecipient = !!r[2];
+            const claimed = !!r[3];
+            const amount = toBigIntSafe(r[4]);
+
+            return { percentBP, unlockAt, heldByRecipient, claimed, amount };
+          }
+
+          // Handle object format if needed
+          if (typeof r === "object") {
+            const obj = r as unknown as Record<string, unknown>;
+            const percentBP = toBigIntSafe(obj.percentBP ?? obj["0"]);
+            const unlockAt = toBigIntSafe(obj.unlockAt ?? obj["1"]);
+            const heldByRecipient = !!(obj.heldByRecipient ?? obj["2"]);
+            const claimed = !!(obj.claimed ?? obj["3"]);
+            const amount = toBigIntSafe(obj.amount ?? obj["4"]);
+            return { percentBP, unlockAt, heldByRecipient, claimed, amount };
+          }
+
+          return null;
+        })
+        .filter(Boolean) as MilestoneData[];
+
+      setMilestones(mapped);
+    } catch (err) {
+      console.error("Error mapping milestones:", err);
+      setMilestones([]);
+    }
+  }, [rawMilestonesData]);
+
+  useEffect(() => {
+    if (manageMilestoneCount) {
+      // refetch contract reads if milestone count changed
+      refetchMilestonesData();
+    } else {
+      setMilestones([]);
+    }
+  }, [manageMilestoneCount, refetchMilestonesData]);
+
+  useEffect(() => {
+    if (writeError) {
+      resetAllLoading();
+      setUiError("Transaction was rejected or failed");
+      setDepositState({
+        isApprovingToken: false,
+        needsApproval: false,
+        approvalHash: null,
+      });
+      resetWrite();
+    }
+  }, [writeError, resetWrite]);
+
+  useEffect(() => {
+    if (approvalError) {
+      resetAllLoading();
+      setUiError("Token approval was rejected or failed");
+      setDepositState({
+        isApprovingToken: false,
+        needsApproval: false,
+        approvalHash: null,
+      });
+      resetApproval();
+    }
+  }, [approvalError, resetApproval]);
+
+  useEffect(() => {
+    resetMessages();
+  }, []);
+
+  useEffect(() => {
+    if (approvalSuccess && depositState.needsApproval) {
+      // proceed immediately to deposit
+      depositDirectly();
+    }
+  }, [
+    approvalSuccess,
+    depositState.needsApproval,
+    onChainAgreement?.id,
+    onChainAgreement,
+    depositDirectly,
+  ]);
+
   useEffect(() => {
     fetchEscrowDetails();
   }, [id, fetchEscrowDetails]);
@@ -476,34 +1271,80 @@ export default function EscrowDetails() {
     return () => clearInterval(pollInterval);
   }, [id, isRefreshing, fetchEscrowDetailsBackground]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(BigInt(Math.floor(Date.now() / 1000)));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const tokenAddress =
     onChainAgreement &&
-    onChainAgreement.token &&
-    onChainAgreement.token !== ZERO_ADDRESS
+      onChainAgreement.token &&
+      onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
-  const { data: onChainTokenDecimals } = useReadContract({
-    address: tokenAddress,
-    abi: ERC20_ABI.abi,
-    functionName: "decimals",
-    query: { enabled: !!tokenAddress },
-  });
+  // Fetch token decimals & symbol from your public client helpers (file: web3/readContract.ts)
+  useEffect(() => {
+    // don't run if no tokenAddress or chainId
+    if (!tokenAddress || !networkInfo.chainId) {
+      setOnChainTokenDecimalsState(null);
+      setOnChainTokenSymbolState(null);
+      return;
+    }
 
-  const { data: onChainTokenSymbol } = useReadContract({
-    address: tokenAddress,
-    abi: ERC20_ABI.abi,
-    functionName: "symbol",
-    query: { enabled: !!tokenAddress },
-  });
+    if (!onChainAgreement || !networkInfo.chainId) {
+      setManageMilestoneCount(null);
+      return;
+    }
 
+    let cancelled = false;
+    setTokenLoading(true);
+
+    (async () => {
+      try {
+        const dec = await getTokenDecimals(networkInfo.chainId as number, tokenAddress as `0x${string}`);
+        if (!cancelled) setOnChainTokenDecimalsState(Number(dec)); // convert bigint -> number
+      } catch (err) {
+        console.warn("Failed to fetch token decimals:", err);
+        if (!cancelled) setOnChainTokenDecimalsState(null);
+      }
+
+      try {
+        const sym = await getTokenSymbol(networkInfo.chainId as number, tokenAddress as `0x${string}`);
+        if (!cancelled) setOnChainTokenSymbolState(sym);
+      } catch (err) {
+        console.warn("Failed to fetch token symbol:", err);
+        if (!cancelled) setOnChainTokenSymbolState(null);
+      } finally {
+        if (!cancelled && !tokenLoading) setTokenLoading(false);
+      }
+
+      try {
+        const mlc = await getMilestoneCount(networkInfo.chainId as number, onChainAgreement?.id as bigint);
+        if (!cancelled) setManageMilestoneCount(mlc);
+      } catch (err) {
+        console.warn("Failed to fetch token symbol:", err);
+        if (!cancelled) setManageMilestoneCount(null);
+      } finally {
+        if (!cancelled) setTokenLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenAddress, networkInfo.chainId, tokenLoading, onChainAgreement]);
   const decimalsNumber =
-    typeof onChainTokenDecimals === "number"
-      ? onChainTokenDecimals
-      : Number(onChainTokenDecimals ?? 18);
+    typeof onChainTokenDecimalsState === "number"
+      ? onChainTokenDecimalsState
+      : 18;
 
+  // use symbol (fall back to ETH if zero address, else use escrow token or "TOKEN")
   const tokenSymbol =
-    (onChainTokenSymbol as unknown as string) ??
+    onChainTokenSymbolState ??
     (onChainAgreement?.token === ZERO_ADDRESS
       ? "ETH"
       : (escrow?.token ?? "TOKEN"));
@@ -526,19 +1367,19 @@ export default function EscrowDetails() {
   const isCounterparty =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.serviceProvider?.toLowerCase()
+      onChainAgreement.serviceProvider?.toLowerCase()
       : false;
 
   const isFirstParty =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.serviceRecipient?.toLowerCase()
+      onChainAgreement.serviceRecipient?.toLowerCase()
       : false;
 
   const isCreator =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.creator?.toLowerCase()
+      onChainAgreement.creator?.toLowerCase()
       : false;
 
   const isParticipant = isFirstParty || isCounterparty;
@@ -568,14 +1409,16 @@ export default function EscrowDetails() {
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-        (new Date(escrow.deadline).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24),
-      )
+      (new Date(escrow.deadline).getTime() - Date.now()) /
+      (1000 * 60 * 60 * 24),
+    )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
 
-  if (loading) {
+  // Show loading screen only when the loadAgreement flag is active to avoid
+  // narrowing the loadingStates type to 'never' in TypeScript.
+  if (loadingStates.loadAgreement) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
         <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
@@ -657,13 +1500,12 @@ export default function EscrowDetails() {
                 {statusInfo.label}
               </span>
               <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  isOverdue
-                    ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                    : isUrgent
-                      ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                      : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-                }`}
+                className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
+                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                  : isUrgent
+                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                  }`}
               >
                 {isOverdue ? "Overdue" : `${daysRemaining} days left`}
               </span>
@@ -941,11 +1783,10 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                              onChainAgreement.funded
-                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                            }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
+                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                              }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -1026,13 +1867,13 @@ export default function EscrowDetails() {
                             <div className="mb-1 text-xs text-purple-300/80">
                               Vesting
                             </div>
-                            <FeatureBadge value={onChainAgreement.vesting} />
+                            <StatusBadge value={onChainAgreement.vesting} />
                           </div>
                           <div>
                             <div className="mb-1 text-xs text-purple-300/80">
                               Private
                             </div>
-                            <FeatureBadge
+                            <StatusBadge
                               value={onChainAgreement.privateMode}
                             />
                           </div>
@@ -1105,6 +1946,734 @@ export default function EscrowDetails() {
             </div>
 
             {/* Action Buttons Section */}
+            {onChainAgreement && (
+              <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-6 backdrop-blur-sm">
+
+
+                {/* Status Indicators */}
+                <div className="mt-4 space-y-2">
+                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.pendingCancellation && (
+                    <div className="flex items-center gap-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
+                      <Clock className="h-4 w-4 text-orange-400" />
+                      <span className="text-orange-300">
+                        Pending Order Cancellation:{" "}
+                        <CountdownTimer
+                          targetTimestamp={onChainAgreement.grace1Ends}
+                        // onComplete={refetchAgreement}
+                        />
+                      </span>
+                    </div>
+                  )}
+                  {onChainAgreement.frozen && (
+                    <div className="flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                      <span className="text-red-300">
+                        Agreement is Frozen!
+                      </span>
+                    </div>
+                  )}
+                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.pendingCancellation && (
+                    <div className="flex items-center gap-2 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-3">
+                      <Info className="h-4 w-4 text-yellow-400" />
+                      <span className="text-yellow-300">
+                        {(() => {
+                          const initiator = onChainAgreement.grace1EndsCalledBy;
+                          const serviceProvider = onChainAgreement.serviceProvider;
+                          const serviceRecipient = onChainAgreement.serviceRecipient;
+
+                          if (
+                            initiator &&
+                            serviceProvider &&
+                            serviceRecipient
+                          ) {
+                            const initiatorLower = initiator
+                              .toString()
+                              .toLowerCase();
+                            const serviceProviderLower = serviceProvider
+                              .toString()
+                              .toLowerCase();
+                            const serviceRecipientLower = serviceRecipient
+                              .toString()
+                              .toLowerCase();
+
+                            if (initiatorLower === serviceRecipientLower) {
+                              return "Cancellation request sent, waiting for service provider";
+                            } else if (
+                              initiatorLower === serviceProviderLower
+                            ) {
+                              return "Cancellation request sent, waiting for service recipient";
+                            }
+                          }
+                          return "Cancellation request sent, waiting for the other party";
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                  {onChainAgreement.grace1Ends > 0n &&
+                    onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.vesting && (
+                      <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                        <Clock className="h-4 w-4 text-blue-400" />
+                        <span className="text-blue-300">
+                          Pending Delivery [Grace period 1]:{" "}
+                          <CountdownTimer
+                            targetTimestamp={onChainAgreement.grace1Ends}
+                          // onComplete={refetchAgreement}
+                          />
+                        </span>
+                      </div>
+                    )}
+                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.deliverySubmited && (
+                    <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                      <Package className="h-4 w-4 text-green-400" />
+                      <span className="text-green-300">
+                        Delivery submitted, waiting for service recipient
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center gap-4 sm:flex-row">
+                    {!onChainAgreement.acceptedByServiceProvider && (
+                      <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                        <UserCheck className="h-4 w-4 text-blue-400" />
+                        <span className="text-blue-300">
+                          Waiting for Service Provider Signature
+                        </span>
+                      </div>
+                    )}
+                    {!onChainAgreement.acceptedByServiceRecipient && (
+                      <div className="flex items-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 p-3">
+                        <UserCheck className="h-4 w-4 text-purple-400" />
+                        <span className="text-purple-300">
+                          Waiting for Service Recipient Signature
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Check if any action buttons are available */}
+                {(((isServiceProvider && !onChainAgreement.acceptedByServiceProvider) ||
+                  (isServiceRecipient && !onChainAgreement.acceptedByServiceRecipient)) &&
+                  onChainAgreement.funded) ||
+                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    isServiceProvider &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    isServiceRecipient &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.deliverySubmited) ||
+                  (now < onChainAgreement.grace1Ends &&
+                    onChainAgreement.signed &&
+                    onChainAgreement.pendingCancellation &&
+                    address &&
+                    address.toLowerCase() !==
+                    String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.frozen) ||
+                  (onChainAgreement.grace1Ends !== BigInt(0) &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.funded &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace2Ends &&
+                    onChainAgreement.grace2Ends !== BigInt(0) &&
+                    onChainAgreement.funded &&
+                    onChainAgreement.pendingCancellation) ||
+                  (onChainAgreement.signed &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.pendingCancellation &&
+                    onChainAgreement.grace1Ends !== BigInt(0)) ||
+                  (onChainAgreement.funded &&
+                    onChainAgreement.signed &&
+                    !onChainAgreement.disputed &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation) ? (
+                  <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                    <h3 className="mb-4 text-lg font-semibold text-white">
+                      Agreement Actions
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {/* Action Buttons */}
+
+                      {onChainAgreement &&
+                        ((isServiceProvider && !onChainAgreement.acceptedByServiceProvider) ||
+                          (isServiceRecipient && !onChainAgreement.acceptedByServiceRecipient)) &&
+                        onChainAgreement.funded && (
+                          <>
+                            <Button
+                              onClick={handleSignAgreement}
+                              disabled={
+                                !onChainAgreement?.id ||
+                                isPending ||
+                                loadingStates.signAgreement
+                              }
+                              className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                              variant="outline"
+                            >
+                              {loadingStates.signAgreement ? (
+                                <>
+                                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+                                  Signing Agreement...
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="mr-2 h-4 w-4" />
+                                  Sign Agreement
+                                </>
+                              )}
+                            </Button>
+                          </>
+                        )}
+
+                      {onChainAgreement && (isServiceRecipient) &&
+                        !onChainAgreement.funded &&
+                        !onChainAgreement.signed && (
+                          <Button
+                            onClick={handleDepositFunds}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              isApprovalPending ||
+                              loadingStates.depositFunds
+                            }
+                            className="neon-hover w-fit border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30 hover:text-green-400"
+                            variant="outline"
+                          >
+                            {loadingStates.depositFunds ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-green-400 border-t-transparent"></div>
+                                Depositing...
+                              </>
+                            ) : depositState.isApprovingToken ? (
+                              isApprovalPending ? (
+                                "Approving..."
+                              ) : (
+                                "Confirming..."
+                              )
+                            ) : (
+                              <>
+                                <DollarSign className="mr-2 h-4 w-4" />
+                                Deposit Funds
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        isServiceProvider &&
+                        !onChainAgreement.frozen &&
+                        !onChainAgreement.pendingCancellation &&
+                        !onChainAgreement.deliverySubmited && (
+                          <Button
+                            onClick={handleSubmitDelivery}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.submitDelivery
+                            }
+                            className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.submitDelivery ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-green-400 border-t-transparent"></div>
+                                Submitting...
+                              </>
+                            ) : (
+                              <>
+                                <Package className="mr-2 h-4 w-4" />
+                                Submit Delivery
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        isServiceRecipient &&
+                        !onChainAgreement.pendingCancellation &&
+                        onChainAgreement.deliverySubmited &&
+                        !onChainAgreement.completed && (
+                          <Button
+                            onClick={() => handleApproveDelivery(true)}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.approveDelivery
+                            }
+                            className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.approveDelivery ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"></div>
+                                Approving...
+                              </>
+                            ) : (
+                              <>
+                                <PackageCheck className="mr-2 h-4 w-4" />
+                                Approve Delivery
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        isServiceRecipient &&
+                        !onChainAgreement.pendingCancellation &&
+                        onChainAgreement.deliverySubmited &&
+                        !onChainAgreement.completed && (
+                          <Button
+                            onClick={() => handleApproveDelivery(false)}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.rejectDelivery
+                            }
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.rejectDelivery ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                Rejecting...
+                              </>
+                            ) : (
+                              <>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Reject Delivery
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        now < onChainAgreement.grace1Ends &&
+                        onChainAgreement.signed &&
+                        onChainAgreement.pendingCancellation &&
+                        address &&
+                        address.toLowerCase() !==
+                        String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+                        !onChainAgreement.deliverySubmited && (
+                          <Button
+                            onClick={() => handleApproveCancellation(true)}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.approveCancellation
+                            }
+                            className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.approveCancellation ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"></div>
+                                Approving...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approve Cancellation
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        now < onChainAgreement.grace1Ends &&
+                        onChainAgreement.signed &&
+                        onChainAgreement.pendingCancellation &&
+                        address &&
+                        address.toLowerCase() !==
+                        String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+                        !onChainAgreement.deliverySubmited && (
+                          <Button
+                            onClick={() => handleApproveCancellation(false)}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.approveCancellation
+                            }
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.approveCancellation ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                Rejecting...
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Reject Cancellation
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        !onChainAgreement.pendingCancellation &&
+                        !onChainAgreement.deliverySubmited &&
+                        !onChainAgreement.frozen && (
+                          <Button
+                            onClick={handleCancelOrder}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.cancelOrder
+                            }
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.cancelOrder ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                                Cancelling...
+                              </>
+                            ) : (
+                              <>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Cancel Order
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.grace1Ends !== BigInt(0) &&
+                        !onChainAgreement.vesting &&
+                        now > onChainAgreement.grace1Ends &&
+                        onChainAgreement.funded &&
+                        !onChainAgreement.pendingCancellation &&
+                        onChainAgreement.signed && (
+                          <Button
+                            onClick={handlePartialRelease}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              onChainAgreement.vesting ||
+                              loadingStates.partialRelease
+                            }
+                            className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.partialRelease ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent"></div>
+                                Releasing...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Partial Release
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        !onChainAgreement.vesting &&
+                        now > onChainAgreement.grace2Ends &&
+                        onChainAgreement.grace2Ends !== BigInt(0) &&
+                        onChainAgreement.funded &&
+                        onChainAgreement.pendingCancellation && (
+                          <Button
+                            onClick={handleFinalRelease}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              onChainAgreement.vesting ||
+                              loadingStates.finalRelease
+                            }
+                            className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.finalRelease ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                Releasing...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Final Release
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.signed &&
+                        now > onChainAgreement.grace1Ends &&
+                        onChainAgreement.pendingCancellation &&
+                        onChainAgreement.grace1Ends !== BigInt(0) && (
+                          <Button
+                            onClick={handleCancellationTImeout}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.cancellationTimeout
+                            }
+                            className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                            variant="outline"
+                          >
+                            {loadingStates.cancellationTimeout ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="mr-2 h-4 w-4" />
+                                Cancellation Timeout
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {onChainAgreement &&
+                        onChainAgreement.funded &&
+                        onChainAgreement.signed &&
+                        !onChainAgreement.disputed &&
+                        !onChainAgreement.completed &&
+                        !onChainAgreement.frozen &&
+                        !onChainAgreement.pendingCancellation && (
+                          <Button
+                            onClick={openDisputeModal}
+                            disabled={
+                              !onChainAgreement?.id ||
+                              isPending ||
+                              loadingStates.raiseDispute
+                            }
+                            className="border-purple-500/30 text-purple-400 hover:bg-purple-300/15"
+                            variant="outline"
+                          >
+                            {loadingStates.raiseDispute ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                                Opening...
+                              </>
+                            ) : (
+                              <>
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Raise Dispute
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                      {/* Milestones Section */}
+                      {onChainAgreement &&
+                        onChainAgreement.vesting &&
+                        manageMilestoneCount! > 0 &&
+                        onChainAgreement.signed && (
+                          <div className="glass col-span-full mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+                            <h3 className="mb-4 text-xl font-bold text-white">
+                              Vesting Milestones
+                            </h3>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full border-collapse rounded-lg bg-white/5">
+                                <thead>
+                                  <tr className="border-b border-cyan-400/30">
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Milestone
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Percentage
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Amount
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Unlock Time
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Time Remaining
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Status
+                                    </th>
+                                    <th className="p-4 text-left text-cyan-300">
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {milestones.map((milestone, index) => (
+                                    <MilestoneTableRow
+                                      key={index}
+                                      milestone={milestone}
+                                      index={index}
+                                      manageTokenDecimals={
+                                        onChainTokenDecimalsState as number
+                                      }
+                                      manageTokenSymbol={
+                                        onChainTokenSymbolState as string
+                                      }
+                                      isServiceProvider={
+                                        isServiceProvider as boolean
+                                      }
+                                      isServiceRecipient={
+                                        isServiceRecipient as boolean
+                                      }
+                                      onClaimMilestone={
+                                        handleClaimMilestone
+                                      }
+                                      onSetMilestoneHold={
+                                        handleSetMilestoneHold
+                                      }
+                                      isLoadingClaim={
+                                        loadingStates.claimMilestone
+                                      }
+                                      isLoadingHold={
+                                        loadingStates.setMilestoneHold
+                                      }
+                                    />
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {showDisputeModal && (
+              <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+                <div className="glass w-full max-w-md rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                  <h3 className="mb-4 text-xl font-bold text-white">
+                    Raise Dispute
+                  </h3>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm text-cyan-300">
+                        Voting ID
+                      </label>
+                      <input
+                        type="text"
+                        value={disputeForm.votingId}
+                        onChange={(e) =>
+                          setDisputeForm({
+                            ...disputeForm,
+                            votingId: e.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                        placeholder="Unique voting ID"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={disputeForm.proBono}
+                        onChange={(e) =>
+                          setDisputeForm({
+                            ...disputeForm,
+                            proBono: e.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 rounded border-white/10 bg-white/5 text-cyan-400 focus:ring-cyan-400/20"
+                      />
+                      <label className="text-cyan-300">
+                        Pro Bono (Free of charge)
+                      </label>
+                    </div>
+
+                    {!disputeForm.proBono && (
+                      <>
+                        <div>
+                          <label className="mb-2 block text-sm text-cyan-300">
+                            Fee Amount
+                          </label>
+                          <input
+                            type="text"
+                            value={disputeForm.feeAmount}
+                            onChange={(e) =>
+                              setDisputeForm({
+                                ...disputeForm,
+                                feeAmount: e.target.value,
+                              })
+                            }
+                            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-cyan-300/50 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none"
+                            placeholder="0.01"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex gap-3">
+                    <Button
+                      onClick={handleRaiseDisputeWithModal}
+                      disabled={
+                        !onChainAgreement?.id || isPending || loadingStates.raiseDispute
+                      }
+                      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      variant="outline"
+                    >
+                      {loadingStates.raiseDispute ? (
+                        <>
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+                          Raising Dispute...
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Raise Dispute
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => setShowDisputeModal(false)}
+                      className="flex-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                      variant="outline"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {uiError && (
+              <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-400" />
+                <p className="text-red-400">{uiError}</p>
+              </div>
+            )}
+            {uiSuccess && (
+              <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
+                <p className="text-green-400">{uiSuccess}</p>
+              </div>
+            )}
+            {isSuccess && (
+              <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
+                <p className="text-green-400">Transaction successful!</p>
+              </div>
+            )}
+
+            {/* DANIEL's INDENT */}
+            {/* DANIEL's INDENT */}
             {/* {(isParticipant || isCreator) &&
               escrow?.status !== "completed" &&
               escrow?.status !== "disputed" && (
@@ -1223,20 +2792,20 @@ export default function EscrowDetails() {
                   "disputed",
                   "pending_approval",
                 ].includes(escrow.status) && (
-                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
-                    <div className="mt-3 font-medium text-white">
-                      Escrow Active
+                    <div className="relative flex min-w-[12rem] flex-col items-center text-center">
+                      <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
+                      <div className="mt-3 font-medium text-white">
+                        Escrow Active
+                      </div>
+                      <div className="text-sm text-cyan-300">
+                        {formatDateWithTime(escrow.dateCreated)}
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-400/70">
+                        Funds secured in contract
+                      </div>
+                      <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      {formatDateWithTime(escrow.dateCreated)}
-                    </div>
-                    <div className="mt-1 text-xs text-emerald-400/70">
-                      Funds secured in contract
-                    </div>
-                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
-                  </div>
-                )}
+                  )}
 
                 {/* Step 3 - Completion/Dispute */}
                 {escrow.status === "completed" && (
