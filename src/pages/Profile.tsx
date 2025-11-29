@@ -1,12 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from "react";
-import {
-  FaUser,
-  FaInstagram,
-  FaHandshake,
-  FaEdit,
-  FaCrown,
-} from "react-icons/fa";
+import { FaUser, FaInstagram, FaHandshake, FaEdit } from "react-icons/fa";
 import { FaXTwitter, FaTiktok } from "react-icons/fa6";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { FiSend, FiAlertCircle } from "react-icons/fi";
@@ -29,6 +23,9 @@ import type { DisputeRow } from "../types";
 import { WalletLinkingModal } from "../components/WalletLinkingModal";
 import TrustMeter from "../components/TrustMeter";
 import useTrustScore from "../hooks/useTrustScore";
+import Admin from "../components/ui/svgcomponents/Admin";
+// Add this import with your other imports
+import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -324,14 +321,21 @@ export default function Profile() {
     loading: agreementsLoading,
     error: agreementsError,
   } = useAgreementsApi();
+
+  const {
+    data: escrowAgreements,
+    isLoading: escrowAgreementsLoading,
+    error: escrowAgreementsError,
+  } = useAgreementsWithDetailsAndFundsFilter({
+    includesFunds: true,
+    hasSecuredFunds: true,
+  });
   const {
     disputes,
     loading: disputesLoading,
     error: disputesError,
   } = useDisputesApi(user?.id?.toString() || "");
-  // const { updateAccount, updating } = useAccountUpdate();
-  // const { uploadAvatar, uploading } = useAvatarUpload();
-  // Use the API hooks
+
   const {
     updateAccount,
     loading: updating,
@@ -355,6 +359,37 @@ export default function Profile() {
       disputed: agreements.filter((agreement) => agreement.status === 4).length,
     }),
     [agreements],
+  );
+
+  // Add this with your other useMemo calculations
+  // Memoized escrow deals calculation - FILTER FOR CURRENT USER
+  const escrowDeals = useMemo(() => {
+    if (!escrowAgreements || !user?.id) return [];
+
+    return escrowAgreements.filter((agreement: any) => {
+      const userId = user.id.toString();
+      const firstPartyId = agreement.firstParty?.id?.toString();
+      const counterPartyId = agreement.counterParty?.id?.toString();
+
+      // Check if current user is involved in this escrow agreement
+      return firstPartyId === userId || counterPartyId === userId;
+    });
+  }, [escrowAgreements, user?.id]);
+
+  console.log(escrowDeals, "Checking escrow deals");
+
+  // Memoized escrow stats
+  const escrowStats = useMemo(
+    () => ({
+      total: escrowDeals.length,
+      active: escrowDeals.filter((agreement: any) => agreement.status === 2)
+        .length,
+      completed: escrowDeals.filter((agreement: any) => agreement.status === 3)
+        .length,
+      disputed: escrowDeals.filter((agreement: any) => agreement.status === 4)
+        .length,
+    }),
+    [escrowDeals],
   );
 
   // Memoized disputes stats calculation
@@ -539,6 +574,27 @@ export default function Profile() {
     [user?.id],
   );
 
+  // Add this function near your other useCallback functions
+  const getUserRoleInEscrowDeal = useCallback(
+    (agreement: any) => {
+      const userId = user?.id;
+      if (!userId) return "Unknown";
+
+      // Convert both to strings for comparison to ensure type safety
+      const userIdStr = userId.toString();
+      const firstPartyId = agreement.firstParty?.id?.toString();
+      const counterPartyId = agreement.counterParty?.id?.toString();
+      const creatorId = agreement.creator?.id?.toString();
+
+      if (firstPartyId === userIdStr) return "Service Recipient";
+      if (counterPartyId === userIdStr) return "Service Provider";
+      if (creatorId === userIdStr) return "Creator";
+
+      return "Unknown";
+    },
+    [user?.id],
+  );
+
   // Helper function to get agreement title with fallbacks - memoized
   const getAgreementTitle = useCallback(
     (agreement: AgreementSummaryDTO) => {
@@ -635,7 +691,7 @@ export default function Profile() {
 
   const handleAgreementClick = useCallback(
     (agreementId: number) => {
-      navigate(`/agreements/${agreementId}`);
+      navigate(`/escrow/${agreementId}`);
     },
     [navigate],
   );
@@ -770,7 +826,7 @@ export default function Profile() {
                   {/* ADMIN BADGE - Added first since it's highest role */}
                   <RoleBadge
                     role={userData.roles?.admin || false}
-                    icon={<FaCrown className="h-4 w-4 text-yellow-400" />}
+                    icon={<Admin className="size-7" />}
                     tooltip="Administrator"
                   />
                   <RoleBadge
@@ -1005,7 +1061,7 @@ export default function Profile() {
               </h3>
               <div className="py-6 text-center">
                 <div className="mb-3 flex justify-center">
-                  <FaCrown className="h-8 w-8 text-yellow-400" />
+                  <Admin className="size-10" />
                 </div>
                 <div className="mb-2 text-lg text-yellow-300">
                   Platform Administrator
@@ -1341,23 +1397,133 @@ export default function Profile() {
         </BentoCard>
 
         {/* Escrow Deals */}
+        {/* Escrow Deals */}
         <BentoCard
           title="Escrow Deals"
           icon={<FaHandshake />}
           color="cyan"
-          count={0}
+          count={escrowStats.total}
           scrollable
           maxHeight="260px"
         >
-          <div className="py-8 text-center">
-            <div className="mb-2 text-lg text-cyan-300">
-              No escrow deals yet
+          {escrowAgreementsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+              <span className="ml-2 text-cyan-300">
+                Loading escrow deals...
+              </span>
             </div>
-            <div className="text-sm text-white/50">
-              Your escrow-protected deals will appear here once you start
-              trading.
+          ) : escrowAgreementsError ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-red-300">
+                Error loading escrow deals
+              </div>
+              <div className="text-sm text-white/50">
+                {escrowAgreementsError.message}
+              </div>
             </div>
-          </div>
+          ) : escrowDeals.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mb-2 text-lg text-cyan-300">
+                No escrow deals yet
+              </div>
+              <div className="text-sm text-white/50">
+                Your escrow-protected deals will appear here once you start
+                trading.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {escrowDeals.map((agreement: any) => {
+                const userRole = getUserRoleInEscrowDeal(agreement);
+                const roleColor =
+                  userRole === "Service Recipient"
+                    ? "text-blue-300"
+                    : userRole === "Service Provider"
+                      ? "text-pink-300"
+                      : userRole === "Creator"
+                        ? "text-purple-300"
+                        : "text-gray-300";
+
+                return (
+                  <div
+                    key={agreement.id}
+                    onClick={() => handleAgreementClick(agreement.id)}
+                    className="cursor-pointer rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/20"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between">
+                          <h4 className="truncate text-sm font-medium text-white/90">
+                            {agreement.title || `Escrow Deal #${agreement.id}`}
+                          </h4>
+                          <div className="flex items-center gap-1">
+                            <AgreementStatusBadge status={agreement.status} />
+                          </div>
+                        </div>
+
+                        <div className="mb-2 text-xs text-white/70">
+                          Created: {formatDate(agreement.createdAt)}
+                        </div>
+
+                        <div className="space-y-1 text-xs text-white/60">
+                          <div className="flex justify-between">
+                            <span>Service Provider:</span>
+                            <span className="text-white/80">
+                              {agreement.counterParty?.username
+                                ? agreement.counterParty.username.startsWith(
+                                    "0x",
+                                  )
+                                  ? `${agreement.counterParty.username.slice(0, 6)}…${agreement.counterParty.username.slice(-4)}`
+                                  : `@${agreement.counterParty.username}`
+                                : agreement.counterParty?.id
+                                  ? `User ${agreement.counterParty.id}`
+                                  : "Unknown User"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Service Recipient:</span>
+                            <span className="text-white/80">
+                              {agreement.firstParty?.username
+                                ? agreement.firstParty.username.startsWith("0x")
+                                  ? `${agreement.firstParty.username.slice(0, 6)}…${agreement.firstParty.username.slice(-4)}`
+                                  : `@${agreement.firstParty.username}`
+                                : agreement.firstParty?.id
+                                  ? `User ${agreement.firstParty.id}`
+                                  : "Unknown User"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Creator:</span>
+                            <span className="text-white/80">
+                              {agreement.creator?.username
+                                ? agreement.creator.username.startsWith("0x")
+                                  ? `${agreement.creator.username.slice(0, 6)}…${agreement.creator.username.slice(-4)}`
+                                  : `@${agreement.creator.username}`
+                                : agreement.creator?.id
+                                  ? `User ${agreement.creator.id}`
+                                  : "Unknown User"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Amount:</span>
+                            <span className="text-emerald-300">
+                              {agreement.amount}{" "}
+                              {agreement.tokenSymbol || "ETH"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Your Role:</span>
+                            <span className={roleColor}>{userRole}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </BentoCard>
       </section>
 

@@ -96,6 +96,8 @@ export const AdminUsersManager = () => {
     return error?.message || "An unexpected error occurred";
   };
 
+  console.log("Is admin:", isAdmin);
+
   const getUserRoleBadge = (role: number) => {
     switch (role) {
       case 3:

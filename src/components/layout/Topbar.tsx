@@ -161,7 +161,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       {isAuthenticated &&
         walletValidation.isValid &&
         walletValidation.message && (
-          <div className="mr-4 flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1">
+          <div className="mr-4 hidden items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1 md:flex">
             <span className="text-xs text-blue-300">
               {walletValidation.message}
             </span>
@@ -206,56 +206,38 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               );
             }
 
-            // UPDATED: Use our custom handler for authenticated Telegram users
-            // UPDATED: Use our custom handler for authenticated Telegram users
-            if (loginMethod === "telegram") {
+            if (loginMethod === "wallet" && isConnected) {
               return (
-                <div className="flex flex-col items-end">
-                  <button
-                    onClick={handleWalletAuth}
-                    disabled={
-                      isAuthenticating ||
-                      isLoggingIn ||
-                      (isConnected && !walletValidation.isValid)
-                    }
-                    className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${getButtonVariant()}`}
-                  >
-                    {getButtonIcon()}
-                    {connected ? (
-                      <>
-                        <span className="max-w-[100px] truncate">
-                          {account?.displayName}
-                        </span>
-                        <span className="opacity-80">
-                          {account?.displayBalance}
-                        </span>
-                      </>
-                    ) : (
-                      getButtonText()
-                    )}
-                  </button>
-                </div>
+                <button
+                  onClick={openAccountModal}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getButtonVariant()}`}
+                >
+                  {getButtonIcon()}
+                  {connected && (
+                    <>
+                      <span className="max-w-[100px] truncate">
+                        {account.displayName}
+                      </span>
+                      <span className="opacity-80">
+                        {account.displayBalance}
+                      </span>
+                    </>
+                  )}
+                </button>
               );
             }
 
-            // Use RainbowKit for wallet-authenticated users (account management)
             return (
-              <button
-                onClick={openAccountModal}
-                className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getButtonVariant()}`}
-              >
-                {getButtonIcon()}
-                {connected ? (
-                  <>
-                    <span className="max-w-[100px] truncate">
-                      {account.displayName}
-                    </span>
-                    <span className="opacity-80">{account.displayBalance}</span>
-                  </>
-                ) : (
-                  "Connect Wallet"
-                )}
-              </button>
+              <div className="flex flex-col items-end">
+                <button
+                  onClick={handleWalletAuth}
+                  disabled={isAuthenticating || isLoggingIn}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${getButtonVariant()}`}
+                >
+                  {getButtonIcon()}
+                  {getButtonText()}
+                </button>
+              </div>
             );
           }}
         </ConnectButton.Custom>
