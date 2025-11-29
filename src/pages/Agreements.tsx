@@ -255,7 +255,7 @@ export default function Agreements() {
   const tableFilterRef = useRef<HTMLDivElement>(null);
   const recentFilterRef = useRef<HTMLDivElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isAuthInitialized } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10); // Default page size
   const [totalAgreements, setTotalAgreements] = useState(0);
@@ -1182,7 +1182,7 @@ export default function Agreements() {
                 Create Agreement
               </Button>
 
-              {isAuthenticated ? (
+              {isAuthenticated && isAuthInitialized ? (
                 <div className="flex items-center gap-2 text-sm text-cyan-300">
                   <div className="h-2 w-2 rounded-full bg-green-400"></div>
                   {/* UPDATED: Only show if user has Telegram */}
@@ -1341,7 +1341,15 @@ export default function Agreements() {
                         <tr
                           key={a.id}
                           className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-white/5"
-                          onClick={() => navigate(`/agreements/${a.id}`)}
+                          onClick={() => {
+                            // Navigate to escrow details if it's an escrow agreement (has secured funds)
+                            // Otherwise navigate to regular agreement details
+                            if (a.useEscrow) {
+                              navigate(`/escrow/${a.id}`);
+                            } else {
+                              navigate(`/agreements/${a.id}`);
+                            }
+                          }}
                         >
                           <td className="text-muted-foreground px-5 py-4">
                             {a.dateCreated}
@@ -1408,7 +1416,7 @@ export default function Agreements() {
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
                                   {a.counterparty.startsWith("@0x")
-                                    ? `${a.counterparty.slice(1, 4)}..${a.counterparty.slice(-2)}`
+                                    ? `${a.counterparty.slice(1, 5)}..${a.counterparty.slice(-5)}`
                                     : formatTelegramUsernameForDisplay(
                                         a.counterparty,
                                       )}
@@ -2193,201 +2201,6 @@ export default function Agreements() {
                   </div>
                 </div>
               )}
-
-              {/* Escrow Panel */}
-              {/* {includeFunds === "yes" && (
-                <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-4 transition-all">
-                  <p className="text-sm text-white/90">
-                    Would you like to secure the funds in an escrow contract?{" "}
-                    <span className="text-cyan-400">(Optional)</span>
-                  </p>
-                  <div className="flex gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSecureWithEscrow("yes");
-                       
-                        setFundsWithoutEscrow({
-                          token: "",
-                          amount: "",
-                          customTokenAddress: "",
-                        });
-                      }}
-                      className={`rounded-md border px-4 py-2 transition-colors ${
-                        secureWithEscrow === "yes"
-                          ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 text-white/70 hover:border-cyan-400/40"
-                      }`}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSecureWithEscrow("no");
-                        
-                        setSelectedToken("");
-                        setCustomTokenAddress("");
-                      }}
-                      className={`rounded-md border px-4 py-2 transition-colors ${
-                        secureWithEscrow === "no"
-                          ? "border-cyan-400 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 text-white/70 hover:border-cyan-400/40"
-                      }`}
-                    >
-                      No
-                    </button>
-                  </div>
-
-         
-                  {(secureWithEscrow === "yes" ||
-                    secureWithEscrow === "no") && (
-                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                     
-                      <div
-                        className="relative flex w-full flex-col gap-2"
-                        ref={tokenRef}
-                      >
-                        <label className="text-sm font-semibold text-white">
-                          Token{" "}
-                          <span className="text-cyan-400">(Optional)</span>
-                        </label>
-                        <div
-                          onClick={() => setIsTokenOpen((prev) => !prev)}
-                          className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-cyan-400/40"
-                        >
-                          <span>
-                            {secureWithEscrow === "yes"
-                              ? selectedToken || "Select Token"
-                              : fundsWithoutEscrow.token || "Select Token"}
-                          </span>
-                          <ChevronDown
-                            className={`transition-transform ${
-                              isTokenOpen ? "rotate-180" : ""
-                            }`}
-                          />
-                        </div>
-                        {isTokenOpen && (
-                          <div className="absolute top-[110%] z-50 w-full rounded-xl border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
-                            {tokenOptions.map((option) => (
-                              <div
-                                key={option.value}
-                                onClick={() => {
-                                  if (secureWithEscrow === "yes") {
-                                    setSelectedToken(option.value);
-                                  } else {
-                                    setFundsWithoutEscrow((prev) => ({
-                                      ...prev,
-                                      token: option.value,
-                                    }));
-                                  }
-                                  setIsTokenOpen(false);
-                                  if (option.value !== "custom") {
-                                    if (secureWithEscrow === "yes") {
-                                      setCustomTokenAddress("");
-                                    } else {
-                                      setFundsWithoutEscrow((prev) => ({
-                                        ...prev,
-                                        customTokenAddress: "",
-                                      }));
-                                    }
-                                  }
-                                }}
-                                className="cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white"
-                              >
-                                {option.label}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {(selectedToken === "custom" ||
-                          fundsWithoutEscrow.token === "custom") && (
-                          <div className="mt-3">
-                            <label className="text-muted-foreground mb-2 block text-sm">
-                              Paste Contract Address{" "}
-                              <span className="text-cyan-400">(Optional)</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={
-                                secureWithEscrow === "yes"
-                                  ? customTokenAddress
-                                  : fundsWithoutEscrow.customTokenAddress
-                              }
-                              onChange={(e) => {
-                                if (secureWithEscrow === "yes") {
-                                  setCustomTokenAddress(e.target.value);
-                                } else {
-                                  setFundsWithoutEscrow((prev) => ({
-                                    ...prev,
-                                    customTokenAddress: e.target.value,
-                                  }));
-                                }
-                              }}
-                              placeholder="0x..."
-                              className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                    
-                      <div>
-                        <label className="text-muted-foreground mb-2 block text-sm">
-                          Amount{" "}
-                          <span className="text-cyan-400">(Optional)</span>
-                        </label>
-                        <input
-                          value={
-                            secureWithEscrow === "yes"
-                              ? formatNumberWithCommas(form.amount)
-                              : formatNumberWithCommas(
-                                  fundsWithoutEscrow.amount,
-                                )
-                          }
-                          onChange={(e) => {
-                            const rawValue = parseFormattedNumber(
-                              e.target.value,
-                            );
-                            if (secureWithEscrow === "yes") {
-                              setForm({ ...form, amount: rawValue });
-                            } else {
-                              setFundsWithoutEscrow((prev) => ({
-                                ...prev,
-                                amount: rawValue,
-                              }));
-                            }
-                          }}
-                          inputMode="decimal"
-                          pattern="[0-9,.]*"
-                          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder="10,000"
-                          type="text"
-                        />
-                      </div>
-
-                    
-                      {secureWithEscrow === "no" && (
-                        <div className="md:col-span-3">
-                          <div className="flex items-start gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-                            <div>
-                              <p className="text-sm text-cyan-300">
-                                Funds information is for reference only and will
-                                not be secured in escrow.
-                              </p>
-                              <p className="mt-1 text-xs text-cyan-300/70">
-                                This helps track the financial scope of the
-                                agreement without automated fund handling.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )} */}
 
               {/* Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4">

@@ -43,10 +43,11 @@ import type { DisputeListItem, DisputeRow } from "../types";
 import { useSettledDisputesCount } from "../hooks/useSettledDisputesCount";
 import { useUsersCount } from "../hooks/useUsersCount";
 import { WalletLoginDebug } from "../components/WalletLoginDebug";
+import { useJudgesCount } from "../hooks/useJudgesCount";
+import { useTimeSeriesStats } from "../hooks/useTimeSeriesStats";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
-const seriesCache = new Map();
 
 export default function Index() {
   return (
@@ -238,19 +239,26 @@ function StatsGrid() {
     useAllAgreementsCount();
   const { settledCount, loading: settledLoading } = useSettledDisputesCount();
   const { usersCount, loading: usersLoading } = useUsersCount();
+  const { judgesCount, loading: judgesLoading } = useJudgesCount();
+
+  console.log("Judges count:", judgesCount);
 
   const stats = useMemo(
     () => [
       {
         label: "Settled Disputes",
-        value: settledLoading ? 342 : settledCount,
+        value: settledLoading ? 0 : settledCount,
         icon: Trophy,
       },
-      { label: "Judges", value: 28, icon: Scale },
+      {
+        label: "Judges",
+        value: judgesLoading ? 0 : judgesCount, // Update this line
+        icon: Scale,
+      },
       { label: "Eligible Voters", value: 12400, icon: Users },
       {
         label: "Agreements",
-        value: agreementsLoading ? 4 : agreementsCount,
+        value: agreementsLoading ? 0 : agreementsCount,
         icon: Handshake,
       },
       { label: "Platform Revenue", value: 214000, icon: Landmark, prefix: "$" },
@@ -270,6 +278,8 @@ function StatsGrid() {
       settledLoading,
       usersCount,
       usersLoading,
+      judgesCount,
+      judgesLoading,
     ],
   );
 
@@ -310,13 +320,41 @@ function StatsGrid() {
   );
 }
 
+// Replace your KPIChart component with this fixed version
 function KPIChart() {
-  const daily = useMemo(() => genSeries("daily"), []);
-  const weekly = useMemo(() => genSeries("weekly"), []);
-  const monthly = useMemo(() => genSeries("monthly"), []);
+  const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">(
+    "daily",
+  );
+  const { data: timeSeriesData, loading } = useTimeSeriesStats(timeframe);
 
-  const [tab, setTab] = useState("daily");
-  const data = tab === "daily" ? daily : tab === "weekly" ? weekly : monthly;
+  // Show loading state
+  if (loading) {
+    return (
+      <section className="glass relative mt-4 border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 md:mt-0">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="space font-semibold text-white/90 lg:text-xl">
+            Network Activity
+          </h3>
+          <Tabs
+            value={timeframe}
+            onValueChange={(value) => setTimeframe(value as any)}
+          >
+            <TabsList className="bg-white/5">
+              <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="flex h-72 items-center justify-center">
+          <div className="flex items-center gap-2 text-cyan-300">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+            <span>Loading network activity...</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="glass relative mt-4 border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 md:mt-0">
@@ -324,7 +362,10 @@ function KPIChart() {
         <h3 className="space font-semibold text-white/90 lg:text-xl">
           Network Activity
         </h3>
-        <Tabs value={tab} onValueChange={setTab}>
+        <Tabs
+          value={timeframe}
+          onValueChange={(value) => setTimeframe(value as any)}
+        >
           <TabsList className="bg-white/5">
             <TabsTrigger value="daily">Daily</TabsTrigger>
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
@@ -335,12 +376,12 @@ function KPIChart() {
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
-            data={data}
+            data={timeSeriesData}
             margin={{ left: 0, right: 10, top: 10, bottom: 0 }}
           >
             <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
             <XAxis
-              dataKey="t"
+              dataKey="date"
               stroke="#94a3b8"
               fontSize={12}
               tickLine={false}
@@ -358,6 +399,16 @@ function KPIChart() {
                 border: "1px solid rgba(255,255,255,.1)",
                 borderRadius: 8,
                 color: "#e2e8f0",
+              }}
+              formatter={(value: number, name: string) => {
+                if (name === "agreements") return [value, "Agreements"];
+                if (name === "judges") return [value, "Judges"];
+                return [value, name];
+              }}
+              labelFormatter={(label) => {
+                if (timeframe === "daily") return `Date: ${label}`;
+                if (timeframe === "weekly") return `Week: ${label}`;
+                return `Month: ${label}`;
               }}
             />
             <Legend />
@@ -377,79 +428,12 @@ function KPIChart() {
               strokeWidth={2.5}
               dot={false}
             />
-            <Line
-              type="monotone"
-              dataKey="voters"
-              name="Community Voters"
-              stroke="#8b5cf6"
-              strokeWidth={2.5}
-              dot={false}
-            />
           </LineChart>
         </ResponsiveContainer>
       </div>
     </section>
   );
 }
-
-function genSeries(type: "daily" | "weekly" | "monthly"): any[] {
-  const cacheKey = `series-${type}`;
-  if (seriesCache.has(cacheKey)) {
-    return seriesCache.get(cacheKey);
-  }
-
-  const out: any[] = [];
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-
-  if (type === "daily") {
-    for (let i = 1; i <= 14; i++) {
-      out.push({
-        t: `Day ${i}`,
-        revenue: 100 + Math.random() * 80 + i * 5,
-        agreements: 40 + Math.random() * 25 + i * 2,
-        judges: 10 + Math.random() * 6 + i * 0.5,
-        voters: 60 + Math.random() * 40 + i * 3,
-      });
-    }
-  } else if (type === "weekly") {
-    for (let m = 0; m < 12; m++) {
-      out.push({
-        t: months[m],
-        revenue: 120 + Math.random() * 80 + m * 10,
-        agreements: 50 + Math.random() * 25 + m * 3,
-        judges: 12 + Math.random() * 6 + m * 0.5,
-        voters: 70 + Math.random() * 40 + m * 4,
-      });
-    }
-  } else {
-    for (let m = 0; m < 12; m++) {
-      out.push({
-        t: months[m],
-        revenue: 150 + Math.random() * 100 + m * 20,
-        agreements: 60 + Math.random() * 30 + m * 5,
-        judges: 14 + Math.random() * 8 + m,
-        voters: 80 + Math.random() * 50 + m * 6,
-      });
-    }
-  }
-
-  seriesCache.set(cacheKey, out);
-  return out;
-}
-
 // NEW: Disputes Infinite Cards Component - UPDATED WITH REAL DATA
 function DisputesInfiniteCards() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
@@ -507,7 +491,6 @@ function DisputesInfiniteCards() {
     [disputes],
   );
 
-  console.log("disputeItems", disputeItems);
   if (loading) {
     return (
       <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
@@ -857,48 +840,3 @@ function RenownedJudgesInfiniteCards() {
     </div>
   );
 }
-
-// function AgreementsDebug() {
-//   const { agreements, loading } = usePublicAgreements();
-
-//   if (loading) return <div>Loading debug info...</div>;
-
-//   return (
-//     <div className="mt-4 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-4">
-//       <h4 className="font-semibold text-yellow-300">Debug Info - Agreements</h4>
-//       <div className="mt-2 text-sm text-yellow-200">
-//         <div>Total agreements: {agreements.length}</div>
-//         <div>
-//           Signed agreements:{" "}
-//           {agreements.filter((a) => a.status === "signed").length}
-//         </div>
-//         <div>
-//           Sample agreement description:{" "}
-//           {agreements[0]?.description || "No description"}
-//         </div>
-//       </div>
-//       {/* Show first few agreements for debugging */}
-//       <div className="mt-3 max-h-40 overflow-y-auto">
-//         {agreements.slice(0, 3).map((agreement) => (
-//           <div
-//             key={agreement.id}
-//             className="mb-2 border-b border-yellow-400/20 pb-2 text-xs"
-//           >
-//             <div>
-//               <strong>ID:</strong> {agreement.id}
-//             </div>
-//             <div>
-//               <strong>Title:</strong> {agreement.title}
-//             </div>
-//             <div>
-//               <strong>Description:</strong> {agreement.description}
-//             </div>
-//             <div>
-//               <strong>Status:</strong> {agreement.status}
-//             </div>
-//           </div>
-//         ))}
-//       </div>
-//     </div>
-//   );
-// }
