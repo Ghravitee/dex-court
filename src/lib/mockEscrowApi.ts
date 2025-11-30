@@ -130,7 +130,7 @@ export const escrowsData: Escrow[] = [
     to: "@0xInk",
     token: "USDC",
     amount: 250,
-    status: "active",
+    status: "signed",
     deadline: "2025-12-10",
     type: "public",
     description: "Ongoing copywriting engagement for Web3 DAO.",
