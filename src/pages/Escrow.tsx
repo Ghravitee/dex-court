@@ -1,7 +1,7 @@
 // src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState, useRef, useEffect } from "react";
-import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+// import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import {
@@ -61,12 +61,12 @@ const extractTxHashFromDescription = (
 };
 
 // Helper function to extract on-chain ID from description
-const extractOnChainIdFromDescription = (
-  description: string,
-): string | undefined => {
-  const match = description?.match(/Contract Agreement ID: (\d+)/);
-  return match?.[1];
-};
+// const extractOnChainIdFromDescription = (
+//   description: string,
+// ): string | undefined => {
+//   const match = description?.match(/Contract Agreement ID: (\d+)/);
+//   return match?.[1];
+// };
 
 const extractServiceProviderFromDescription = (
   description: string,
@@ -118,8 +118,22 @@ interface UploadedFile {
 // Escrow type options
 type EscrowType = "myself" | "others";
 
+// Update the status type to include all possible values
+type EscrowStatus =
+  | "pending"
+  | "signed"
+  | "completed"
+  | "cancelled"
+  | "frozen"
+  | "disputed"
+  | "pending_approval"
+  | "pending_delivery";
+
+// Create a base type without the status conflict
+type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
+
 // Extended Escrow type to include on-chain data
-interface ExtendedEscrowWithOnChain extends ExtendedEscrow {
+interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   txHash?: string;
   onChainId?: string;
   // whether the API/agreement included funds metadata ("yes" | "no")
@@ -130,6 +144,27 @@ interface ExtendedEscrowWithOnChain extends ExtendedEscrow {
   escrowAddress?: string;
   // optional UI-side marker for create form type
   escrowType?: EscrowType;
+  // Use the expanded status type
+  status: EscrowStatus;
+}
+
+// Enhanced interface for on-chain escrow data
+interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
+  onChainStatus?: string;
+  onChainAmount?: string;
+  onChainDeadline?: number;
+  onChainParties?: {
+    serviceProvider: string;
+    serviceRecipient: string;
+  };
+  onChainToken?: string;
+  isOnChainActive?: boolean;
+  isFunded?: boolean;
+  isSigned?: boolean;
+  isCompleted?: boolean;
+  isDisputed?: boolean;
+  isCancelled?: boolean;
+  lastUpdated?: number;
 }
 
 function isValidAddress(addr: string) {
@@ -164,14 +199,13 @@ const CONTRACT_ERRORS = {
 };
 
 // Enhanced status mapping for on-chain agreements
-const mapAgreementStatusToEscrow = (
-  status: number,
-): "pending" | "active" | "completed" | "cancelled" | "frozen" | "disputed" => {
+// Enhanced status mapping for on-chain agreements
+const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   switch (status) {
     case 1:
       return "pending"; // PENDING_ACCEPTANCE
     case 2:
-      return "active"; // ACTIVE
+      return "signed"; // SIGNED
     case 3:
       return "completed"; // COMPLETED
     case 4:
@@ -186,6 +220,7 @@ const mapAgreementStatusToEscrow = (
 };
 
 // Enhanced transform function for escrow agreements
+// Enhanced transform function for escrow agreements
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
@@ -196,12 +231,6 @@ const transformApiAgreementToEscrow = (
   const serviceRecipient = extractServiceRecipientFromDescription(
     apiAgreement.description,
   );
-
-  console.log("🔍 Extracted parties from description:", {
-    serviceProvider,
-    serviceRecipient,
-    description: apiAgreement.description?.substring(0, 200) + "...",
-  });
 
   // Fallback to API party data if description extraction fails
   const getPartyIdentifier = (party: any): string => {
@@ -220,19 +249,15 @@ const transformApiAgreementToEscrow = (
     apiAgreement.counterParty,
   );
 
-  console.log("🔍 Fallback parties from API:", {
-    fallbackServiceProvider,
-    fallbackServiceRecipient,
-    firstParty: apiAgreement.firstParty,
-    counterParty: apiAgreement.counterParty,
-  });
-
   // Use extracted addresses first, fallback to API data
   const finalServiceProvider = serviceProvider || fallbackServiceProvider;
   const finalServiceRecipient = serviceRecipient || fallbackServiceRecipient;
 
   const includeFunds = apiAgreement.includesFunds ? "yes" : "no";
   const useEscrow = apiAgreement.hasSecuredFunds;
+
+  // Use the contractAgreementId from the API response directly
+  const onChainId = apiAgreement.contractAgreementId;
 
   return {
     id: `${apiAgreement.id}`,
@@ -241,6 +266,7 @@ const transformApiAgreementToEscrow = (
     to: finalServiceProvider, // Service Provider = Payee (receives funds)
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+    // Note: We'll override this status with on-chain data when available
     status: mapAgreementStatusToEscrow(apiAgreement.status),
     deadline: apiAgreement.deadline
       ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
@@ -250,9 +276,9 @@ const transformApiAgreementToEscrow = (
     createdAt: new Date(
       apiAgreement.dateCreated || apiAgreement.createdAt,
     ).getTime(),
-    // On-chain references
+    // On-chain references - use the direct contractAgreementId from API
     txHash: extractTxHashFromDescription(apiAgreement.description),
-    onChainId: extractOnChainIdFromDescription(apiAgreement.description),
+    onChainId: onChainId, // Use the direct contractAgreementId from API
     includeFunds: includeFunds,
     useEscrow: useEscrow,
     escrowAddress: apiAgreement.escrowContractAddress,
@@ -260,8 +286,8 @@ const transformApiAgreementToEscrow = (
 };
 
 export default function Escrow() {
-  const [escrows, setEscrows] = useState<ExtendedEscrowWithOnChain[]>([]);
-  const [statusTab, setStatusTab] = useState("pending");
+  const [, setEscrows] = useState<ExtendedEscrowWithOnChain[]>([]);
+  const [statusTab, setStatusTab] = useState("all");
   const [sortAsc, setSortAsc] = useState(false);
   const [query, setQuery] = useState("");
   // Removed unused loading state
@@ -311,6 +337,42 @@ export default function Escrow() {
   // Enhanced error handling for contract errors
   const [uiError, setUiError] = useState<string | null>(null);
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
+
+  // Custom hook to fetch on-chain data for agreements
+  // Custom hook to fetch on-chain data for agreements
+  const useOnChainAgreementData = (agreements: any[]) => {
+    const chainId = useChainId();
+    const contractAddress =
+      (chainId && ESCROW_CA[chainId as number]) || undefined;
+
+    // Create contract calls for each agreement that has a contractAgreementId
+    const contracts = useMemo(() => {
+      return agreements
+        .filter((agreement) => {
+          const contractAgreementId = agreement.contractAgreementId;
+          return contractAgreementId && contractAddress;
+        })
+        .map((agreement) => {
+          const contractAgreementId = agreement.contractAgreementId;
+          return {
+            address: contractAddress as `0x${string}`,
+            abi: ESCROW_ABI.abi,
+            functionName: "getAgreement" as const,
+            args: [BigInt(contractAgreementId)],
+          };
+        });
+    }, [agreements, contractAddress]);
+
+    // Fetch on-chain data
+    const { data: onChainData, isLoading } = useContractReads({
+      contracts,
+      query: {
+        enabled: contracts.length > 0,
+      },
+    });
+
+    return { onChainData, isLoading };
+  };
 
   // Replace the useEffect that loads escrows
   useEffect(() => {
@@ -444,21 +506,133 @@ export default function Escrow() {
     setUiSuccess(null);
   };
 
-  // ---------- listing logic (unchanged) ----------
-  const listed = escrows
+  // Enhanced escrow loading with on-chain data
+  const [escrowsWithOnChainData, setEscrowsWithOnChainData] = useState<
+    OnChainEscrowData[]
+  >([]);
+
+  // Extract on-chain IDs from agreements
+  // const agreementIds = useMemo(() => {
+  //   if (!agreementsWithSecuredFunds) return [];
+  //   return agreementsWithSecuredFunds
+  //     .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
+  //     .map((agreement: any) => agreement.description || "");
+  // }, [agreementsWithSecuredFunds]);
+
+  // Filter and transform escrow agreements
+  const escrowAgreements = useMemo(() => {
+    if (!agreementsWithSecuredFunds) return [];
+
+    return agreementsWithSecuredFunds
+      .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
+      .map(transformApiAgreementToEscrow);
+  }, [agreementsWithSecuredFunds]);
+
+  const { onChainData } = useOnChainAgreementData(
+    agreementsWithSecuredFunds?.filter(
+      (agreement: any) => agreement.type === AgreementTypeEnum.ESCROW,
+    ) || [],
+  );
+
+  // Merge API data with on-chain data
+  // Merge API data with on-chain data
+  useEffect(() => {
+    if (escrowAgreements.length > 0) {
+      console.log("📥 Loaded escrow agreements:", escrowAgreements);
+
+      // If we have on-chain data, merge it
+      if (onChainData && onChainData.length > 0) {
+        console.log("📦 On-chain data received:", onChainData);
+
+        const mergedEscrows = escrowAgreements.map((escrow, index) => {
+          const onChainAgreement = onChainData[index];
+
+          if (onChainAgreement && onChainAgreement.status === "success") {
+            const agreementData = [
+              ...(onChainAgreement.result as readonly any[]),
+            ];
+
+            console.log(
+              `🔗 Merging on-chain data for escrow ${escrow.id}:`,
+              agreementData,
+            );
+
+            // Map the array indices to meaningful properties
+            const onChainStatus = mapOnChainStatusFromArray(agreementData);
+
+            return {
+              ...escrow,
+              // Override the status with on-chain status when available
+              status: onChainStatus,
+              onChainStatus: onChainStatus,
+              onChainAmount: agreementData[5]?.toString(), // amount
+              onChainDeadline: Number(agreementData[8]), // deadline
+              onChainParties: {
+                serviceProvider: agreementData[2], // serviceProvider
+                serviceRecipient: agreementData[3], // serviceRecipient
+              },
+              onChainToken: agreementData[4], // token
+              isOnChainActive:
+                agreementData[15] === true && agreementData[14] === true, // signed and funded
+              isFunded: agreementData[14] === true, // funded
+              isSigned: agreementData[15] === true, // signed
+              isCompleted: agreementData[18] === true, // completed
+              isDisputed: agreementData[19] === true, // disputed
+              isCancelled: agreementData[21] === true, // orderCancelled
+              lastUpdated: Date.now(),
+            };
+          }
+
+          return escrow;
+        });
+
+        console.log("✅ Merged escrows:", mergedEscrows);
+        setEscrowsWithOnChainData(mergedEscrows);
+      } else {
+        console.log("⚠️ No on-chain data available, using API data only");
+        setEscrowsWithOnChainData(escrowAgreements);
+      }
+    }
+  }, [escrowAgreements, onChainData]);
+
+  // Enhanced status mapping for on-chain agreements
+  const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
+    if (!agreementData || !Array.isArray(agreementData)) return "pending";
+
+    if (agreementData[18]) return "completed";
+    if (agreementData[19]) return "disputed";
+    if (agreementData[21]) return "cancelled";
+    if (agreementData[23]) return "pending_approval";
+    if (agreementData[15] && agreementData[16] && agreementData[17]) {
+      return "signed";
+    }
+    if (agreementData[15]) return "pending_delivery";
+
+    return "pending";
+  };
+
+  // Simplified listing logic - now status field contains on-chain data when available
+  // Update the listed filter logic to include "all"
+  const listed = escrowsWithOnChainData
     .filter((e) => e.type === "public")
     .filter((e) => {
       switch (statusTab) {
+        case "all":
+          return true; // Show all escrows
         case "pending":
           return e.status === "pending";
-        case "active":
-          return e.status === "active";
-        case "cancelled":
-          return e.status === "cancelled";
+        case "signed":
+          return e.status === "signed";
+        case "pending_delivery":
+          return e.status === "pending_delivery";
+        case "pending_approval":
+          return e.status === "pending_approval";
         case "completed":
           return e.status === "completed";
         case "disputed":
-          return e.status === "frozen";
+          return e.status === "disputed";
+        case "cancelled":
+          return e.status === "cancelled";
         default:
           return true;
       }
@@ -474,6 +648,7 @@ export default function Escrow() {
     .sort((a, b) =>
       sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt,
     );
+  console.log("🔍 Listed escrows after filtering and sorting:", listed);
 
   // ---------- UI state (unchanged) ----------
   const [open, setOpen] = useState(false);
@@ -1391,7 +1566,7 @@ Created: ${new Date().toISOString()}
         to,
         token: form.token === "custom" ? form.customTokenAddress : form.token,
         amount: Number(form.amount),
-        status: callerIsDepositor ? "active" : "pending",
+        status: callerIsDepositor ? "signed" : "pending",
         deadline: (deadline as Date).toISOString().split("T")[0],
         type: form.type as "public" | "private",
         description: form.description,
@@ -1572,63 +1747,113 @@ Created: ${new Date().toISOString()}
 
   // Temporary debug component - add it somewhere in your JSX
   // Enhanced debug component to show what's actually being loaded
-  const DebugAgreementInfo = () => {
-    const { data, isLoading, error } = useAgreementsWithDetailsAndFundsFilter({
-      includesFunds: true,
-      hasSecuredFunds: true,
-    });
+  // const DebugAgreementInfo = () => {
+  //   const { data, isLoading, error } = useAgreementsWithDetailsAndFundsFilter({
+  //     includesFunds: true,
+  //     hasSecuredFunds: true,
+  //   });
 
-    if (isLoading) {
-      return <div className="text-cyan-300">Loading agreements...</div>;
-    }
+  //   if (isLoading) {
+  //     return <div className="text-cyan-300">Loading agreements...</div>;
+  //   }
 
-    if (error) {
-      return (
-        <div className="text-red-300">
-          Error loading agreements: {error.message}
-        </div>
-      );
-    }
+  //   if (error) {
+  //     return (
+  //       <div className="text-red-300">
+  //         Error loading agreements: {error.message}
+  //       </div>
+  //     );
+  //   }
+
+  //   return (
+  //     <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+  //       <h3 className="font-semibold text-yellow-300">
+  //         Debug: Party Information
+  //       </h3>
+  //       <div className="mt-2 text-xs text-yellow-200/70">
+  //         Showing {data?.length || 0} agreements with hasSecuredFunds=true
+  //       </div>
+  //       <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+  //         {data?.map((agreement) => {
+  //           const serviceProvider = agreement.firstParty?.wallet;
+  //           const serviceRecipient = agreement.counterParty?.wallet;
+
+  //           return (
+  //             <div
+  //               key={agreement.id}
+  //               className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
+  //             >
+  //               <div>
+  //                 <strong>ID:</strong> {agreement.id}
+  //               </div>
+  //               <div>
+  //                 <strong>Title:</strong> {agreement.title}
+  //               </div>
+  //               <div>
+  //                 <strong>First Party (Service Provider = Payee):</strong>{" "}
+  //                 {serviceProvider}
+  //               </div>
+  //               <div>
+  //                 <strong>Counter Party (Service Recipient = Payer):</strong>{" "}
+  //                 {serviceRecipient}
+  //               </div>
+  //               <div>
+  //                 <strong>Displayed as:</strong> {serviceRecipient} →{" "}
+  //                 {serviceProvider}
+  //               </div>
+  //             </div>
+  //           );
+  //         })}
+  //       </div>
+  //     </div>
+  //   );
+  // };
+
+  const DebugOnChainData = () => {
+    if (!onChainData) return null;
 
     return (
       <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-        <h3 className="font-semibold text-yellow-300">
-          Debug: Party Information
-        </h3>
+        <h3 className="font-semibold text-yellow-300">Debug: On-Chain Data</h3>
         <div className="mt-2 text-xs text-yellow-200/70">
-          Showing {data?.length || 0} agreements with hasSecuredFunds=true
+          Contracts queried: {onChainData.length}
         </div>
         <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
-          {data?.map((agreement) => {
-            const serviceProvider = agreement.firstParty?.wallet;
-            const serviceRecipient = agreement.counterParty?.wallet;
-
-            return (
-              <div
-                key={agreement.id}
-                className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
-              >
-                <div>
-                  <strong>ID:</strong> {agreement.id}
-                </div>
-                <div>
-                  <strong>Title:</strong> {agreement.title}
-                </div>
-                <div>
-                  <strong>First Party (Service Provider = Payee):</strong>{" "}
-                  {serviceProvider}
-                </div>
-                <div>
-                  <strong>Counter Party (Service Recipient = Payer):</strong>{" "}
-                  {serviceRecipient}
-                </div>
-                <div>
-                  <strong>Displayed as:</strong> {serviceRecipient} →{" "}
-                  {serviceProvider}
-                </div>
+          {onChainData.map((item, index) => (
+            <div
+              key={index}
+              className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
+            >
+              <div>
+                <strong>Status:</strong> {item.status}
               </div>
-            );
-          })}
+              {item.status === "success" &&
+                item.result &&
+                Array.isArray(item.result) && (
+                  <>
+                    <div>
+                      <strong>ID:</strong>{" "}
+                      {(item.result[0] as bigint)?.toString()}
+                    </div>
+                    <div>
+                      <strong>Funded:</strong> {item.result[14]?.toString()}
+                    </div>
+                    <div>
+                      <strong>Signed:</strong> {item.result[15]?.toString()}
+                    </div>
+                    <div>
+                      <strong>Completed:</strong> {item.result[18]?.toString()}
+                    </div>
+                    <div>
+                      <strong>Disputed:</strong> {item.result[19]?.toString()}
+                    </div>
+                    <div>
+                      <strong>Cancelled:</strong> {item.result[21]?.toString()}
+                    </div>
+                  </>
+                )}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -1642,7 +1867,7 @@ Created: ${new Date().toISOString()}
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
       <div className="space-y-4">
-        <DebugAgreementInfo />
+        {/* <DebugAgreementInfo /> */}
         <div className="justify-between lg:flex">
           <header className="flex flex-col gap-3">
             <div>
@@ -2313,19 +2538,95 @@ Created: ${new Date().toISOString()}
           </header>
 
           <aside className="space-y-4">
-            <div className="mt-4 rounded-xl border border-b-2 border-white/10 px-4 py-2 ring-1 ring-white/10 lg:mt-0">
-              <div className="mb-3 text-sm font-semibold text-white/90">
-                Filter
+            {/* Custom Filter Component */}
+            <div className="mt-4 rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-transparent p-4 ring-1 ring-white/10 backdrop-blur-sm lg:mt-0">
+              <div className="mb-3 flex items-center justify-between"></div>
+
+              {/* Custom Filter Tabs */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  {
+                    value: "all",
+                    label: "All",
+                    count: escrowsWithOnChainData.length,
+                  },
+                  {
+                    value: "pending",
+                    label: "Pending",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "pending",
+                    ).length,
+                  },
+                  {
+                    value: "signed",
+                    label: "Signed",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "signed",
+                    ).length,
+                  },
+                  {
+                    value: "pending_delivery",
+                    label: "Delivery",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "pending_delivery",
+                    ).length,
+                  },
+                  {
+                    value: "pending_approval",
+                    label: "Approval",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "pending_approval",
+                    ).length,
+                  },
+                  {
+                    value: "completed",
+                    label: "Completed",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "completed",
+                    ).length,
+                  },
+                  {
+                    value: "disputed",
+                    label: "Disputed",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "disputed",
+                    ).length,
+                  },
+                  {
+                    value: "cancelled",
+                    label: "Cancelled",
+                    count: escrowsWithOnChainData.filter(
+                      (e) => e.status === "cancelled",
+                    ).length,
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setStatusTab(tab.value)}
+                    className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                      statusTab === tab.value
+                        ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                        : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    } `}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
+                        statusTab === tab.value
+                          ? "bg-cyan-400/30 text-cyan-200"
+                          : "bg-white/10 text-white/60"
+                      } `}
+                    >
+                      {tab.count}
+                    </span>
+
+                    {/* Active indicator dot */}
+                    {statusTab === tab.value && (
+                      <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
+                    )}
+                  </button>
+                ))}
               </div>
-              <Tabs value={statusTab} onValueChange={setStatusTab}>
-                <TabsList className="flex flex-wrap gap-1 bg-white/5">
-                  <TabsTrigger value="pending">Pending</TabsTrigger>
-                  <TabsTrigger value="active">Active</TabsTrigger>
-                  <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-                  <TabsTrigger value="completed">Completed</TabsTrigger>
-                  <TabsTrigger value="disputed">Disputed</TabsTrigger>
-                </TabsList>
-              </Tabs>
             </div>
           </aside>
         </div>
@@ -2427,41 +2728,83 @@ Created: ${new Date().toISOString()}
                           {e.amount} {e.token}
                         </div>
                       </div>
+
                       <div className="flex flex-col gap-2">
                         <div className="text-muted-foreground">Status</div>
-                        <div>
-                          {e.status === "completed" ? (
-                            <span className="badge badge-green">Completed</span>
-                          ) : e.status === "frozen" ||
-                            e.status === "disputed" ? (
-                            <span className="badge badge-red">Disputed</span>
-                          ) : e.status === "cancelled" ? (
-                            <span className="badge badge-gray">Cancelled</span>
-                          ) : e.status === "active" ? (
-                            <span className="badge badge-yellow">Active</span>
-                          ) : (
-                            <span className="badge badge-blue">Pending</span>
-                          )}
+                        <div className="flex flex-col gap-1">
+                          {/* Primary status - prioritize on-chain status */}
+                          <div>
+                            {(() => {
+                              // Use on-chain status as primary, fallback to API status
+                              const displayStatus =
+                                e.onChainStatus && e.onChainStatus !== "unknown"
+                                  ? e.onChainStatus
+                                  : e.status;
+
+                              return (
+                                <span
+                                  className={`badge ${
+                                    displayStatus === "pending"
+                                      ? "badge-orange"
+                                      : displayStatus === "completed"
+                                        ? "badge-green"
+                                        : displayStatus === "disputed"
+                                          ? "badge-purple"
+                                          : displayStatus === "signed"
+                                            ? "badge-blue"
+                                            : displayStatus === "cancelled"
+                                              ? "badge-red"
+                                              : displayStatus ===
+                                                  "pending_approval"
+                                                ? "badge-purple" // Using purple for pending_approval to match your pattern
+                                                : displayStatus ===
+                                                    "pending_delivery"
+                                                  ? "badge-orange" // Using orange for pending_delivery to match your pattern
+                                                  : "badge-orange" // Default to orange for any other status
+                                  }`}
+                                >
+                                  {displayStatus === "pending_approval"
+                                    ? "Pending Approval"
+                                    : displayStatus === "pending_delivery"
+                                      ? "Pending Delivery"
+                                      : displayStatus.charAt(0).toUpperCase() +
+                                        displayStatus.slice(1)}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* On-chain indicators */}
+                    {/* On-chain indicators */}
                   </div>
 
                   <p className="text-muted-foreground mt-3 line-clamp-2 text-sm">
                     {e.description}
                   </p>
+
                   <div className="mt-4 flex items-center justify-between">
                     <div className="text-muted-foreground text-xs">
-                      Deadline: {e.deadline}
+                      {e.onChainDeadline ? (
+                        <>
+                          Deadline:{" "}
+                          {new Date(
+                            Number(e.onChainDeadline) * 1000,
+                          ).toLocaleDateString()}
+                        </>
+                      ) : (
+                        <>Deadline: {e.deadline}</>
+                      )}
                     </div>
-                    <Link to={`/escrow/${e.id}`}>
-                      <Button
-                        variant="outline"
-                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                      >
-                        <Eye className="mr-2 h-4 w-4" /> View
-                      </Button>
-                    </Link>
+
+                    <Button
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                    >
+                      <Eye className="mr-2 h-4 w-4" /> View
+                    </Button>
                   </div>
                 </div>
               </Link>
@@ -2469,6 +2812,7 @@ Created: ${new Date().toISOString()}
           </div>
         )}
       </div>
+      <DebugOnChainData />
     </div>
   );
 }

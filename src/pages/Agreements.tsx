@@ -260,6 +260,7 @@ export default function Agreements() {
   const [pageSize, setPageSize] = useState(10); // Default page size
   const [totalAgreements, setTotalAgreements] = useState(0);
   const [, setTotalResults] = useState(0);
+  const [allAgreements, setAllAgreements] = useState<Agreement[]>([]);
 
   // New state for agreement type selection
   const [agreementType, setAgreementType] = useState<AgreementType>("myself");
@@ -357,99 +358,107 @@ export default function Agreements() {
 
   // Load agreements
 
-  const loadAgreements = useCallback(
-    async (page: number = currentPage, size: number = pageSize) => {
-      try {
-        setLoading(true);
-
-        // First, get ALL agreements without pagination to filter properly
-        const allAgreementsResponse = await agreementService.getAgreements({
-          top: 1000, // Get a large number to ensure we get all agreements
-          skip: 0,
-          sort: "desc",
-        });
-
-        console.log("📋 All agreements response:", allAgreementsResponse);
-
-        const allAgreementsList = allAgreementsResponse.results || [];
-
-        // Get agreement details to check for secured funds for ALL agreements
-        const agreementsWithDetails = await Promise.all(
-          allAgreementsList.map(async (agreement) => {
-            try {
-              const details = await agreementService.getAgreementDetails(
-                agreement.id,
-              );
-              return { ...agreement, details };
-            } catch (err) {
-              console.warn(
-                `Failed fetching details for agreement ${agreement.id}`,
-                err,
-              );
-              return { ...agreement, details: null };
-            }
-          }),
-        );
-
-        // Filter out agreements with secured funds from ALL agreements
-        const filteredAgreements = agreementsWithDetails.filter(
-          // (item) => item.details && !item.details.hasSecuredFunds,
-          (item) => item.details,
-        );
-
-        console.log(
-          "🔍 Total agreements after filtering:",
-          filteredAgreements.length,
-        );
-
-        // Now apply pagination to the FILTERED results
-        const startIndex = (page - 1) * size;
-        const endIndex = startIndex + size;
-        const paginatedAgreements = filteredAgreements.slice(
-          startIndex,
-          endIndex,
-        );
-
-        // Set the total count based on filtered agreements
-        setTotalAgreements(filteredAgreements.length);
-        setTotalResults(filteredAgreements.length);
-
-        const transformedAgreements = paginatedAgreements.map((item) =>
-          transformApiAgreement(item),
-        );
-
-        console.log(
-          "🔍 PAGINATED FILTERED AGREEMENTS (no secured funds):",
-          transformedAgreements,
-        );
-
-        setAgreements(transformedAgreements);
-      } catch (error: any) {
-        console.error("Failed to fetch agreements:", error);
-        toast.error(error.message || "Failed to load agreements");
-        setAgreements([]);
-        setTotalAgreements(0);
-        setTotalResults(0);
-      } finally {
-        setLoading(false);
-      }
+  const applyPagination = useCallback(
+    (allAgreementsList: Agreement[], page: number, size: number) => {
+      const startIndex = (page - 1) * size;
+      const endIndex = startIndex + size;
+      const paginatedAgreements = allAgreementsList.slice(startIndex, endIndex);
+      setAgreements(paginatedAgreements);
     },
-    [currentPage, pageSize],
+    [],
   );
+
+  // Update loadAgreements to store ALL agreements
+  const loadAgreements = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Get ALL agreements without pagination for searching
+      const allAgreementsResponse = await agreementService.getAgreements({
+        top: 1000, // Get a large number to ensure we get all agreements
+        skip: 0,
+        sort: "desc",
+      });
+
+      console.log("📋 All agreements response:", allAgreementsResponse);
+
+      const allAgreementsList = allAgreementsResponse.results || [];
+
+      // Get agreement details to check for secured funds for ALL agreements
+      const agreementsWithDetails = await Promise.all(
+        allAgreementsList.map(async (agreement) => {
+          try {
+            const details = await agreementService.getAgreementDetails(
+              agreement.id,
+            );
+            return { ...agreement, details };
+          } catch (err) {
+            console.warn(
+              `Failed fetching details for agreement ${agreement.id}`,
+              err,
+            );
+            return { ...agreement, details: null };
+          }
+        }),
+      );
+
+      // Filter out agreements with secured funds from ALL agreements
+      const filteredAgreements = agreementsWithDetails.filter(
+        (item) => item.details && !item.details.hasSecuredFunds,
+      );
+
+      console.log(
+        "🔍 Total agreements after filtering:",
+        filteredAgreements.length,
+      );
+
+      // Transform ALL agreements for search
+      const transformedAgreements = filteredAgreements.map((item) =>
+        transformApiAgreement(item),
+      );
+
+      // Store ALL agreements for searching
+      setAllAgreements(transformedAgreements);
+      setTotalAgreements(transformedAgreements.length);
+      setTotalResults(transformedAgreements.length);
+
+      // Apply pagination to display
+      applyPagination(transformedAgreements, currentPage, pageSize);
+    } catch (error: any) {
+      console.error("Failed to fetch agreements:", error);
+      toast.error(error.message || "Failed to load agreements");
+      setAllAgreements([]);
+      setAgreements([]);
+      setTotalAgreements(0);
+      setTotalResults(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, pageSize, applyPagination]);
+
   useEffect(() => {
     loadAgreements();
   }, [loadAgreements]);
 
-  // Add pagination handlers
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
-    loadAgreements(newPage, pageSize);
+    if (searchQuery.trim()) {
+      // If searching, paginate the search results
+      applyPagination(filteredTableAgreements, newPage, pageSize);
+    } else {
+      // If not searching, paginate all agreements
+      applyPagination(allAgreements, newPage, pageSize);
+    }
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
-    setCurrentPage(1); // Reset to first page when changing page size
-    loadAgreements(1, newSize);
+    setCurrentPage(1);
+    if (searchQuery.trim()) {
+      applyPagination(filteredTableAgreements, 1, newSize);
+    } else {
+      applyPagination(allAgreements, 1, newSize);
+    }
   };
 
   // Calculate pagination info
@@ -624,13 +633,15 @@ export default function Agreements() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  // Update the filter logic
-  const filteredTableAgreements: Agreement[] = agreements
+  // Add pagination function
+
+  // Update the filter logic to search ALL agreements
+  const filteredTableAgreements: Agreement[] = allAgreements
     .filter((a) => {
       // Status filter - "all" means no filtering
       if (tableFilter !== "all" && a.status !== tableFilter) return false;
 
-      // Search filter
+      // Search filter - now searches ALL agreements
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         return (

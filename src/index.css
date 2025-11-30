@@ -391,6 +391,12 @@ button {
   background-color: rgba(123, 56, 248, 0.1);
 }
 
+.badge-yellow {
+  border-color: rgb(255, 255, 0);
+  color: rgb(17, 24, 39);
+  background-color: rgba(234, 179, 8, 0.1);
+}
+
 .glow-input {
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);

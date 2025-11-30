@@ -628,9 +628,9 @@ export default function Disputes() {
 
   return (
     <div className="relative space-y-8">
-      <div className="absolute block size-[20rem] rounded-full bg-cyan-500/20 blur-3xl lg:top-28 lg:right-20 lg:size-[30rem]"></div>
+      {/* <div className="absolute block size-[20rem] rounded-full bg-cyan-500/20 blur-3xl lg:top-28 lg:right-20 lg:size-[30rem]"></div>
       <div className="absolute -top-20 -left-6 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[25rem]"></div>
-      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div>
+      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div> */}
 
       {/* Intro section */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
@@ -938,7 +938,7 @@ export default function Disputes() {
             </div>
           </div>
 
-          <div className="glass border border-white/10 bg-gradient-to-br from-cyan-500/10 p-4">
+          <div className="card-cyan border p-4">
             <ul className="space-y-3 text-sm">
               {filteredRecentDisputes.length === 0 ? (
                 <li className="text-muted-foreground py-3 text-center text-xs">
@@ -1418,7 +1418,7 @@ function JudgesIntro() {
 
   return (
     <section
-      className={`glass card-cyan relative col-span-2 overflow-hidden p-6 transition-all duration-300 ${
+      className={`card-cyan relative col-span-2 overflow-hidden p-6 transition-all duration-300 ${
         expanded ? "h-auto" : "lg:h-[14rem]"
       }`}
     >

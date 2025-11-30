@@ -192,7 +192,7 @@ export type Escrow = {
   amount: number;
   status:
     | "pending"
-    | "active"
+    | "signed"
     | "cancelled"
     | "completed"
     | "frozen"

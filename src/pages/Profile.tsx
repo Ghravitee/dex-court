@@ -26,41 +26,55 @@ import useTrustScore from "../hooks/useTrustScore";
 import Admin from "../components/ui/svgcomponents/Admin";
 // Add this import with your other imports
 import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
+import { useChainId, useContractReads } from "wagmi";
+import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
+import { cleanTelegramUsername } from "../lib/usernameUtils";
 
 // Add AgreementStatusBadge component
-const AgreementStatusBadge = ({ status }: { status: number }) => {
+// Enhanced AgreementStatusBadge component
+const AgreementStatusBadge = ({
+  status,
+  agreement,
+}: {
+  status: number;
+  agreement?: any;
+}) => {
+  // Use on-chain status if available, otherwise use API status
+  const displayStatus =
+    agreement?.onChainStatus || mapAgreementStatusToEscrow(status);
+
   const statusConfig = {
-    1: {
+    pending: {
       label: "Pending",
       color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
     },
-    2: {
+    signed: {
       label: "Signed",
       color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
     },
-    3: {
+    completed: {
       label: "Completed",
       color: "bg-green-500/20 text-green-300 border-green-400/30",
     },
-    4: {
+    disputed: {
       label: "Disputed",
       color: "bg-purple-800/20 text-purple-300 border-purple-800/30",
     },
-    5: {
+    cancelled: {
       label: "Cancelled",
       color: "bg-red-500/20 text-red-300 border-red-400/30",
     },
-    6: {
-      label: "Expired",
+    pending_delivery: {
+      label: "Pending Delivery",
       color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
-    7: {
-      label: "Delivery Submitted",
-      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    pending_approval: {
+      label: "Pending Approval",
+      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
     },
   };
 
-  const config = statusConfig[status as keyof typeof statusConfig] || {
+  const config = statusConfig[displayStatus as keyof typeof statusConfig] || {
     label: "Unknown",
     color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
   };
@@ -301,6 +315,89 @@ export function BentoCard({
   );
 }
 
+// Add these types near the top with your other types
+type EscrowStatus =
+  | "pending"
+  | "signed"
+  | "completed"
+  | "cancelled"
+  | "disputed"
+  | "pending_approval"
+  | "pending_delivery";
+
+// Enhanced status mapping for on-chain agreements
+const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
+  switch (status) {
+    case 1:
+      return "pending";
+    case 2:
+      return "signed";
+    case 3:
+      return "completed";
+    case 4:
+      return "disputed";
+    case 5:
+      return "cancelled";
+    case 6:
+      return "cancelled";
+    case 7:
+      return "pending_delivery";
+    default:
+      return "pending";
+  }
+};
+
+// Enhanced status mapping from on-chain data
+const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
+  if (!agreementData || !Array.isArray(agreementData)) return "pending";
+
+  if (agreementData[18]) return "completed";
+  if (agreementData[19]) return "disputed";
+  if (agreementData[21]) return "cancelled";
+  if (agreementData[23]) return "pending_approval";
+  if (agreementData[15] && agreementData[16] && agreementData[17]) {
+    return "signed";
+  }
+  if (agreementData[15]) return "pending_delivery";
+
+  return "pending";
+};
+
+// Custom hook to fetch on-chain data for agreements
+const useOnChainAgreementData = (agreements: any[]) => {
+  const chainId = useChainId();
+  const contractAddress =
+    (chainId && ESCROW_CA[chainId as number]) || undefined;
+
+  // Create contract calls for each agreement that has a contractAgreementId
+  const contracts = useMemo(() => {
+    return agreements
+      .filter((agreement) => {
+        const contractAgreementId = agreement.contractAgreementId;
+        return contractAgreementId && contractAddress;
+      })
+      .map((agreement) => {
+        const contractAgreementId = agreement.contractAgreementId;
+        return {
+          address: contractAddress as `0x${string}`,
+          abi: ESCROW_ABI.abi,
+          functionName: "getAgreement" as const,
+          args: [BigInt(contractAgreementId)],
+        };
+      });
+  }, [agreements, contractAddress]);
+
+  // Fetch on-chain data
+  const { data: onChainData, isLoading } = useContractReads({
+    contracts,
+    query: {
+      enabled: contracts.length > 0,
+    },
+  });
+
+  return { onChainData, isLoading };
+};
+
 export default function Profile() {
   const { isAuthenticated, user, login } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -323,13 +420,14 @@ export default function Profile() {
   } = useAgreementsApi();
 
   const {
-    data: escrowAgreements,
+    data: agreementsWithSecuredFunds,
     isLoading: escrowAgreementsLoading,
     error: escrowAgreementsError,
   } = useAgreementsWithDetailsAndFundsFilter({
     includesFunds: true,
     hasSecuredFunds: true,
   });
+
   const {
     disputes,
     loading: disputesLoading,
@@ -349,45 +447,213 @@ export default function Profile() {
     success: uploadSuccess,
   } = useAvatarUpload();
 
+  // Add this transform function (similar to Escrow.tsx)
+  const transformApiAgreementToEscrow = (apiAgreement: any) => {
+    // Extract from on-chain metadata in description
+    const extractServiceProviderFromDescription = (
+      description: string,
+    ): string | undefined => {
+      const match = description?.match(
+        /Service Provider: (0x[a-fA-F0-9]{40})/i,
+      );
+      return match?.[1];
+    };
+
+    const extractServiceRecipientFromDescription = (
+      description: string,
+    ): string | undefined => {
+      const match = description?.match(
+        /Service Recipient: (0x[a-fA-F0-9]{40})/i,
+      );
+      return match?.[1];
+    };
+
+    const serviceProvider = extractServiceProviderFromDescription(
+      apiAgreement.description,
+    );
+    const serviceRecipient = extractServiceRecipientFromDescription(
+      apiAgreement.description,
+    );
+
+    // Fallback to API party data
+    const getPartyIdentifier = (party: any): string => {
+      return (
+        party?.walletAddress ||
+        party?.wallet ||
+        party?.WalletAddress ||
+        cleanTelegramUsername(party?.telegramUsername) ||
+        "@unknown"
+      );
+    };
+
+    const fallbackServiceProvider = getPartyIdentifier(apiAgreement.firstParty);
+    const fallbackServiceRecipient = getPartyIdentifier(
+      apiAgreement.counterParty,
+    );
+
+    const finalServiceProvider = serviceProvider || fallbackServiceProvider;
+    const finalServiceRecipient = serviceRecipient || fallbackServiceRecipient;
+
+    return {
+      id: `${apiAgreement.id}`,
+      title: apiAgreement.title,
+      from: finalServiceRecipient,
+      to: finalServiceProvider,
+      token: apiAgreement.tokenSymbol || "ETH",
+      amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+      status: mapAgreementStatusToEscrow(apiAgreement.status),
+      deadline: apiAgreement.deadline
+        ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
+        : "No deadline",
+      type: apiAgreement.visibility === 1 ? "private" : "public",
+      description: apiAgreement.description || "",
+      createdAt: new Date(
+        apiAgreement.dateCreated || apiAgreement.createdAt,
+      ).getTime(),
+      contractAgreementId: apiAgreement.contractAgreementId,
+      firstParty: apiAgreement.firstParty,
+      counterParty: apiAgreement.counterParty,
+    };
+  };
+
   // Memoized agreement stats calculation
-  const agreementStats = useMemo(
-    () => ({
-      total: agreements.length,
-      active: agreements.filter((agreement) => agreement.status === 2).length,
-      completed: agreements.filter((agreement) => agreement.status === 3)
+  const agreementStats = useMemo(() => {
+    // Filter out agreements that have secured funds (escrow deals)
+    const regularAgreements = agreements.filter((agreement) => {
+      // Check if this agreement has secured funds by comparing with our secured funds data
+      const hasSecuredFunds = agreementsWithSecuredFunds?.some(
+        (securedAgreement: any) => securedAgreement.id === agreement.id,
+      );
+      return !hasSecuredFunds;
+    });
+
+    return {
+      total: regularAgreements.length,
+      active: regularAgreements.filter((agreement) => agreement.status === 2)
         .length,
-      disputed: agreements.filter((agreement) => agreement.status === 4).length,
-    }),
-    [agreements],
-  );
+      completed: regularAgreements.filter((agreement) => agreement.status === 3)
+        .length,
+      disputed: regularAgreements.filter((agreement) => agreement.status === 4)
+        .length,
+    };
+  }, [agreements, agreementsWithSecuredFunds]);
+
+  const regularAgreements = useMemo(() => {
+    return agreements.filter((agreement) => {
+      // Filter out agreements that have secured funds
+      const hasSecuredFunds = agreementsWithSecuredFunds?.some(
+        (securedAgreement: any) => securedAgreement.id === agreement.id,
+      );
+      return !hasSecuredFunds;
+    });
+  }, [agreements, agreementsWithSecuredFunds]);
+
+  const escrowAgreements = useMemo(() => {
+    if (!agreementsWithSecuredFunds) return [];
+
+    return agreementsWithSecuredFunds
+      .filter((agreement: any) => agreement.type === 2) // ESCROW type
+      .map(transformApiAgreementToEscrow);
+  }, [agreementsWithSecuredFunds]);
+
+  const { onChainData } = useOnChainAgreementData(escrowAgreements);
+
+  // Merge API data with on-chain data for escrow deals
+  const escrowDealsWithOnChainData = useMemo(() => {
+    if (escrowAgreements.length === 0) return [];
+
+    // If we have on-chain data, merge it
+    if (onChainData && onChainData.length > 0) {
+      return escrowAgreements.map((escrow, index) => {
+        const onChainAgreement = onChainData[index];
+
+        if (onChainAgreement && onChainAgreement.status === "success") {
+          const agreementData = [
+            ...(onChainAgreement.result as readonly any[]),
+          ];
+
+          const onChainStatus = mapOnChainStatusFromArray(agreementData);
+
+          return {
+            ...escrow,
+            // Override the status with on-chain status when available
+            status: onChainStatus,
+            onChainStatus: onChainStatus,
+            onChainAmount: agreementData[5]?.toString(),
+            onChainDeadline: Number(agreementData[8]),
+            onChainParties: {
+              serviceProvider: agreementData[2],
+              serviceRecipient: agreementData[3],
+            },
+            onChainToken: agreementData[4],
+            isOnChainActive:
+              agreementData[15] === true && agreementData[14] === true,
+            isFunded: agreementData[14] === true,
+            isSigned: agreementData[15] === true,
+            isCompleted: agreementData[18] === true,
+            isDisputed: agreementData[19] === true,
+            isCancelled: agreementData[21] === true,
+            deliverySubmitted: agreementData[16] === true,
+            lastUpdated: Date.now(),
+          };
+        }
+
+        return escrow;
+      });
+    }
+
+    // Fallback to API data only
+    return escrowAgreements;
+  }, [escrowAgreements, onChainData]);
 
   // Add this with your other useMemo calculations
-  // Memoized escrow deals calculation - FILTER FOR CURRENT USER
   const escrowDeals = useMemo(() => {
-    if (!escrowAgreements || !user?.id) return [];
+    if (!escrowDealsWithOnChainData || !user?.id) return [];
 
-    return escrowAgreements.filter((agreement: any) => {
+    return escrowDealsWithOnChainData.filter((agreement: any) => {
       const userId = user.id.toString();
-      const firstPartyId = agreement.firstParty?.id?.toString();
-      const counterPartyId = agreement.counterParty?.id?.toString();
 
-      // Check if current user is involved in this escrow agreement
-      return firstPartyId === userId || counterPartyId === userId;
+      // Handle different possible party structures
+      const firstPartyId =
+        agreement.firstParty?.id?.toString() ||
+        agreement.firstPartyId?.toString();
+      const counterPartyId =
+        agreement.counterParty?.id?.toString() ||
+        agreement.counterPartyId?.toString();
+
+      // Also check wallet addresses if available
+      const firstPartyWallet =
+        agreement.firstParty?.walletAddress || agreement.firstParty?.wallet;
+      const counterPartyWallet =
+        agreement.counterParty?.walletAddress || agreement.counterParty?.wallet;
+      const userWallet = user.walletAddress;
+
+      return (
+        firstPartyId === userId ||
+        counterPartyId === userId ||
+        firstPartyWallet === userWallet ||
+        counterPartyWallet === userWallet
+      );
     });
-  }, [escrowAgreements, user?.id]);
+  }, [escrowDealsWithOnChainData, user?.id, user?.walletAddress]);
 
   console.log(escrowDeals, "Checking escrow deals");
 
-  // Memoized escrow stats
   const escrowStats = useMemo(
     () => ({
       total: escrowDeals.length,
-      active: escrowDeals.filter((agreement: any) => agreement.status === 2)
-        .length,
-      completed: escrowDeals.filter((agreement: any) => agreement.status === 3)
-        .length,
-      disputed: escrowDeals.filter((agreement: any) => agreement.status === 4)
-        .length,
+      active: escrowDeals.filter(
+        (agreement: any) =>
+          agreement.status === "signed" || agreement.status === 2,
+      ).length,
+      completed: escrowDeals.filter(
+        (agreement: any) =>
+          agreement.status === "completed" || agreement.status === 3,
+      ).length,
+      disputed: escrowDeals.filter(
+        (agreement: any) =>
+          agreement.status === "disputed" || agreement.status === 4,
+      ).length,
     }),
     [escrowDeals],
   );
@@ -625,6 +891,27 @@ export default function Profile() {
     type: "success",
     isVisible: false,
   });
+
+  // Add this useEffect to debug the data:
+  useEffect(() => {
+    console.log(
+      "🔍 Profile Debug - agreementsWithSecuredFunds:",
+      agreementsWithSecuredFunds,
+    );
+    console.log("🔍 Profile Debug - escrowAgreements:", escrowAgreements);
+    console.log(
+      "🔍 Profile Debug - escrowDealsWithOnChainData:",
+      escrowDealsWithOnChainData,
+    );
+    console.log("🔍 Profile Debug - escrowDeals:", escrowDeals);
+    console.log("🔍 Profile Debug - onChainData:", onChainData);
+  }, [
+    agreementsWithSecuredFunds,
+    escrowAgreements,
+    escrowDealsWithOnChainData,
+    escrowDeals,
+    onChainData,
+  ]);
 
   // Show toaster when success or error occurs - optimized with proper dependencies
   useEffect(() => {
@@ -1319,18 +1606,19 @@ export default function Profile() {
               </div>
               <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          ) : agreements.length === 0 ? (
+          ) : regularAgreements.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
-                No agreements yet
+                No regular agreements yet
               </div>
               <div className="text-sm text-white/50">
-                Create your first agreement to get started with secure deals.
+                Create your first agreement or check your escrow deals for
+                secured agreements.
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              {agreements.map((agreement) => (
+              {regularAgreements.map((agreement) => (
                 <div
                   key={agreement.id}
                   onClick={() => handleAgreementClick(agreement.id)}
@@ -1342,7 +1630,11 @@ export default function Profile() {
                         <h4 className="truncate text-sm font-medium text-white/90">
                           {getAgreementTitle(agreement)}
                         </h4>
-                        <AgreementStatusBadge status={agreement.status} />
+
+                        <AgreementStatusBadge
+                          status={agreement.status}
+                          agreement={agreement}
+                        />
                       </div>
 
                       <div className="mb-2 text-xs text-white/70">
@@ -1458,7 +1750,10 @@ export default function Profile() {
                             {agreement.title || `Escrow Deal #${agreement.id}`}
                           </h4>
                           <div className="flex items-center gap-1">
-                            <AgreementStatusBadge status={agreement.status} />
+                            <AgreementStatusBadge
+                              status={agreement.status}
+                              agreement={agreement}
+                            />
                           </div>
                         </div>
 

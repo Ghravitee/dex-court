@@ -13,7 +13,7 @@ export default function Layout() {
   return (
     <main
       style={{ display: "block" }}
-      className="text-foreground flex min-h-screen w-full bg-black"
+      className="text-foreground flex min-h-screen w-full bg-gradient-to-br from-gray-900 to-black"
     >
       {/* Desktop Sidebar */}
       <Sidebar
