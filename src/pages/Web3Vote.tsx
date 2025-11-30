@@ -497,7 +497,6 @@ export default function Disputes() {
       console.log("✅ Dispute created on backend:", result);
       toast.success("Dispute created on backend");
 
-
       // decide flags + amounts
       const isProBono = requestKind === DisputeTypeEnum.ProBono;
       const proBonoFlag = isProBono; // boolean
