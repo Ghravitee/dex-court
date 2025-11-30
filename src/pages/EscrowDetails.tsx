@@ -41,10 +41,20 @@ import { FaArrowRightArrowLeft } from "react-icons/fa6";
 // Use the same services as Escrow.tsx
 import { agreementService } from "../services/agreementServices";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { getAgreement, getMilestoneCount, getTokenDecimals, getTokenSymbol } from "../web3/readContract";
+import {
+  getAgreement,
+  getMilestoneCount,
+  getTokenDecimals,
+  getTokenSymbol,
+} from "../web3/readContract";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
 import { formatAmount } from "../web3/helper";
-import { useAccount, useContractReads, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useContractReads,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
 import type { LoadingStates, MilestoneData } from "../web3/interfaces";
 import { MilestoneTableRow } from "../web3/MilestoneTableRow";
 import { parseEther } from "ethers";
@@ -157,14 +167,26 @@ const formatNumberWithCommas = (value: string | undefined): string => {
 };
 
 // Format wallet address for display
+// Format wallet address for display
 const formatWalletAddress = (address: string): string => {
   if (!address || address === "Unknown") return "Unknown";
-  if (address.startsWith("@") || address.length <= 15) {
-    return address;
+
+  // Check if it's a username (starts with @ or doesn't look like a wallet address)
+  if (address.startsWith("@")) {
+    return address; // Already has @
   }
+
   if (address.startsWith("0x") && address.length === 42) {
+    // It's a wallet address
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
+
+  // If it's not a wallet address and doesn't start with @, assume it's a username
+  // and add @ prefix
+  if (!address.includes("0x") && address.length <= 15) {
+    return `@${address}`;
+  }
+
   return address;
 };
 
@@ -199,10 +221,11 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-      }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -228,10 +251,11 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-      }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -330,10 +354,18 @@ export default function EscrowDetails() {
 
   const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
-  const [onChainTokenDecimalsState, setOnChainTokenDecimalsState] = useState<number | null>(null);
-  const [manageMilestoneCount, setManageMilestoneCount] = useState<bigint | null>(null);
-  const [onChainTokenSymbolState, setOnChainTokenSymbolState] = useState<string | null>(null);
+  const [onChainTokenDecimalsState, setOnChainTokenDecimalsState] = useState<
+    number | null
+  >(null);
+  const [manageMilestoneCount, setManageMilestoneCount] = useState<
+    bigint | null
+  >(null);
+  const [onChainTokenSymbolState, setOnChainTokenSymbolState] = useState<
+    string | null
+  >(null);
   const [tokenLoading, setTokenLoading] = useState(false);
+
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [showDisputeModal, setShowDisputeModal] = useState(false);
 
@@ -354,27 +386,43 @@ export default function EscrowDetails() {
       label: "Pending",
       description: "Awaiting deposit and signatures",
     },
-    active: {
-      icon: Loader2,
+    signed: {
+      icon: FileText, // Changed from UserCheck to match getStatusIcon
       color: "text-blue-400",
       bgColor: "bg-blue-500/20",
       borderColor: "border-blue-400/30",
-      label: "Active",
-      description: "Funds secured, agreement active",
+      label: "Signed",
+      description: "Agreement signed by both parties",
+    },
+    pending_delivery: {
+      icon: Package,
+      color: "text-orange-400",
+      bgColor: "bg-orange-500/20",
+      borderColor: "border-orange-400/30",
+      label: "Pending Delivery",
+      description: "Waiting for work delivery",
+    },
+    pending_approval: {
+      icon: Package, // Changed from Clock to match getStatusIcon
+      color: "text-orange-400", // Changed from purple to orange to match getStatusIcon
+      bgColor: "bg-orange-500/20", // Changed from purple to orange
+      borderColor: "border-orange-400/30", // Changed from purple to orange
+      label: "Pending Approval",
+      description: "Delivery submitted, awaiting approval",
     },
     completed: {
       icon: CheckCircle,
-      color: "text-emerald-400",
-      bgColor: "bg-emerald-500/20",
-      borderColor: "border-emerald-400/30",
+      color: "text-green-400", // Changed from emerald to green to match getStatusIcon
+      bgColor: "bg-green-500/20", // Changed from emerald to green
+      borderColor: "border-green-400/30", // Changed from emerald to green
       label: "Completed",
       description: "Successfully completed and settled",
     },
     disputed: {
       icon: AlertTriangle,
-      color: "text-rose-400",
-      bgColor: "bg-rose-500/20",
-      borderColor: "border-rose-400/30",
+      color: "text-purple-400", // Changed from rose to purple to match getStatusIcon
+      bgColor: "bg-purple-500/20", // Changed from rose to purple
+      borderColor: "border-purple-400/30", // Changed from rose to purple
       label: "Disputed",
       description: "Under dispute resolution",
     },
@@ -386,14 +434,25 @@ export default function EscrowDetails() {
       label: "Cancelled",
       description: "Agreement cancelled",
     },
-    pending_approval: {
-      icon: Package,
-      color: "text-orange-400",
-      bgColor: "bg-orange-500/20",
-      borderColor: "border-orange-400/30",
-      label: "Pending Approval",
-      description: "Delivery submitted, awaiting approval",
-    },
+  };
+
+  const getCurrentStatus = () => {
+    if (!onChainAgreement) return escrow?.status || "pending";
+
+    if (onChainAgreement.completed) return "completed";
+    if (onChainAgreement.disputed) return "disputed";
+    if (onChainAgreement.orderCancelled) return "cancelled";
+    if (onChainAgreement.deliverySubmited) return "pending_approval";
+    if (
+      onChainAgreement.signed &&
+      onChainAgreement.acceptedByServiceProvider &&
+      onChainAgreement.acceptedByServiceRecipient
+    ) {
+      return "signed";
+    }
+    if (onChainAgreement.signed) return "pending_delivery";
+
+    return "pending";
   };
 
   // Safe status access
@@ -451,6 +510,7 @@ export default function EscrowDetails() {
     if (!id) return;
 
     setLoading("loadAgreement", true);
+    setInitialLoading(true);
     try {
       const escrowId = parseInt(id);
       const agreementData =
@@ -508,6 +568,7 @@ export default function EscrowDetails() {
       setEscrow(null);
     } finally {
       setLoading("loadAgreement", false);
+      setInitialLoading(false);
     }
   }, [id, fetchOnChainAgreement]);
 
@@ -572,12 +633,14 @@ export default function EscrowDetails() {
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
-    address.toLowerCase() === onChainAgreement.serviceProvider.toString().toLowerCase();
+    address.toLowerCase() ===
+      onChainAgreement.serviceProvider.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
-    address.toLowerCase() === onChainAgreement.serviceRecipient.toString().toLowerCase();
+    address.toLowerCase() ===
+      onChainAgreement.serviceRecipient.toString().toLowerCase();
   const now = currentTime;
 
   const {
@@ -606,7 +669,11 @@ export default function EscrowDetails() {
 
   // Create contracts array for milestones ONLY when we have a valid count
   const contractsForMilestones = useMemo(() => {
-    if (!manageMilestoneCount || !onChainAgreement?.id || !onChainAgreement.vesting) {
+    if (
+      !manageMilestoneCount ||
+      !onChainAgreement?.id ||
+      !onChainAgreement.vesting
+    ) {
       return [];
     }
 
@@ -623,18 +690,22 @@ export default function EscrowDetails() {
       functionName: "getMilestone" as const,
       args: [onChainAgreement.id, BigInt(i)],
     }));
-  }, [manageMilestoneCount, onChainAgreement?.id, onChainAgreement?.vesting, refetchTrigger, contractAddress]);
+  }, [
+    manageMilestoneCount,
+    onChainAgreement?.id,
+    onChainAgreement?.vesting,
+    refetchTrigger,
+    contractAddress,
+  ]);
 
   // Fetch all milestones
-  const {
-    data: rawMilestonesData,
-    refetch: refetchMilestonesData,
-  } = useContractReads({
-    contracts: contractsForMilestones,
-    query: {
-      enabled: contractsForMilestones.length > 0,
-    },
-  });
+  const { data: rawMilestonesData, refetch: refetchMilestonesData } =
+    useContractReads({
+      contracts: contractsForMilestones,
+      query: {
+        enabled: contractsForMilestones.length > 0,
+      },
+    });
 
   const handleClaimMilestone = async (index: number) => {
     resetMessages();
@@ -646,7 +717,8 @@ export default function EscrowDetails() {
         return setUiError("Only serviceProvider can claim milestones");
       if (!onChainAgreement.vesting)
         return setUiError("Agreement is not in vesting mode");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (!onChainAgreement.signed)
         return setUiError("Agreement not signed completely");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
@@ -677,11 +749,13 @@ export default function EscrowDetails() {
         return setUiError("Only serviceRecipient can set milestone hold");
       if (!onChainAgreement.vesting)
         return setUiError("Agreement is not in vesting mode");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (!onChainAgreement.signed)
         return setUiError("Agreement not signed completely");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
-      if (!manageMilestoneCount) return setUiError("Milestone count not loaded");
+      if (!manageMilestoneCount)
+        return setUiError("Milestone count not loaded");
       if (index >= Number(manageMilestoneCount))
         return setUiError("Invalid milestone index");
 
@@ -723,11 +797,20 @@ export default function EscrowDetails() {
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (onChainAgreement.signed && !onChainAgreement.completed)
         return setUiError("Agreement already signed");
-      if (isServiceProvider && onChainAgreement.acceptedByServiceProvider && !onChainAgreement.completed)
+      if (
+        isServiceProvider &&
+        onChainAgreement.acceptedByServiceProvider &&
+        !onChainAgreement.completed
+      )
         return setUiError("You already signed the Agreement");
-      if (isServiceRecipient && onChainAgreement.acceptedByServiceRecipient && !onChainAgreement.completed)
+      if (
+        isServiceRecipient &&
+        onChainAgreement.acceptedByServiceRecipient &&
+        !onChainAgreement.completed
+      )
         return setUiError("You already signed the Agreement");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       writeContract({
@@ -754,10 +837,16 @@ export default function EscrowDetails() {
         return setUiError("Only serviceProvider can submit delivery");
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (!onChainAgreement.signed) return setUiError("Agreement not signed");
-      if (onChainAgreement.grace1Ends !== 0n && !onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+      if (
+        onChainAgreement.grace1Ends !== 0n &&
+        !onChainAgreement.pendingCancellation &&
+        !onChainAgreement.completed
+      )
         return setUiError("Submission is pending already");
-      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.pendingCancellation)
+        return setUiError("Cancellation requested");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       writeContract({
@@ -794,8 +883,10 @@ export default function EscrowDetails() {
         return setUiError("There are no pending delivery to approve");
       if (onChainAgreement.grace1Ends === 0n && !final)
         return setUiError("There are no pending delivery to reject");
-      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.pendingCancellation)
+        return setUiError("Cancellation requested");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
         address: contractAddress,
@@ -825,8 +916,10 @@ export default function EscrowDetails() {
         return setUiError("Only parties to the agreement can deposit funds");
       if (onChainAgreement.funded && !onChainAgreement.completed)
         return setUiError("Agreement is funded already");
-      if (onChainAgreement.completed) return setUiError("Agreement is already completed");
-      if (onChainAgreement.frozen) return setUiError("Agreement is frozen already");
+      if (onChainAgreement.completed)
+        return setUiError("Agreement is already completed");
+      if (onChainAgreement.frozen)
+        return setUiError("Agreement is frozen already");
 
       const isERC20 = onChainAgreement.token !== ZERO_ADDRESS;
 
@@ -866,7 +959,8 @@ export default function EscrowDetails() {
   const depositDirectly = useCallback(() => {
     try {
       if (!onChainAgreement) return setUiError("Agreement not loaded");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       const amount = onChainAgreement.amount;
@@ -908,10 +1002,16 @@ export default function EscrowDetails() {
         return setUiError("Only parties to the agreement can cancel the order");
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (!onChainAgreement.signed) return setUiError("Agreement not signed");
-      if (onChainAgreement.grace1Ends !== 0n && !onChainAgreement.pendingCancellation && !onChainAgreement.completed)
+      if (
+        onChainAgreement.grace1Ends !== 0n &&
+        !onChainAgreement.pendingCancellation &&
+        !onChainAgreement.completed
+      )
         return setUiError("Submission is pending");
-      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation requested Already");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.pendingCancellation)
+        return setUiError("Cancellation requested Already");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
         address: contractAddress,
@@ -931,7 +1031,6 @@ export default function EscrowDetails() {
     resetMessages();
     setLoading("approveCancellation", true);
     try {
-
       if (!onChainAgreement?.id) return setUiError("Agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
       if (!isServiceProvider && !isServiceRecipient)
@@ -944,7 +1043,8 @@ export default function EscrowDetails() {
         return setUiError("There are no pending order cancellation to reject");
       if (!onChainAgreement.pendingCancellation && !onChainAgreement.completed)
         return setUiError("No Cancellation requested");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       if (now > onChainAgreement.grace1Ends && !onChainAgreement.completed)
@@ -992,10 +1092,12 @@ export default function EscrowDetails() {
       if (onChainAgreement.grace1Ends === 0n)
         return setUiError("No approved delivery yet");
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
-      if (onChainAgreement.pendingCancellation) return setUiError("Cancellation is in process");
+      if (onChainAgreement.pendingCancellation)
+        return setUiError("Cancellation is in process");
       if (onChainAgreement.vesting)
         return setUiError("You cannot release partial funds on Vesting");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       if (now < onChainAgreement.grace1Ends && !onChainAgreement.completed)
@@ -1031,7 +1133,8 @@ export default function EscrowDetails() {
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (!onChainAgreement.pendingCancellation && !onChainAgreement.completed)
         return setUiError("There is not pending cancellation");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
         address: contractAddress,
@@ -1058,11 +1161,15 @@ export default function EscrowDetails() {
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (onChainAgreement.vesting)
         return setUiError("You cannot release full funds on vesting");
-      if (onChainAgreement.remainingAmount === 0n && !onChainAgreement.completed)
+      if (
+        onChainAgreement.remainingAmount === 0n &&
+        !onChainAgreement.completed
+      )
         return setUiError("Not enough funds to release");
       if (now < onChainAgreement.grace2Ends && !onChainAgreement.completed)
         return setUiError("48 hours Grace period not yet ended");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
         address: contractAddress,
@@ -1088,7 +1195,8 @@ export default function EscrowDetails() {
         return setUiError("Only parties to the agreement can raise a dispute");
       if (!onChainAgreement.funded) return setUiError("Agreement not funded");
       if (!onChainAgreement.signed) return setUiError("Agreement not signed");
-      if (onChainAgreement.completed) return setUiError("The agreement is completed");
+      if (onChainAgreement.completed)
+        return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       if (onChainAgreement.disputed)
         return setUiError("The agreement is already in dispute");
@@ -1281,8 +1389,8 @@ export default function EscrowDetails() {
 
   const tokenAddress =
     onChainAgreement &&
-      onChainAgreement.token &&
-      onChainAgreement.token !== ZERO_ADDRESS
+    onChainAgreement.token &&
+    onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
@@ -1305,7 +1413,10 @@ export default function EscrowDetails() {
 
     (async () => {
       try {
-        const dec = await getTokenDecimals(networkInfo.chainId as number, tokenAddress as `0x${string}`);
+        const dec = await getTokenDecimals(
+          networkInfo.chainId as number,
+          tokenAddress as `0x${string}`,
+        );
         if (!cancelled) setOnChainTokenDecimalsState(Number(dec)); // convert bigint -> number
       } catch (err) {
         console.warn("Failed to fetch token decimals:", err);
@@ -1313,7 +1424,10 @@ export default function EscrowDetails() {
       }
 
       try {
-        const sym = await getTokenSymbol(networkInfo.chainId as number, tokenAddress as `0x${string}`);
+        const sym = await getTokenSymbol(
+          networkInfo.chainId as number,
+          tokenAddress as `0x${string}`,
+        );
         if (!cancelled) setOnChainTokenSymbolState(sym);
       } catch (err) {
         console.warn("Failed to fetch token symbol:", err);
@@ -1323,7 +1437,10 @@ export default function EscrowDetails() {
       }
 
       try {
-        const mlc = await getMilestoneCount(networkInfo.chainId as number, onChainAgreement?.id as bigint);
+        const mlc = await getMilestoneCount(
+          networkInfo.chainId as number,
+          onChainAgreement?.id as bigint,
+        );
         if (!cancelled) setManageMilestoneCount(mlc);
       } catch (err) {
         console.warn("Failed to fetch token symbol:", err);
@@ -1367,58 +1484,58 @@ export default function EscrowDetails() {
   const isCounterparty =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-      onChainAgreement.serviceProvider?.toLowerCase()
+        onChainAgreement.serviceProvider?.toLowerCase()
       : false;
 
   const isFirstParty =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-      onChainAgreement.serviceRecipient?.toLowerCase()
+        onChainAgreement.serviceRecipient?.toLowerCase()
       : false;
 
   const isCreator =
     onChainAgreement && user
       ? user.walletAddress?.toLowerCase() ===
-      onChainAgreement.creator?.toLowerCase()
+        onChainAgreement.creator?.toLowerCase()
       : false;
 
-  const isParticipant = isFirstParty || isCounterparty;
+  // const isParticipant = isFirstParty || isCounterparty;
 
-  console.log("Role debug with on-chain data:", {
-    isFirstParty,
-    isCounterparty,
-    isCreator,
-    isParticipant,
-    userWallet: user?.walletAddress,
-    onChainServiceProvider: onChainAgreement?.serviceProvider,
-    onChainServiceRecipient: onChainAgreement?.serviceRecipient,
-    onChainCreator: onChainAgreement?.creator,
-  });
+  // console.log("Role debug with on-chain data:", {
+  //   isFirstParty,
+  //   isCounterparty,
+  //   isCreator,
+  //   isParticipant,
+  //   userWallet: user?.walletAddress,
+  //   onChainServiceProvider: onChainAgreement?.serviceProvider,
+  //   onChainServiceRecipient: onChainAgreement?.serviceRecipient,
+  //   onChainCreator: onChainAgreement?.creator,
+  // });
 
-  console.log("Role debug:", {
-    isFirstParty,
-    isCounterparty,
-    isCreator,
-    isParticipant,
-    userWallet: user?.walletAddress,
-    firstParty: escrow?._raw?.firstParty,
-    counterParty: escrow?._raw?.counterParty,
-    creator: escrow?._raw?.creator,
-  });
+  // console.log("Role debug:", {
+  //   isFirstParty,
+  //   isCounterparty,
+  //   isCreator,
+  //   isParticipant,
+  //   userWallet: user?.walletAddress,
+  //   firstParty: escrow?._raw?.firstParty,
+  //   counterParty: escrow?._raw?.counterParty,
+  //   creator: escrow?._raw?.creator,
+  // });
 
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-      (new Date(escrow.deadline).getTime() - Date.now()) /
-      (1000 * 60 * 60 * 24),
-    )
+        (new Date(escrow.deadline).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24),
+      )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
 
   // Show loading screen only when the loadAgreement flag is active to avoid
   // narrowing the loadingStates type to 'never' in TypeScript.
-  if (loadingStates.loadAgreement) {
+  if (initialLoading || loadingStates.loadAgreement) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
         <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
@@ -1475,9 +1592,9 @@ export default function EscrowDetails() {
     );
   }
 
-  const statusInfo = getStatusInfo(escrow.status);
+  const currentStatus = getCurrentStatus();
+  const statusInfo = getStatusInfo(currentStatus);
   const StatusIcon = statusInfo.icon;
-
   return (
     <div className="min-h-screen">
       <div className="container mx-auto py-8 lg:px-4">
@@ -1500,12 +1617,13 @@ export default function EscrowDetails() {
                 {statusInfo.label}
               </span>
               <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
-                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                  : isUrgent
-                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-                  }`}
+                className={`rounded-full px-3 py-1 text-sm font-medium ${
+                  isOverdue
+                    ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                    : isUrgent
+                      ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                      : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                }`}
               >
                 {isOverdue ? "Overdue" : `${daysRemaining} days left`}
               </span>
@@ -1783,10 +1901,11 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
-                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                              }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                              onChainAgreement.funded
+                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                            }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -1873,9 +1992,7 @@ export default function EscrowDetails() {
                             <div className="mb-1 text-xs text-purple-300/80">
                               Private
                             </div>
-                            <StatusBadge
-                              value={onChainAgreement.privateMode}
-                            />
+                            <StatusBadge value={onChainAgreement.privateMode} />
                           </div>
                         </div>
                         <div>
@@ -1948,67 +2065,68 @@ export default function EscrowDetails() {
             {/* Action Buttons Section */}
             {onChainAgreement && (
               <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-6 backdrop-blur-sm">
-
-
                 {/* Status Indicators */}
                 <div className="mt-4 space-y-2">
-                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.pendingCancellation && (
-                    <div className="flex items-center gap-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
-                      <Clock className="h-4 w-4 text-orange-400" />
-                      <span className="text-orange-300">
-                        Pending Order Cancellation:{" "}
-                        <CountdownTimer
-                          targetTimestamp={onChainAgreement.grace1Ends}
-                        // onComplete={refetchAgreement}
-                        />
-                      </span>
-                    </div>
-                  )}
+                  {onChainAgreement.grace1Ends > 0n &&
+                    onChainAgreement.pendingCancellation && (
+                      <div className="flex items-center gap-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
+                        <Clock className="h-4 w-4 text-orange-400" />
+                        <span className="text-orange-300">
+                          Pending Order Cancellation:{" "}
+                          <CountdownTimer
+                            targetTimestamp={onChainAgreement.grace1Ends}
+                            // onComplete={refetchAgreement}
+                          />
+                        </span>
+                      </div>
+                    )}
                   {onChainAgreement.frozen && (
                     <div className="flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
                       <AlertTriangle className="h-4 w-4 text-red-400" />
-                      <span className="text-red-300">
-                        Agreement is Frozen!
-                      </span>
+                      <span className="text-red-300">Agreement is Frozen!</span>
                     </div>
                   )}
-                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.pendingCancellation && (
-                    <div className="flex items-center gap-2 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-3">
-                      <Info className="h-4 w-4 text-yellow-400" />
-                      <span className="text-yellow-300">
-                        {(() => {
-                          const initiator = onChainAgreement.grace1EndsCalledBy;
-                          const serviceProvider = onChainAgreement.serviceProvider;
-                          const serviceRecipient = onChainAgreement.serviceRecipient;
+                  {onChainAgreement.grace1Ends > 0n &&
+                    onChainAgreement.pendingCancellation && (
+                      <div className="flex items-center gap-2 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-3">
+                        <Info className="h-4 w-4 text-yellow-400" />
+                        <span className="text-yellow-300">
+                          {(() => {
+                            const initiator =
+                              onChainAgreement.grace1EndsCalledBy;
+                            const serviceProvider =
+                              onChainAgreement.serviceProvider;
+                            const serviceRecipient =
+                              onChainAgreement.serviceRecipient;
 
-                          if (
-                            initiator &&
-                            serviceProvider &&
-                            serviceRecipient
-                          ) {
-                            const initiatorLower = initiator
-                              .toString()
-                              .toLowerCase();
-                            const serviceProviderLower = serviceProvider
-                              .toString()
-                              .toLowerCase();
-                            const serviceRecipientLower = serviceRecipient
-                              .toString()
-                              .toLowerCase();
-
-                            if (initiatorLower === serviceRecipientLower) {
-                              return "Cancellation request sent, waiting for service provider";
-                            } else if (
-                              initiatorLower === serviceProviderLower
+                            if (
+                              initiator &&
+                              serviceProvider &&
+                              serviceRecipient
                             ) {
-                              return "Cancellation request sent, waiting for service recipient";
+                              const initiatorLower = initiator
+                                .toString()
+                                .toLowerCase();
+                              const serviceProviderLower = serviceProvider
+                                .toString()
+                                .toLowerCase();
+                              const serviceRecipientLower = serviceRecipient
+                                .toString()
+                                .toLowerCase();
+
+                              if (initiatorLower === serviceRecipientLower) {
+                                return "Cancellation request sent, waiting for service provider";
+                              } else if (
+                                initiatorLower === serviceProviderLower
+                              ) {
+                                return "Cancellation request sent, waiting for service recipient";
+                              }
                             }
-                          }
-                          return "Cancellation request sent, waiting for the other party";
-                        })()}
-                      </span>
-                    </div>
-                  )}
+                            return "Cancellation request sent, waiting for the other party";
+                          })()}
+                        </span>
+                      </div>
+                    )}
                   {onChainAgreement.grace1Ends > 0n &&
                     onChainAgreement.deliverySubmited &&
                     !onChainAgreement.vesting && (
@@ -2018,20 +2136,21 @@ export default function EscrowDetails() {
                           Pending Delivery [Grace period 1]:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                          // onComplete={refetchAgreement}
+                            // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
                     )}
-                  {onChainAgreement.grace1Ends > 0n && onChainAgreement.deliverySubmited && (
-                    <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
-                      <Package className="h-4 w-4 text-green-400" />
-                      <span className="text-green-300">
-                        Delivery submitted, waiting for service recipient
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center gap-4 sm:flex-row">
+                  {onChainAgreement.grace1Ends > 0n &&
+                    onChainAgreement.deliverySubmited && (
+                      <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                        <Package className="h-4 w-4 text-green-400" />
+                        <span className="text-green-300">
+                          Delivery submitted, waiting for service recipient
+                        </span>
+                      </div>
+                    )}
+                  <div className="mb-2 flex flex-col items-center gap-4 sm:flex-row">
                     {!onChainAgreement.acceptedByServiceProvider && (
                       <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
                         <UserCheck className="h-4 w-4 text-blue-400" />
@@ -2052,52 +2171,54 @@ export default function EscrowDetails() {
                 </div>
 
                 {/* Check if any action buttons are available */}
-                {(((isServiceProvider && !onChainAgreement.acceptedByServiceProvider) ||
-                  (isServiceRecipient && !onChainAgreement.acceptedByServiceRecipient)) &&
+                {(((isServiceProvider &&
+                  !onChainAgreement.acceptedByServiceProvider) ||
+                  (isServiceRecipient &&
+                    !onChainAgreement.acceptedByServiceRecipient)) &&
                   onChainAgreement.funded) ||
-                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    isServiceProvider &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    isServiceRecipient &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.deliverySubmited) ||
-                  (now < onChainAgreement.grace1Ends &&
-                    onChainAgreement.signed &&
-                    onChainAgreement.pendingCancellation &&
-                    address &&
-                    address.toLowerCase() !==
+                (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                (onChainAgreement.signed &&
+                  isServiceProvider &&
+                  !onChainAgreement.frozen &&
+                  !onChainAgreement.pendingCancellation &&
+                  !onChainAgreement.deliverySubmited) ||
+                (onChainAgreement.signed &&
+                  isServiceRecipient &&
+                  !onChainAgreement.pendingCancellation &&
+                  onChainAgreement.deliverySubmited) ||
+                (now < onChainAgreement.grace1Ends &&
+                  onChainAgreement.signed &&
+                  onChainAgreement.pendingCancellation &&
+                  address &&
+                  address.toLowerCase() !==
                     String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.frozen) ||
-                  (onChainAgreement.grace1Ends !== BigInt(0) &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.funded &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace2Ends &&
-                    onChainAgreement.grace2Ends !== BigInt(0) &&
-                    onChainAgreement.funded &&
-                    onChainAgreement.pendingCancellation) ||
-                  (onChainAgreement.signed &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.pendingCancellation &&
-                    onChainAgreement.grace1Ends !== BigInt(0)) ||
-                  (onChainAgreement.funded &&
-                    onChainAgreement.signed &&
-                    !onChainAgreement.disputed &&
-                    !onChainAgreement.completed &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation) ? (
+                  !onChainAgreement.deliverySubmited) ||
+                (onChainAgreement.signed &&
+                  !onChainAgreement.pendingCancellation &&
+                  !onChainAgreement.deliverySubmited &&
+                  !onChainAgreement.frozen) ||
+                (onChainAgreement.grace1Ends !== BigInt(0) &&
+                  !onChainAgreement.vesting &&
+                  now > onChainAgreement.grace1Ends &&
+                  onChainAgreement.funded &&
+                  !onChainAgreement.pendingCancellation &&
+                  onChainAgreement.signed) ||
+                (onChainAgreement.signed &&
+                  !onChainAgreement.vesting &&
+                  now > onChainAgreement.grace2Ends &&
+                  onChainAgreement.grace2Ends !== BigInt(0) &&
+                  onChainAgreement.funded &&
+                  onChainAgreement.pendingCancellation) ||
+                (onChainAgreement.signed &&
+                  now > onChainAgreement.grace1Ends &&
+                  onChainAgreement.pendingCancellation &&
+                  onChainAgreement.grace1Ends !== BigInt(0)) ||
+                (onChainAgreement.funded &&
+                  onChainAgreement.signed &&
+                  !onChainAgreement.disputed &&
+                  !onChainAgreement.completed &&
+                  !onChainAgreement.frozen &&
+                  !onChainAgreement.pendingCancellation) ? (
                   <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
@@ -2106,8 +2227,10 @@ export default function EscrowDetails() {
                       {/* Action Buttons */}
 
                       {onChainAgreement &&
-                        ((isServiceProvider && !onChainAgreement.acceptedByServiceProvider) ||
-                          (isServiceRecipient && !onChainAgreement.acceptedByServiceRecipient)) &&
+                        ((isServiceProvider &&
+                          !onChainAgreement.acceptedByServiceProvider) ||
+                          (isServiceRecipient &&
+                            !onChainAgreement.acceptedByServiceRecipient)) &&
                         onChainAgreement.funded && (
                           <>
                             <Button
@@ -2135,7 +2258,8 @@ export default function EscrowDetails() {
                           </>
                         )}
 
-                      {onChainAgreement && (isServiceRecipient) &&
+                      {onChainAgreement &&
+                        isServiceRecipient &&
                         !onChainAgreement.funded &&
                         !onChainAgreement.signed && (
                           <Button
@@ -2263,7 +2387,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(true)}
@@ -2295,7 +2421,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(false)}
@@ -2529,9 +2657,7 @@ export default function EscrowDetails() {
                                       isServiceRecipient={
                                         isServiceRecipient as boolean
                                       }
-                                      onClaimMilestone={
-                                        handleClaimMilestone
-                                      }
+                                      onClaimMilestone={handleClaimMilestone}
                                       onSetMilestoneHold={
                                         handleSetMilestoneHold
                                       }
@@ -2624,7 +2750,9 @@ export default function EscrowDetails() {
                     <Button
                       onClick={handleRaiseDisputeWithModal}
                       disabled={
-                        !onChainAgreement?.id || isPending || loadingStates.raiseDispute
+                        !onChainAgreement?.id ||
+                        isPending ||
+                        loadingStates.raiseDispute
                       }
                       className="border-red-500/30 text-red-400 hover:bg-red-500/10"
                       variant="outline"
@@ -2753,6 +2881,7 @@ export default function EscrowDetails() {
               )} */}
 
             {/* Activity Timeline */}
+            {/* Activity Timeline */}
             <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-6 text-lg font-semibold text-white">
                 Escrow Timeline
@@ -2769,70 +2898,181 @@ export default function EscrowDetails() {
                     {formatDateWithTime(escrow.dateCreated)}
                   </div>
                   <div className="mt-1 text-xs text-blue-400/70">
-                    <div className="flex items-center gap-2">
-                      <UserAvatar
-                        userId={escrow.creatorUserId || escrow.creator || ""}
-                        avatarId={escrow.creatorAvatarId || null}
-                        username={escrow.creator || ""}
-                        size="sm"
-                      />
-                      {formatWalletAddress(escrow.creator)}
-                      {isCreator && (
-                        <VscVerifiedFilled className="size-5 text-green-400" />
-                      )}
+                    <div className="flex flex-col items-center gap-2">
+                      Created by{" "}
+                      <div className="flex items-center gap-1">
+                        <UserAvatar
+                          userId={escrow.creatorUserId || escrow.creator || ""}
+                          avatarId={escrow.creatorAvatarId || null}
+                          username={escrow.creator || ""}
+                          size="sm"
+                        />
+                        {formatWalletAddress(escrow.creator)}
+
+                        {isCreator && (
+                          <VscVerifiedFilled className="size-5 text-green-400" />
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-blue-400/50"></div>
                 </div>
 
-                {/* Step 2 - Active/Signed */}
-                {[
-                  "active",
-                  "completed",
-                  "disputed",
-                  "pending_approval",
-                ].includes(escrow.status) && (
+                {/* Step 2 - Both Parties Signed */}
+                {onChainAgreement?.signed && (
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
+                    <div className="mt-3 font-medium text-white">
+                      Both Parties Signed
+                    </div>
+                    <div className="text-sm text-cyan-300">
+                      {onChainAgreement?.acceptedByServiceProvider &&
+                      onChainAgreement?.acceptedByServiceRecipient
+                        ? "Fully Executed"
+                        : "Partially Signed"}
+                    </div>
+                    <div className="mt-1 space-y-2 text-xs text-emerald-400/70">
+                      {onChainAgreement?.acceptedByServiceProvider && (
+                        <div className="flex flex-col items-center gap-1">
+                          Signed by{" "}
+                          <div className="flex items-center gap-1">
+                            <UserAvatar
+                              userId={escrow.fromUserId || escrow.from}
+                              avatarId={escrow.fromAvatarId || null}
+                              username={escrow.from}
+                              size="sm"
+                            />
+                            {formatWalletAddress(escrow.from)}
+                          </div>
+                        </div>
+                      )}
+                      {onChainAgreement?.acceptedByServiceRecipient && (
+                        <div className="flex flex-col items-center gap-1 text-blue-400/70">
+                          Signed by{" "}
+                          <div className="flex items-center gap-1">
+                            <UserAvatar
+                              userId={escrow.toUserId || escrow.to}
+                              avatarId={escrow.toAvatarId || null}
+                              username={escrow.to}
+                              size="sm"
+                            />
+                            {formatWalletAddress(escrow.to)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
+                  </div>
+                )}
+
+                {/* Step 3 - Work Delivered */}
+                {onChainAgreement?.deliverySubmited && (
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400"></div>
+                    <div className="mt-3 font-medium text-white">
+                      Work Delivered
+                    </div>
+                    <div className="text-sm text-cyan-300">
+                      Submitted for Review
+                    </div>
+                    <div className="mt-1 text-xs text-blue-400/70">
+                      <div className="flex flex-col items-center gap-1">
+                        Delivered by
+                        <div className="flex items-center gap-1">
+                          <UserAvatar
+                            userId={escrow.fromUserId || escrow.from}
+                            avatarId={escrow.fromAvatarId || null}
+                            username={escrow.from}
+                            size="sm"
+                          />
+                          {formatWalletAddress(escrow.from)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-blue-400/50"></div>
+                  </div>
+                )}
+
+                {/* Step 4 - Approval Pending */}
+                {onChainAgreement?.deliverySubmited &&
+                  !onChainAgreement?.completed && (
                     <div className="relative flex min-w-[12rem] flex-col items-center text-center">
-                      <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
+                      <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-orange-400"></div>
                       <div className="mt-3 font-medium text-white">
-                        Escrow Active
+                        Approval Pending
                       </div>
                       <div className="text-sm text-cyan-300">
-                        {formatDateWithTime(escrow.dateCreated)}
+                        Waiting for Recipient Approval
                       </div>
-                      <div className="mt-1 text-xs text-emerald-400/70">
-                        Funds secured in contract
+                      <div className="mt-1 text-xs text-orange-400/70">
+                        <div className="flex flex-col items-center gap-[2px]">
+                          Awaiting approval from{" "}
+                          <div className="flex items-center gap-1">
+                            <UserAvatar
+                              userId={escrow.toUserId || escrow.to}
+                              avatarId={escrow.toAvatarId || null}
+                              username={escrow.to}
+                              size="sm"
+                            />
+                            {formatWalletAddress(escrow.to)}
+                          </div>
+                        </div>
                       </div>
-                      <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
+                      {!onChainAgreement?.completed && (
+                        <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-orange-400/50"></div>
+                      )}
                     </div>
                   )}
 
-                {/* Step 3 - Completion/Dispute */}
-                {escrow.status === "completed" && (
+                {/* Step 5 - Work Completed & Approved */}
+                {onChainAgreement?.completed && (
                   <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-green-400"></div>
-                    <div className="mt-3 font-medium text-white">Completed</div>
-                    <div className="text-sm text-cyan-300">Recently</div>
-                  </div>
-                )}
-
-                {escrow.status === "disputed" && (
-                  <div className="relative flex min-w-[10rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-violet-400"></div>
                     <div className="mt-3 font-medium text-white">
-                      Dispute Filed
+                      Completed & Approved
                     </div>
-                    <div className="text-sm text-cyan-300">Recently</div>
+                    <div className="text-sm text-cyan-300">
+                      Successfully Finalized
+                    </div>
+                    <div className="mt-1 text-xs text-purple-400/70">
+                      <div className="flex items-center gap-1">
+                        <UserAvatar
+                          userId={escrow.toUserId || escrow.to}
+                          avatarId={escrow.toAvatarId || null}
+                          username={escrow.to}
+                          size="sm"
+                        />
+                        Approved by {formatWalletAddress(escrow.to)}
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {escrow.status === "cancelled" && (
+                {/* Step 6 - Dispute State */}
+                {onChainAgreement?.disputed && (
+                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
+                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-purple-400"></div>
+                    <div className="mt-3 font-medium text-white">
+                      In Dispute
+                    </div>
+                    <div className="text-sm text-cyan-300">
+                      Under Resolution Process
+                    </div>
+                    <div className="mt-1 text-xs text-red-400/70">
+                      Voting ID:{" "}
+                      {onChainAgreement?.votingId?.toString() || "N/A"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 7 - Cancelled State */}
+                {onChainAgreement?.orderCancelled && (
                   <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-400"></div>
-                    <div className="mt-3 font-medium text-white">
-                      Escrow Cancelled
+                    <div className="mt-3 font-medium text-white">Cancelled</div>
+                    <div className="text-sm text-cyan-300">
+                      Agreement Terminated
                     </div>
-                    <div className="text-sm text-cyan-300">Recently</div>
                   </div>
                 )}
               </div>

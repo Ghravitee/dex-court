@@ -44,7 +44,8 @@ import { useSettledDisputesCount } from "../hooks/useSettledDisputesCount";
 import { useUsersCount } from "../hooks/useUsersCount";
 import { WalletLoginDebug } from "../components/WalletLoginDebug";
 import { useJudgesCount } from "../hooks/useJudgesCounts";
-import { useTimeSeriesStats } from "../hooks/useTimeSeriesStats";
+import { useTimeSeriesFromToday } from "../hooks/useTimeSeriesFromToday";
+// import { useTimeSeriesStats } from "../hooks/useTimeSeriesStats";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
@@ -84,7 +85,7 @@ export default function Index() {
 function HeroSection() {
   return (
     <section className="w-full">
-      <div className="glass relative items-center gap-6 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
+      <div className="relative items-center gap-6 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
         <div className="relative z-[1]">
           <h1 className="space text-3xl font-bold tracking-tight text-white">
             DexCourt dApp
@@ -124,7 +125,7 @@ function RevenueChart() {
   const data = tab === "daily" ? daily : tab === "weekly" ? weekly : monthly;
 
   return (
-    <section className="glass relative border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
+    <section className="card-cyan relative p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="space font-semibold text-white/90 lg:text-xl">
           Platform Revenue
@@ -284,7 +285,7 @@ function StatsGrid() {
   );
 
   return (
-    <section className="glass card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-6">
+    <section className="card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-6">
       <h3 className="space mb-6 text-center text-lg font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
@@ -325,31 +326,33 @@ function KPIChart() {
   const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">(
     "daily",
   );
-  const { data: timeSeriesData, loading } = useTimeSeriesStats(timeframe);
+  const { data: timeSeriesData, loading, startDate } = useTimeSeriesFromToday();
 
-  // Show loading state
-  if (loading) {
+  if (loading || timeSeriesData.length === 0) {
     return (
-      <section className="glass relative mt-4 border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 md:mt-0">
+      <section className="relative border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="space font-semibold text-white/90 lg:text-xl">
-            Network Activity
+            Network Growth
           </h3>
-          <Tabs
-            value={timeframe}
-            onValueChange={(value) => setTimeframe(value as any)}
-          >
+          <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
             <TabsList className="bg-white/5">
               <TabsTrigger value="daily">Daily</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly</TabsTrigger>
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        <div className="flex h-72 items-center justify-center">
-          <div className="flex items-center gap-2 text-cyan-300">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
-            <span>Loading network activity...</span>
+        <div className="flex h-72 flex-col items-center justify-center">
+          <div className="text-center">
+            <div className="mb-4 text-4xl">📈</div>
+            <h4 className="mb-2 text-lg font-semibold text-cyan-300">
+              Tracking Growth from Today
+            </h4>
+            <p className="text-sm text-cyan-200/70">
+              Historical data will build up as the network grows
+            </p>
+            <p className="mt-2 text-xs text-cyan-200/50">
+              Starting date: {new Date().toLocaleDateString()}
+            </p>
           </div>
         </div>
       </section>
@@ -357,79 +360,69 @@ function KPIChart() {
   }
 
   return (
-    <section className="glass relative mt-4 border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5 md:mt-0">
+    <section className="card-cyan relative p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="space font-semibold text-white/90 lg:text-xl">
-          Network Activity
+          Network Growth
         </h3>
-        <Tabs
-          value={timeframe}
-          onValueChange={(value) => setTimeframe(value as any)}
-        >
-          <TabsList className="bg-white/5">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-cyan-300">
+            Since {new Date(startDate).toLocaleDateString()}
+          </span>
+          <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
+            <TabsList className="bg-white/5">
+              <TabsTrigger value="daily">Daily</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
+
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={timeSeriesData}
-            margin={{ left: 0, right: 10, top: 10, bottom: 0 }}
-          >
+          <LineChart data={timeSeriesData}>
             <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-            <XAxis
-              dataKey="date"
-              stroke="#94a3b8"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              stroke="#94a3b8"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-            />
+            <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+            <YAxis stroke="#94a3b8" fontSize={12} />
             <RTooltip
               contentStyle={{
                 background: "rgba(15,23,42,.9)",
                 border: "1px solid rgba(255,255,255,.1)",
                 borderRadius: 8,
-                color: "#e2e8f0",
               }}
-              formatter={(value: number, name: string) => {
-                if (name === "agreements") return [value, "Agreements"];
-                if (name === "judges") return [value, "Judges"];
-                return [value, name];
-              }}
-              labelFormatter={(label) => {
-                if (timeframe === "daily") return `Date: ${label}`;
-                if (timeframe === "weekly") return `Week: ${label}`;
-                return `Month: ${label}`;
+              labelFormatter={(label, payload) => {
+                if (payload && payload[0]) {
+                  const rawDate = payload[0].payload.rawDate;
+                  return `Date: ${new Date(rawDate).toLocaleDateString()}`;
+                }
+                return `Date: ${label}`;
               }}
             />
             <Legend />
             <Line
               type="monotone"
               dataKey="agreements"
-              name="Agreements"
               stroke="#facc15"
-              strokeWidth={2.5}
-              dot={false}
+              strokeWidth={2}
+              dot={{ r: 4 }}
+              name="Agreements"
             />
             <Line
               type="monotone"
               dataKey="judges"
-              name="Judges"
               stroke="#ef4444"
-              strokeWidth={2.5}
-              dot={false}
+              strokeWidth={2}
+              dot={{ r: 4 }}
+              name="Judges"
             />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="mt-3 text-center">
+        <p className="text-xs text-cyan-200/50">
+          Showing real growth data collected from {timeSeriesData.length} day
+          {timeSeriesData.length !== 1 ? "s" : ""}
+        </p>
       </div>
     </section>
   );
