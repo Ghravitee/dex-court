@@ -1,1538 +1,1025 @@
-// src/pages/Web3Vote.tsx
-import { useCallback, useEffect, useState } from "react";
+// src/pages/Disputes.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Button } from "../components/ui/button";
+import { ChevronDown, ChevronRight, Send } from "lucide-react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 import {
-  useAccount,
-  useWriteContract,
-  useReadContract,
-  useWaitForTransactionReceipt,
-  useChainId,
-} from "wagmi";
+  Search,
+  SortAsc,
+  SortDesc,
+  Upload,
+  Scale,
+  Paperclip,
+  Trash2,
+  Loader2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { disputeService } from "../services/disputeServices";
+import { DisputeStatusEnum, DisputeTypeEnum } from "../types";
+import type { DisputeRow, CreateDisputeRequest } from "../types";
+import { UserAvatar } from "../components/UserAvatar";
+import {
+  cleanTelegramUsername,
+  formatTelegramUsernameForDisplay,
+  getCurrentUserTelegram,
+  isValidTelegramUsername,
+} from "../lib/usernameUtils";
+import { FaArrowRightArrowLeft } from "react-icons/fa6";
+import { useAuth } from "../hooks/useAuth";
+
+// --- Web3 imports ---
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther } from "viem";
-import { VOTING_ABI, VOTING_CA, ZERO_ADDRESS } from "../web3/config";
-import { toUtf8Bytes, hexlify, solidityPackedKeccak256 } from "ethers";
-import { getTransactionCount } from "../web3/readContract";
+import { VOTING_ABI, VOTING_CA } from "../web3/config";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 
-type DisputeTuple = readonly [
-  id: bigint | number | string,
-  plaintiff: string,
-  defendant: string,
-  active: boolean,
-  createdAt: bigint | number | string,
-  endTime: bigint | number | string,
-  finalized: boolean,
-  result: number,
-  totalVotes: bigint | number | string,
-  weightedPlaintiff: bigint | number | string,
-  weightedDefendant: bigint | number | string,
-  weightedDismiss: bigint | number | string,
-];
-
-type VoterRevealTuple = readonly [
-  isRevealed: boolean,
-  vote: number,
-  tier: number,
-  weight: bigint | number | string,
-  timestamp: bigint | number | string,
-];
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "bigint") return Number(value);
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  if (value && typeof value === "object") {
-    const v = value as { toNumber?: () => number; toString?: () => string };
-    if (typeof v.toNumber === "function") {
-      try {
-        return v.toNumber();
-      } catch {
-        // fallthrough
-      }
-    }
-    if (typeof v.toString === "function") {
-      const parsed = Number(v.toString());
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-  }
-  return 0;
+// File upload types
+interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "document";
+  size: string;
 }
 
-function isValidAddress(addr: string) {
-  return /^0x[a-fA-F0-9]{40}$/.test(addr);
-}
+// ---- Constants ----
+const MAX_FILE_SIZE_MB = 10; // per-file limit
+const MAX_FILES = 10;
+const FIXED_FEE_ETH = "0.01"; // fixed fee for Paid disputes
+const FIXED_FEE_WEI = parseEther(FIXED_FEE_ETH); // bigint
 
-// Helper functions
-const isVotingPeriodEnded = (endTime: number): boolean => {
-  return Date.now() / 1000 > endTime;
+// add after the constants block
+const generateVotingId = (): bigint => {
+  // 64-bit random id using Web Crypto (very unlikely to collide)
+  const arr = crypto.getRandomValues(new Uint8Array(8));
+  let id = 0n;
+  for (const b of arr) id = (id << 8n) | BigInt(b);
+  return id === 0n ? 1n : id;
 };
 
-const canUserVote = (tier: number): boolean => {
-  return tier > 0; // Tier 1, 2, or 3 (Judge)
+// User Search Result Component
+const UserSearchResult = ({
+  user,
+  onSelect,
+  field,
+}: {
+  user: any;
+  onSelect: (username: string) => void;
+  field: "defendant" | "witness";
+}) => {
+  const { user: currentUser } = useAuth();
+
+  // Look for various possible telegram username shapes from the API
+  const telegramUsername = cleanTelegramUsername(
+    user.telegramUsername || user.telegram?.username || user.telegramInfo,
+  );
+
+  if (!telegramUsername) return null;
+
+  const displayUsername = `@${telegramUsername}`;
+  const displayName = user.displayName || displayUsername;
+  const isCurrentUser = user.id === currentUser?.id;
+
+  return (
+    <div
+      role="button"
+      aria-label={`${field} suggestion ${telegramUsername}`}
+      onClick={() => !isCurrentUser && onSelect(telegramUsername)}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-60 pointer-events-none" : ""
+        }`}
+    >
+      <UserAvatar
+        userId={user.id}
+        avatarId={user.avatarId || user.avatar?.id}
+        username={telegramUsername}
+        size="sm"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-white">{displayName}</div>
+        {telegramUsername && (
+          <div className="truncate text-xs text-cyan-300">@{telegramUsername}</div>
+        )}
+        {user.bio && (
+          <div className="mt-1 truncate text-xs text-cyan-200/70">{user.bio}</div>
+        )}
+      </div>
+
+      <ChevronRight className="h-4 w-4 flex-shrink-0 text-cyan-400" />
+    </div>
+  );
 };
 
-const canCommitToDispute = (
-  dispute: DisputeTuple | null,
-): { canCommit: boolean; error?: string } => {
-  if (!dispute) return { canCommit: false, error: "Dispute not found" };
-  if (!dispute[3]) return { canCommit: false, error: "Dispute is not active" };
-  if (dispute[6])
-    return { canCommit: false, error: "Dispute is already finalized" };
-  if (isVotingPeriodEnded(Number(dispute[5])))
-    return { canCommit: false, error: "Voting period has ended" };
-  return { canCommit: true };
+// Custom hook for fetching disputes
+const useDisputes = (filters: {
+  status?: string;
+  search?: string;
+  range?: string;
+  sort?: string;
+}) => {
+  const [data, setData] = useState<DisputeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDisputes = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const rangeValue =
+        filters.range === "All"
+          ? ("all" as const)
+          : filters.range === "7d"
+            ? ("last7d" as const)
+            : filters.range === "30d"
+              ? ("last30d" as const)
+              : ("all" as const);
+
+      const apiParams = {
+        status:
+          filters.status === "All"
+            ? undefined
+            : filters.status === "Pending"
+              ? DisputeStatusEnum.Pending
+              : filters.status === "Vote in Progress"
+                ? DisputeStatusEnum.VoteInProgress
+                : filters.status === "Settled"
+                  ? DisputeStatusEnum.Settled
+                  : filters.status === "Dismissed"
+                    ? DisputeStatusEnum.Dismissed
+                    : undefined,
+        search: filters.search,
+        range: rangeValue,
+        sort: filters.sort === "asc" ? ("asc" as const) : ("desc" as const),
+        top: 50,
+        skip: 0,
+      };
+
+      const response = await disputeService.getDisputes(apiParams);
+      const transformedData = response.results.map((item: any) =>
+        disputeService.transformDisputeListItemToRow(item),
+      );
+
+      setData(transformedData);
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+      console.error("Failed to fetch disputes:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.status, filters.search, filters.range, filters.sort]);
+
+  useEffect(() => {
+    fetchDisputes();
+  }, [fetchDisputes]);
+
+  return { data, loading, error, refetch: fetchDisputes };
 };
 
-const canRevealForDispute = (
-  dispute: DisputeTuple | null,
-): { canReveal: boolean; error?: string } => {
-  if (!dispute) return { canReveal: false, error: "Dispute not found" };
-  if (!dispute[3]) return { canReveal: false, error: "Dispute is not active" };
-  if (dispute[6])
-    return { canReveal: false, error: "Dispute is already finalized" };
-  if (!isVotingPeriodEnded(Number(dispute[5])))
-    return { canReveal: false, error: "Voting period has not ended yet" };
-  return { canReveal: true };
+// Debounce hook (unchanged)
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
 };
 
-function Web3Vote() {
+export default function Disputes() {
+  const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+
+  // --- Web3 hooks ---
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const [activeTab, setActiveTab] = useState("stats");
-  const [uiError, setUiError] = useState<string | null>(null);
-  const [uiSuccess, setUiSuccess] = useState<string | null>(null);
-
-  const contractAddress = VOTING_CA[chainId as number];
+  const networkInfo = useNetworkEnvironment();
+  const contractAddress = VOTING_CA[networkInfo.chainId as number];
 
   const {
-    data: hash,
+    data: txHash,
     writeContract,
-    isPending,
+    isPending: isWritePending,
     error: writeError,
     reset: resetWrite,
   } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
 
-  const [openVoteForm, setOpenVoteForm] = useState({
-    agreementId: "",
-    votingId: "",
-    plaintiff: "",
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
+
+  // Form/UI state
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<DisputeRow["status"] | "All">("All");
+  const [dateRange, setDateRange] = useState("All");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    title: "",
+    kind: "Pro Bono" as "Pro Bono" | "Paid",
     defendant: "",
-    proBono: true,
-    feeAmount: "",
+    description: "",
+    claim: "",
+    evidence: [] as UploadedFile[],
+    witnesses: [""] as string[],
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recentDisputesFilter, setRecentDisputesFilter] = useState<string>("All");
+  const [isRecentDisputesFilterOpen, setIsRecentDisputesFilterOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const recentDisputesDropdownRef = useRef<HTMLDivElement>(null);
+
+  // User search state
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
+  const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
+  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<"defendant" | "witness">("defendant");
+  const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(0);
+  const userSearchRef = useRef<HTMLDivElement>(null);
+
+  const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
+
+  // Use the custom hook for data fetching
+  const { data, loading, error, refetch } = useDisputes({
+    status: status,
+    search: query,
+    range: dateRange,
+    sort: sortAsc ? "asc" : "desc",
   });
 
-  const [commitForm, setCommitForm] = useState({
-    disputeId: "",
-    vote: "1",
-    commitHash: "",
-  });
+  const filterOptions = [
+    { label: "All", value: "All" },
+    { label: "Pending", value: "Pending" },
+    { label: "Vote in Progress", value: "Vote in Progress" },
+    { label: "Settled", value: "Settled" },
+    { label: "Dismissed", value: "Dismissed" },
+  ];
 
-  const [revealForm, setRevealForm] = useState({
-    disputeId: "",
-    vote: "1",
-    nonce: "",
-  });
+  const recentDisputesFilterOptions = filterOptions;
 
-  const [voterLookup, setVoterLookup] = useState("");
-  const [disputeLookupId, setDisputeLookupId] = useState("");
-  const [disputeData, setDisputeData] = useState<DisputeTuple | null>(null);
-  const [revealedList, setRevealedList] = useState<string[] | null>(null);
-  const [selectedRevealer, setSelectedRevealer] = useState<string | null>(null);
-  const [selectedRevealData, setSelectedRevealData] =
-    useState<VoterRevealTuple | null>(null);
-  const [isFetchingDispute, setIsFetchingDispute] = useState(false);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        recentDisputesDropdownRef.current &&
+        !recentDisputesDropdownRef.current.contains(event.target as Node) &&
+        userSearchRef.current &&
+        !userSearchRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+        setIsRecentDisputesFilterOpen(false);
+        setShowUserSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  const { data: votingConfig } = useReadContract({
-    address: contractAddress,
-    abi: VOTING_ABI.abi,
-    functionName: "getVotingConfig",
-  });
+  // User search function (debounced caller)
+  const handleUserSearch = useCallback(
+    async (queryStr: string, field: "defendant" | "witness", witnessIndex = 0) => {
+      setUserSearchQuery(queryStr);
+      setActiveSearchField(field);
+      if (field === "witness") setActiveWitnessIndex(witnessIndex);
 
-  const { data: votingStatsAvg, refetch: refetchVotingStatsAvg } =
-    useReadContract({
-      address: contractAddress,
-      abi: VOTING_ABI.abi,
-      functionName: "getVotingStatsWithAvg",
-    });
+      if (queryStr.length < 2) {
+        setUserSearchResults([]);
+        setShowUserSuggestions(false);
+        return;
+      }
 
-  const { data: leaderboard, refetch: refetchLeaderboard } = useReadContract({
-    address: contractAddress,
-    abi: VOTING_ABI.abi,
-    functionName: "getLeaderboard",
-  });
+      setIsUserSearchLoading(true);
+      setShowUserSuggestions(true);
 
-  const { data: voterStats, refetch: refetchVoterStats } = useReadContract({
-    address: contractAddress,
-    abi: VOTING_ABI.abi,
-    functionName: "getVoterStats",
-    args: voterLookup ? [voterLookup as `0x${string}`] : undefined,
-    query: {
-      enabled: !!voterLookup && isValidAddress(voterLookup),
+      try {
+        const results = await disputeService.searchUsers(queryStr);
+
+        const currentUserTelegram = (getCurrentUserTelegram(currentUser) || "").toLowerCase();
+
+        const filteredResults = results.filter((resultUser: any) => {
+          const resultTelegram = cleanTelegramUsername(
+            resultUser.telegramUsername || resultUser.telegram?.username || resultUser.telegramInfo,
+          );
+
+          return (
+            resultTelegram &&
+            resultTelegram.toLowerCase() !== currentUserTelegram
+          );
+        });
+
+        setUserSearchResults(filteredResults);
+      } catch (err) {
+        console.error("User search failed:", err);
+        setUserSearchResults([]);
+      } finally {
+        setIsUserSearchLoading(false);
+      }
     },
-  });
-
-  const { data: voterTier, refetch: refetchVoterTier } = useReadContract({
-    address: contractAddress,
-    abi: VOTING_ABI.abi,
-    functionName: "getVoterTier",
-    args: address ? [address as `0x${string}`] : undefined,
-    query: {
-      enabled: !!address,
-    },
-  });
-
-  const { data: disputeStatsRaw, refetch: refetchDisputeStats } =
-    useReadContract({
-      address: contractAddress,
-      abi: VOTING_ABI.abi,
-      functionName: "getDisputeStats",
-      args: disputeLookupId ? [BigInt(disputeLookupId)] : undefined,
-      query: { enabled: !!disputeLookupId },
-    });
-
-  const { data: revealedVotersRaw, refetch: refetchRevealedVoters } =
-    useReadContract({
-      address: contractAddress,
-      abi: VOTING_ABI.abi,
-      functionName: "getRevealedVoters",
-      args: disputeLookupId ? [BigInt(disputeLookupId)] : undefined,
-      query: { enabled: !!disputeLookupId },
-    });
-
-  const { data: voterRevealRaw, refetch: refetchVoterReveal } = useReadContract(
-    {
-      address: contractAddress,
-      abi: VOTING_ABI.abi,
-      functionName: "getVoterReveal",
-      args:
-        selectedRevealer && disputeLookupId
-          ? [BigInt(disputeLookupId), selectedRevealer as `0x${string}`]
-          : undefined,
-      query: { enabled: !!selectedRevealer && !!disputeLookupId },
-    },
+    [currentUser],
   );
 
-  const resetMessages = () => {
-    setUiError(null);
-    setUiSuccess(null);
+  // Debounced search effect: call handleUserSearch only when debounced value changes
+  useEffect(() => {
+    if (debouncedSearchQuery.length >= 2) {
+      handleUserSearch(debouncedSearchQuery, activeSearchField, activeWitnessIndex);
+    }
+  }, [debouncedSearchQuery, activeSearchField, activeWitnessIndex, handleUserSearch]);
+
+  // Filter + sort memoized
+  const filtered = useMemo(() => {
+    const base = data
+      .filter((d) => (status === "All" ? true : d.status === status))
+      .filter((d) =>
+        query.trim()
+          ? d.title.toLowerCase().includes(query.toLowerCase()) ||
+          d.parties.toLowerCase().includes(query.toLowerCase()) ||
+          d.claim.toLowerCase().includes(query.toLowerCase())
+          : true,
+      )
+      .filter((d) => {
+        if (dateRange === "All") return true;
+        const days = dateRange === "7d" ? 7 : 30;
+        const dtime = new Date(d.createdAt).getTime();
+        return Date.now() - dtime <= days * 24 * 60 * 60 * 1000;
+      });
+
+    return base.sort((a, b) => {
+      const parseDate = (dateStr: string): Date => {
+        const date = new Date(dateStr);
+        return isNaN(date.getTime()) ? new Date(0) : date;
+      };
+
+      const aDate = parseDate(a.createdAt);
+      const bDate = parseDate(b.createdAt);
+
+      return sortAsc ? aDate.getTime() - bDate.getTime() : bDate.getTime() - aDate.getTime();
+    });
+  }, [data, status, query, dateRange, sortAsc]);
+
+  // Recent disputes (memoized)
+  const filteredRecentDisputes = useMemo(() => {
+    return data
+      .slice(0, 5)
+      .filter((d) => (recentDisputesFilter === "All" ? true : d.status === recentDisputesFilter));
+  }, [data, recentDisputesFilter]);
+
+  // File upload handlers
+  const handleFileSelect = (filesList: FileList | null) => {
+    if (!filesList) return;
+
+    const currentFiles = form.evidence.slice();
+
+    Array.from(filesList).forEach((file) => {
+      if (currentFiles.length >= MAX_FILES) return; // max files
+
+      const fileSizeMB = file.size / 1024 / 1024;
+      if (fileSizeMB > MAX_FILE_SIZE_MB) {
+        toast.error(`${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+        return;
+      }
+
+      const fileType = file.type.startsWith("image/") ? "image" : "document";
+      const fileSize = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+      const newFile: UploadedFile = {
+        id: Math.random().toString(36).slice(2, 11),
+        file,
+        type: fileType,
+        size: fileSize,
+      };
+
+      if (fileType === "image") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newFile.preview = e.target?.result as string;
+          setForm((prev) => ({ ...prev, evidence: [...prev.evidence, newFile] }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setForm((prev) => ({ ...prev, evidence: [...prev.evidence, newFile] }));
+      }
+    });
   };
 
-  const generateCommitmentHash = useCallback(
-    (vote: string, nonce: string): string => {
-      if (!address) {
-        return "0x" + "".padEnd(64, "0");
-      }
+  const removeFile = (id: string) => {
+    setForm((prev) => ({ ...prev, evidence: prev.evidence.filter((file) => file.id !== id) }));
+  };
 
-      const voteNum = Number(vote);
-      if (Number.isNaN(voteNum)) {
-        return "0x" + "".padEnd(64, "0");
-      }
+  // Drag and drop handlers
+  const [isDragOver, setIsDragOver] = useState(false);
 
-      const nonceBytes = toUtf8Bytes(nonce);
-      const commitment = solidityPackedKeccak256(
-        ["uint8", "bytes", "address"],
-        [voteNum, nonceBytes, address],
-      );
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
 
-      return commitment;
-    },
-    [address],
-  );
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
 
-  function saveCommitRecord(record: Record<string, unknown>) {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    handleFileSelect(droppedFiles);
+  };
+
+  function addWitness() {
+    setForm((f) => (f.witnesses.length >= 5 ? f : { ...f, witnesses: [...f.witnesses, ""] }));
+  }
+
+  function updateWitness(i: number, v: string) {
+    setForm((f) => ({ ...f, witnesses: f.witnesses.map((w, idx) => (idx === i ? v : w)) }));
+  }
+
+  function removeWitness(i: number) {
+    setForm((f) => ({ ...f, witnesses: f.witnesses.filter((_, idx) => idx !== i) }));
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+
+    // Basic client-side validation
+    if (!form.title.trim()) return toast.error("Please enter a title");
+    if (!form.defendant.trim()) return toast.error("Please enter defendant information");
+    if (!form.description.trim()) return toast.error("Please enter a description");
+    if (!form.claim.trim()) return toast.error("Please enter your claim");
+    if (form.evidence.length === 0) return toast.error("Please upload at least one evidence file");
+
+    if (!isValidTelegramUsername(form.defendant)) return toast.error("Please enter a valid defendant Telegram username");
+
+    const invalidWitnesses = form.witnesses
+      .filter((w) => w.trim())
+      .filter((w) => !isValidTelegramUsername(w));
+
+    if (invalidWitnesses.length > 0) return toast.error("Please enter valid Telegram usernames for all witnesses");
+
+    setIsSubmitting(true);
+
     try {
-      const key = "dexcourt_commits";
-      const prevRaw = localStorage.getItem(key);
-      const arr = prevRaw ? JSON.parse(prevRaw) : [];
-      arr.push(record);
-      localStorage.setItem(key, JSON.stringify(arr));
+      const cleanedDefendant = cleanTelegramUsername(form.defendant);
+      const cleanedWitnesses = form.witnesses.filter((w) => w.trim()).map((w) => cleanTelegramUsername(w));
 
-      const blob = new Blob([JSON.stringify(record, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `dexcourt-commit-${record.disputeId ?? "unknown"}-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Failed to save commit record", e);
+      const requestKind = form.kind === "Pro Bono" ? DisputeTypeEnum.ProBono : DisputeTypeEnum.Paid;
+
+      const createDisputeData: CreateDisputeRequest = {
+        title: form.title,
+        description: form.description,
+        requestKind,
+        defendant: cleanedDefendant,
+        claim: form.claim,
+        witnesses: cleanedWitnesses,
+      };
+
+      const files = form.evidence.map((uf) => uf.file);
+
+      const votingId = generateVotingId();
+      const votingIdStr = votingId.toString();
+
+      // include the generated votingId in the backend payload so server and dashboard can reference it
+      // (make sure your backend accepts/records a `votingId` field — adapt if needed)
+      const createDisputeDataWithVotingId = {
+        ...createDisputeData,
+        votingId: votingIdStr,
+      };
+
+      const result = await disputeService.createDispute(createDisputeDataWithVotingId, files);
+      console.log("✅ Dispute created on backend:", result);
+      toast.success("Dispute created on backend");
+
+      // decide flags + amounts
+      const isProBono = requestKind === DisputeTypeEnum.ProBono;
+      const proBonoFlag = isProBono; // boolean
+      const feeArg = isProBono ? 0n : FIXED_FEE_WEI; // uint256 arg for contract
+      const valueToSend = isProBono ? 0n : FIXED_FEE_WEI; // ETH sent with tx
+
+      // require wallet for on-chain vote (since we always open vote on-chain)
+      if (!isConnected || !address) {
+        toast.error("Please connect your wallet to open an on-chain vote.");
+      } else if (!contractAddress) {
+        toast.error("Voting contract not configured for this network.");
+      } else {
+        try {
+          writeContract({
+            address: contractAddress,
+            abi: VOTING_ABI.abi,
+            functionName: "openVote",
+            // openVote(uint256 votingId, bool proBono, uint256 feeAmount)
+            args: [votingId, proBonoFlag, feeArg],
+            value: valueToSend,
+          });
+
+          toast.message("On-chain vote tx submitted", { description: `Voting ID ${votingId.toString()}` });
+        } catch (err: any) {
+          console.error("Failed to submit on-chain vote tx:", err);
+          toast.error("Failed to submit on-chain vote transaction");
+        }
+      }
+
+      // Reset form UI (we still keep waiting for on-chain confirmation if present)
+      setForm({ title: "", kind: "Pro Bono", defendant: "", description: "", claim: "", evidence: [], witnesses: [""] });
+      setOpen(false);
+
+      // Refresh disputes list
+      refetch();
+    } catch (err: any) {
+      console.error("❌ Submission failed:", err);
+      toast.error("Failed to submit dispute", { description: err?.message ?? String(err) });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  const handleOpenVote = async () => {
-    resetMessages();
-    try {
-      if (!isConnected || !address) return setUiError("Connect your wallet");
-      if (!openVoteForm.votingId) return setUiError("Voting ID is required");
-
-      const votingIdNum = Number(openVoteForm.votingId);
-      if (!Number.isFinite(votingIdNum) || votingIdNum <= 0) {
-        return setUiError("Voting ID must be a positive number");
-      }
-
-      // Check if dispute already exists
-      try {
-        const existingDispute = await refetchDisputeStats?.();
-        if (
-          existingDispute?.data &&
-          existingDispute.data[0]?.toString() !== "0"
-        ) {
-          return setUiError("Dispute with this ID already exists");
-        }
-      } catch (e) {
-        return e;
-        // Dispute doesn't exist, which is good
-      }
-
-      if (!isValidAddress(openVoteForm.plaintiff))
-        return setUiError("Invalid plaintiff address");
-      if (!isValidAddress(openVoteForm.defendant))
-        return setUiError("Invalid defendant address");
-
-      // Check for zero addresses
-      if (
-        openVoteForm.plaintiff === ZERO_ADDRESS ||
-        openVoteForm.defendant === ZERO_ADDRESS
-      ) {
-        return setUiError("Plaintiff and defendant cannot be zero address");
-      }
-
-      if (
-        openVoteForm.plaintiff.toLowerCase() ===
-        openVoteForm.defendant.toLowerCase()
-      )
-        return setUiError("Plaintiff and defendant cannot be the same");
-
-      if (openVoteForm.agreementId) {
-        const agreementIdNum = Number(openVoteForm.agreementId);
-        if (!Number.isFinite(agreementIdNum) || agreementIdNum < 0) {
-          return setUiError("Agreement ID must be a non-negative number");
-        }
-      }
-
-      let feeAmount = 0n;
-      if (!openVoteForm.proBono) {
-        if (!openVoteForm.feeAmount || Number(openVoteForm.feeAmount) <= 0)
-          return setUiError("Fee amount is required when not pro bono");
-
-        try {
-          feeAmount = parseEther(openVoteForm.feeAmount);
-          if (feeAmount <= 0n)
-            return setUiError("Parsed fee amount is zero or invalid");
-        } catch (err) {
-          setUiError("Invalid fee amount format");
-          console.error("parseEther error", err);
-          return;
-        }
-      }
-
-      const isETHFee = !openVoteForm.proBono;
-
-      writeContract({
-        address: contractAddress,
-        abi: VOTING_ABI.abi,
-        functionName: "openVote",
-        args: [
-          BigInt(openVoteForm.agreementId || "0"),
-          BigInt(openVoteForm.votingId),
-          openVoteForm.plaintiff as `0x${string}`,
-          openVoteForm.defendant as `0x${string}`,
-          openVoteForm.proBono,
-          feeAmount,
-        ],
-        value: isETHFee ? feeAmount : 0n,
-      });
-
-      setUiSuccess("Opening vote transaction submitted");
-    } catch (error: unknown) {
-      setUiError(
-        typeof error === "string"
-          ? error
-          : error instanceof Error
-            ? error.message
-            : "Error opening vote",
-      );
-      console.error("Error opening vote:", error);
-    }
-  };
-
-  const handleAutoCommitVote = async () => {
-    resetMessages();
-    try {
-      if (!isConnected || !address) return setUiError("Connect your wallet");
-      if (!commitForm.disputeId) return setUiError("Dispute ID is required");
-
-      const disputeIdNum = Number(commitForm.disputeId);
-      if (!Number.isFinite(disputeIdNum) || disputeIdNum <= 0) {
-        return setUiError("Dispute ID must be a positive number");
-      }
-
-      // Check if dispute exists and is active
-      try {
-        const disputeData = await refetchDisputeStats?.();
-        if (!disputeData?.data || disputeData.data[0]?.toString() === "0") {
-          return setUiError("Dispute not found");
-        }
-
-        // Check if voting has ended
-        const endTime = Number(disputeData.data[5]);
-        if (Date.now() / 1000 > endTime) {
-          return setUiError("Voting period has ended");
-        }
-
-        // Check if dispute is active
-        if (!disputeData.data[3]) {
-          return setUiError("Dispute is not active");
-        }
-
-        // Check if already finalized
-        if (disputeData.data[6]) {
-          return setUiError("Dispute is already finalized");
-        }
-      } catch (e) {
-        setUiError("Failed to verify dispute status");
-        return e;
-      }
-
-      const disputeId = BigInt(commitForm.disputeId);
-      const voteNum = Number(commitForm.vote);
-      if (![1, 2, 3].includes(voteNum))
-        return setUiError("Vote must be 1, 2, or 3");
-
-      // Check voter eligibility (tier)
-      if (voterTier && Number(voterTier[0]) === 0) {
-        return setUiError(
-          "You are not eligible to vote (insufficient token balance)",
-        );
-      }
-
-      let nonceNumber: number | bigint = 0n;
-      try {
-        nonceNumber = await getTransactionCount(chainId as number, address);
-      } catch (e) {
-        console.error("Failed to get nonce from provider", e);
-        return setUiError("Failed to read wallet nonce");
-      }
-
-      const nonceStr = String(nonceNumber);
-      const commitment = generateCommitmentHash(String(voteNum), nonceStr);
-
-      if (!commitment || commitment === "0x" + "".padEnd(64, "0")) {
-        return setUiError("Failed to generate valid commitment hash");
-      }
-
-      setCommitForm((prev) => ({ ...prev, commitHash: commitment }));
-
-      const record = {
-        disputeId: String(commitForm.disputeId),
-        voter: address,
-        vote: voteNum,
-        nonce: nonceNumber,
-        commitment,
-        createdAt: new Date().toISOString(),
-      };
-
-      saveCommitRecord(record);
-
-      writeContract({
-        address: contractAddress,
-        abi: VOTING_ABI.abi,
-        functionName: "commitVote",
-        args: [disputeId, commitment as `0x${string}`],
-      });
-
-      setUiSuccess("Commitment generated, saved, and transaction submitted");
-    } catch (error: unknown) {
-      setUiError(
-        error instanceof Error
-          ? error.message
-          : "Error generating or sending commitment",
-      );
-      console.error("handleAutoCommitVote error", error);
-    }
-  };
-
-  const handleRevealVote = async () => {
-    resetMessages();
-    try {
-      if (!isConnected || !address) return setUiError("Connect your wallet");
-      if (!revealForm.disputeId) return setUiError("Dispute ID is required");
-
-      const disputeIdNum = Number(revealForm.disputeId);
-      if (!Number.isFinite(disputeIdNum) || disputeIdNum <= 0) {
-        return setUiError("Dispute ID must be a positive number");
-      }
-
-      // Check dispute status for reveal
-      try {
-        const disputeData = await refetchDisputeStats?.();
-        if (!disputeData?.data || disputeData.data[0]?.toString() === "0") {
-          return setUiError("Dispute not found");
-        }
-
-        const endTime = Number(disputeData.data[5]);
-        if (Date.now() / 1000 < endTime) {
-          return setUiError("Voting period has not ended yet");
-        }
-
-        if (!disputeData.data[3]) {
-          return setUiError("Dispute is not active");
-        }
-
-        if (disputeData.data[6]) {
-          return setUiError("Dispute is already finalized");
-        }
-      } catch (e) {
-        setUiError("Failed to verify dispute status");
-        return e;
-      }
-
-      if (!revealForm.vote) return setUiError("Vote is required");
-      if (!revealForm.nonce) return setUiError("Nonce is required");
-
-      const voteOption = parseInt(revealForm.vote);
-      if (voteOption < 1 || voteOption > 3)
-        return setUiError("Vote must be 1, 2, or 3");
-
-      if (revealForm.nonce.trim().length === 0) {
-        return setUiError("Nonce cannot be empty");
-      }
-
-      // Check if user has already revealed
-      try {
-        const voterRevealData = await refetchVoterReveal?.();
-        if (voterRevealData?.data && voterRevealData.data[0]) {
-          return setUiError(
-            "You have already revealed your vote for this dispute",
-          );
-        }
-      } catch (e) {
-        return e;
-      }
-
-      const nonceHex = hexlify(toUtf8Bytes(revealForm.nonce));
-
-      if (!nonceHex || nonceHex === "0x") {
-        return setUiError("Failed to encode nonce");
-      }
-
-      writeContract({
-        address: contractAddress,
-        abi: VOTING_ABI.abi,
-        functionName: "revealMyVote",
-        args: [
-          BigInt(revealForm.disputeId),
-          voteOption,
-          nonceHex as `0x${string}`,
-        ],
-      });
-
-      setUiSuccess("Vote reveal submitted");
-    } catch (error: unknown) {
-      setUiError(
-        typeof error === "string"
-          ? error
-          : error instanceof Error
-            ? error.message
-            : "Error revealing vote",
-      );
-      console.error("Error revealing vote:", error);
-    }
-  };
-
-  const handleGenerateCommitment = () => {
-    resetMessages();
-    if (!address) {
-      setUiError("Connect your wallet to generate commitment");
-      return;
-    }
-    if (!revealForm.vote || !revealForm.nonce) {
-      setUiError("Vote and nonce are required to generate commitment");
-      return;
-    }
-
-    const voteNum = Number(revealForm.vote);
-    if (![1, 2, 3].includes(voteNum)) {
-      setUiError("Vote must be 1, 2, or 3");
-      return;
-    }
-
-    if (revealForm.nonce.trim().length === 0) {
-      setUiError("Nonce cannot be empty");
-      return;
-    }
-
-    const commitment = generateCommitmentHash(
-      revealForm.vote,
-      revealForm.nonce,
-    );
-
-    if (!commitment || commitment === "0x" + "".padEnd(64, "0")) {
-      setUiError("Failed to generate valid commitment hash");
-      return;
-    }
-
-    setCommitForm((prev) => ({ ...prev, commitHash: commitment }));
-    setUiSuccess(`Commitment generated: ${commitment.slice(0, 16)}...`);
-  };
-
-  const fetchDisputeAndReveals = async () => {
-    resetMessages();
-    setSelectedRevealData(null);
-    setSelectedRevealer(null);
-    setIsFetchingDispute(true);
-    try {
-      if (!disputeLookupId) return setUiError("Dispute ID required");
-
-      const disputeIdNum = Number(disputeLookupId);
-      if (!Number.isFinite(disputeIdNum) || disputeIdNum <= 0) {
-        return setUiError("Dispute ID must be a positive number");
-      }
-
-      await refetchDisputeStats?.();
-      await refetchRevealedVoters?.();
-      setUiSuccess("Dispute data fetched");
-    } catch (err: unknown) {
-      setUiError(
-        err instanceof Error ? err.message : "Error fetching dispute data",
-      );
-    } finally {
-      setIsFetchingDispute(false);
-    }
-  };
-
-  const fetchVoterReveal = async (voterAddr: string) => {
-    resetMessages();
-    if (!voterAddr || !isValidAddress(voterAddr)) {
-      setUiError("Invalid voter address");
-      return;
-    }
-    if (!disputeLookupId) {
-      setUiError("Dispute ID required");
-      return;
-    }
-    setSelectedRevealer(voterAddr);
-    try {
-      await refetchVoterReveal?.();
-    } catch (err: unknown) {
-      setUiError(
-        err instanceof Error ? err.message : "Error fetching voter reveal",
-      );
-    }
-  };
-
-  const handleFinalizeExpired = async () => {
-    resetMessages();
-    try {
-      if (!isConnected || !address) return setUiError("Connect your wallet");
-      if (!disputeLookupId) return setUiError("Dispute ID required");
-
-      const disputeIdNum = Number(disputeLookupId);
-      if (!Number.isFinite(disputeIdNum) || disputeIdNum <= 0) {
-        return setUiError("Dispute ID must be a positive number");
-      }
-
-      // Check if dispute can be finalized
-      if (!disputeData) {
-        return setUiError("Dispute data not loaded");
-      }
-
-      if (!disputeData[3]) {
-        // active
-        return setUiError("Dispute is not active");
-      }
-
-      if (disputeData[6]) {
-        // finalized
-        return setUiError("Dispute is already finalized");
-      }
-
-      const endTime = Number(disputeData[5]);
-      if (Date.now() / 1000 <= endTime) {
-        return setUiError("Voting period has not ended yet");
-      }
-
-      writeContract({
-        address: contractAddress,
-        abi: VOTING_ABI.abi,
-        functionName: "finalizeExpiredDisputes",
-        args: [[BigInt(disputeLookupId)]],
-      });
-      setUiSuccess("Finalize tx submitted");
-    } catch (err: unknown) {
-      setUiError(
-        err instanceof Error ? err.message : "Error finalizing dispute",
-      );
-      console.error(err);
-    }
-  };
-
+  // Watch for write errors
   useEffect(() => {
     if (writeError) {
-      setUiError("Transaction was rejected or failed");
+      toast.error("On-chain transaction failed or was rejected");
       resetWrite();
     }
   }, [writeError, resetWrite]);
 
+  // Watch for tx confirmation and notify
   useEffect(() => {
-    if (disputeStatsRaw) {
-      setDisputeData(disputeStatsRaw);
+    if (!isConfirming && txHash) {
+      // txHash present and not confirming -> likely done (wagmi sets states differently across versions)
+      toast.success("On-chain vote opened (transaction mined)");
     }
-  }, [disputeStatsRaw]);
+  }, [isConfirming, txHash]);
 
-  useEffect(() => {
-    if (revealedVotersRaw) {
-      setRevealedList(revealedVotersRaw as string[]);
-    }
-  }, [revealedVotersRaw]);
+  // Loading / error states unchanged
+  if (loading) {
+    return (
+      <div className="relative space-y-8">
+        <div className="flex h-64 items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+            <p className="text-muted-foreground">Loading disputes...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (voterRevealRaw) {
-      setSelectedRevealData(voterRevealRaw);
-    }
-  }, [voterRevealRaw]);
-
-  useEffect(() => {
-    resetMessages();
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (isSuccess) {
-      const timer = setTimeout(() => {
-        refetchVotingStatsAvg();
-        refetchLeaderboard();
-        if (voterLookup) refetchVoterStats();
-        if (address) refetchVoterTier();
-      }, 1500);
-
-      return () => clearTimeout(timer);
-    }
-  }, [
-    isSuccess,
-    voterLookup,
-    address,
-    refetchVotingStatsAvg,
-    refetchLeaderboard,
-    refetchVoterStats,
-    refetchVoterTier,
-  ]);
-
-  const formatTier = (tier: number): string => {
-    switch (tier) {
-      case 1:
-        return "Tier 1";
-      case 2:
-        return "Tier 2";
-      case 3:
-        return "Judge";
-      default:
-        return "Not Eligible";
-    }
-  };
+  if (error) {
+    return (
+      <div className="relative space-y-8">
+        <div className="flex h-64 items-center justify-center">
+          <div className="text-center">
+            <p className="mb-4 text-red-400">Failed to load disputes</p>
+            <Button onClick={() => refetch()} variant="outline">Try Again</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-4xl font-bold text-transparent">
-            DexCourt Voting
-          </h1>
+    <div className="relative space-y-8">
+      <div className="absolute block size-[20rem] rounded-full bg-cyan-500/20 blur-3xl lg:top-28 lg:right-20 lg:size-[30rem]"></div>
+      <div className="absolute -top-20 -left-6 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[25rem]"></div>
+      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div>
+
+      {/* Intro section */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        {/* left column */}
+        <div className="col-span-5 lg:col-span-3">
+          <div className="mb-3 flex items-center justify-between">
+            <h1 className="text-xl text-white">Disputes</h1>
+            <Button variant="neon" className="neon-hover" onClick={() => setOpen(true)}>
+              <Scale className="mr-2 h-4 w-4" />
+              Raise New Dispute
+            </Button>
+          </div>
+          <JudgesIntro />
         </div>
 
-        {!isConnected ? (
-          <div className="py-20 text-center">
-            <p className="text-xl text-gray-400">
-              Please connect your wallet to continue
-            </p>
-          </div>
-        ) : (
-          <>
-            {voterTier && (
-              <div className="mb-6 rounded-lg border border-purple-500/50 bg-purple-600/20 p-4">
-                <h3 className="mb-2 text-lg font-semibold">
-                  Your Voting Status
-                </h3>
-                <p>
-                  Tier:{" "}
-                  <span className="font-bold">
-                    {formatTier(Number(voterTier[0]))}
-                  </span>
-                </p>
-                <p>
-                  Weight:{" "}
-                  <span className="font-bold">{voterTier[1]?.toString()}</span>
-                </p>
-                <p
-                  className={`text-sm ${canUserVote(Number(voterTier[0])) ? "text-green-400" : "text-red-400"}`}
-                >
-                  {canUserVote(Number(voterTier[0]))
-                    ? "✓ Eligible to vote"
-                    : "✗ Not eligible to vote"}
-                </p>
-              </div>
-            )}
-
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Total Disputes</p>
-                <p className="text-2xl font-bold">
-                  {votingStatsAvg ? votingStatsAvg[0]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Total Votes</p>
-                <p className="text-2xl font-bold">
-                  {votingStatsAvg ? votingStatsAvg[1]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Finalized Votes</p>
-                <p className="text-2xl font-bold">
-                  {votingStatsAvg ? votingStatsAvg[2]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Avg Resolution Time</p>
-                <p className="text-2xl font-bold">
-                  {votingStatsAvg
-                    ? `${(Number(votingStatsAvg[9]) / 3600).toFixed(1)}h`
-                    : "0h"}
-                </p>
-              </div>
+        <section className="col-span-5 mt-10 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative grow sm:max-w-xs">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by username, title, or claim"
+                className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm ring-0 outline-none focus:border-cyan-400/40"
+              />
             </div>
 
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-lg border border-green-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Plaintiff Wins</p>
-                <p className="text-2xl font-bold text-green-400">
-                  {votingStatsAvg ? votingStatsAvg[3]?.toString() : "0"}
-                </p>
+            <div className="relative w-48" ref={dropdownRef}>
+              {/* Dropdown Trigger */}
+              <div
+                onClick={() => setIsOpen((prev) => !prev)}
+                className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:border-cyan-400/30"
+              >
+                <span>{filterOptions.find((f) => f.value === status)?.label || "All"}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
               </div>
-              <div className="rounded-lg border border-red-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Defendant Wins</p>
-                <p className="text-2xl font-bold text-red-400">
-                  {votingStatsAvg ? votingStatsAvg[4]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-yellow-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Dismissed Cases</p>
-                <p className="text-2xl font-bold text-yellow-400">
-                  {votingStatsAvg ? votingStatsAvg[5]?.toString() : "0"}
-                </p>
-              </div>
-            </div>
 
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-lg border border-green-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">
-                  Tier1 Votes (Greater than 1% supply)
-                </p>
-                <p className="text-2xl font-bold text-green-400">
-                  {votingStatsAvg ? votingStatsAvg[6]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-red-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">
-                  Tier2 Votes (Greater than 0.5% supply)
-                </p>
-                <p className="text-2xl font-bold text-red-400">
-                  {votingStatsAvg ? votingStatsAvg[7]?.toString() : "0"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-yellow-500/20 bg-gray-800/50 p-4 backdrop-blur-sm">
-                <p className="text-sm text-gray-400">Tier3 Votes (Judges)</p>
-                <p className="text-2xl font-bold text-yellow-400">
-                  {votingStatsAvg ? votingStatsAvg[8]?.toString() : "0"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-6 flex gap-2 border-b border-gray-700">
-              {["stats", "open", "commit", "reveal", "lookup", "dispute"].map(
-                (tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-6 py-3 font-medium transition-colors ${
-                      activeTab === tab
-                        ? "border-b-2 border-purple-400 text-purple-400"
-                        : "text-gray-400 hover:text-gray-300"
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ),
+              {/* Dropdown Menu */}
+              {isOpen && (
+                <div className="absolute top-[110%] right-0 z-50 w-full overflow-hidden rounded-md border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
+                  {filterOptions.map((option) => (
+                    <div
+                      key={option.value}
+                      onClick={() => {
+                        setStatus(option.value as DisputeRow["status"] | "All");
+                        setIsOpen(false);
+                      }}
+                      className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${status === option.value ? "bg-cyan-500/20 text-cyan-200" : ""
+                        }`}
+                    >
+                      {option.label}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
-            {activeTab === "stats" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">
-                  Voting Statistics & Leaderboard
-                </h2>
-
-                {votingConfig && (
-                  <div className="mb-8">
-                    <h3 className="mb-4 text-xl font-semibold">
-                      Voting Configuration
-                    </h3>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Tier 1 Threshold:</span>
-                        <span className="ml-2 font-mono">
-                          {(
-                            Number(votingConfig.tier1ThresholdPercent) / 100
-                          ).toFixed(2)}
-                          %
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Tier 2 Threshold:</span>
-                        <span className="ml-2 font-mono">
-                          {(
-                            Number(votingConfig.tier2ThresholdPercent) / 100
-                          ).toFixed(2)}
-                          %
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Tier 1 Weight:</span>
-                        <span className="ml-2 font-mono">
-                          {votingConfig.tier1Weight.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Tier 2 Weight:</span>
-                        <span className="ml-2 font-mono">
-                          {votingConfig.tier2Weight.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Judge Weight:</span>
-                        <span className="ml-2 font-mono">
-                          {votingConfig.judgeWeight.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-700/50 p-3">
-                        <span className="text-gray-400">Voting Duration:</span>
-                        <span className="ml-2 font-mono">
-                          {(Number(votingConfig.votingDuration) / 3600).toFixed(
-                            1,
-                          )}
-                          h
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {leaderboard && (
-                  <div>
-                    <h3 className="mb-4 text-xl font-semibold">Leaderboard</h3>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                      <div className="rounded-lg border border-purple-500/50 bg-purple-600/20 p-4">
-                        <p className="text-sm text-gray-400">
-                          Most Active Judge
-                        </p>
-                        <p className="truncate font-mono text-sm">
-                          {leaderboard.mostActiveJudge || "None"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-blue-500/50 bg-blue-600/20 p-4">
-                        <p className="text-sm text-gray-400">
-                          Most Active Tier 1
-                        </p>
-                        <p className="truncate font-mono text-sm">
-                          {leaderboard.mostActiveTier1 || "None"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-green-500/50 bg-green-600/20 p-4">
-                        <p className="text-sm text-gray-400">
-                          Most Active Tier 2
-                        </p>
-                        <p className="truncate font-mono text-sm">
-                          {leaderboard.mostActiveTier2 || "None"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-yellow-500/50 bg-yellow-600/20 p-4">
-                        <p className="text-sm text-gray-400">
-                          Most Active Overall
-                        </p>
-                        <p className="truncate font-mono text-sm">
-                          {leaderboard.mostActiveOverall || "None"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === "open" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Open New Vote</h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <input
-                    type="text"
-                    placeholder="Agreement ID (optional)"
-                    value={openVoteForm.agreementId}
-                    onChange={(e) =>
-                      setOpenVoteForm({
-                        ...openVoteForm,
-                        agreementId: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Voting ID *"
-                    value={openVoteForm.votingId}
-                    onChange={(e) =>
-                      setOpenVoteForm({
-                        ...openVoteForm,
-                        votingId: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Plaintiff Address *"
-                    value={openVoteForm.plaintiff}
-                    onChange={(e) =>
-                      setOpenVoteForm({
-                        ...openVoteForm,
-                        plaintiff: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Defendant Address *"
-                    value={openVoteForm.defendant}
-                    onChange={(e) =>
-                      setOpenVoteForm({
-                        ...openVoteForm,
-                        defendant: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={openVoteForm.proBono}
-                        onChange={(e) =>
-                          setOpenVoteForm({
-                            ...openVoteForm,
-                            proBono: e.target.checked,
-                          })
-                        }
-                        className="h-5 w-5"
-                      />
-                      <span>Pro Bono (Free of charge)</span>
-                    </label>
-                  </div>
-                  {!openVoteForm.proBono && (
-                    <input
-                      type="text"
-                      placeholder="Fee Amount (ETH)"
-                      value={openVoteForm.feeAmount}
-                      onChange={(e) =>
-                        setOpenVoteForm({
-                          ...openVoteForm,
-                          feeAmount: e.target.value,
-                        })
-                      }
-                      className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                    />
-                  )}
-                </div>
-
-                <button
-                  onClick={handleOpenVote}
-                  disabled={isPending || isConfirming}
-                  className="mt-6 w-full rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-medium transition-all hover:from-purple-600 hover:to-pink-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isPending
-                    ? "Confirming..."
-                    : isConfirming
-                      ? "Opening Vote..."
-                      : "Open Vote"}
-                </button>
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === "commit" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Commit Vote (Auto)</h2>
-                <div className="grid grid-cols-1 gap-4">
-                  <input
-                    type="text"
-                    placeholder="Dispute ID *"
-                    value={commitForm.disputeId}
-                    onChange={(e) =>
-                      setCommitForm({
-                        ...commitForm,
-                        disputeId: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <div className="relative">
                   <select
-                    value={commitForm.vote}
-                    onChange={(e) =>
-                      setCommitForm({ ...commitForm, vote: e.target.value })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    value={dateRange}
+                    onChange={(e) => setDateRange(e.target.value)}
+                    className="appearance-none rounded-md border border-white/10 bg-white/5 px-3 py-1.5 pr-8 text-xs text-white outline-none focus:border-cyan-400/40 focus:ring-0"
                   >
-                    <option value="1">Plaintiff</option>
-                    <option value="2">Defendant</option>
-                    <option value="3">Dismiss</option>
+                    <option className="text-black" value="All">All</option>
+                    <option className="text-black" value="7d">Last 7d</option>
+                    <option className="text-black" value="30d">Last 30d</option>
                   </select>
 
-                  <div className="text-sm text-gray-400">
-                    <p>
-                      This flow will automatically use your wallet's pending
-                      nonce to build the commitment nonce, generate the commit
-                      hash, save a small JSON file locally with the details, and
-                      submit the `commitVote` transaction for you.
-                    </p>
-                  </div>
+                  <svg className="pointer-events-none absolute top-1/2 right-2 h-3 w-3 -translate-y-1/2 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-
-                <div className="mt-6 flex gap-4">
-                  <button
-                    onClick={handleAutoCommitVote}
-                    disabled={isPending || isConfirming}
-                    className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-3 font-medium transition-all hover:from-blue-600 hover:to-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isPending
-                      ? "Confirming..."
-                      : isConfirming
-                        ? "Committing..."
-                        : "Commit Vote (Auto)"}
-                  </button>
-                </div>
-
-                {commitForm.commitHash && (
-                  <div className="mt-4 rounded bg-gray-700/40 p-3 font-mono text-sm break-all">
-                    Commitment: {commitForm.commitHash}
-                  </div>
-                )}
-
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
               </div>
-            )}
+              <Button variant="outline" className="border-white/15 text-cyan-200 hover:bg-cyan-500/10" onClick={() => setSortAsc((v) => !v)}>
+                {sortAsc ? <SortAsc className="mr-2 h-4 w-4" /> : <SortDesc className="mr-2 h-4 w-4" />} Sort
+              </Button>
+            </div>
+          </div>
 
-            {activeTab === "reveal" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Reveal Vote</h2>
-                <div className="grid grid-cols-1 gap-4">
-                  <input
-                    type="text"
-                    placeholder="Dispute ID *"
-                    value={revealForm.disputeId}
-                    onChange={(e) =>
-                      setRevealForm({
-                        ...revealForm,
-                        disputeId: e.target.value,
-                      })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <select
-                    value={revealForm.vote}
-                    onChange={(e) =>
-                      setRevealForm({ ...revealForm, vote: e.target.value })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  >
-                    <option value="1">Plaintiff</option>
-                    <option value="2">Defendant</option>
-                    <option value="3">Dismiss</option>
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Nonce *"
-                    value={revealForm.nonce}
-                    onChange={(e) =>
-                      setRevealForm({ ...revealForm, nonce: e.target.value })
-                    }
-                    className="rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                </div>
+          {/* Table */}
+          <div className="rounded-xl border border-b-2 border-white/10 p-0 ring-1 ring-white/10">
+            <div className="flex items-center justify-between border-b border-white/10 p-5">
+              <h3 className="font-semibold text-white/90">Disputes</h3>
+              <div className="text-sm text-cyan-300">{filtered.length} {filtered.length === 1 ? "dispute" : "disputes"}</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full lg:text-sm">
+                <thead>
+                  <tr className="text-left text-sm font-semibold">
+                    <th className="px-5 py-3 text-cyan-300">Creation date</th>
+                    <th className="px-5 py-3 text-emerald-300">Title</th>
+                    <th className="px-5 py-3 text-yellow-300">Request type</th>
+                    <th className="px-5 py-3 text-pink-300">Parties</th>
+                    <th className="px-5 py-3 text-purple-300">Claim</th>
+                    <th className="px-5 py-3 text-indigo-300">Status</th>
+                  </tr>
+                </thead>
 
-                <div className="mt-6 flex gap-4">
-                  <button
-                    onClick={handleGenerateCommitment}
-                    className="flex-1 rounded-lg bg-gray-600 px-6 py-3 font-medium transition-all hover:bg-gray-700"
-                  >
-                    Generate Commitment
-                  </button>
-                  <button
-                    onClick={handleRevealVote}
-                    disabled={isPending || isConfirming}
-                    className="flex-1 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-6 py-3 font-medium transition-all hover:from-green-600 hover:to-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isPending
-                      ? "Confirming..."
-                      : isConfirming
-                        ? "Revealing..."
-                        : "Reveal Vote"}
-                  </button>
-                </div>
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
+                <tbody>
+                  {filtered.map((d) => (
+                    <tr key={d.id} onClick={() => navigate(`/disputes/${d.id}`)} className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-cyan-500/10">
+                      <td className="text-muted-foreground min-w-[120px] px-5 py-4">{new Date(d.createdAt).toLocaleDateString()}</td>
+                      <td className="px-5 py-4 font-medium text-white/90">
+                        <div className="max-w-[200px]"><div className="truncate font-medium">{d.title}</div></div>
+                      </td>
+                      <td className="px-5 py-4">{d.request}</td>
+                      <td className="px-5 py-4 text-white/90">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            <UserAvatar userId={d.plaintiffData?.userId || cleanTelegramUsername(d.plaintiff)} avatarId={d.plaintiffData?.avatarId || null} username={cleanTelegramUsername(d.plaintiff)} size="sm" />
+                            <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${encodeURIComponent(cleanTelegramUsername(d.plaintiff))}`); }} className="text-cyan-300 hover:text-cyan-200 hover:underline">{formatTelegramUsernameForDisplay(d.plaintiff)}</button>
+                          </div>
+
+                          <span className="text-cyan-400"><FaArrowRightArrowLeft /></span>
+
+                          <div className="flex items-center gap-1">
+                            <UserAvatar userId={d.defendantData?.userId || cleanTelegramUsername(d.defendant)} avatarId={d.defendantData?.avatarId || null} username={cleanTelegramUsername(d.defendant)} size="sm" />
+                            <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${encodeURIComponent(cleanTelegramUsername(d.defendant))}`); }} className="text-cyan-300 hover:text-cyan-200 hover:underline">{formatTelegramUsernameForDisplay(d.defendant)}</button>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4"><div className="max-w-[250px]"><div className="text-muted-foreground line-clamp-2 text-xs">{d.claim}</div></div></td>
+                      <td className="min-w-[200px] px-2 py-4">
+                        {d.status === "Settled" ? (
+                          <span className="badge badge-blue">Settled</span>
+                        ) : d.status === "Pending" ? (
+                          <span className="badge badge-orange">Pending</span>
+                        ) : d.status === "Dismissed" ? (
+                          <span className="badge badge-red">Dismissed</span>
+                        ) : (
+                          <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">Vote in Progress</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filtered.length === 0 && (
+                <div className="py-8 text-center"><p className="text-muted-foreground">No disputes found matching your criteria.</p></div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Recent Disputes Sidebar - visible on large screens */}
+        <div className="col-span-2 hidden lg:block">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-semibold text-white/90">Recent Disputes</h3>
+            <div className="group relative w-[10rem]" ref={recentDisputesDropdownRef}>
+              <div onClick={() => setIsRecentDisputesFilterOpen(!isRecentDisputesFilterOpen)} className="flex cursor-pointer items-center justify-between rounded-md bg-white px-3 py-1 text-sm text-black transition-all dark:bg-[#d5f2f80a] dark:text-white">
+                {recentDisputesFilterOptions.find((f) => f.value === recentDisputesFilter)?.label}
+                <div className="bg-Primary flex h-8 w-8 items-center justify-center rounded-md"><ChevronDown className={`transform text-2xl text-white transition-transform duration-300 ${isRecentDisputesFilterOpen ? "rotate-180" : ""}`} /></div>
               </div>
-            )}
 
-            {activeTab === "lookup" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Voter Lookup</h2>
-                <div className="mb-6 flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="Enter voter address"
-                    value={voterLookup}
-                    onChange={(e) => setVoterLookup(e.target.value)}
-                    className="flex-1 rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={() => {
-                      resetMessages();
-                      if (!voterLookup) {
-                        setUiError("Enter a voter address");
-                        return;
-                      }
-                      if (!isValidAddress(voterLookup)) {
-                        setUiError("Invalid voter address format");
-                        return;
-                      }
-                      refetchVoterStats();
-                      setUiSuccess("Fetching voter stats...");
-                    }}
-                    className="rounded-lg bg-purple-600 px-6 py-3 transition-colors hover:bg-purple-700"
-                  >
-                    Lookup
-                  </button>
+              {isRecentDisputesFilterOpen && (
+                <div className="absolute top-[110%] right-0 z-50 w-full rounded-xl bg-cyan-800 shadow-md">
+                  {recentDisputesFilterOptions.map((option, idx) => (
+                    <div key={option.value} onClick={() => { setRecentDisputesFilter(option.value); setIsRecentDisputesFilterOpen(false); }} className={`cursor-pointer px-3 py-1.5 text-sm transition-colors hover:bg-cyan-300 hover:text-white ${idx === 0 ? "rounded-t-xl" : ""} ${idx === recentDisputesFilterOptions.length - 1 ? "rounded-b-xl" : ""}`}>
+                      {option.label}
+                    </div>
+                  ))}
                 </div>
+              )}
+            </div>
+          </div>
 
-                {voterStats && (
-                  <div className="rounded-lg bg-gray-700/50 p-6">
-                    <h3 className="mb-4 text-xl font-semibold">
-                      Voter Statistics
-                    </h3>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="rounded bg-gray-600/50 p-3">
-                        <span className="text-gray-400">Tier:</span>
-                        <span className="ml-2 font-mono">
-                          {formatTier(Number(voterStats[0]))}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/50 p-3">
-                        <span className="text-gray-400">Total Votes:</span>
-                        <span className="ml-2 font-mono">
-                          {voterStats[1]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-green-600/20 p-3">
-                        <span className="text-gray-400">Plaintiff Votes:</span>
-                        <span className="ml-2 font-mono">
-                          {voterStats[2]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-red-600/20 p-3">
-                        <span className="text-gray-400">Defendant Votes:</span>
-                        <span className="ml-2 font-mono">
-                          {voterStats[3]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-yellow-600/20 p-3">
-                        <span className="text-gray-400">Dismiss Votes:</span>
-                        <span className="ml-2 font-mono">
-                          {voterStats[4]?.toString()}
-                        </span>
-                      </div>
+          <div className="glass border border-white/10 bg-gradient-to-br from-cyan-500/10 p-4">
+            <ul className="space-y-3 text-sm">
+              {filteredRecentDisputes.length === 0 ? (
+                <li className="text-muted-foreground py-3 text-center text-xs">No disputes found.</li>
+              ) : (
+                filteredRecentDisputes.map((dispute) => (
+                  <li key={dispute.id} className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium text-white">{dispute.title}</div>
+                      <div className="text-muted-foreground mt-1 text-xs">{dispute.parties.replace(" vs ", " ↔ ")}</div>
+                      <div className="text-muted-foreground mt-1 line-clamp-2 text-xs">{dispute.claim}</div>
                     </div>
-                  </div>
-                )}
-
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === "dispute" && (
-              <div className="rounded-lg border border-purple-500/20 bg-gray-800/50 p-6 backdrop-blur-sm">
-                <h2 className="mb-6 text-2xl font-bold">Dispute Explorer</h2>
-
-                <div className="mb-4 flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="Dispute ID"
-                    value={disputeLookupId}
-                    onChange={(e) => setDisputeLookupId(e.target.value)}
-                    className="flex-1 rounded-lg bg-gray-700 px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={fetchDisputeAndReveals}
-                    className="rounded-lg bg-purple-600 px-6 py-3 hover:bg-purple-700"
-                  >
-                    Fetch
-                  </button>
-                  <button
-                    onClick={handleFinalizeExpired}
-                    disabled={isPending || !disputeLookupId}
-                    className="rounded-lg bg-red-600 px-6 py-3 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isPending ? "Finalizing..." : "Finalize (if expired)"}
-                  </button>
-                </div>
-
-                {isFetchingDispute && (
-                  <p className="text-gray-400">Fetching dispute...</p>
-                )}
-
-                {disputeData && (
-                  <div className="mb-4 rounded-lg bg-gray-700/50 p-4">
-                    <h3 className="mb-3 text-lg font-semibold">
-                      Dispute Details
-                    </h3>
-
-                    {/* Status Indicators */}
-                    <div className="mb-4 rounded-lg bg-gray-600/30 p-3">
-                      <div className="flex flex-wrap gap-2 text-sm">
-                        <span
-                          className={`rounded px-2 py-1 ${disputeData[3] ? "bg-green-600/20 text-green-400" : "bg-red-600/20 text-red-400"}`}
-                        >
-                          {disputeData[3] ? "Active" : "Inactive"}
-                        </span>
-                        <span
-                          className={`rounded px-2 py-1 ${disputeData[6] ? "bg-purple-600/20 text-purple-400" : "bg-yellow-600/20 text-yellow-400"}`}
-                        >
-                          {disputeData[6] ? "Finalized" : "Not Finalized"}
-                        </span>
-                        <span
-                          className={`rounded px-2 py-1 ${isVotingPeriodEnded(Number(disputeData[5])) ? "bg-red-600/20 text-red-400" : "bg-green-600/20 text-green-400"}`}
-                        >
-                          {isVotingPeriodEnded(Number(disputeData[5]))
-                            ? "Voting Ended"
-                            : "Voting Ongoing"}
-                        </span>
-                        <span
-                          className={`rounded px-2 py-1 ${canCommitToDispute(disputeData).canCommit ? "bg-blue-600/20 text-blue-400" : "bg-gray-600/20 text-gray-400"}`}
-                        >
-                          {canCommitToDispute(disputeData).canCommit
-                            ? "Can Commit"
-                            : "Cannot Commit"}
-                        </span>
-                        <span
-                          className={`rounded px-2 py-1 ${canRevealForDispute(disputeData).canReveal ? "bg-green-600/20 text-green-400" : "bg-gray-600/20 text-gray-400"}`}
-                        >
-                          {canRevealForDispute(disputeData).canReveal
-                            ? "Can Reveal"
-                            : "Cannot Reveal"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Dispute ID:</span>
-                        <span className="ml-2 font-mono">
-                          {disputeData[0]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">
-                          Total Commitments:
-                        </span>
-                        <span className="ml-2 font-mono">
-                          {toNumber(disputeData[8])}
-                        </span>
-                      </div>
-                      <div className="col-span-2 rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Plaintiff:</span>
-                        <span className="ml-2 font-mono text-xs break-all">
-                          {disputeData[1]}
-                        </span>
-                      </div>
-                      <div className="col-span-2 rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Defendant:</span>
-                        <span className="ml-2 font-mono text-xs break-all">
-                          {disputeData[2]}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Created At:</span>
-                        <span className="ml-2 font-mono text-xs">
-                          {new Date(
-                            toNumber(disputeData[4]) * 1000,
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">End Time:</span>
-                        <span className="ml-2 font-mono text-xs">
-                          {new Date(
-                            toNumber(disputeData[5]) * 1000,
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Result:</span>
-                        <span className="ml-2 font-mono">
-                          {disputeData[7] === 1
-                            ? "Plaintiff"
-                            : disputeData[7] === 2
-                              ? "Defendant"
-                              : disputeData[7] === 3
-                                ? "Dismiss"
-                                : "N/A"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-green-600/20 p-2">
-                        <span className="text-gray-400">
-                          Weighted Plaintiff:
-                        </span>
-                        <span className="ml-2 font-mono">
-                          {disputeData[9]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-red-600/20 p-2">
-                        <span className="text-gray-400">
-                          Weighted Defendant:
-                        </span>
-                        <span className="ml-2 font-mono">
-                          {disputeData[10]?.toString()}
-                        </span>
-                      </div>
-                      <div className="rounded bg-yellow-600/20 p-2">
-                        <span className="text-gray-400">Weighted Dismiss:</span>
-                        <span className="ml-2 font-mono">
-                          {disputeData[11]?.toString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {revealedList && revealedList.length > 0 && (
-                  <div className="mb-4 rounded bg-gray-700/50 p-4">
-                    <h3 className="mb-2 font-semibold">
-                      Revealed Voters ({revealedList.length})
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                      {revealedList.map((v) => (
-                        <button
-                          key={v}
-                          onClick={() => fetchVoterReveal(v)}
-                          className="truncate rounded bg-gray-600/30 px-3 py-2 text-left font-mono text-xs hover:bg-gray-600/50"
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {revealedList && revealedList.length === 0 && disputeData && (
-                  <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-600/20 p-4">
-                    <p className="text-yellow-200">
-                      No votes have been revealed yet for this dispute.
-                    </p>
-                  </div>
-                )}
-
-                {selectedRevealData && selectedRevealer && (
-                  <div className="rounded bg-gray-700/50 p-4">
-                    <h3 className="mb-3 font-semibold">
-                      Reveal Details for Voter
-                    </h3>
-                    <div className="mb-3 rounded bg-gray-600/30 p-2 font-mono text-xs break-all">
-                      {selectedRevealer}
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Revealed:</span>
-                        <span
-                          className={`ml-2 font-mono ${selectedRevealData[0] ? "text-green-400" : "text-red-400"}`}
-                        >
-                          {selectedRevealData[0] ? "Yes" : "No"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Vote:</span>
-                        <span className="ml-2 font-mono">
-                          {selectedRevealData[1] === 1
-                            ? "Plaintiff"
-                            : selectedRevealData[1] === 2
-                              ? "Defendant"
-                              : selectedRevealData[1] === 3
-                                ? "Dismiss"
-                                : "N/A"}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Tier:</span>
-                        <span className="ml-2 font-mono">
-                          {formatTier(selectedRevealData[2])}
-                        </span>
-                      </div>
-                      <div className="rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Weight:</span>
-                        <span className="ml-2 font-mono">
-                          {selectedRevealData[3]?.toString()}
-                        </span>
-                      </div>
-                      <div className="col-span-2 rounded bg-gray-600/30 p-2">
-                        <span className="text-gray-400">Timestamp:</span>
-                        <span className="ml-2 font-mono text-xs">
-                          {new Date(
-                            toNumber(selectedRevealData[4]) * 1000,
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {uiError && <p className="mt-4 text-red-400">{uiError}</p>}
-                {uiSuccess && (
-                  <p className="mt-4 text-green-400">{uiSuccess}</p>
-                )}
-              </div>
-            )}
-          </>
-        )}
+                    <span className={`badge ml-2 text-xs ${dispute.status === "Pending" ? "badge-orange" : dispute.status === "Vote in Progress" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : dispute.status === "Settled" ? "badge-blue" : dispute.status === "Dismissed" ? "badge-red" : ""}`}>{dispute.status}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        </div>
       </div>
+
+      {/* Create Dispute Modal (unchanged behavior, integrated on-chain flow for Paid disputes) */}
+      {open && (
+        <div onClick={() => setOpen(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl">
+            <button onClick={() => setOpen(false)} className="absolute top-3 right-3 text-white/70 hover:text-white">✕</button>
+            <div className="mb-5 border-b border-white/10 pb-3">
+              <h2 className="text-lg font-semibold text-white/90">Raise New Dispute</h2>
+              <p className="text-muted-foreground text-sm">Provide details and evidence. Max 5 witnesses.</p>
+            </div>
+
+            <form onSubmit={submit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              {/* Title, Request Kind etc. unchanged */}
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">Title <span className="text-red-500">*</span></label>
+                </div>
+                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40" placeholder="e.g. He refused to issue a refund despite going AWOL for weeks!" />
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">Request Kind <span className="text-red-500">*</span></label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["Pro Bono", "Paid"] as const).map((k) => (
+                    <label key={k} className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === k ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200" : "border-white/10 bg-white/5"}`}>
+                      <input type="radio" name="kind" className="hidden" checked={form.kind === k} onChange={() => setForm({ ...form, kind: k })} />
+                      {k}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Defendant Field with User Search - now uses userSearchQuery + active field so searches are debounced */}
+              <div className="relative" ref={userSearchRef}>
+                <label className="text-muted-foreground mb-2 block text-sm">Defendant <span className="text-red-500">*</span><span className="ml-2 text-xs text-cyan-400"> (Start typing to search users)</span></label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                  <input
+                    value={form.defendant}
+                    onChange={(e) => { const value = e.target.value; setForm({ ...form, defendant: value }); setActiveSearchField("defendant"); setUserSearchQuery(value); }}
+                    onFocus={() => { if (form.defendant.length >= 2) setShowUserSuggestions(true); }}
+                    className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                    placeholder="Type username (min 2 characters)..."
+                    required
+                  />
+                  {isUserSearchLoading && activeSearchField === "defendant" && <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />}
+                </div>
+
+                {/* Suggestions dropdown unchanged but uses debounced results */}
+                {showUserSuggestions && activeSearchField === "defendant" && (
+                  <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                    {userSearchResults.length > 0 ? (
+                      userSearchResults.map((user) => (
+                        <UserSearchResult key={user.id} user={user} onSelect={(username) => { setForm({ ...form, defendant: username }); setShowUserSuggestions(false); setUserSearchQuery(""); }} field="defendant" />
+                      ))
+                    ) : userSearchQuery.length >= 2 && !isUserSearchLoading ? (
+                      <div className="px-4 py-3 text-center text-sm text-cyan-300">No users found for "{userSearchQuery}"<div className="mt-1 text-xs text-cyan-400">Make sure the user exists and has a Telegram username</div></div>
+                    ) : null}
+
+                    {userSearchQuery.length < 2 && <div className="px-4 py-3 text-center text-sm text-cyan-300">Type at least 2 characters to search</div>}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-muted-foreground mb-2 block text-sm">Detailed Description <span className="text-red-500">*</span></label>
+                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40" placeholder="Describe the situation, milestones, messages, and expectations" />
+              </div>
+
+              {/* Claim Section */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">Claim <span className="text-red-500">*</span></label>
+                </div>
+                <textarea value={form.claim || ""} onChange={(e) => setForm({ ...form, claim: e.target.value })} className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40" placeholder="What do you want the court to do for you?" />
+              </div>
+
+              {/* Enhanced Evidence Upload Section */}
+              <div>
+                <label className="text-muted-foreground mb-2 block text-sm">Evidence Upload <span className="text-red-500">*</span></label>
+
+                {/* Drag and Drop Area */}
+                <div className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver ? "border-cyan-400/60 bg-cyan-500/20" : "border-white/15 bg-white/5 hover:border-cyan-400/40"}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                  <input onChange={(ev) => handleFileSelect(ev.target.files)} type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" id="evidence-upload" />
+                  <label htmlFor="evidence-upload" className="flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center">
+                    <Upload className="mb-3 h-8 w-8 text-cyan-400" />
+                    <div className="text-sm text-cyan-300">{isDragOver ? "Drop files here" : "Click to upload or drag and drop"}</div>
+                    <div className="text-muted-foreground mt-1 text-xs">Supports images, PDFs, and documents</div>
+                  </label>
+                </div>
+
+                {/* File List with Previews */}
+                {form.evidence.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-cyan-200">Selected Files ({form.evidence.length})</h4>
+                    {form.evidence.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3">
+                        <div className="flex items-center gap-3">
+                          {file.type === "image" && file.preview ? (
+                            <img src={file.preview} alt={file.file.name} className="h-10 w-10 rounded object-cover" />
+                          ) : (
+                            <Paperclip className="h-5 w-5 text-cyan-400" />
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-white">{file.file.name}</div>
+                            <div className="text-xs text-cyan-200/70">{file.size} • {file.type}</div>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeFile(file.id)} className="h-8 w-8 p-0 text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Witnesses with User Search */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-muted-foreground text-sm">Witness list (max 5) <span className="ml-2 text-xs text-cyan-400">(Start typing to search users)</span></label>
+                  <Button type="button" variant="outline" className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10" onClick={addWitness} disabled={form.witnesses.length >= 5}>Add witness</Button>
+                </div>
+                <div className="space-y-2">
+                  {form.witnesses.map((w, i) => (
+                    <div key={i} className="relative flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                        <input value={w} onChange={(e) => { const value = e.target.value; updateWitness(i, value); setActiveSearchField("witness"); setActiveWitnessIndex(i); setUserSearchQuery(value); }} onFocus={() => { if (w.length >= 2) { setShowUserSuggestions(true); setActiveWitnessIndex(i); } }} className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40" placeholder={`Type username (min 2 characters)...`} />
+                        {isUserSearchLoading && activeSearchField === "witness" && activeWitnessIndex === i && <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />}
+                      </div>
+
+                      {form.witnesses.length > 1 && <button type="button" onClick={() => removeWitness(i)} className="text-muted-foreground rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs hover:text-white">Remove</button>}
+
+                      {showUserSuggestions && activeSearchField === "witness" && activeWitnessIndex === i && (
+                        <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                          {userSearchResults.length > 0 ? (
+                            userSearchResults.map((user) => (
+                              <UserSearchResult key={user.id} user={user} onSelect={(username) => { updateWitness(i, username); setShowUserSuggestions(false); setUserSearchQuery(""); }} field="witness" />
+                            ))
+                          ) : userSearchQuery.length >= 2 && !isUserSearchLoading ? (
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">No users found for "{userSearchQuery}"<div className="mt-1 text-xs text-cyan-400">Make sure the user exists and has a Telegram username</div></div>
+                          ) : null}
+
+                          {userSearchQuery.length < 2 && <div className="px-4 py-3 text-center text-sm text-cyan-300">Type at least 2 characters to search</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
+                <Button type="button" variant="outline" className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10" onClick={() => { toast.message("Draft saved", { description: "Your dispute has been saved as draft" }); setOpen(false); }} disabled={isSubmitting}>Save Draft</Button>
+                <Button type="submit" variant="neon" className="neon-hover" disabled={isSubmitting || isWritePending || isConfirming}>
+                  {isSubmitting || isWritePending || isConfirming ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>) : (<><Send className="mr-2 h-4 w-4" />Submit Dispute</>)}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default Web3Vote;
+function JudgesIntro() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <section
+      className={`glass card-cyan relative col-span-2 overflow-hidden p-6 transition-all duration-300 ${expanded ? "h-auto" : "lg:h-[14rem]"
+        }`}
+    >
+      {/* Cyan glow effect */}
+      <div className="absolute top-0 -right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>
+
+      {/* Heading */}
+      <h3 className="space text-lg font-semibold text-white/90">
+        Have you been wronged or cheated? Don't stay silent, start a{" "}
+        <span className="text-[#0891b2]">dispute</span>.
+      </h3>
+
+      {/* Judges info */}
+      <div className="text-muted-foreground mt-3 text-sm">
+        <h3 className="font-semibold text-white/90">Who Judges Your Case?</h3>
+        <p className="text-muted-foreground space mt-1 text-cyan-400">Judges</p>
+        <p>
+          DexCourt's panel of judges consists of reputable and well-known
+          figures across both Web3 and traditional spaces.
+        </p>
+
+        {/* Always visible part */}
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>Top influencers (e.g., IncomeSharks)</li>
+
+          {/* Hidden part starts here */}
+          {expanded && (
+            <>
+              <li>Leading project founders (e.g., CZ)</li>
+              <li>Experienced blockchain developers</li>
+              <li>Respected degens with strong community reputation</li>
+              <li>Licensed lawyers and real-world judges</li>
+              <li>Prominent Web2 personalities</li>
+            </>
+          )}
+        </ul>
+
+        {/* Hidden explanatory text */}
+        {expanded && (
+          <>
+            <p className="text-muted-foreground mt-2 text-sm">
+              These individuals are selected based on proven{" "}
+              <span className="text-cyan-400">
+                credibility, influence, and integrity
+              </span>{" "}
+              within their respective domains.
+            </p>
+
+            <p className="text-muted-foreground space mt-3 text-cyan-400">
+              The Community
+            </p>
+            <p className="text-muted-foreground text-sm">
+              In addition to the judges, the broader DexCourt community also
+              plays a vital role. Holders of the $LAW token can review cases and
+              cast their votes, ensuring that justice remains decentralized and
+              inclusive.
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Buttons */}
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-sm text-cyan-300 hover:underline"
+        >
+          {expanded ? "Read Less" : "Read More"}
+        </button>
+      </div>
+    </section>
+  );
+}

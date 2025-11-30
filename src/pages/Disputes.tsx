@@ -1,3 +1,4 @@
+// src/pages/Disputes.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../components/ui/button";
 import { ChevronDown, ChevronRight, Send } from "lucide-react";
@@ -149,6 +150,9 @@ const useDisputes = (filters: {
       const transformedData = response.results.map((item) =>
         disputeService.transformDisputeListItemToRow(item),
       );
+
+      console.log("Fetched disputes:", transformedData);
+      console.log('response', response);
 
       setData(transformedData);
     } catch (err: any) {

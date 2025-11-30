@@ -1,3 +1,24 @@
+export type RawVotingConfigArray = [
+    tier1ThresholdPercent?: bigint | number | string,
+    tier2ThresholdPercent?: bigint | number | string,
+    divisor?: bigint | number | string,
+    tier1Weight?: bigint | number | string,
+    tier2Weight?: bigint | number | string,
+    judgeWeight?: bigint | number | string,
+    votingDuration?: bigint | number | string,
+];
+
+export type RawDisputeStatsArray = [
+    id?: bigint | number | string,
+    active?: boolean | number,
+    createdAt?: bigint | number | string,
+    endTime?: bigint | number | string,
+    finalized?: boolean | number,
+    plaintiffWins?: boolean | number,
+    defendantWins?: boolean | number,
+    dismissed?: boolean | number,
+];
+
 export type RawAgreementArray = [
     _id?: bigint | number | string,
     creator?: string,
@@ -27,3 +48,4 @@ export type RawAgreementArray = [
     deliverySubmited?: boolean | number,
     votingId?: bigint | number | string,
 ];
+

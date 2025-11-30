@@ -2,9 +2,9 @@
 import type { PublicClient, Abi } from "viem";
 import { getTransactionCount as viemGetTransactionCount } from "viem/actions";
 import { getClientForChain } from "../config/publicConfig";
-import { ERC20_ABI, ESCROW_ABI, ESCROW_CA } from "./config";
-import { AGREEMENT_FALLBACK, type Agreement } from "./interfaces";
-import { isZeroAddress, normalizeAgreement } from "./helper";
+import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, VOTING_ABI, VOTING_CA } from "./config";
+import { AGREEMENT_FALLBACK, DISPUTE_STATS_FALLBACK, LEADERBOARD_FALLBACK, VOTER_STATS_FALLBACK, VOTER_TIER_FALLBACK, VOTING_CONFIG_FALLBACK, VOTING_STATS_WITH_AVG_FALLBACK, type Agreement, type DisputeStats, type Leaderboard, type VoterReveal, type VoterStats, type VoterTier, type VOTING_CONFIG, type VotingStatsWithAvg } from "./interfaces";
+import { isZeroAddress, normalizeAgreement, normalizeDisputeStats, normalizeLeaderboard, normalizeVoterReveal, normalizeVoterStats, normalizeVoterTier, normalizeVotingConfig, normalizeVotingStatsWithAvg } from "./helper";
 
 
 /**
@@ -185,5 +185,267 @@ export const getMilestoneCount = async (
     console.error(` (chain=${chainId}, id=${agreementId}):`, err);
     // choose whether to rethrow or return fallback; here we rethrow for visibility
     throw err;
+  }
+};
+
+/**
+ * .
+ */
+export const getVotingConfig = async (
+  chainId: number,
+): Promise<VOTING_CONFIG> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return VOTING_CONFIG_FALLBACK;
+  }
+
+
+  try {
+    // avoid 'any' by coercing ESCROW_ABI into viem's Abi type
+    type AbiLike = { abi?: Abi } | Abi;
+    const maybe = VOTING_ABI as AbiLike;
+    const abi = (("abi" in (maybe as object) ? (maybe as { abi?: Abi }).abi : (maybe as Abi))) ?? (VOTING_ABI as unknown as Abi);
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getVotingConfig",
+      args: [],
+    });
+
+    return normalizeVotingConfig(raw);
+  } catch (err) {
+    console.error(` (chain=${chainId}, id=${contractAddr}):`, err);
+    // choose whether to rethrow or return fallback; here we rethrow for visibility
+    throw err;
+  }
+};
+
+export const getVotingStatsWithAvg = async (
+  chainId: number,
+): Promise<VotingStatsWithAvg> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return VOTING_STATS_WITH_AVG_FALLBACK;
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getVotingStatsWithAvg",
+      args: [],
+    });
+
+    return normalizeVotingStatsWithAvg(raw);
+  } catch (err) {
+    console.error(`getVotingStatsWithAvg failed (chain=${chainId}):`, err);
+    return VOTING_STATS_WITH_AVG_FALLBACK;
+  }
+};
+
+export const getLeaderboard = async (
+  chainId: number,
+): Promise<Leaderboard> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return LEADERBOARD_FALLBACK;
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getLeaderboard",
+      args: [],
+    });
+
+    return normalizeLeaderboard(raw);
+  } catch (err) {
+    console.error(`getLeaderboard failed (chain=${chainId}):`, err);
+    return LEADERBOARD_FALLBACK;
+  }
+};
+
+export const getVoterStats = async (
+  chainId: number,
+  voter: `0x${string}`,
+): Promise<VoterStats> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return VOTER_STATS_FALLBACK;
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getVoterStats",
+      args: [voter],
+    });
+
+    return normalizeVoterStats(raw);
+  } catch (err) {
+    console.error(`getVoterStats failed (chain=${chainId}, voter=${voter}):`, err);
+    return VOTER_STATS_FALLBACK;
+  }
+};
+
+export const getVoterTier = async (
+  chainId: number,
+  voter: `0x${string}`,
+): Promise<VoterTier> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return VOTER_TIER_FALLBACK;
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getVoterTier",
+      args: [voter],
+    });
+
+    return normalizeVoterTier(raw);
+  } catch (err) {
+    console.error(`getVoterTier failed (chain=${chainId}, voter=${voter}):`, err);
+    return VOTER_TIER_FALLBACK;
+  }
+};
+
+export const getDisputeStats = async (
+  chainId: number,
+  disputeId: bigint,
+): Promise<DisputeStats> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return DISPUTE_STATS_FALLBACK;
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getDisputeStats",
+      args: [disputeId],
+    });
+
+    return normalizeDisputeStats(raw);
+  } catch (err) {
+    console.error(`getDisputeStats failed (chain=${chainId}, disputeId=${disputeId}):`, err);
+    return DISPUTE_STATS_FALLBACK;
+  }
+};
+
+export const getRevealedVoters = async (
+  chainId: number,
+  disputeId: bigint,
+): Promise<`0x${string}`[]> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return [];
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getRevealedVoters",
+      args: [disputeId],
+    });
+
+    return (raw as `0x${string}`[]) || [];
+  } catch (err) {
+    console.error(`getRevealedVoters failed (chain=${chainId}, disputeId=${disputeId}):`, err);
+    return [];
+  }
+};
+
+export const getVoterReveal = async (
+  chainId: number,
+  disputeId: bigint,
+  voter: `0x${string}`,
+): Promise<VoterReveal> => {
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = VOTING_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return normalizeVoterReveal(null);
+  }
+
+  try {
+    const abi = VOTING_ABI.abi as Abi;
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getVoterReveal",
+      args: [disputeId, voter],
+    });
+
+    return normalizeVoterReveal(raw);
+  } catch (err) {
+    console.error(`getVoterReveal failed (chain=${chainId}, disputeId=${disputeId}, voter=${voter}):`, err);
+    return normalizeVoterReveal(null);
   }
 };
