@@ -7,7 +7,7 @@ export function WalletLoginDebug() {
   const { address, isConnected } = useAccount();
 
   return (
-    <div className="fixed top-20 right-4 z-50 rounded-lg bg-black/80 p-4 text-xs">
+    <div className="mb-2 w-fit rounded-lg bg-black/80 p-4 text-xs">
       <div>Connected: {isConnected ? "✅" : "❌"}</div>
       <div>Address: {address ? `${address.slice(0, 8)}...` : "None"}</div>
       <div>Authenticated: {isAuthenticated ? "✅" : "❌"}</div>

@@ -1,6 +1,6 @@
 // src/pages/Agreements.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "../components/ui/button";
 import {
   Calendar,
@@ -359,10 +359,10 @@ export default function Agreements() {
   // Load agreements
 
   const applyPagination = useCallback(
-    (allAgreementsList: Agreement[], page: number, size: number) => {
+    (agreementsList: Agreement[], page: number, size: number) => {
       const startIndex = (page - 1) * size;
       const endIndex = startIndex + size;
-      const paginatedAgreements = allAgreementsList.slice(startIndex, endIndex);
+      const paginatedAgreements = agreementsList.slice(startIndex, endIndex);
       setAgreements(paginatedAgreements);
     },
     [],
@@ -373,9 +373,9 @@ export default function Agreements() {
     try {
       setLoading(true);
 
-      // Get ALL agreements without pagination for searching
+      // Get ALL agreements without pagination
       const allAgreementsResponse = await agreementService.getAgreements({
-        top: 1000, // Get a large number to ensure we get all agreements
+        top: 1000,
         skip: 0,
         sort: "desc",
       });
@@ -402,7 +402,7 @@ export default function Agreements() {
         }),
       );
 
-      // Filter out agreements with secured funds from ALL agreements
+      // Filter out agreements with secured funds
       const filteredAgreements = agreementsWithDetails.filter(
         (item) => item.details && !item.details.hasSecuredFunds,
       );
@@ -412,17 +412,17 @@ export default function Agreements() {
         filteredAgreements.length,
       );
 
-      // Transform ALL agreements for search
+      // Transform agreements for display
       const transformedAgreements = filteredAgreements.map((item) =>
         transformApiAgreement(item),
       );
 
-      // Store ALL agreements for searching
+      // Store ALL agreements
       setAllAgreements(transformedAgreements);
       setTotalAgreements(transformedAgreements.length);
       setTotalResults(transformedAgreements.length);
 
-      // Apply pagination to display
+      // Apply initial pagination
       applyPagination(transformedAgreements, currentPage, pageSize);
     } catch (error: any) {
       console.error("Failed to fetch agreements:", error);
@@ -442,29 +442,14 @@ export default function Agreements() {
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
-    if (searchQuery.trim()) {
-      // If searching, paginate the search results
-      applyPagination(filteredTableAgreements, newPage, pageSize);
-    } else {
-      // If not searching, paginate all agreements
-      applyPagination(allAgreements, newPage, pageSize);
-    }
+    applyPagination(filteredTableAgreements, newPage, pageSize);
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
     setCurrentPage(1);
-    if (searchQuery.trim()) {
-      applyPagination(filteredTableAgreements, 1, newSize);
-    } else {
-      applyPagination(allAgreements, 1, newSize);
-    }
+    applyPagination(filteredTableAgreements, 1, newSize);
   };
-
-  // Calculate pagination info
-  const totalPages = Math.ceil(totalAgreements / pageSize);
-  const startItem = (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(currentPage * pageSize, totalAgreements);
 
   const transformApiAgreement = (apiAgreement: any): Agreement => {
     const getAgreementType = (visibility: number) => {
@@ -633,15 +618,15 @@ export default function Agreements() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  // Add pagination function
-
   // Update the filter logic to search ALL agreements
-  const filteredTableAgreements: Agreement[] = allAgreements
-    .filter((a) => {
-      // Status filter - "all" means no filtering
+  const filteredTableAgreements: Agreement[] = useMemo(() => {
+    if (allAgreements.length === 0) return [];
+
+    let result = allAgreements.filter((a) => {
+      // Status filter
       if (tableFilter !== "all" && a.status !== tableFilter) return false;
 
-      // Search filter - now searches ALL agreements
+      // Search filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         return (
@@ -651,18 +636,43 @@ export default function Agreements() {
         );
       }
       return true;
-    })
-    .sort((a, b) => {
-      // Convert date strings to Date objects for comparison
+    });
+
+    // Sort the results
+    result = result.sort((a, b) => {
       const dateA = new Date(a.dateCreated);
       const dateB = new Date(b.dateCreated);
 
       if (sortOrder === "asc") {
-        return dateA.getTime() - dateB.getTime(); // Oldest first
+        return dateA.getTime() - dateB.getTime();
       } else {
-        return dateB.getTime() - dateA.getTime(); // Newest first (most recent first)
+        return dateB.getTime() - dateA.getTime();
       }
     });
+
+    return result;
+  }, [allAgreements, tableFilter, searchQuery, sortOrder]);
+
+  useEffect(() => {
+    if (filteredTableAgreements.length > 0) {
+      applyPagination(filteredTableAgreements, currentPage, pageSize);
+    } else {
+      setAgreements([]);
+    }
+  }, [filteredTableAgreements, currentPage, pageSize, applyPagination]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tableFilter, searchQuery, sortOrder]);
+
+  // Update pagination info calculations
+  const totalPages = Math.ceil(filteredTableAgreements.length / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(
+    currentPage * pageSize,
+    filteredTableAgreements.length,
+  );
 
   const filteredRecentAgreements: Agreement[] = agreements
     .filter((a) => a.status === "disputed")
@@ -1329,7 +1339,7 @@ export default function Agreements() {
                           <AgreementSkeleton key={index} />
                         ))}
                       </>
-                    ) : filteredTableAgreements.length === 0 ? (
+                    ) : agreements.length === 0 ? (
                       <tr>
                         <td
                           colSpan={6}
@@ -1338,7 +1348,7 @@ export default function Agreements() {
                           No agreements found.
                         </td>
                       </tr>
-                    ) : filteredTableAgreements.length === 0 ? (
+                    ) : agreements.length === 0 ? (
                       <tr>
                         <td
                           colSpan={6}
@@ -1348,7 +1358,7 @@ export default function Agreements() {
                         </td>
                       </tr>
                     ) : (
-                      filteredTableAgreements.map((a) => (
+                      agreements.map((a) => (
                         <tr
                           key={a.id}
                           className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-white/5"
@@ -1476,8 +1486,8 @@ export default function Agreements() {
             {!loading && totalAgreements > 0 && (
               <div className="flex items-center justify-between px-5 py-4">
                 <div className="text-sm text-cyan-300">
-                  Showing {startItem} to {endItem} of {totalAgreements}{" "}
-                  agreements
+                  Showing {startItem} to {endItem} of{" "}
+                  {filteredTableAgreements.length} agreements
                 </div>
 
                 <div className="flex items-center gap-2">

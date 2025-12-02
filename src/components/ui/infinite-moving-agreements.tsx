@@ -105,7 +105,7 @@ export const InfiniteMovingAgreements = ({
       >
         {items.map((item, idx) => (
           <li
-            className="relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-8 py-4 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px]"
+            className="card-cyan relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 px-8 py-4 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px]"
             key={`${item.id}-${idx}`}
           >
             <Link

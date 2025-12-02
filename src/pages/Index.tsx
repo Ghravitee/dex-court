@@ -15,16 +15,15 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip as RTooltip,
+  Tooltip,
   ResponsiveContainer,
-  Legend,
-  Bar,
   ComposedChart,
+  Bar,
+  Legend,
 } from "recharts";
 import CountUp from "../components/ui/CountUp";
 import { Link } from "react-router-dom";
@@ -44,11 +43,144 @@ import { useSettledDisputesCount } from "../hooks/useSettledDisputesCount";
 import { useUsersCount } from "../hooks/useUsersCount";
 import { WalletLoginDebug } from "../components/WalletLoginDebug";
 import { useJudgesCount } from "../hooks/useJudgesCounts";
-import { useTimeSeriesFromToday } from "../hooks/useTimeSeriesFromToday";
-// import { useTimeSeriesStats } from "../hooks/useTimeSeriesStats";
+import { useAllAgreementsForGrowth } from "../hooks/useAllAgreementsForGrowth";
+import type { GrowthDataPoint } from "../hooks/useAllAgreementsForGrowth";
 
 // Cache for expensive calculations
 const revenueCache = new Map();
+
+interface TimeframeGroupedData {
+  period: string;
+  newAgreements: number;
+  totalAgreements: number;
+}
+
+// Helper to group data by timeframe
+// Helper to group data by timeframe
+const groupByTimeframe = (
+  data: GrowthDataPoint[],
+  timeframe: "daily" | "weekly" | "monthly",
+): TimeframeGroupedData[] => {
+  if (data.length === 0) return [];
+
+  if (timeframe === "daily") {
+    return data.map((d) => ({
+      period: d.date,
+      newAgreements: d.newAgreements,
+      totalAgreements: d.totalAgreements,
+    }));
+  }
+
+  const grouped = new Map<
+    string,
+    { new: number; total: number; rawDate: string }
+  >();
+
+  data.forEach((point) => {
+    const date = new Date(point.rawDate);
+    let key: string;
+
+    if (timeframe === "weekly") {
+      // Get week of year
+      const oneJan = new Date(date.getFullYear(), 0, 1);
+      const weekNumber = Math.ceil(
+        ((date.getTime() - oneJan.getTime()) / 86400000 + oneJan.getDay() + 1) /
+          7,
+      );
+      key = `${date.getFullYear()}-W${weekNumber}`;
+    } else {
+      // Monthly
+      key = `${date.getFullYear()}-${date.getMonth()}`;
+    }
+
+    const existing = grouped.get(key) || {
+      new: 0,
+      total: 0,
+      rawDate: point.rawDate,
+    };
+    existing.new += point.newAgreements;
+    // For cumulative total, we take the last totalAgreements value of the period
+    existing.total = point.totalAgreements;
+    grouped.set(key, existing);
+  });
+
+  // Convert to array, sort, and recalculate cumulative
+  const sorted = Array.from(grouped.entries()).sort(([, a], [, b]) =>
+    a.rawDate.localeCompare(b.rawDate),
+  );
+
+  let cumulative = 0;
+  const result: TimeframeGroupedData[] = [];
+
+  sorted.forEach(([key, { new: newCount }]) => {
+    cumulative += newCount;
+
+    // Determine period label
+    let period: string;
+    if (key.includes("W")) {
+      period = `W${key.split("-W")[1]}`;
+    } else {
+      // Fix the parseInt issue - use the second part of the key
+      const parts = key.split("-");
+      if (parts.length >= 2) {
+        const monthIndex = parseInt(parts[1]);
+        if (!isNaN(monthIndex)) {
+          period = new Date(2000, monthIndex, 1).toLocaleString("default", {
+            month: "short",
+          });
+        } else {
+          period = "Unknown";
+        }
+      } else {
+        period = "Unknown";
+      }
+    }
+
+    result.push({
+      period,
+      newAgreements: newCount,
+      totalAgreements: cumulative,
+    });
+  });
+
+  return result;
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border border-cyan-500/50 bg-gray-900 p-3 shadow-xl backdrop-blur-sm">
+        <p className="mb-1 font-bold text-cyan-300">{label}</p>
+        {payload.map((entry: any, idx: number) => (
+          <p key={idx} className="text-sm" style={{ color: entry.color }}>
+            {entry.name}: <span className="ml-1 font-bold">{entry.value}</span>
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+// Dotted Spinner Component
+const DottedSpinner = ({
+  size = "medium",
+}: {
+  size?: "small" | "medium" | "large";
+}) => {
+  const sizeClasses = {
+    small: "h-6 w-6",
+    medium: "h-8 w-8",
+    large: "h-10 w-10",
+  };
+
+  return (
+    <div className={`relative ${sizeClasses[size]}`}>
+      <div className="absolute inset-0 rounded-full border-4 border-dotted border-cyan-400/30"></div>
+      <div className="absolute inset-0 animate-spin rounded-full border-4 border-dotted border-cyan-400 border-t-transparent"></div>
+    </div>
+  );
+};
 
 export default function Index() {
   return (
@@ -59,7 +191,7 @@ export default function Index() {
       <WalletLoginDebug />
       {/* <AgreementsDebug /> */}
       <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-x-4">
-        <div className="col-span-2 mb-4 flex h-fit w-full flex-col gap-4">
+        <div className="col-span-2 mb-4 flex w-full flex-col gap-4">
           <HeroSection />
           <RevenueChart />
         </div>
@@ -85,7 +217,7 @@ export default function Index() {
 function HeroSection() {
   return (
     <section className="w-full">
-      <div className="relative items-center gap-6 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
+      <div className="relative items-center gap-6 rounded-2xl border border-cyan-400/60 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-6">
         <div className="relative z-[1]">
           <h1 className="space text-3xl font-bold tracking-tight text-white">
             DexCourt dApp
@@ -125,7 +257,7 @@ function RevenueChart() {
   const data = tab === "daily" ? daily : tab === "weekly" ? weekly : monthly;
 
   return (
-    <section className="card-cyan relative p-5">
+    <section className="card-cyan relative rounded-2xl border border-cyan-400/60 p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="space font-semibold text-white/90 lg:text-xl">
           Platform Revenue
@@ -139,8 +271,14 @@ function RevenueChart() {
         </Tabs>
       </div>
 
-      <div className="h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-72 min-h-[200px] w-full">
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minHeight={200}
+          minWidth={0}
+          aspect={undefined}
+        >
           <ComposedChart
             data={data}
             margin={{ left: 0, right: 10, top: 10, bottom: 0 }}
@@ -160,7 +298,7 @@ function RevenueChart() {
               tickLine={false}
               axisLine={false}
             />
-            <RTooltip
+            <Tooltip
               contentStyle={{
                 background: "rgba(15,23,42,.9)",
                 border: "1px solid rgba(255,255,255,.1)",
@@ -285,7 +423,7 @@ function StatsGrid() {
   );
 
   return (
-    <section className="card-cyan justify-center gap-8 rounded-2xl px-4 py-4 lg:p-6">
+    <section className="card-cyan justify-center gap-8 rounded-2xl border border-cyan-400/60 px-4 py-4 lg:p-6">
       <h3 className="space mb-6 text-center text-lg font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
@@ -308,10 +446,16 @@ function StatsGrid() {
               />
               {/* Show loading indicators */}
               {s.label === "Settled Disputes" && settledLoading && (
-                <div className="mt-1 text-xs text-cyan-300">Loading...</div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-cyan-300">
+                  <DottedSpinner size="small" />
+                  <span>Loading...</span>
+                </div>
               )}
               {s.label === "Active Users" && usersLoading && (
-                <div className="mt-1 text-xs text-cyan-300">Loading...</div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-cyan-300">
+                  <DottedSpinner size="small" />
+                  <span>Loading...</span>
+                </div>
               )}
             </div>
           </div>
@@ -321,113 +465,163 @@ function StatsGrid() {
   );
 }
 
-// Replace your KPIChart component with this fixed version
-function KPIChart() {
+// Enhanced KPIChart component
+export function KPIChart() {
+  const { data: rawData, loading } = useAllAgreementsForGrowth();
   const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">(
     "daily",
   );
-  const { data: timeSeriesData, loading, startDate } = useTimeSeriesFromToday();
 
-  if (loading || timeSeriesData.length === 0) {
+  const chartData = useMemo(() => {
+    return groupByTimeframe(rawData, timeframe);
+  }, [rawData, timeframe]);
+
+  if (loading) {
     return (
-      <section className="relative border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="space font-semibold text-white/90 lg:text-xl">
-            Network Growth
-          </h3>
+      <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-bold text-white">Network Growth</h3>
+            <p className="text-sm text-cyan-200/60">
+              Cumulative agreements over time
+            </p>
+          </div>
           <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
-            <TabsList className="bg-white/5">
+            <TabsList className="bg-gray-800">
               <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        <div className="flex h-72 flex-col items-center justify-center">
-          <div className="text-center">
-            <div className="mb-4 text-4xl">📈</div>
-            <h4 className="mb-2 text-lg font-semibold text-cyan-300">
-              Tracking Growth from Today
-            </h4>
-            <p className="text-sm text-cyan-200/70">
-              Historical data will build up as the network grows
-            </p>
-            <p className="mt-2 text-xs text-cyan-200/50">
-              Starting date: {new Date().toLocaleDateString()}
-            </p>
-          </div>
+        <div className="flex flex-1 items-center justify-center">
+          <DottedSpinner size="large" />
+          <span className="ml-4 text-cyan-300">Loading growth data...</span>
         </div>
-      </section>
+      </div>
     );
   }
 
-  return (
-    <section className="card-cyan relative p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="space font-semibold text-white/90 lg:text-xl">
-          Network Growth
-        </h3>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-cyan-300">
-            Since {new Date(startDate).toLocaleDateString()}
-          </span>
+  if (chartData.length === 0) {
+    return (
+      <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-bold text-white">Network Growth</h3>
+            <p className="text-sm text-cyan-200/60">
+              Cumulative agreements over time
+            </p>
+          </div>
           <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
-            <TabsList className="bg-white/5">
+            <TabsList className="bg-gray-800">
               <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 text-4xl text-cyan-400">📊</div>
+            <h4 className="text-lg font-semibold text-cyan-300">No Data Yet</h4>
+            <p className="mt-1 text-sm text-cyan-200/70">
+              Create your first agreement to see growth!
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const first = chartData[0];
+  const last = chartData[chartData.length - 1];
+  const growth = last.totalAgreements - first.totalAgreements;
+  const growthPercent =
+    first.totalAgreements > 0
+      ? Math.round((growth / first.totalAgreements) * 100)
+      : 100;
+
+  return (
+    <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="">
+          <h3 className="text-xl font-bold text-white">Network Growth</h3>
+          <p className="text-sm text-cyan-200/60">
+            Cumulative agreements over time
+          </p>
+          <div className="flex items-center">
+            <div className="text-xs text-cyan-200/60">
+              {growthPercent}% increase from the first agreement
+            </div>
+          </div>
+        </div>
+        <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
+          <TabsList className="bg-gray-800">
+            <TabsTrigger value="daily">Daily</TabsTrigger>
+            <TabsTrigger value="weekly">Weekly</TabsTrigger>
+            <TabsTrigger value="monthly">Monthly</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      <div className="h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={timeSeriesData}>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-            <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-            <YAxis stroke="#94a3b8" fontSize={12} />
-            <RTooltip
-              contentStyle={{
-                background: "rgba(15,23,42,.9)",
-                border: "1px solid rgba(255,255,255,.1)",
-                borderRadius: 8,
-              }}
-              labelFormatter={(label, payload) => {
-                if (payload && payload[0]) {
-                  const rawDate = payload[0].payload.rawDate;
-                  return `Date: ${new Date(rawDate).toLocaleDateString()}`;
-                }
-                return `Date: ${label}`;
-              }}
+      <div className="min-h-[300px] flex-1">
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minHeight={300}
+          minWidth={0}
+          aspect={undefined}
+        >
+          <ComposedChart
+            data={chartData}
+            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(34, 211, 238, 0.1)"
+              vertical={false}
             />
+            <XAxis
+              dataKey="period"
+              stroke="#94a3b8"
+              fontSize={11}
+              tickLine={false}
+            />
+            <YAxis
+              stroke="#94a3b8"
+              fontSize={11}
+              tickLine={false}
+              allowDecimals={false}
+            />
+            <Tooltip content={<CustomTooltip />} />
             <Legend />
+
+            {/* Bar for new agreements */}
+            <Bar
+              dataKey="newAgreements"
+              name="New Agreements"
+              fill="rgba(34, 211, 238, 0.6)"
+              radius={[2, 2, 0, 0]}
+              barSize={timeframe === "daily" ? 15 : 25}
+            />
+
+            {/* Line for cumulative total */}
             <Line
               type="monotone"
-              dataKey="agreements"
+              dataKey="totalAgreements"
+              name="Total Agreements"
               stroke="#facc15"
               strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Agreements"
+              dot={{ r: 3, fill: "#facc15" }}
+              activeDot={{ r: 5, stroke: "#ffffff", strokeWidth: 2 }}
             />
-            <Line
-              type="monotone"
-              dataKey="judges"
-              stroke="#ef4444"
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Judges"
-            />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
-
-      <div className="mt-3 text-center">
-        <p className="text-xs text-cyan-200/50">
-          Showing real growth data collected from {timeSeriesData.length} day
-          {timeSeriesData.length !== 1 ? "s" : ""}
-        </p>
-      </div>
-    </section>
+    </div>
   );
 }
-// NEW: Disputes Infinite Cards Component - UPDATED WITH REAL DATA
+
 function DisputesInfiniteCards() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -486,7 +680,7 @@ function DisputesInfiniteCards() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+      <div className="rounded-2xl border border-cyan-400/60 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="glow-text text-xl font-semibold text-cyan-100">
             Recent Disputes
@@ -501,8 +695,8 @@ function DisputesInfiniteCards() {
           </Button>
         </div>
         <div className="flex h-32 items-center justify-center">
-          <div className="flex items-center gap-2 text-cyan-300">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+          <div className="flex flex-col items-center gap-4 text-cyan-300">
+            <DottedSpinner size="medium" />
             <span>Loading disputes...</span>
           </div>
         </div>
@@ -511,7 +705,7 @@ function DisputesInfiniteCards() {
   }
 
   return (
-    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+    <div className="rounded-2xl border border-cyan-400/60 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
       <div className="mb-6 flex items-center justify-between">
         <h3 className="glow-text text-xl font-semibold text-cyan-100">
           Recent Disputes
@@ -645,8 +839,8 @@ function LiveVotingInfiniteCards() {
           </Button>
         </div>
         <div className="flex h-32 items-center justify-center">
-          <div className="flex items-center gap-2 text-cyan-300">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+          <div className="flex flex-col items-center justify-center gap-4 text-cyan-300">
+            <DottedSpinner size="medium" />
             <span>Loading live voting sessions...</span>
           </div>
         </div>
@@ -655,7 +849,7 @@ function LiveVotingInfiniteCards() {
   }
 
   return (
-    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
+    <div className="card-cyan rounded-2xl border border-cyan-400/30 p-6">
       <div className="mb-6 flex items-center justify-between">
         <h3 className="glow-text text-xl font-semibold text-cyan-100">
           Live Voting Sessions
@@ -673,8 +867,7 @@ function LiveVotingInfiniteCards() {
 
       {liveDisputes.length === 0 ? (
         <div className="flex h-32 items-center justify-center">
-          <div className="text-center">
-            <div className="mb-2 text-4xl">🗳️</div>
+          <div className="flex flex-col items-center justify-center text-center">
             <h4 className="mb-1 text-lg font-semibold text-cyan-300">
               No Active Votes
             </h4>
@@ -726,13 +919,13 @@ function SignedAgreementsInfiniteCards() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+      <div className="card-cyan rounded-2xl border border-cyan-400/60 p-6">
         <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
           Signed Agreements
         </h3>
         <div className="flex h-32 items-center justify-center">
-          <div className="flex items-center gap-2 text-cyan-300">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
+          <div className="flex flex-col items-center gap-4 text-cyan-300">
+            <DottedSpinner size="medium" />
             <span>Loading agreements...</span>
           </div>
         </div>
@@ -741,14 +934,16 @@ function SignedAgreementsInfiniteCards() {
   }
 
   return (
-    <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+    <div className="card-cyan rounded-2xl border border-cyan-400/60 p-6">
       <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
         Signed Agreements ({signedAgreements.length})
       </h3>
       {signedAgreements.length === 0 ? (
         <div className="flex h-32 items-center justify-center">
           <div className="text-center">
-            <div className="mb-2 text-4xl">🤝</div>
+            <div className="mb-2">
+              <DottedSpinner size="medium" />
+            </div>
             <h4 className="mb-1 text-lg font-semibold text-cyan-300">
               No Signed Agreements
             </h4>

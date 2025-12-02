@@ -282,14 +282,14 @@ export function BentoCard({
   maxHeight?: string;
 }) {
   const colorMap: Record<string, string> = {
-    cyan: "from-cyan-500/20 border-cyan-400/30 text-cyan-200",
+    cyan: "from-cyan-500/20 border-cyan-400 text-cyan-200",
     emerald: "from-emerald-500/20 border-emerald-400/30 text-emerald-200",
     rose: "from-rose-500/20 border-rose-400/30 text-rose-200",
   };
 
   return (
     <div
-      className={`glass rounded-2xl border p-6 ring-1 ring-white/10 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
+      className={`rounded-2xl border p-6 ring-1 ring-white/10 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-lg font-semibold text-white/90">
@@ -1072,7 +1072,7 @@ export default function Profile() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
-          <div className="glass card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
+          <div className="card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
             <div className="flex items-center gap-2">
               <div className="relative">
                 <UserAvatar
@@ -1159,7 +1159,7 @@ export default function Profile() {
           </div>
 
           {/* Verifications Section */}
-          <section className="glass card-cyan h-fit rounded-2xl p-4 lg:p-6">
+          <section className="card-cyan h-fit rounded-2xl p-4 lg:p-6">
             <div className="space text-muted-foreground mb-4 text-lg">
               Verifications
             </div>
@@ -1300,7 +1300,7 @@ export default function Profile() {
 
         {/* Revenue Stats */}
         <div className="space-y-4">
-          <div className="glass flex flex-col justify-between rounded-2xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
+          <div className="flex flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-2xl font-semibold text-white/90">
                 Revenue Earned
@@ -1342,7 +1342,7 @@ export default function Profile() {
           {/* Show Judged Disputes only for judges */}
           {/* Show Admin Panel Access for admins */}
           {userData.roles.admin && (
-            <section className="glass rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-6">
+            <section className="rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white/90">
                 Administrator Access
               </h3>
@@ -1369,7 +1369,7 @@ export default function Profile() {
 
           {/* Show Judged Disputes only for judges (and not admins who aren't judges) */}
           {userData.roles.judge && !userData.roles.admin && (
-            <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
               <h3 className="mb-4 text-lg font-semibold text-white/90">
                 Judged Disputes
               </h3>
@@ -1389,7 +1389,7 @@ export default function Profile() {
           {userData.roles.community &&
             !userData.roles.judge &&
             !userData.roles.admin && (
-              <section className="glass rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
+              <section className="rounded-2xl border border-emerald-400 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white/90">
                   Community Contributions
                 </h3>
@@ -1409,7 +1409,7 @@ export default function Profile() {
             !userData.roles.admin &&
             !userData.roles.judge &&
             !userData.roles.community && (
-              <section className="glass rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+              <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white/90">
                   Get Started
                 </h3>
@@ -1788,18 +1788,7 @@ export default function Profile() {
                                   : "Unknown User"}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span>Creator:</span>
-                            <span className="text-white/80">
-                              {agreement.creator?.username
-                                ? agreement.creator.username.startsWith("0x")
-                                  ? `${agreement.creator.username.slice(0, 6)}…${agreement.creator.username.slice(-4)}`
-                                  : `@${agreement.creator.username}`
-                                : agreement.creator?.id
-                                  ? `User ${agreement.creator.id}`
-                                  : "Unknown User"}
-                            </span>
-                          </div>
+
                           <div className="flex justify-between">
                             <span>Amount:</span>
                             <span className="text-emerald-300">

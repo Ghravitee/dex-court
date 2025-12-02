@@ -152,7 +152,7 @@ const useDisputes = (filters: {
       );
 
       console.log("Fetched disputes:", transformedData);
-      console.log('response', response);
+      console.log("response", response);
 
       setData(transformedData);
     } catch (err: any) {
@@ -1422,7 +1422,7 @@ function JudgesIntro() {
 
   return (
     <section
-      className={`card-cyan relative col-span-2 overflow-hidden p-6 transition-all duration-300 ${
+      className={`card-cyan relative col-span-2 overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
         expanded ? "h-auto" : "lg:h-[14rem]"
       }`}
     >
