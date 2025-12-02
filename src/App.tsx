@@ -28,6 +28,10 @@ import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
 import AdminUsers from "./pages/AdminUsers"; // NEW
 import AdminAnalytics from "./pages/AdminAnalytics"; // NEW
 
+import { GlobalLoader } from "./components/GlobalLoader";
+import { PageTransitionLoader } from "./components/PageTransitionLoader";
+import { useRouteLoading } from "./hooks/useRouteLoading";
+
 // Auto Login Modal Component
 function AutoLoginModal() {
   const { isAuthenticated, isLoading, isAuthInitialized } = useAuth();
@@ -69,41 +73,51 @@ function AutoLoginModal() {
 }
 
 function AppContent() {
+  const { isAuthInitialized, isLoading: authLoading } = useAuth();
+  const isRouteLoading = useRouteLoading();
+
+  const showInitialLoader = !isAuthInitialized || authLoading;
+  const showTransitionLoader = isRouteLoading && isAuthInitialized;
+
   return (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <ScrollToTop />
-        <AutoLoginModal />
-        <Routes>
-          {/* Regular User Routes */}
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Index />} />
-            <Route path="agreements" element={<Agreements />} />
-            <Route path="agreements/:id" element={<AgreementDetails />} />
-            <Route path="web3vote" element={<Web3Vote />} />
-            <Route path="web3escrow" element={<Web3Escrow />} />
-            <Route path="disputes" element={<Disputes />} />
-            <Route path="/disputes/:id" element={<DisputeDetails />} />
-            <Route path="voting" element={<Voting />} />
-            <Route path="escrow" element={<Escrow />} />
-            <Route path="/escrow/:id" element={<EscrowDetails />} />
-            <Route path="reputation" element={<Reputation />} />
-            <Route path="profile" element={<Profile />} />
-            <Route path="profile/:handle" element={<UserProfile />} />
-          </Route>
 
-          {/* Admin Routes - Separate Layout */}
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminUsers />} />
-            <Route path="users" element={<AdminUsers />} />
-            <Route path="analytics" element={<AdminAnalytics />} />
-          </Route>
+      <ScrollToTop />
+      <AutoLoginModal />
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      {/* Full screen initial loader */}
+      {showInitialLoader && <GlobalLoader />}
+
+      {/* Small top transition loader */}
+      {showTransitionLoader && <PageTransitionLoader />}
+
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Index />} />
+          <Route path="agreements" element={<Agreements />} />
+          <Route path="agreements/:id" element={<AgreementDetails />} />
+          <Route path="web3vote" element={<Web3Vote />} />
+          <Route path="web3escrow" element={<Web3Escrow />} />
+          <Route path="disputes" element={<Disputes />} />
+          <Route path="/disputes/:id" element={<DisputeDetails />} />
+          <Route path="voting" element={<Voting />} />
+          <Route path="escrow" element={<Escrow />} />
+          <Route path="/escrow/:id" element={<EscrowDetails />} />
+          <Route path="reputation" element={<Reputation />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="profile/:handle" element={<UserProfile />} />
+        </Route>
+
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminUsers />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
+        </Route>
+
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </TooltipProvider>
   );
 }
@@ -111,7 +125,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </AuthProvider>
   );
 }

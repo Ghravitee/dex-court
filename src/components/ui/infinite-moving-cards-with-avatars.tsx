@@ -204,7 +204,7 @@ export const InfiniteMovingCardsWithAvatars = ({
               <img
                 src={item.avatar}
                 alt={item.name}
-                className="h-10 w-10 rounded-full border-2 border-cyan-400/40 object-cover"
+                className="h-10 w-10 rounded-full border-2 border-cyan-400/60 object-cover"
               />
             ) : (
               <UserAvatar
@@ -432,7 +432,7 @@ export const InfiniteMovingCardsWithAvatars = ({
       >
         {items.map((item, idx) => (
           <li
-            className="relative w-[350px] max-w-full shrink-0 cursor-pointer rounded-2xl border border-b-0 border-cyan-400/30 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br" // ADD hover effects and cursor
+            className="relative w-[350px] max-w-full shrink-0 cursor-pointer rounded-2xl border border-b-0 border-cyan-400/60 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br" // ADD hover effects and cursor
             key={`${item.name}-${idx}`}
           >
             {/* WRAP CONTENT IN LINK FOR DISPUTES AND LIVE VOTING */}

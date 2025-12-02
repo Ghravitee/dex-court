@@ -1538,7 +1538,6 @@ export default function EscrowDetails() {
   if (initialLoading || loadingStates.loadAgreement) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
-        <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
         <div className="text-center">
           <div className="relative mx-auto mb-8">
             <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
@@ -1571,7 +1570,7 @@ export default function EscrowDetails() {
       <div className="relative min-h-screen p-8">
         <div className="absolute inset-0 -z-10 bg-cyan-500/10 blur-3xl"></div>
         <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-          <div className="glass rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-transparent p-8">
+          <div className="card-cyan rounded-2xl border border-white/10 p-8">
             <XCircle className="mx-auto mb-4 h-16 w-16 text-rose-400" />
             <h2 className="mb-2 text-2xl font-semibold text-white/90">
               Escrow Not Found
@@ -1644,7 +1643,7 @@ export default function EscrowDetails() {
           {/* Main Content */}
           <div className="space-y-6 lg:col-span-2">
             {/* Escrow Overview Card */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-6 sm:px-4">
+            <div className="card-cyan rounded-xl border border-cyan-400/60 px-4 py-6 sm:px-4">
               <div className="mb-6 flex flex-col items-start justify-between sm:flex-row">
                 <div>
                   <h1 className="mb-2 max-w-[30rem] text-2xl font-bold text-white lg:text-[1.5rem]">
@@ -1794,7 +1793,7 @@ export default function EscrowDetails() {
               {/* Complete On-Chain Agreement Details */}
               {/* Complete On-Chain Agreement Details */}
               {onChainAgreement && (
-                <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-6 backdrop-blur-sm">
+                <div className="card-cyan mt-6 rounded-2xl border border-cyan-500/60 p-6 backdrop-blur-sm">
                   <div className="mb-6 flex items-center justify-between">
                     <div>
                       <h3 className="flex items-center gap-2 text-xl font-bold text-white">
@@ -1820,7 +1819,7 @@ export default function EscrowDetails() {
 
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2">
                     {/* Basic Information Card */}
-                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4 backdrop-blur-sm">
+                    <div className="card-cyan rounded-xl border border-cyan-400/60 p-4">
                       <div className="mb-3 flex items-center gap-2">
                         <Users className="h-4 w-4 text-cyan-400" />
                         <h4 className="text-sm font-semibold text-cyan-300">
@@ -2171,55 +2170,58 @@ export default function EscrowDetails() {
                 </div>
 
                 {/* Check if any action buttons are available */}
-                {(((isServiceProvider &&
+                {(isServiceProvider || isServiceRecipient) &&
+                ((((isServiceProvider &&
                   !onChainAgreement.acceptedByServiceProvider) ||
                   (isServiceRecipient &&
                     !onChainAgreement.acceptedByServiceRecipient)) &&
                   onChainAgreement.funded) ||
-                (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                (onChainAgreement.signed &&
-                  isServiceProvider &&
-                  !onChainAgreement.frozen &&
-                  !onChainAgreement.pendingCancellation &&
-                  !onChainAgreement.deliverySubmited) ||
-                (onChainAgreement.signed &&
-                  isServiceRecipient &&
-                  !onChainAgreement.pendingCancellation &&
-                  onChainAgreement.deliverySubmited) ||
-                (now < onChainAgreement.grace1Ends &&
-                  onChainAgreement.signed &&
-                  onChainAgreement.pendingCancellation &&
-                  address &&
-                  address.toLowerCase() !==
-                    String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
-                  !onChainAgreement.deliverySubmited) ||
-                (onChainAgreement.signed &&
-                  !onChainAgreement.pendingCancellation &&
-                  !onChainAgreement.deliverySubmited &&
-                  !onChainAgreement.frozen) ||
-                (onChainAgreement.grace1Ends !== BigInt(0) &&
-                  !onChainAgreement.vesting &&
-                  now > onChainAgreement.grace1Ends &&
-                  onChainAgreement.funded &&
-                  !onChainAgreement.pendingCancellation &&
-                  onChainAgreement.signed) ||
-                (onChainAgreement.signed &&
-                  !onChainAgreement.vesting &&
-                  now > onChainAgreement.grace2Ends &&
-                  onChainAgreement.grace2Ends !== BigInt(0) &&
-                  onChainAgreement.funded &&
-                  onChainAgreement.pendingCancellation) ||
-                (onChainAgreement.signed &&
-                  now > onChainAgreement.grace1Ends &&
-                  onChainAgreement.pendingCancellation &&
-                  onChainAgreement.grace1Ends !== BigInt(0)) ||
-                (onChainAgreement.funded &&
-                  onChainAgreement.signed &&
-                  !onChainAgreement.disputed &&
-                  !onChainAgreement.completed &&
-                  !onChainAgreement.frozen &&
-                  !onChainAgreement.pendingCancellation) ? (
-                  <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    isServiceProvider &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    isServiceRecipient &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.deliverySubmited) ||
+                  (now < onChainAgreement.grace1Ends &&
+                    onChainAgreement.signed &&
+                    onChainAgreement.pendingCancellation &&
+                    address &&
+                    address.toLowerCase() !==
+                      String(
+                        onChainAgreement.grace1EndsCalledBy,
+                      ).toLowerCase() &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.frozen) ||
+                  (onChainAgreement.grace1Ends !== BigInt(0) &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.funded &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace2Ends &&
+                    onChainAgreement.grace2Ends !== BigInt(0) &&
+                    onChainAgreement.funded &&
+                    onChainAgreement.pendingCancellation) ||
+                  (onChainAgreement.signed &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.pendingCancellation &&
+                    onChainAgreement.grace1Ends !== BigInt(0)) ||
+                  (onChainAgreement.funded &&
+                    onChainAgreement.signed &&
+                    !onChainAgreement.disputed &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation)) ? (
+                  <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
                     </h3>
@@ -2682,7 +2684,7 @@ export default function EscrowDetails() {
 
             {showDisputeModal && (
               <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-                <div className="glass w-full max-w-md rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <div className="card-cyan w-full max-w-md rounded-xl border border-cyan-400/60 p-6">
                   <h3 className="mb-4 text-xl font-bold text-white">
                     Raise Dispute
                   </h3>
@@ -2882,7 +2884,7 @@ export default function EscrowDetails() {
 
             {/* Activity Timeline */}
             {/* Activity Timeline */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
               <h3 className="mb-6 text-lg font-semibold text-white">
                 Escrow Timeline
               </h3>
@@ -3083,7 +3085,7 @@ export default function EscrowDetails() {
           <div className="space-y-6">
             {/* Your Role Information */}
             {/* Your Role Information */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Your Role
               </h3>
@@ -3145,7 +3147,7 @@ export default function EscrowDetails() {
             </div>
 
             {/* Contract Information */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Contract Info
               </h3>

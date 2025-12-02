@@ -83,6 +83,19 @@ const extractServiceRecipientFromDescription = (
   return match?.[1];
 };
 
+// Add this helper function near the top of your component
+function toBool(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    const n = Number(value);
+    if (!Number.isNaN(n)) return n !== 0;
+  }
+  return false;
+}
+
 // Helper function to format wallet addresses for display
 const formatWalletAddress = (address: string): string => {
   if (!address) return "@unknown";
@@ -150,7 +163,7 @@ interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
 
 // Enhanced interface for on-chain escrow data
 interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
-  onChainStatus?: string;
+  onChainStatus: EscrowStatus;
   onChainAmount?: string;
   onChainDeadline?: number;
   onChainParties?: {
@@ -544,95 +557,120 @@ export default function Escrow() {
       if (onChainData && onChainData.length > 0) {
         console.log("📦 On-chain data received:", onChainData);
 
-        const mergedEscrows = escrowAgreements.map((escrow, index) => {
-          const onChainAgreement = onChainData[index];
+        // In your useEffect where you merge data:
+        const mergedEscrows = escrowAgreements
+          .map((escrow, index) => {
+            const onChainAgreement = onChainData[index];
 
-          if (onChainAgreement && onChainAgreement.status === "success") {
-            const agreementData = [
-              ...(onChainAgreement.result as readonly any[]),
-            ];
+            if (onChainAgreement && onChainAgreement.status === "success") {
+              const agreementData = [
+                ...(onChainAgreement.result as readonly any[]),
+              ];
 
-            console.log(
-              `🔗 Merging on-chain data for escrow ${escrow.id}:`,
-              agreementData,
-            );
+              console.log(
+                `🔗 Merging on-chain data for escrow ${escrow.id}:`,
+                agreementData,
+              );
 
-            // Map the array indices to meaningful properties
-            const onChainStatus = mapOnChainStatusFromArray(agreementData);
+              // Map the array indices to meaningful properties
+              const onChainStatus = mapOnChainStatusFromArray(agreementData);
 
-            return {
-              ...escrow,
-              // Override the status with on-chain status when available
-              status: onChainStatus,
-              onChainStatus: onChainStatus,
-              onChainAmount: agreementData[5]?.toString(), // amount
-              onChainDeadline: Number(agreementData[8]), // deadline
-              onChainParties: {
-                serviceProvider: agreementData[2], // serviceProvider
-                serviceRecipient: agreementData[3], // serviceRecipient
-              },
-              onChainToken: agreementData[4], // token
-              isOnChainActive:
-                agreementData[15] === true && agreementData[14] === true, // signed and funded
-              isFunded: agreementData[14] === true, // funded
-              isSigned: agreementData[15] === true, // signed
-              isCompleted: agreementData[18] === true, // completed
-              isDisputed: agreementData[19] === true, // disputed
-              isCancelled: agreementData[21] === true, // orderCancelled
-              lastUpdated: Date.now(),
-            };
-          }
+              return {
+                ...escrow,
+                // OVERRIDE status with on-chain status
+                status: onChainStatus,
+                onChainStatus: onChainStatus,
+                onChainAmount: agreementData[5]?.toString(), // amount at index 5
+                onChainDeadline: Number(agreementData[8]), // deadline at index 8
+                onChainParties: {
+                  serviceProvider: agreementData[2], // serviceProvider at index 2
+                  serviceRecipient: agreementData[3], // serviceRecipient at index 3
+                },
+                onChainToken: agreementData[4], // token at index 4
+                isOnChainActive: toBool(agreementData[15]), // signed at index 15
+                isFunded: toBool(agreementData[14]), // funded at index 14
+                isSigned: toBool(agreementData[15]), // signed at index 15
+                isCompleted: toBool(agreementData[18]), // completed at index 18
+                isDisputed: toBool(agreementData[19]), // disputed at index 19
+                isCancelled: toBool(agreementData[23]), // orderCancelled at index 23
+                isFrozen: toBool(agreementData[21]), // frozen at index 21
+                deliverySubmitted: toBool(agreementData[25]), // deliverySubmited at index 25
+                lastUpdated: Date.now(),
+              } as OnChainEscrowData;
+            }
 
-          return escrow;
-        });
+            return null;
+          })
+          .filter(Boolean) as OnChainEscrowData[]; // Simple filter and cast
 
-        console.log("✅ Merged escrows:", mergedEscrows);
+        console.log("✅ Merged escrows with on-chain data:", mergedEscrows);
         setEscrowsWithOnChainData(mergedEscrows);
       } else {
-        console.log("⚠️ No on-chain data available, using API data only");
-        setEscrowsWithOnChainData(escrowAgreements);
+        console.log("⚠️ No on-chain data available");
+        setEscrowsWithOnChainData([]); // Empty array since we only want on-chain data
       }
     }
   }, [escrowAgreements, onChainData]);
-
+  // Enhanced status mapping for on-chain agreements
+  // Enhanced status mapping for on-chain agreements
   // Enhanced status mapping for on-chain agreements
   const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
     if (!agreementData || !Array.isArray(agreementData)) return "pending";
 
-    if (agreementData[18]) return "completed";
-    if (agreementData[19]) return "disputed";
-    if (agreementData[21]) return "cancelled";
-    if (agreementData[23]) return "pending_approval";
-    if (agreementData[15] && agreementData[16] && agreementData[17]) {
-      return "signed";
-    }
-    if (agreementData[15]) return "pending_delivery";
+    // Extract the key boolean flags using the indices from normalizeAgreement
+    const isSigned = toBool(agreementData[15]); // signed flag (index 15)
+    const isCompleted = toBool(agreementData[18]); // completed flag (index 18)
+    const isDisputed = toBool(agreementData[19]); // disputed flag (index 19)
+    const isCancelled = toBool(agreementData[23]); // orderCancelled flag (index 23)
+    const isFrozen = toBool(agreementData[21]); // frozen flag (index 21)
+    const deliverySubmitted = toBool(agreementData[25]); // deliverySubmited flag (index 25)
 
-    return "pending";
+    // Order of precedence based on contract state
+    if (isCompleted) return "completed";
+    if (isDisputed) return "disputed";
+    if (isCancelled) return "cancelled";
+    if (isFrozen) return "frozen";
+
+    if (isSigned) {
+      if (deliverySubmitted) {
+        return "pending_approval"; // Work submitted, waiting for Service Recipient approval
+      }
+      return "signed"; // This means "pending delivery" - Service Provider needs to deliver
+    }
+
+    return "pending"; // Agreement not signed yet
   };
 
   // Simplified listing logic - now status field contains on-chain data when available
   // Update the listed filter logic to include "all"
+  // Filter to show only escrows with on-chain data
   const listed = escrowsWithOnChainData
+    .filter((e) => {
+      // Only show if we have on-chain status
+      return e.onChainStatus !== undefined;
+    })
     .filter((e) => e.type === "public")
+    // In your filter logic (lines 452-478), update the "pending" case:
+    // In your filter logic, update the pending tab to only show truly pending (not signed)
     .filter((e) => {
       switch (statusTab) {
         case "all":
-          return true; // Show all escrows
+          return true;
         case "pending":
-          return e.status === "pending";
+          // Only show truly pending (not signed yet)
+          return e.onChainStatus === "pending";
         case "signed":
-          return e.status === "signed";
-        case "pending_delivery":
-          return e.status === "pending_delivery";
+          // Show signed (which means pending delivery)
+          return e.onChainStatus === "signed";
         case "pending_approval":
-          return e.status === "pending_approval";
+          // Show pending approval (delivery submitted)
+          return e.onChainStatus === "pending_approval";
         case "completed":
-          return e.status === "completed";
+          return e.onChainStatus === "completed";
         case "disputed":
-          return e.status === "disputed";
+          return e.onChainStatus === "disputed";
         case "cancelled":
-          return e.status === "cancelled";
+          return e.onChainStatus === "cancelled";
         default:
           return true;
       }
@@ -2539,94 +2577,87 @@ Created: ${new Date().toISOString()}
 
           <aside className="space-y-4">
             {/* Custom Filter Component */}
-            <div className="mt-4 rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-transparent p-4 ring-1 ring-white/10 backdrop-blur-sm lg:mt-0">
-              <div className="mb-3 flex items-center justify-between"></div>
 
-              {/* Custom Filter Tabs */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  {
-                    value: "all",
-                    label: "All",
-                    count: escrowsWithOnChainData.length,
-                  },
-                  {
-                    value: "pending",
-                    label: "Pending",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending",
-                    ).length,
-                  },
-                  {
-                    value: "signed",
-                    label: "Signed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "signed",
-                    ).length,
-                  },
-                  {
-                    value: "pending_delivery",
-                    label: "Delivery",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending_delivery",
-                    ).length,
-                  },
-                  {
-                    value: "pending_approval",
-                    label: "Approval",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending_approval",
-                    ).length,
-                  },
-                  {
-                    value: "completed",
-                    label: "Completed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "completed",
-                    ).length,
-                  },
-                  {
-                    value: "disputed",
-                    label: "Disputed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "disputed",
-                    ).length,
-                  },
-                  {
-                    value: "cancelled",
-                    label: "Cancelled",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "cancelled",
-                    ).length,
-                  },
-                ].map((tab) => (
-                  <button
-                    key={tab.value}
-                    onClick={() => setStatusTab(tab.value)}
-                    className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+            <div className="mb-3 flex items-center justify-between"></div>
+
+            {/* Custom Filter Tabs */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                {
+                  value: "all",
+                  label: "All",
+                  count: escrowsWithOnChainData.length,
+                },
+                {
+                  value: "pending",
+                  label: "Pending",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "pending",
+                  ).length,
+                },
+                {
+                  value: "signed",
+                  label: "Signed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "signed",
+                  ).length,
+                },
+
+                {
+                  value: "pending_approval",
+                  label: "Pending Approval",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "pending_approval",
+                  ).length,
+                },
+                {
+                  value: "completed",
+                  label: "Completed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "completed",
+                  ).length,
+                },
+                {
+                  value: "disputed",
+                  label: "Disputed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "disputed",
+                  ).length,
+                },
+                {
+                  value: "cancelled",
+                  label: "Cancelled",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.onChainStatus === "cancelled",
+                  ).length,
+                },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  onClick={() => setStatusTab(tab.value)}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                    statusTab === tab.value
+                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                  } `}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
                       statusTab === tab.value
-                        ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                        : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                        ? "bg-cyan-400/30 text-cyan-200"
+                        : "bg-white/10 text-white/60"
                     } `}
                   >
-                    <span>{tab.label}</span>
-                    <span
-                      className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                        statusTab === tab.value
-                          ? "bg-cyan-400/30 text-cyan-200"
-                          : "bg-white/10 text-white/60"
-                      } `}
-                    >
-                      {tab.count}
-                    </span>
+                    {tab.count}
+                  </span>
 
-                    {/* Active indicator dot */}
-                    {statusTab === tab.value && (
-                      <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                  {/* Active indicator dot */}
+                  {statusTab === tab.value && (
+                    <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
+                  )}
+                </button>
+              ))}
             </div>
           </aside>
         </div>
@@ -2732,47 +2763,43 @@ Created: ${new Date().toISOString()}
                       <div className="flex flex-col gap-2">
                         <div className="text-muted-foreground">Status</div>
                         <div className="flex flex-col gap-1">
-                          {/* Primary status - prioritize on-chain status */}
-                          <div>
-                            {(() => {
-                              // Use on-chain status as primary, fallback to API status
-                              const displayStatus =
-                                e.onChainStatus && e.onChainStatus !== "unknown"
-                                  ? e.onChainStatus
-                                  : e.status;
+                          {/* Always show on-chain status - we've filtered out escrows without it */}
 
-                              return (
-                                <span
-                                  className={`badge ${
-                                    displayStatus === "pending"
-                                      ? "badge-orange"
-                                      : displayStatus === "completed"
-                                        ? "badge-green"
-                                        : displayStatus === "disputed"
-                                          ? "badge-purple"
-                                          : displayStatus === "signed"
-                                            ? "badge-blue"
-                                            : displayStatus === "cancelled"
-                                              ? "badge-red"
-                                              : displayStatus ===
-                                                  "pending_approval"
-                                                ? "badge-purple" // Using purple for pending_approval to match your pattern
-                                                : displayStatus ===
-                                                    "pending_delivery"
-                                                  ? "badge-orange" // Using orange for pending_delivery to match your pattern
-                                                  : "badge-orange" // Default to orange for any other status
-                                  }`}
-                                >
-                                  {displayStatus === "pending_approval"
-                                    ? "Pending Approval"
-                                    : displayStatus === "pending_delivery"
-                                      ? "Pending Delivery"
-                                      : displayStatus.charAt(0).toUpperCase() +
-                                        displayStatus.slice(1)}
-                                </span>
-                              );
-                            })()}
-                          </div>
+                          <span
+                            className={`badge w-fit ${
+                              e.onChainStatus === "pending"
+                                ? "badge-yellow"
+                                : e.onChainStatus === "signed"
+                                  ? "badge-blue" // signed = pending delivery
+                                  : e.onChainStatus === "pending_approval"
+                                    ? "badge-orange" // waiting for approval
+                                    : e.onChainStatus === "completed"
+                                      ? "badge-green"
+                                      : e.onChainStatus === "disputed"
+                                        ? "badge-purple"
+                                        : e.onChainStatus === "cancelled"
+                                          ? "badge-red"
+                                          : e.onChainStatus === "frozen"
+                                            ? "badge-gray"
+                                            : "badge-orange"
+                            }`}
+                          >
+                            {e.onChainStatus === "pending"
+                              ? "Pending"
+                              : e.onChainStatus === "signed"
+                                ? "Signed"
+                                : e.onChainStatus === "pending_approval"
+                                  ? "Pending Approval"
+                                  : e.onChainStatus === "completed"
+                                    ? "Completed"
+                                    : e.onChainStatus === "disputed"
+                                      ? "Disputed"
+                                      : e.onChainStatus === "cancelled"
+                                        ? "Cancelled"
+                                        : e.onChainStatus === "frozen"
+                                          ? "Frozen"
+                                          : "Pending"}
+                          </span>
                         </div>
                       </div>
                     </div>
