@@ -123,7 +123,9 @@ const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(`@${telegramUsername}`, field)} // 🆕 FIX: Add @ symbol here
+      onClick={() => {
+        onSelect(`@${telegramUsername}`, field);
+      }} // 🆕 FIX: Add @ symbol here
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}
@@ -135,11 +137,11 @@ const UserSearchResult = ({
         size="sm"
       />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-white">
+        <div className="hidden truncate text-sm font-medium text-white">
           {displayName}
         </div>
         {telegramUsername && (
-          <div className="truncate text-xs text-cyan-300">
+          <div className="truncate text-sm text-cyan-300">
             @{telegramUsername} {/* PRESERVES ORIGINAL CASE */}
           </div>
         )}
@@ -194,6 +196,59 @@ const parseFormattedNumber = (formattedValue: string): string => {
   return formattedValue.replace(/,/g, "");
 };
 
+// Validation helper function - cleaner version
+const getValidationState = (field: string, value: string) => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) return { isValid: false, message: "" };
+
+  // Handle different field types
+  if (field === "title") {
+    const isValid = trimmedValue.length >= 3;
+    return {
+      isValid,
+      message: isValid
+        ? "✓ Title looks good"
+        : "Title must be at least 3 characters",
+    };
+  }
+
+  if (field === "description") {
+    const isValid = trimmedValue.length >= 10;
+    return {
+      isValid,
+      message: isValid
+        ? "✓ Description looks good"
+        : "Description must be at least 10 characters",
+    };
+  }
+
+  if (["counterparty", "partyA", "partyB"].includes(field)) {
+    const username = trimmedValue.replace(/^@/, "");
+    const isValid = username.length >= 2 && /^[a-zA-Z0-9_]+$/.test(username);
+    return {
+      isValid,
+      message: isValid
+        ? "✓ Valid username format"
+        : username.length < 2
+          ? "Username must be at least 2 characters"
+          : "Only letters, numbers, and underscores allowed",
+    };
+  }
+
+  if (field === "amount") {
+    if (trimmedValue === "") return { isValid: true, message: "" };
+    const numValue = parseFloat(trimmedValue.replace(/,/g, ""));
+    const isValid = !isNaN(numValue) && numValue > 0;
+    return {
+      isValid,
+      message: isValid ? "✓ Valid amount" : "Amount must be a positive number",
+    };
+  }
+
+  return { isValid: false, message: "" };
+};
+
 // Add skeleton loading component
 const AgreementSkeleton = () => (
   <tr className="animate-pulse border-t border-white/10">
@@ -238,7 +293,12 @@ export default function Agreements() {
   const [deadline, setDeadline] = useState<Date | null>(null);
   // In Agreements.tsx - Replace the current user search implementation
   const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
+  // Separate search results for each field
+  const [counterpartySearchResults, setCounterpartySearchResults] = useState<
+    any[]
+  >([]);
+  const [partyASearchResults, setPartyASearchResults] = useState<any[]>([]);
+  const [partyBSearchResults, setPartyBSearchResults] = useState<any[]>([]);
   const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
   const [showUserSuggestions, setShowUserSuggestions] = useState(false);
   const [activeSearchField, setActiveSearchField] = useState<
@@ -277,6 +337,26 @@ export default function Agreements() {
     amount: "",
     images: [] as UploadedFile[],
   });
+
+  const [validation, setValidation] = useState({
+    title: { isValid: false, message: "", isTouched: false },
+    counterparty: { isValid: false, message: "", isTouched: false },
+    partyA: { isValid: false, message: "", isTouched: false },
+    partyB: { isValid: false, message: "", isTouched: false },
+    description: { isValid: false, message: "", isTouched: false },
+    amount: { isValid: true, message: "", isTouched: false },
+  });
+
+  const updateValidation = (field: keyof typeof validation, value: string) => {
+    const validationState = getValidationState(field, value);
+    setValidation((prev) => ({
+      ...prev,
+      [field]: {
+        ...validationState,
+        isTouched: true,
+      },
+    }));
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -345,16 +425,16 @@ export default function Agreements() {
   }, []);
 
   // Sync authentication with agreement service
-  useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (token && isAuthenticated) {
-      agreementService.setAuthToken(token);
-      console.log("🔐 Agreement service authenticated");
-    } else {
-      agreementService.clearAuthToken();
-      console.log("🔓 Agreement service not authenticated");
-    }
-  }, [isAuthenticated]);
+  // useEffect(() => {
+  //   const token = localStorage.getItem("authToken");
+  //   if (token && isAuthenticated) {
+  //     agreementService.setAuthToken(token);
+  //     console.log("🔐 Agreement service authenticated");
+  //   } else {
+  //     agreementService.clearAuthToken();
+  //     console.log("🔓 Agreement service not authenticated");
+  //   }
+  // }, [isAuthenticated]);
 
   // Load agreements
 
@@ -379,8 +459,6 @@ export default function Agreements() {
         skip: 0,
         sort: "desc",
       });
-
-      console.log("📋 All agreements response:", allAgreementsResponse);
 
       const allAgreementsList = allAgreementsResponse.results || [];
 
@@ -737,21 +815,27 @@ export default function Agreements() {
     value: string,
     field: "counterparty" | "partyA" | "partyB",
   ) => {
-    // Remove any existing @ and trim whitespace
-    const cleanedValue = value.replace(/^@/, "").trim();
+    // 🚨 FIX: Don't remove the @ symbol here - just trim whitespace
+    const cleanedValue = value.trim();
 
-    // Update form state with clean value (without @)
+    // Update form state with the raw value (including @)
     setForm((prev) => ({
       ...prev,
       [field]: cleanedValue,
     }));
 
-    // Trigger search with clean value
-    if (cleanedValue.length >= 2) {
-      handleUserSearch(cleanedValue, field);
+    // For search, remove the @ if present at the beginning
+    const searchValue = cleanedValue.replace(/^@/, "");
+
+    // Trigger search with cleaned value (without @)
+    if (searchValue.length >= 2) {
+      handleUserSearch(searchValue, field);
     } else {
       setShowUserSuggestions(false);
     }
+
+    // Update validation with the actual input value
+    updateValidation(field, cleanedValue);
   };
 
   // Drag and drop handlers
@@ -1131,7 +1215,10 @@ export default function Agreements() {
       }
 
       if (query.length < 2) {
-        setUserSearchResults([]);
+        // Clear the specific field's search results
+        if (field === "counterparty") setCounterpartySearchResults([]);
+        if (field === "partyA") setPartyASearchResults([]);
+        if (field === "partyB") setPartyBSearchResults([]);
         setShowUserSuggestions(false);
         return;
       }
@@ -1143,31 +1230,38 @@ export default function Agreements() {
         const results = await agreementService.searchUsers(query);
 
         if (process.env.NODE_ENV === "development") {
-          console.log("🔍 RAW SEARCH RESULTS:", results);
+          console.log("🔍 RAW SEARCH RESULTS for", field, ":", results);
         }
 
         // Filter out current user AND users without Telegram usernames
         const currentUserTelegram = getCurrentUserTelegram(user);
         const filteredResults = results.filter((resultUser) => {
-          // 🚨 FIXED: Look for telegramUsername field (from API response)
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
               resultUser.telegram?.username ||
               resultUser.telegramInfo,
           );
 
-          // Only include users with Telegram usernames AND not the current user
-          // Use case-insensitive comparison
           return (
             resultTelegram &&
             resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
           );
         });
 
-        setUserSearchResults(filteredResults);
+        // Update the correct field's search results
+        if (field === "counterparty") {
+          setCounterpartySearchResults(filteredResults);
+        } else if (field === "partyA") {
+          setPartyASearchResults(filteredResults);
+        } else if (field === "partyB") {
+          setPartyBSearchResults(filteredResults);
+        }
       } catch (error) {
         console.error("User search failed:", error);
-        setUserSearchResults([]);
+        // Clear the specific field's search results
+        if (field === "counterparty") setCounterpartySearchResults([]);
+        if (field === "partyA") setPartyASearchResults([]);
+        if (field === "partyB") setPartyBSearchResults([]);
       } finally {
         setIsUserSearchLoading(false);
       }
@@ -1176,8 +1270,9 @@ export default function Agreements() {
   );
 
   // Debounced search effect
+  // Debounced search effect
   useEffect(() => {
-    if (debouncedSearchQuery.length >= 2) {
+    if (debouncedSearchQuery.length >= 2 && activeSearchField) {
       handleUserSearch(debouncedSearchQuery, activeSearchField);
     }
   }, [debouncedSearchQuery, activeSearchField, handleUserSearch]);
@@ -1190,7 +1285,7 @@ export default function Agreements() {
 
       {/* Agreements Filter */}
       <div className="grid grid-cols-1 gap-6">
-        <div className="col-span-3 w-full">
+        <div className="w-full">
           <div className="">
             <div className="mb-3 flex items-center justify-between">
               <h1 className="text-xl text-white">Agreements</h1>
@@ -1203,22 +1298,24 @@ export default function Agreements() {
                 Create Agreement
               </Button>
 
-              {isAuthenticated && isAuthInitialized ? (
-                <div className="flex items-center gap-2 text-sm text-cyan-300">
-                  <div className="h-2 w-2 rounded-full bg-green-400"></div>
-                  {/* UPDATED: Only show if user has Telegram */}
-                  <span>
-                    {user?.telegram?.username
-                      ? `Authenticated as @${user.telegram.username}`
-                      : "Please connect Telegram account"}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-orange-300">
-                  <div className="h-2 w-2 rounded-full bg-orange-400"></div>
-                  <span>Not authenticated</span>
-                </div>
-              )}
+              <div className="hidden sm:flex">
+                {isAuthenticated && isAuthInitialized ? (
+                  <div className="flex items-center gap-2 text-sm text-cyan-300">
+                    <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                    {/* UPDATED: Only show if user has Telegram */}
+                    <span>
+                      {user?.telegram?.username
+                        ? `Authenticated as @${user.telegram.username}`
+                        : "Please connect Telegram account"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-orange-300">
+                    <div className="h-2 w-2 rounded-full bg-orange-400"></div>
+                    <span>Not authenticated</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1483,28 +1580,31 @@ export default function Agreements() {
             </div>
 
             {/* Pagination Controls */}
+            {/* Pagination Controls */}
             {!loading && totalAgreements > 0 && (
-              <div className="flex items-center justify-between px-5 py-4">
-                <div className="text-sm text-cyan-300">
+              <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
+                <div className="text-sm whitespace-nowrap text-cyan-300">
                   Showing {startItem} to {endItem} of{" "}
                   {filteredTableAgreements.length} agreements
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
                   {/* Previous Button */}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50"
+                    className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Previous
+                    <span className="sr-only sm:not-sr-only sm:ml-1">
+                      Previous
+                    </span>
                   </Button>
 
-                  {/* Page Numbers */}
-                  <div className="flex items-center gap-1">
+                  {/* Page Numbers - Hide on very small screens, show on sm+ */}
+                  <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
                     {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                       let pageNum;
                       if (totalPages <= 5) {
@@ -1527,12 +1627,17 @@ export default function Agreements() {
                             currentPage === pageNum
                               ? "neon-hover"
                               : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          } min-w-[2.5rem]`}
+                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                         >
                           {pageNum}
                         </Button>
                       );
                     })}
+                  </div>
+
+                  {/* Current Page Indicator (for very small screens) */}
+                  <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
+                    Page {currentPage} of {totalPages}
                   </div>
 
                   {/* Next Button */}
@@ -1541,9 +1646,9 @@ export default function Agreements() {
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50"
+                    className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
                   >
-                    Next
+                    <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -1552,7 +1657,7 @@ export default function Agreements() {
           </div>
         </div>
 
-        <aside className="w-full space-y-4 lg:w-[50%]">
+        <aside className="w-full space-y-4 sm:w-[50%]">
           <div className="flex items-center justify-between">
             <h1 className="space mb-2 text-xl text-white">
               Agreements Turned Sour
@@ -1699,11 +1804,22 @@ export default function Agreements() {
                 </label>
                 <input
                   value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, title: e.target.value });
+                    updateValidation("title", e.target.value);
+                  }}
+                  onBlur={() => updateValidation("title", form.title)}
                   className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="e.g. Design Sprint Phase 1"
                   required
                 />
+                {validation.title.isTouched && (
+                  <div
+                    className={`mt-1 text-xs ${validation.title.isValid ? "text-green-400" : "text-amber-400"}`}
+                  >
+                    {validation.title.message}
+                  </div>
+                )}
               </div>
 
               {/* Type + Parties */}
@@ -1756,13 +1872,17 @@ export default function Agreements() {
                       </span>
                     </label>
                     <div className="relative">
-                      <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                      <Search className="pointer-events-none absolute top-[20px] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                       <input
                         value={form.counterparty}
                         onChange={(e) => {
                           const value = e.target.value;
                           handleUsernameInput(value, "counterparty");
+                          updateValidation("counterparty", value);
                         }}
+                        onBlur={() =>
+                          updateValidation("counterparty", form.counterparty)
+                        }
                         onFocus={() => {
                           if (form.counterparty.length >= 2) {
                             setShowUserSuggestions(true);
@@ -1772,6 +1892,13 @@ export default function Agreements() {
                         placeholder="Type username (min 2 characters)..."
                         required
                       />
+                      {validation.counterparty.isTouched && (
+                        <div
+                          className={`mt-1 text-xs ${validation.counterparty.isValid ? "text-green-400" : "text-amber-400"}`}
+                        >
+                          {validation.counterparty.message}
+                        </div>
+                      )}
                       {isUserSearchLoading && (
                         <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
                       )}
@@ -1781,15 +1908,15 @@ export default function Agreements() {
                     {showUserSuggestions &&
                       activeSearchField === "counterparty" && (
                         <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                          {userSearchResults.length > 0 ? (
-                            userSearchResults.map((user) => (
+                          {counterpartySearchResults.length > 0 ? (
+                            counterpartySearchResults.map((user) => (
                               <UserSearchResult
-                                key={user.id}
+                                key={`counterparty-${user.id}`}
                                 user={user}
                                 onSelect={(username) => {
                                   setForm({ ...form, counterparty: username });
                                   setShowUserSuggestions(false);
-                                  setUserSearchQuery(""); // Clear search query
+                                  setCounterpartySearchResults([]); // Clear counterparty results
                                 }}
                                 field="counterparty"
                               />
@@ -1829,9 +1956,16 @@ export default function Agreements() {
                           onChange={(e) => {
                             const value = e.target.value;
                             handleUsernameInput(value, "partyA");
+                            updateValidation("partyA", value);
                           }}
+                          onBlur={() => updateValidation("partyA", form.partyA)}
                           onFocus={() => {
-                            if (form.partyA.length >= 2) {
+                            setActiveSearchField("partyA");
+                            // Always show suggestions when focused if we have search results
+                            if (
+                              partyASearchResults.length > 0 ||
+                              form.partyA.replace(/^@/, "").length >= 2
+                            ) {
                               setShowUserSuggestions(true);
                             }
                           }}
@@ -1839,47 +1973,70 @@ export default function Agreements() {
                           placeholder="Type username (min 2 characters)..."
                           required
                         />
+
                         {isUserSearchLoading &&
                           activeSearchField === "partyA" && (
                             <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
                           )}
                       </div>
 
-                      {/* User Suggestions Dropdown for Party A */}
-                      {showUserSuggestions &&
-                        activeSearchField === "partyA" && (
-                          <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                            {userSearchResults.length > 0 ? (
-                              userSearchResults.map((user) => (
-                                <UserSearchResult
-                                  key={user.id}
-                                  user={user}
-                                  onSelect={(username) => {
-                                    setForm({ ...form, partyA: username });
-                                    setShowUserSuggestions(false);
-                                    setUserSearchQuery(""); // Clear search query
-                                  }}
-                                  field="partyA"
-                                />
-                              ))
-                            ) : userSearchQuery.length >= 2 &&
-                              !isUserSearchLoading ? (
-                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                                No users found for "{userSearchQuery}"
-                                <div className="mt-1 text-xs text-cyan-400">
-                                  Make sure the user exists and has a Telegram
-                                  username
-                                </div>
-                              </div>
-                            ) : null}
+                      {/* 🆕 Add validation message display for Party A */}
+                      {validation.partyA.isTouched && (
+                        <div
+                          className={`mt-1 text-xs ${validation.partyA.isValid ? "text-green-400" : "text-amber-400"}`}
+                        >
+                          {validation.partyA.message}
+                        </div>
+                      )}
 
-                            {userSearchQuery.length < 2 && (
-                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                                Type at least 2 characters to search
+                      {/* User Suggestions Dropdown for Party A */}
+
+                      <div className="mt-2">
+                        {partyASearchResults.map((user) => {
+                          const telegramUsername = cleanTelegramUsername(
+                            user.telegramUsername ||
+                              user.telegram?.username ||
+                              user.telegramInfo,
+                          );
+                          return (
+                            <div
+                              key={`partyA-${user.id}`}
+                              onClick={() => {
+                                setForm((prev) => ({
+                                  ...prev,
+                                  partyA: `@${telegramUsername}`,
+                                }));
+                                // Clear Party A search results after selection
+                                setPartyASearchResults([]);
+                                setShowUserSuggestions(false);
+                              }}
+                              className="glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60"
+                            >
+                              <UserAvatar
+                                userId={user.id}
+                                avatarId={user.avatarId || user.avatar?.id}
+                                username={telegramUsername}
+                                size="sm"
+                              />
+                              <div className="min-w-0 flex-1">
+                                {/* <div className="truncate text-sm font-medium text-white">
+                                  {user.displayName || `@${telegramUsername}`}
+                                </div> */}
+                                {telegramUsername && (
+                                  <div className="truncate text-sm text-cyan-300">
+                                    @{telegramUsername}
+                                  </div>
+                                )}
+                                {user.bio && (
+                                  <div className="mt-1 truncate text-xs text-cyan-200/70">
+                                    {user.bio}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div className="relative" ref={userSearchRef}>
@@ -1896,7 +2053,9 @@ export default function Agreements() {
                           onChange={(e) => {
                             const value = e.target.value;
                             handleUsernameInput(value, "partyB");
+                            updateValidation("partyB", value);
                           }}
+                          onBlur={() => updateValidation("partyB", form.partyB)}
                           onFocus={() => {
                             if (form.partyB.length >= 2) {
                               setShowUserSuggestions(true);
@@ -1912,19 +2071,28 @@ export default function Agreements() {
                           )}
                       </div>
 
+                      {/* 🆕 Add validation message display for Party B */}
+                      {validation.partyB.isTouched && (
+                        <div
+                          className={`mt-1 text-xs ${validation.partyB.isValid ? "text-green-400" : "text-amber-400"}`}
+                        >
+                          {validation.partyB.message}
+                        </div>
+                      )}
+
                       {/* User Suggestions Dropdown for Party B */}
                       {showUserSuggestions &&
                         activeSearchField === "partyB" && (
                           <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                            {userSearchResults.length > 0 ? (
-                              userSearchResults.map((user) => (
+                            {partyBSearchResults.length > 0 ? (
+                              partyBSearchResults.map((user) => (
                                 <UserSearchResult
-                                  key={user.id}
+                                  key={`partyB-${user.id}`}
                                   user={user}
                                   onSelect={(username) => {
                                     setForm({ ...form, partyB: username });
                                     setShowUserSuggestions(false);
-                                    setUserSearchQuery(""); // Clear search query
+                                    setPartyBSearchResults([]); // Clear Party B results
                                   }}
                                   field="partyB"
                                 />
@@ -1933,18 +2101,8 @@ export default function Agreements() {
                               !isUserSearchLoading ? (
                               <div className="px-4 py-3 text-center text-sm text-cyan-300">
                                 No users found for "{userSearchQuery}"
-                                <div className="mt-1 text-xs text-cyan-400">
-                                  Make sure the user exists and has a Telegram
-                                  username
-                                </div>
                               </div>
                             ) : null}
-
-                            {userSearchQuery.length < 2 && (
-                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                                Type at least 2 characters to search
-                              </div>
-                            )}
                           </div>
                         )}
                     </div>
@@ -1959,13 +2117,24 @@ export default function Agreements() {
                 </label>
                 <textarea
                   value={form.description}
-                  onChange={(e) =>
-                    setForm({ ...form, description: e.target.value })
+                  onChange={(e) => {
+                    setForm({ ...form, description: e.target.value });
+                    updateValidation("description", e.target.value);
+                  }}
+                  onBlur={() =>
+                    updateValidation("description", form.description)
                   }
                   className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                   placeholder="Scope, deliverables, timelines..."
                   required
                 />
+                {validation.description.isTouched && (
+                  <div
+                    className={`mt-1 text-xs ${validation.description.isValid ? "text-green-400" : "text-amber-400"}`}
+                  >
+                    {validation.description.message}
+                  </div>
+                )}
                 <div className="mt-1 flex items-center gap-1">
                   <Info className="size-4 text-cyan-300" />
                   <p className="text-xs text-cyan-300/80">
@@ -2061,22 +2230,47 @@ export default function Agreements() {
               </div>
 
               {/* Deadline */}
+              {/* Deadline - Updated with clear button */}
               <div>
                 <label className="text-muted-foreground mb-2 block text-sm">
-                  Deadline
+                  Deadline <span className="text-cyan-400">(Optional)</span>
                 </label>
-                <div className="relative">
-                  <Calendar className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-                  <ReactDatePicker
-                    selected={deadline}
-                    onChange={(date) => setDeadline(date)}
-                    placeholderText="Select a date"
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full cursor-pointer rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-10 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                    calendarClassName="!bg-cyan-700 !text-white rounded-lg border border-white/10"
-                    popperClassName="z-50"
-                    minDate={new Date()}
-                  />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Calendar className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                    <ReactDatePicker
+                      selected={deadline}
+                      onChange={(date) => setDeadline(date)}
+                      placeholderText="Select a date (optional)"
+                      dateFormat="dd/MM/yyyy"
+                      className="w-full cursor-pointer rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-10 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                      calendarClassName="!bg-cyan-700 !text-white rounded-lg border border-white/10"
+                      popperClassName="z-50"
+                      minDate={new Date()}
+                      isClearable={true}
+                      clearButtonTitle="Clear deadline"
+                    />
+                  </div>
+                  {deadline && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeadline(null)}
+                      className="border-amber-400/30 text-amber-300 hover:bg-amber-500/10"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="ml-1 hidden sm:inline">Clear</span>
+                    </Button>
+                  )}
+                </div>
+                <div className="mt-1 flex items-start gap-1">
+                  <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-300/70" />
+                  <p className="text-xs text-cyan-300/70">
+                    {deadline
+                      ? `Deadline set to: ${deadline.toLocaleDateString()}`
+                      : "Optional: If no deadline is set, the agreement will remain active until completed or cancelled."}
+                  </p>
                 </div>
               </div>
 
@@ -2196,12 +2390,24 @@ export default function Agreements() {
                           ...prev,
                           amount: rawValue,
                         }));
+                        updateValidation("amount", rawValue);
                       }}
+                      onBlur={() =>
+                        updateValidation("amount", fundsWithoutEscrow.amount)
+                      }
                       className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                       placeholder="10,000 or 0.5"
                       type="text"
                       inputMode="decimal"
                     />
+                    {validation.amount.isTouched &&
+                      fundsWithoutEscrow.amount && (
+                        <div
+                          className={`mt-1 text-xs ${validation.amount.isValid ? "text-green-400" : "text-amber-400"}`}
+                        >
+                          {validation.amount.message}
+                        </div>
+                      )}
                   </div>
 
                   {/* Information text */}

@@ -1069,7 +1069,7 @@ export default function Profile() {
       </header>
 
       {/* ===== Top Summary Section ===== */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
           <div className="card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
@@ -1335,10 +1335,167 @@ export default function Profile() {
               </Button>
             </div>
           </div>
+
+          <div className="hidden flex-col gap-4 sm:flex md:hidden">
+            {/* Show Judged Disputes only for judges */}
+            {/* Show Admin Panel Access for admins */}
+            {userData.roles.admin && (
+              <section className="rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white/90">
+                  Administrator Access
+                </h3>
+                <div className="py-6 text-center">
+                  <div className="mb-3 flex justify-center">
+                    <Admin className="size-10" />
+                  </div>
+                  <div className="mb-2 text-lg text-yellow-300">
+                    Platform Administrator
+                  </div>
+                  <div className="mb-4 text-sm text-white/50">
+                    You have full access to the admin panel for user management
+                    and platform analytics.
+                  </div>
+                  <Button
+                    onClick={() => navigate("/admin")}
+                    className="border-yellow-400/40 bg-yellow-600/20 text-yellow-100 hover:bg-yellow-500/30"
+                  >
+                    Access Admin Panel
+                  </Button>
+                </div>
+              </section>
+            )}
+
+            {/* Show Judged Disputes only for judges (and not admins who aren't judges) */}
+            {userData.roles.judge && !userData.roles.admin && (
+              <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white/90">
+                  Judged Disputes
+                </h3>
+                <div className="py-8 text-center">
+                  <div className="mb-2 text-lg text-cyan-300">
+                    No disputes judged yet
+                  </div>
+                  <div className="text-sm text-white/50">
+                    As a certified judge, you'll be able to participate in
+                    dispute resolution cases here.
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Show Community Stats for community members (and not admins/judges) */}
+            {userData.roles.community &&
+              !userData.roles.judge &&
+              !userData.roles.admin && (
+                <section className="rounded-2xl border border-emerald-400 bg-gradient-to-br from-emerald-500/20 to-transparent p-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white/90">
+                    Community Contributions
+                  </h3>
+                  <div className="py-8 text-center">
+                    <div className="mb-2 text-lg text-emerald-300">
+                      Active Community Member
+                    </div>
+                    <div className="text-sm text-white/50">
+                      Thank you for being part of the DexCourt community!
+                    </div>
+                  </div>
+                </section>
+              )}
+
+            {/* Show welcome for basic users (no special roles) */}
+            {userData.roles.user &&
+              !userData.roles.admin &&
+              !userData.roles.judge &&
+              !userData.roles.community && (
+                <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white/90">
+                    Get Started
+                  </h3>
+                  <div className="py-8 text-center">
+                    <div className="mb-2 text-lg text-cyan-300">
+                      Welcome to DexCourt!
+                    </div>
+                    <div className="text-sm text-white/50">
+                      Start by creating agreements and participating in the
+                      community to unlock more features.
+                    </div>
+                  </div>
+                </section>
+              )}
+
+            {/* Reputation History - Show for all users */}
+            <BentoCard
+              title="My Reputation History"
+              icon={<RiShieldCheckFill />}
+              color="cyan"
+              count={0}
+              scrollable
+              maxHeight="260px"
+            >
+              <div className="py-8 text-center">
+                <div className="mb-2 text-lg text-cyan-300">
+                  {userData.roles.admin
+                    ? "Administrator"
+                    : userData.roles.judge
+                      ? "Judge Reputation"
+                      : userData.roles.community
+                        ? "Community Reputation"
+                        : "Building Reputation"}
+                </div>
+                <div className="text-sm text-white/50">
+                  {userData.roles.admin
+                    ? "As an administrator, you have full platform access and oversight capabilities."
+                    : userData.roles.judge
+                      ? "Your reputation as a judge will grow with each fair dispute resolution."
+                      : userData.roles.community
+                        ? "Your community reputation builds with active participation."
+                        : "Your reputation events will appear here as you participate in agreements and disputes."}
+                </div>
+              </div>
+            </BentoCard>
+
+            {showLoginModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
+                  <h3 className="mb-4 text-lg font-semibold">Telegram Login</h3>
+
+                  <label className="mb-2 block text-sm text-gray-300">
+                    Enter your OTP from the DexCourt's Telegram bot:
+                  </label>
+
+                  <input
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    placeholder="e.g. 123456"
+                    className="mb-4 w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+                  />
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowLoginModal(false)}
+                      className="border-gray-500/30 text-gray-300 hover:bg-gray-700/40"
+                    >
+                      Cancel
+                    </Button>
+
+                    <Button
+                      onClick={handleLogin}
+                      className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+                      disabled={loading}
+                    >
+                      {loading ? "Logging in..." : "Login"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Judged Disputes & Reputation */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 sm:hidden md:flex">
           {/* Show Judged Disputes only for judges */}
           {/* Show Admin Panel Access for admins */}
           {userData.roles.admin && (
@@ -1497,7 +1654,7 @@ export default function Profile() {
       </section>
 
       {/* ===== Bento Grid Section ===== */}
-      <section className="mt-6 grid gap-6 md:grid-cols-3">
+      <section className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {/* My Disputes */}
         <BentoCard
           title="My Disputes"

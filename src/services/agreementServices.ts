@@ -32,7 +32,7 @@ export interface AgreementsRequest {
   visibility: number;
   firstParty: string;
   counterParty: string;
-  deadline: string;
+  deadline?: string;
   includesFunds?: boolean;
   secureTheFunds?: boolean;
   tokenSymbol?: string;
@@ -185,6 +185,7 @@ class AgreementService {
   // Create new agreement
   // Create new agreement
   // Create new agreement
+  // Create new agreement
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
     console.log("🔄 Creating agreement with data:", data);
 
@@ -195,7 +196,14 @@ class AgreementService {
     formData.append("visibility", data.visibility.toString());
     formData.append("firstParty", data.firstParty);
     formData.append("counterParty", data.counterParty);
-    formData.append("deadline", data.deadline);
+
+    // FIX: Only append deadline if it has a value
+    if (data.deadline && data.deadline.trim() !== "") {
+      formData.append("deadline", data.deadline);
+      console.log("📅 Deadline included:", data.deadline);
+    } else {
+      console.log("📅 No deadline provided - skipping deadline field");
+    }
 
     // === REQUIRED FIELDS FOR INCLUDES_FUNDS = true ===
     if (data.includesFunds !== undefined) {
@@ -244,7 +252,7 @@ class AgreementService {
       visibility: data.visibility,
       firstParty: data.firstParty,
       counterParty: data.counterParty,
-      deadline: data.deadline,
+      deadline: data.deadline || "NOT INCLUDED", // Show if included or not
       includesFunds: data.includesFunds,
       secureTheFunds: data.secureTheFunds,
       tokenSymbol: data.tokenSymbol,
@@ -252,18 +260,24 @@ class AgreementService {
       contractAddress: data.contractAddress,
       chainId: data.chainId,
       contractAgreementId: data.contractAgreementId,
-      txnhash: data.txHash, // ← Updated to match backend field name
+      txnhash: data.txHash,
       files: files.map((f) => f.name),
     });
 
-    const response = await api.post("/agreement", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    try {
+      const response = await api.post("/agreement", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-    console.log("✅ Agreement created successfully:", response.data);
-    return response.data;
+      console.log("✅ Agreement created successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Agreement creation failed:", error);
+      console.error("📋 Error details:", error.response?.data);
+      throw error;
+    }
   }
   // User search - now with proper error handling
   async searchUsers(query: string): Promise<any[]> {
