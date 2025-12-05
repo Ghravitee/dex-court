@@ -1596,10 +1596,10 @@ export default function EscrowDetails() {
   const StatusIcon = statusInfo.icon;
   return (
     <div className="min-h-screen">
-      <div className="container mx-auto py-8 lg:px-4">
+      <div className="container mx-auto py-2 lg:px-4 lg:py-8">
         {/* Header */}
         <div className="mb-8 flex flex-col items-center justify-between space-y-4 sm:flex-row">
-          <div className="flex items-center space-x-4">
+          <div className="flex space-x-4 self-start lg:mr-4">
             <Button
               variant="outline"
               onClick={() => navigate("/escrow")}
@@ -1608,25 +1608,26 @@ export default function EscrowDetails() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Escrows
             </Button>
-            <div className="flex items-center space-x-2">
-              <StatusIcon className={`h-5 w-5 ${statusInfo.color}`} />
-              <span
-                className={`rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.bgColor} ${statusInfo.color} ${statusInfo.borderColor}`}
-              >
-                {statusInfo.label}
-              </span>
-              <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  isOverdue
-                    ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                    : isUrgent
-                      ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                      : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-                }`}
-              >
-                {isOverdue ? "Overdue" : `${daysRemaining} days left`}
-              </span>
-            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 md:mr-auto">
+            <StatusIcon className={`h-5 w-5 ${statusInfo.color}`} />
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.bgColor} ${statusInfo.color} ${statusInfo.borderColor}`}
+            >
+              {statusInfo.label}
+            </span>
+            <span
+              className={`rounded-full px-3 py-1 text-sm font-medium ${
+                isOverdue
+                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                  : isUrgent
+                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+              }`}
+            >
+              {isOverdue ? "Overdue" : `${daysRemaining} days left`}
+            </span>
           </div>
 
           <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
@@ -1784,7 +1785,7 @@ export default function EscrowDetails() {
                   Description & Scope
                 </h3>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                  <p className="leading-relaxed whitespace-pre-line text-white/80">
+                  <p className="leading-relaxed wrap-break-word whitespace-pre-line text-white/80">
                     {escrow.description}
                   </p>
                 </div>
@@ -1793,7 +1794,7 @@ export default function EscrowDetails() {
               {/* Complete On-Chain Agreement Details */}
               {/* Complete On-Chain Agreement Details */}
               {onChainAgreement && (
-                <div className="card-cyan mt-6 rounded-2xl border border-cyan-500/60 p-6 backdrop-blur-sm">
+                <div className="card-cyan mt-6 rounded-2xl border border-cyan-500/60 p-2 backdrop-blur-sm lg:p-6">
                   <div className="mb-6 flex items-center justify-between">
                     <div>
                       <h3 className="flex items-center gap-2 text-xl font-bold text-white">
@@ -2063,7 +2064,7 @@ export default function EscrowDetails() {
 
             {/* Action Buttons Section */}
             {onChainAgreement && (
-              <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-6 backdrop-blur-sm">
+              <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 backdrop-blur-sm lg:p-6">
                 {/* Status Indicators */}
                 <div className="mt-4 space-y-2">
                   {onChainAgreement.grace1Ends > 0n &&

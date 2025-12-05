@@ -533,27 +533,27 @@ export function KPIChart() {
     );
   }
 
-  const first = chartData[0];
-  const last = chartData[chartData.length - 1];
-  const growth = last.totalAgreements - first.totalAgreements;
-  const growthPercent =
-    first.totalAgreements > 0
-      ? Math.round((growth / first.totalAgreements) * 100)
-      : 100;
+  // const first = chartData[0];
+  // const last = chartData[chartData.length - 1];
+  // const growth = last.totalAgreements - first.totalAgreements;
+  // const growthPercent =
+  //   first.totalAgreements > 0
+  //     ? Math.round((growth / first.totalAgreements) * 100)
+  //     : 100;
 
   return (
     <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
       <div className="mb-4 flex items-center justify-between">
         <div className="">
           <h3 className="text-xl font-bold text-white">Network Growth</h3>
-          <p className="text-sm text-cyan-200/60">
+          {/* <p className="text-sm text-cyan-200/60">
             Cumulative agreements over time
-          </p>
-          <div className="flex items-center">
+          </p> */}
+          {/* <div className="flex items-center">
             <div className="text-xs text-cyan-200/60">
               {growthPercent}% increase from the first agreement
             </div>
-          </div>
+          </div> */}
         </div>
         <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
           <TabsList className="bg-gray-800">

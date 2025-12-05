@@ -8,12 +8,11 @@ export default function Layout() {
   const [expanded, setExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  // const { isAuthenticated } = useAuth();
 
   return (
     <main
       style={{ display: "block" }}
-      className="text-foreground flex min-h-screen w-full bg-gradient-to-br from-gray-900 to-black"
+      className="text-foreground flex min-h-screen w-full bg-gradient-to-br from-gray-900 via-gray-950 to-black"
     >
       {/* Desktop Sidebar */}
       <Sidebar
@@ -44,11 +43,14 @@ export default function Layout() {
       {/* MAIN CONTENT */}
       <div
         className={`flex flex-1 flex-col transition-[margin,width] duration-300 ${
-          expanded ? "md:ml-64" : "md:ml-16"
+          expanded ? "lg:ml-64" : "lg:ml-16"
         } ml-0`}
       >
         {/* Topbar with hamburger */}
-        <Topbar onMenuClick={() => setMobileOpen(!mobileOpen)} />
+        <Topbar
+          onMenuClick={() => setMobileOpen(!mobileOpen)}
+          showLogo={true} // Add this prop
+        />
 
         {/* Page content */}
         <main className="px-4 pt-4 pb-10 transition-all duration-300 sm:px-6">

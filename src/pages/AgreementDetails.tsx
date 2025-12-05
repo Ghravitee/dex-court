@@ -290,6 +290,55 @@ const getDeliverySubmittedBy = (agreement: any) => {
   return null;
 };
 
+// NEW: Helper to check which parties have signed the agreement
+// ULTRA SIMPLE: Status-based message display
+const getUltraSimpleSigningMessage = (agreement: any, currentUser: any) => {
+  if (!agreement || !currentUser) return null;
+
+  // Only for pending agreements
+  const isPendingAgreement =
+    agreement.status === "pending" ||
+    agreement._raw?.status === AgreementStatusEnum.PENDING_ACCEPTANCE;
+
+  if (!isPendingAgreement) {
+    return null;
+  }
+
+  // Check if current user is creator
+  const currentUserId =
+    currentUser.id?.toString() || currentUser.userId?.toString();
+  const creatorId =
+    agreement.creator?.id?.toString() ||
+    agreement._raw?.creator?.id?.toString();
+  const isCreator = currentUserId === creatorId;
+
+  // Check if current user is first party
+  const firstPartyId =
+    agreement.firstParty?.id?.toString() ||
+    agreement._raw?.firstParty?.id?.toString();
+  const isFirstParty = currentUserId === firstPartyId;
+
+  // Check if current user is counterparty
+  const counterpartyId =
+    agreement.counterParty?.id?.toString() ||
+    agreement._raw?.counterParty?.id?.toString();
+  const isCounterparty = currentUserId === counterpartyId;
+
+  // SIMPLE LOGIC:
+  if (isCreator && isFirstParty) {
+    // Creator is first party (auto-signed scenario)
+    return "Counterparty needs to sign.";
+  } else if (isFirstParty) {
+    // First party (not creator or creator didn't auto-sign)
+    return "You need to sign as first party. You will receive a notification once the counterparty signs.";
+  } else if (isCounterparty) {
+    // Counterparty
+    return "You need to sign as counterparty. The agreement will be active once you sign";
+  }
+
+  // Fallback
+  return "Agreement is pending signatures.";
+};
 // Enhanced helper to check who requested cancellation with fallbacks
 const getCancellationRequestedBy = (agreement: any) => {
   if (!agreement) return null;
@@ -1432,6 +1481,8 @@ export default function AgreementDetails() {
     agreement?.status === "pending" &&
     (isCounterparty || (isFirstParty && !isCreator));
 
+  const signingStatusMessage = getUltraSimpleSigningMessage(agreement, user);
+
   // FIXED: Only the creator can cancel pending agreements
   const canCancel = agreement?.status === "pending" && isCreator;
 
@@ -1516,7 +1567,6 @@ export default function AgreementDetails() {
   if (loading) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
-        <div className="absolute inset-0 z-[50] rounded-full bg-cyan-500/10 blur-3xl"></div>
         <div className="text-center">
           <div className="relative mx-auto mb-8">
             <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
@@ -1618,7 +1668,7 @@ export default function AgreementDetails() {
           {/* Main Content */}
           <div className="space-y-6 lg:col-span-2">
             {/* Agreement Overview Card */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-6 sm:px-4">
+            <div className="card-cyan rounded-xl px-4 py-6 sm:px-4">
               <div className="mb-6 flex flex-col items-start justify-between sm:flex-row">
                 <div>
                   <h1 className="mb-2 max-w-[30rem] text-2xl font-bold text-white lg:text-[1.5rem]">
@@ -1998,11 +2048,27 @@ export default function AgreementDetails() {
                 </div>
               </div>
 
+              {signingStatusMessage && agreement?.status === "pending" && (
+                <div className="mt-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-400" />
+                    <div className="flex-1">
+                      <h4 className="font-medium text-yellow-300">
+                        Signing Status
+                      </h4>
+                      <p className="mt-1 text-sm text-yellow-200">
+                        {signingStatusMessage}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Dispute Information Section */}
 
               {agreement._raw?.disputes &&
                 agreement._raw.disputes.length > 0 && (
-                  <div className="glass mt-6 rounded-xl border border-purple-400/30 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
+                  <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Active Dispute
                     </h3>
@@ -2079,7 +2145,7 @@ export default function AgreementDetails() {
               canCancelDispute) &&
               agreement?.status !== "completed" &&
               agreement?.status !== "disputed" && ( // Add this line to hide when disputed
-                <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+                <div className="card-cyan rounded-xl p-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">
                     Agreement Actions
                   </h3>
@@ -2341,7 +2407,7 @@ export default function AgreementDetails() {
             )}
 
             {/* Activity Timeline */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl p-6">
               <h3 className="mb-6 text-lg font-semibold text-white">
                 Agreement Timeline
               </h3>
@@ -2478,7 +2544,7 @@ export default function AgreementDetails() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Agreement Summary */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Agreement Summary
               </h3>
@@ -2523,7 +2589,7 @@ export default function AgreementDetails() {
               </div>
             </div>
             {/* Your Role Information */}
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Your Role
               </h3>
@@ -2584,7 +2650,7 @@ export default function AgreementDetails() {
             </div>
             {/* Contract Information */}
 
-            <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+            <div className="card-cyan rounded-xl p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Contract Info
               </h3>
