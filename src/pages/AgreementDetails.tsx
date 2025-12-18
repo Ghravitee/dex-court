@@ -27,6 +27,7 @@ import {
   PackageCheck,
   Ban,
   Info,
+  Hourglass,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -88,8 +89,9 @@ const apiStatusToFrontend = (status: number): Agreement["status"] => {
     case AgreementStatusEnum.DISPUTED:
       return "disputed";
     case AgreementStatusEnum.CANCELLED:
-    case AgreementStatusEnum.EXPIRED:
-      return "cancelled";
+      return "cancelled"; // Keep as "cancelled"
+    case AgreementStatusEnum.EXPIRED: // Add this case
+      return "expired"; // Return "expired" instead of "cancelled"
     case AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY:
       return "pending_approval";
     default:
@@ -1270,6 +1272,8 @@ export default function AgreementDetails() {
         return <FileText className="h-5 w-5 text-blue-400" />;
       case "cancelled":
         return <XCircle className="h-5 w-5 text-red-400" />;
+      case "expired": // Add this case
+        return <Hourglass className="h-5 w-5 text-gray-400" />; // Or another appropriate icon
       case "disputed":
         return <AlertTriangle className="h-5 w-5 text-purple-400" />;
       case "pending_approval":
@@ -1289,6 +1293,8 @@ export default function AgreementDetails() {
         return "bg-blue-500/20 text-blue-400 border-blue-500/30";
       case "cancelled":
         return "bg-red-500/20 text-red-400 border-red-500/30";
+      case "expired": // Add this case
+        return "bg-gray-500/20 text-gray-400 border-gray-500/30";
       case "disputed":
         return "bg-purple-500/20 text-purple-400 border-purple-500/30";
       case "pending_approval":
@@ -2144,7 +2150,9 @@ export default function AgreementDetails() {
               canOpenDispute ||
               canCancelDispute) &&
               agreement?.status !== "completed" &&
-              agreement?.status !== "disputed" && ( // Add this line to hide when disputed
+              agreement?.status !== "disputed" &&
+              agreement?.status !== "cancelled" &&
+              agreement?.status !== "expired" && ( // Add this line to hide when disputed
                 <div className="card-cyan rounded-xl p-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">
                     Agreement Actions

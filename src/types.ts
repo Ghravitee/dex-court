@@ -7,13 +7,16 @@ export type AgreementStatusFilter =
   | "cancelled"
   | "completed"
   | "disputed"
+  | "expired"
   | "pending_approval";
 
+// type AgreementStatus = "pending" | "signed" | "cancelled" | "completed" | "disputed" | "expired" | "pending_approval";
 export type AgreementStatus =
   | "pending"
   | "signed"
   | "cancelled"
   | "completed"
+  | "expired"
   | "disputed"
   | "pending_approval";
 

@@ -240,7 +240,8 @@ export function Sidebar({
     <aside
       className={cn(
         mobile ? "flex" : "hidden lg:flex",
-        "fixed top-0 left-0 z-40 h-[100vh] flex-col border-r border-white/10 transition-all duration-300",
+        "fixed top-0 left-0 z-40 h-[100vh] flex-col border-r border-white/10",
+        "transition-all duration-200 ease-in-out", // Changed from 300ms to 200ms
         expanded ? "w-64" : "w-16",
       )}
     >
@@ -304,7 +305,7 @@ export function Sidebar({
 
             <span
               className={cn(
-                "font-medium transition-all duration-300",
+                "font-medium transition-all delay-75 duration-150", // Changed from 300ms to 200ms
                 expanded
                   ? "translate-x-0 opacity-100"
                   : "w-0 -translate-x-5 overflow-hidden opacity-0",
@@ -336,13 +337,14 @@ export function Sidebar({
                 }
               >
                 <span className="relative flex items-center justify-center text-lg">
-                  <User size={18} />
+                  <User />
                 </span>
                 <span className="font-medium">Profile</span>
               </NavLink>
             )}
 
             <div className="my-4 border-t border-white/10 pt-4">
+              {/* Telegram Login/Logout Button - UPDATED WITH AVATAR */}
               {/* Telegram Login/Logout Button - UPDATED WITH AVATAR */}
               <button
                 onClick={handleTelegramAuth}
@@ -352,7 +354,9 @@ export function Sidebar({
                   getTelegramButtonVariant(),
                 )}
               >
-                <span className="relative flex items-center justify-center text-lg">
+                <span className="relative flex flex-shrink-0 items-center justify-center text-lg">
+                  {" "}
+                  {/* ADD flex-shrink-0 HERE */}
                   {isAuthenticated ? (
                     <>
                       {/* Add UserAvatar component here */}
@@ -400,6 +404,7 @@ export function Sidebar({
         )}
 
         {/* Desktop Profile/Login Button (different from mobile) */}
+        {/* Desktop Profile/Login Button (different from mobile) */}
         {!mobile && (
           <button
             onClick={handleProfileClick}
@@ -411,7 +416,9 @@ export function Sidebar({
                 : "text-foreground/80",
             )}
           >
-            <span className="relative flex items-center justify-center text-lg">
+            <span className="relative flex flex-shrink-0 items-center justify-center text-lg">
+              {" "}
+              {/* ADD flex-shrink-0 HERE */}
               {isAuthenticated ? (
                 // Add avatar for authenticated user in desktop sidebar
                 isAuthenticated && user ? (
@@ -437,7 +444,7 @@ export function Sidebar({
 
             <span
               className={cn(
-                "font-medium transition-all duration-300",
+                "font-medium transition-all duration-200", // Changed from 300ms to 200ms
                 expanded
                   ? "translate-x-0 opacity-100"
                   : "w-0 -translate-x-5 overflow-hidden opacity-0",

@@ -26,22 +26,18 @@ import useTrustScore from "../hooks/useTrustScore";
 import Admin from "../components/ui/svgcomponents/Admin";
 // Add this import with your other imports
 import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
-import { useChainId, useContractReads } from "wagmi";
-import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
+
 import { cleanTelegramUsername } from "../lib/usernameUtils";
 
 // Add AgreementStatusBadge component
-// Enhanced AgreementStatusBadge component
 const AgreementStatusBadge = ({
   status,
-  agreement,
 }: {
   status: number;
   agreement?: any;
 }) => {
-  // Use on-chain status if available, otherwise use API status
-  const displayStatus =
-    agreement?.onChainStatus || mapAgreementStatusToEscrow(status);
+  // Use ONLY API status - remove onChainStatus reference
+  const displayStatus = mapAgreementStatusToEscrow(status);
 
   const statusConfig = {
     pending: {
@@ -64,14 +60,20 @@ const AgreementStatusBadge = ({
       label: "Cancelled",
       color: "bg-red-500/20 text-red-300 border-red-400/30",
     },
-    pending_delivery: {
-      label: "Pending Delivery",
-      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    expired: {
+      // Add expired status
+      label: "Expired",
+      color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
     },
     pending_approval: {
       label: "Pending Approval",
-      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
+    // Add pending_delivery if needed
+    // pending_delivery: {
+    //   label: "Pending Delivery",
+    //   color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    // },
   };
 
   const config = statusConfig[displayStatus as keyof typeof statusConfig] || {
@@ -289,7 +291,7 @@ export function BentoCard({
 
   return (
     <div
-      className={`rounded-2xl border p-6 ring-1 ring-white/10 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
+      className={`rounded-2xl border p-6 ${colorMap[color]} flex flex-col justify-between bg-gradient-to-br to-transparent`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-lg font-semibold text-white/90">
@@ -321,6 +323,7 @@ type EscrowStatus =
   | "signed"
   | "completed"
   | "cancelled"
+  | "expired"
   | "disputed"
   | "pending_approval"
   | "pending_delivery";
@@ -339,63 +342,12 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
     case 5:
       return "cancelled";
     case 6:
-      return "cancelled";
+      return "expired";
     case 7:
-      return "pending_delivery";
+      return "pending_approval";
     default:
       return "pending";
   }
-};
-
-// Enhanced status mapping from on-chain data
-const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
-  if (!agreementData || !Array.isArray(agreementData)) return "pending";
-
-  if (agreementData[18]) return "completed";
-  if (agreementData[19]) return "disputed";
-  if (agreementData[21]) return "cancelled";
-  if (agreementData[23]) return "pending_approval";
-  if (agreementData[15] && agreementData[16] && agreementData[17]) {
-    return "signed";
-  }
-  if (agreementData[15]) return "pending_delivery";
-
-  return "pending";
-};
-
-// Custom hook to fetch on-chain data for agreements
-const useOnChainAgreementData = (agreements: any[]) => {
-  const chainId = useChainId();
-  const contractAddress =
-    (chainId && ESCROW_CA[chainId as number]) || undefined;
-
-  // Create contract calls for each agreement that has a contractAgreementId
-  const contracts = useMemo(() => {
-    return agreements
-      .filter((agreement) => {
-        const contractAgreementId = agreement.contractAgreementId;
-        return contractAgreementId && contractAddress;
-      })
-      .map((agreement) => {
-        const contractAgreementId = agreement.contractAgreementId;
-        return {
-          address: contractAddress as `0x${string}`,
-          abi: ESCROW_ABI.abi,
-          functionName: "getAgreement" as const,
-          args: [BigInt(contractAgreementId)],
-        };
-      });
-  }, [agreements, contractAddress]);
-
-  // Fetch on-chain data
-  const { data: onChainData, isLoading } = useContractReads({
-    contracts,
-    query: {
-      enabled: contracts.length > 0,
-    },
-  });
-
-  return { onChainData, isLoading };
 };
 
 export default function Profile() {
@@ -447,7 +399,6 @@ export default function Profile() {
     success: uploadSuccess,
   } = useAvatarUpload();
 
-  // Add this transform function (similar to Escrow.tsx)
   const transformApiAgreementToEscrow = (apiAgreement: any) => {
     // Extract from on-chain metadata in description
     const extractServiceProviderFromDescription = (
@@ -501,6 +452,7 @@ export default function Profile() {
       to: finalServiceProvider,
       token: apiAgreement.tokenSymbol || "ETH",
       amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+      // Use ONLY API status - no on-chain override
       status: mapAgreementStatusToEscrow(apiAgreement.status),
       deadline: apiAgreement.deadline
         ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
@@ -513,6 +465,8 @@ export default function Profile() {
       contractAgreementId: apiAgreement.contractAgreementId,
       firstParty: apiAgreement.firstParty,
       counterParty: apiAgreement.counterParty,
+      // Add API status number for reference
+      apiStatus: apiAgreement.status,
     };
   };
 
@@ -556,61 +510,11 @@ export default function Profile() {
       .map(transformApiAgreementToEscrow);
   }, [agreementsWithSecuredFunds]);
 
-  const { onChainData } = useOnChainAgreementData(escrowAgreements);
-
-  // Merge API data with on-chain data for escrow deals
-  const escrowDealsWithOnChainData = useMemo(() => {
-    if (escrowAgreements.length === 0) return [];
-
-    // If we have on-chain data, merge it
-    if (onChainData && onChainData.length > 0) {
-      return escrowAgreements.map((escrow, index) => {
-        const onChainAgreement = onChainData[index];
-
-        if (onChainAgreement && onChainAgreement.status === "success") {
-          const agreementData = [
-            ...(onChainAgreement.result as readonly any[]),
-          ];
-
-          const onChainStatus = mapOnChainStatusFromArray(agreementData);
-
-          return {
-            ...escrow,
-            // Override the status with on-chain status when available
-            status: onChainStatus,
-            onChainStatus: onChainStatus,
-            onChainAmount: agreementData[5]?.toString(),
-            onChainDeadline: Number(agreementData[8]),
-            onChainParties: {
-              serviceProvider: agreementData[2],
-              serviceRecipient: agreementData[3],
-            },
-            onChainToken: agreementData[4],
-            isOnChainActive:
-              agreementData[15] === true && agreementData[14] === true,
-            isFunded: agreementData[14] === true,
-            isSigned: agreementData[15] === true,
-            isCompleted: agreementData[18] === true,
-            isDisputed: agreementData[19] === true,
-            isCancelled: agreementData[21] === true,
-            deliverySubmitted: agreementData[16] === true,
-            lastUpdated: Date.now(),
-          };
-        }
-
-        return escrow;
-      });
-    }
-
-    // Fallback to API data only
-    return escrowAgreements;
-  }, [escrowAgreements, onChainData]);
-
-  // Add this with your other useMemo calculations
   const escrowDeals = useMemo(() => {
-    if (!escrowDealsWithOnChainData || !user?.id) return [];
+    if (!escrowAgreements || !user?.id) return [];
 
-    return escrowDealsWithOnChainData.filter((agreement: any) => {
+    // Filter agreements where user is involved
+    return escrowAgreements.filter((agreement: any) => {
       const userId = user.id.toString();
 
       // Handle different possible party structures
@@ -635,7 +539,7 @@ export default function Profile() {
         counterPartyWallet === userWallet
       );
     });
-  }, [escrowDealsWithOnChainData, user?.id, user?.walletAddress]);
+  }, [escrowAgreements, user?.id, user?.walletAddress]);
 
   console.log(escrowDeals, "Checking escrow deals");
 
@@ -643,16 +547,26 @@ export default function Profile() {
     () => ({
       total: escrowDeals.length,
       active: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "signed" || agreement.status === 2,
+        (agreement: any) => agreement.status === "signed",
       ).length,
       completed: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "completed" || agreement.status === 3,
+        (agreement: any) => agreement.status === "completed",
       ).length,
       disputed: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "disputed" || agreement.status === 4,
+        (agreement: any) => agreement.status === "disputed",
+      ).length,
+      pending: escrowDeals.filter(
+        (agreement: any) => agreement.status === "pending",
+      ).length,
+      pending_approval: escrowDeals.filter(
+        (agreement: any) => agreement.status === "pending_approval",
+      ).length,
+      expired: escrowDeals.filter(
+        // Add expired count
+        (agreement: any) => agreement.status === "expired",
+      ).length,
+      cancelled: escrowDeals.filter(
+        (agreement: any) => agreement.status === "cancelled",
       ).length,
     }),
     [escrowDeals],
@@ -899,19 +813,17 @@ export default function Profile() {
       agreementsWithSecuredFunds,
     );
     console.log("🔍 Profile Debug - escrowAgreements:", escrowAgreements);
-    console.log(
-      "🔍 Profile Debug - escrowDealsWithOnChainData:",
-      escrowDealsWithOnChainData,
-    );
     console.log("🔍 Profile Debug - escrowDeals:", escrowDeals);
-    console.log("🔍 Profile Debug - onChainData:", onChainData);
-  }, [
-    agreementsWithSecuredFunds,
-    escrowAgreements,
-    escrowDealsWithOnChainData,
-    escrowDeals,
-    onChainData,
-  ]);
+    console.log(
+      "🔍 Profile Debug - API Status Samples:",
+      escrowDeals.map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        apiStatus: d.apiStatus,
+        status: d.status,
+      })),
+    );
+  }, [agreementsWithSecuredFunds, escrowAgreements, escrowDeals]);
 
   // Show toaster when success or error occurs - optimized with proper dependencies
   useEffect(() => {
@@ -1907,9 +1819,12 @@ export default function Profile() {
                             {agreement.title || `Escrow Deal #${agreement.id}`}
                           </h4>
                           <div className="flex items-center gap-1">
+                            {/* Only pass API status, not agreement object */}
                             <AgreementStatusBadge
-                              status={agreement.status}
-                              agreement={agreement}
+                              status={
+                                agreement.apiStatus || agreement.statusNumber
+                              }
+                              agreement={undefined} // Don't pass agreement object
                             />
                           </div>
                         </div>
@@ -1957,6 +1872,25 @@ export default function Profile() {
                             <span>Your Role:</span>
                             <span className={roleColor}>{userRole}</span>
                           </div>
+                          {/* Add API status for debugging */}
+                          {/* <div className="flex justify-between text-xs text-gray-400">
+                            <span>API Status:</span>
+                            <span>
+                              {agreement.apiStatus === 1
+                                ? "Pending"
+                                : agreement.apiStatus === 2
+                                  ? "Signed"
+                                  : agreement.apiStatus === 3
+                                    ? "Completed"
+                                    : agreement.apiStatus === 4
+                                      ? "Disputed"
+                                      : agreement.apiStatus === 5
+                                        ? "Cancelled"
+                                        : agreement.apiStatus === 7
+                                          ? "Pending Approval"
+                                          : `Status ${agreement.apiStatus}`}
+                            </span>
+                          </div> */}
                         </div>
                       </div>
                     </div>

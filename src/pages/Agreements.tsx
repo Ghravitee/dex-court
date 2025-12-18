@@ -72,8 +72,10 @@ const AgreementStatusEnum = {
   DISPUTED: 4,
   CANCELLED: 5,
   EXPIRED: 6,
+  PARTY_SUBMITTED_DELIVERY: 7, // Add pending approval status
 } as const;
 
+// Helper function to convert API status to frontend status
 // Helper function to convert API status to frontend status
 const apiStatusToFrontend = (status: number): AgreementStatus => {
   switch (status) {
@@ -88,7 +90,9 @@ const apiStatusToFrontend = (status: number): AgreementStatus => {
     case AgreementStatusEnum.CANCELLED:
       return "cancelled";
     case AgreementStatusEnum.EXPIRED:
-      return "cancelled";
+      return "expired";
+    case AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY:
+      return "pending_approval"; // Map to pending_approval
     default:
       return "pending";
   }
@@ -679,8 +683,10 @@ export default function Agreements() {
     { value: "pending", label: "Pending" },
     { value: "signed", label: "Signed" },
     { value: "cancelled", label: "Cancelled" },
+    { value: "expired", label: "Expired" }, // Add expired
     { value: "completed", label: "Completed" },
     { value: "disputed", label: "Disputed" },
+    { value: "pending_approval", label: "Pending Approval" }, // Add pending_approval
   ];
   const recentFilterOptions = [
     { value: "all", label: "All" },
@@ -1554,16 +1560,22 @@ export default function Agreements() {
                           </td>
                           <td className="px-5 py-4">
                             {a.status === "pending" ? (
-                              <span className="badge badge-orange">
+                              <span className="badge badge-yellow">
                                 Pending
                               </span>
                             ) : a.status === "signed" ? (
                               <span className="badge badge-blue">Signed</span>
                             ) : a.status === "cancelled" ? (
                               <span className="badge badge-red">Cancelled</span>
+                            ) : a.status === "expired" ? ( // Add expired badge
+                              <span className="badge badge-gray">Expired</span>
                             ) : a.status === "completed" ? (
                               <span className="badge badge-green">
                                 Completed
+                              </span>
+                            ) : a.status === "pending_approval" ? ( // Add pending_approval badge
+                              <span className="badge badge-orange">
+                                Pending Approval
                               </span>
                             ) : (
                               <span className="badge badge-purple">
