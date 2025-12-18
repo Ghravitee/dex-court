@@ -124,10 +124,9 @@ type EscrowStatus =
   | "signed"
   | "completed"
   | "cancelled"
-  | "frozen"
+  | "expired" // Add expired status
   | "disputed"
-  | "pending_approval"
-  | "pending_delivery";
+  | "pending_approval";
 
 // Create a base type without the status conflict
 type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
@@ -200,6 +199,7 @@ const CONTRACT_ERRORS = {
 
 // Enhanced status mapping for on-chain agreements
 // Enhanced status mapping for on-chain agreements
+// Enhanced status mapping for on-chain agreements
 const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   switch (status) {
     case 1:
@@ -213,14 +213,16 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
     case 5:
       return "cancelled"; // CANCELLED
     case 6:
-      return "cancelled"; // EXPIRED
+      return "expired"; // EXPIRED - now properly differentiated
+    case 7:
+      return "pending_approval"; // PARTY_SUBMITTED_DELIVERY
     default:
       return "pending";
   }
 };
 
 // Enhanced transform function for escrow agreements
-// Enhanced transform function for escrow agreements
+// Enhanced transform function for escrow agreements - ONLY use API status
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
@@ -266,7 +268,7 @@ const transformApiAgreementToEscrow = (
     to: finalServiceProvider, // Service Provider = Payee (receives funds)
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
-    // Note: We'll override this status with on-chain data when available
+    // STATUS CHANGE: Use only API status, no on-chain override
     status: mapAgreementStatusToEscrow(apiAgreement.status),
     deadline: apiAgreement.deadline
       ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
@@ -282,6 +284,7 @@ const transformApiAgreementToEscrow = (
     includeFunds: includeFunds,
     useEscrow: useEscrow,
     escrowAddress: apiAgreement.escrowContractAddress,
+    // Remove on-chain status fields to prevent confusion
   };
 };
 
@@ -339,42 +342,9 @@ export default function Escrow() {
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
 
   // Custom hook to fetch on-chain data for agreements
-  // Custom hook to fetch on-chain data for agreements
-  const useOnChainAgreementData = (agreements: any[]) => {
-    const chainId = useChainId();
-    const contractAddress =
-      (chainId && ESCROW_CA[chainId as number]) || undefined;
-
-    // Create contract calls for each agreement that has a contractAgreementId
-    const contracts = useMemo(() => {
-      return agreements
-        .filter((agreement) => {
-          const contractAgreementId = agreement.contractAgreementId;
-          return contractAgreementId && contractAddress;
-        })
-        .map((agreement) => {
-          const contractAgreementId = agreement.contractAgreementId;
-          return {
-            address: contractAddress as `0x${string}`,
-            abi: ESCROW_ABI.abi,
-            functionName: "getAgreement" as const,
-            args: [BigInt(contractAgreementId)],
-          };
-        });
-    }, [agreements, contractAddress]);
-
-    // Fetch on-chain data
-    const { data: onChainData, isLoading } = useContractReads({
-      contracts,
-      query: {
-        enabled: contracts.length > 0,
-      },
-    });
-
-    return { onChainData, isLoading };
-  };
 
   // Replace the useEffect that loads escrows
+  // Replace the entire useEffect that merges on-chain data with this simplified version:
   useEffect(() => {
     if (agreementsWithSecuredFunds) {
       console.log(
@@ -386,10 +356,20 @@ export default function Escrow() {
         .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
         .map(transformApiAgreementToEscrow);
 
-      console.log("📊 Transformed escrow agreements:", escrowAgreements);
-      setEscrows(escrowAgreements);
+      console.log(
+        "📊 Transformed escrow agreements (API status only):",
+        escrowAgreements,
+      );
+
+      // Set escrows directly without on-chain merging
+      setEscrowsWithOnChainData(escrowAgreements);
     }
   }, [agreementsWithSecuredFunds]);
+
+  // Remove the useOnChainAgreementData hook call and the useEffect that merges on-chain data
+  // Replace these lines:
+  // const { onChainData } = useOnChainAgreementData(...);
+  // useEffect(() => { ... }, [escrowAgreements, onChainData]);
 
   // Also handle loading and error states
   useEffect(() => {
@@ -511,108 +491,7 @@ export default function Escrow() {
     OnChainEscrowData[]
   >([]);
 
-  // Extract on-chain IDs from agreements
-  // const agreementIds = useMemo(() => {
-  //   if (!agreementsWithSecuredFunds) return [];
-  //   return agreementsWithSecuredFunds
-  //     .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
-  //     .map((agreement: any) => agreement.description || "");
-  // }, [agreementsWithSecuredFunds]);
-
-  // Filter and transform escrow agreements
-  const escrowAgreements = useMemo(() => {
-    if (!agreementsWithSecuredFunds) return [];
-
-    return agreementsWithSecuredFunds
-      .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
-      .map(transformApiAgreementToEscrow);
-  }, [agreementsWithSecuredFunds]);
-
-  const { onChainData } = useOnChainAgreementData(
-    agreementsWithSecuredFunds?.filter(
-      (agreement: any) => agreement.type === AgreementTypeEnum.ESCROW,
-    ) || [],
-  );
-
-  // Merge API data with on-chain data
-  // Merge API data with on-chain data
-  useEffect(() => {
-    if (escrowAgreements.length > 0) {
-      console.log("📥 Loaded escrow agreements:", escrowAgreements);
-
-      // If we have on-chain data, merge it
-      if (onChainData && onChainData.length > 0) {
-        console.log("📦 On-chain data received:", onChainData);
-
-        const mergedEscrows = escrowAgreements.map((escrow, index) => {
-          const onChainAgreement = onChainData[index];
-
-          if (onChainAgreement && onChainAgreement.status === "success") {
-            const agreementData = [
-              ...(onChainAgreement.result as readonly any[]),
-            ];
-
-            console.log(
-              `🔗 Merging on-chain data for escrow ${escrow.id}:`,
-              agreementData,
-            );
-
-            // Map the array indices to meaningful properties
-            const onChainStatus = mapOnChainStatusFromArray(agreementData);
-
-            return {
-              ...escrow,
-              // Override the status with on-chain status when available
-              status: onChainStatus,
-              onChainStatus: onChainStatus,
-              onChainAmount: agreementData[5]?.toString(), // amount
-              onChainDeadline: Number(agreementData[8]), // deadline
-              onChainParties: {
-                serviceProvider: agreementData[2], // serviceProvider
-                serviceRecipient: agreementData[3], // serviceRecipient
-              },
-              onChainToken: agreementData[4], // token
-              isOnChainActive:
-                agreementData[15] === true && agreementData[14] === true, // signed and funded
-              isFunded: agreementData[14] === true, // funded
-              isSigned: agreementData[15] === true, // signed
-              isCompleted: agreementData[18] === true, // completed
-              isDisputed: agreementData[19] === true, // disputed
-              isCancelled: agreementData[21] === true, // orderCancelled
-              lastUpdated: Date.now(),
-            };
-          }
-
-          return escrow;
-        });
-
-        console.log("✅ Merged escrows:", mergedEscrows);
-        setEscrowsWithOnChainData(mergedEscrows);
-      } else {
-        console.log("⚠️ No on-chain data available, using API data only");
-        setEscrowsWithOnChainData(escrowAgreements);
-      }
-    }
-  }, [escrowAgreements, onChainData]);
-
-  // Enhanced status mapping for on-chain agreements
-  const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
-    if (!agreementData || !Array.isArray(agreementData)) return "pending";
-
-    if (agreementData[18]) return "completed";
-    if (agreementData[19]) return "disputed";
-    if (agreementData[21]) return "cancelled";
-    if (agreementData[23]) return "pending_approval";
-    if (agreementData[15] && agreementData[16] && agreementData[17]) {
-      return "signed";
-    }
-    if (agreementData[15]) return "pending_delivery";
-
-    return "pending";
-  };
-
   // Simplified listing logic - now status field contains on-chain data when available
-  // Update the listed filter logic to include "all"
   const listed = escrowsWithOnChainData
     .filter((e) => e.type === "public")
     .filter((e) => {
@@ -623,8 +502,6 @@ export default function Escrow() {
           return e.status === "pending";
         case "signed":
           return e.status === "signed";
-        case "pending_delivery":
-          return e.status === "pending_delivery";
         case "pending_approval":
           return e.status === "pending_approval";
         case "completed":
@@ -633,6 +510,8 @@ export default function Escrow() {
           return e.status === "disputed";
         case "cancelled":
           return e.status === "cancelled";
+        case "expired": // Add expired case
+          return e.status === "expired";
         default:
           return true;
       }
@@ -1809,55 +1688,55 @@ Created: ${new Date().toISOString()}
   //   );
   // };
 
-  const DebugOnChainData = () => {
-    if (!onChainData) return null;
+  // const DebugOnChainData = () => {
+  //   if (!onChainData) return null;
 
-    return (
-      <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-        <h3 className="font-semibold text-yellow-300">Debug: On-Chain Data</h3>
-        <div className="mt-2 text-xs text-yellow-200/70">
-          Contracts queried: {onChainData.length}
-        </div>
-        <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
-          {onChainData.map((item, index) => (
-            <div
-              key={index}
-              className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
-            >
-              <div>
-                <strong>Status:</strong> {item.status}
-              </div>
-              {item.status === "success" &&
-                item.result &&
-                Array.isArray(item.result) && (
-                  <>
-                    <div>
-                      <strong>ID:</strong>{" "}
-                      {(item.result[0] as bigint)?.toString()}
-                    </div>
-                    <div>
-                      <strong>Funded:</strong> {item.result[14]?.toString()}
-                    </div>
-                    <div>
-                      <strong>Signed:</strong> {item.result[15]?.toString()}
-                    </div>
-                    <div>
-                      <strong>Completed:</strong> {item.result[18]?.toString()}
-                    </div>
-                    <div>
-                      <strong>Disputed:</strong> {item.result[19]?.toString()}
-                    </div>
-                    <div>
-                      <strong>Cancelled:</strong> {item.result[21]?.toString()}
-                    </div>
-                  </>
-                )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  //   return (
+  //     <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+  //       <h3 className="font-semibold text-yellow-300">Debug: On-Chain Data</h3>
+  //       <div className="mt-2 text-xs text-yellow-200/70">
+  //         Contracts queried: {onChainData.length}
+  //       </div>
+  //       <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+  //         {onChainData.map((item, index) => (
+  //           <div
+  //             key={index}
+  //             className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
+  //           >
+  //             <div>
+  //               <strong>Status:</strong> {item.status}
+  //             </div>
+  //             {item.status === "success" &&
+  //               item.result &&
+  //               Array.isArray(item.result) && (
+  //                 <>
+  //                   <div>
+  //                     <strong>ID:</strong>{" "}
+  //                     {(item.result[0] as bigint)?.toString()}
+  //                   </div>
+  //                   <div>
+  //                     <strong>Funded:</strong> {item.result[14]?.toString()}
+  //                   </div>
+  //                   <div>
+  //                     <strong>Signed:</strong> {item.result[15]?.toString()}
+  //                   </div>
+  //                   <div>
+  //                     <strong>Completed:</strong> {item.result[18]?.toString()}
+  //                   </div>
+  //                   <div>
+  //                     <strong>Disputed:</strong> {item.result[19]?.toString()}
+  //                   </div>
+  //                   <div>
+  //                     <strong>Cancelled:</strong> {item.result[21]?.toString()}
+  //                   </div>
+  //                 </>
+  //               )}
+  //           </div>
+  //         ))}
+  //       </div>
+  //     </div>
+  //   );
+  // };
 
   // Add <DebugAgreementInfo /> temporarily to your JSX to see what agreements are available
 
@@ -2001,6 +1880,12 @@ Created: ${new Date().toISOString()}
                         placeholder="e.g. Website Design & Development"
                         required
                       />
+                      {/* Add validation message under title */}
+                      {!form.title.trim() && (
+                        <div className="mt-1 text-xs text-red-400">
+                          Please enter a title
+                        </div>
+                      )}
                     </div>
 
                     {/* Type and Payer */}
@@ -2048,6 +1933,11 @@ Created: ${new Date().toISOString()}
                             ))}
                           </div>
                         )}
+                        {!form.type && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please select escrow type
+                          </div>
+                        )}
                       </div>
 
                       {/* Who Pays based on escrow type */}
@@ -2078,6 +1968,26 @@ Created: ${new Date().toISOString()}
                                 {p === "me" ? "Me" : "Counterparty"}
                               </label>
                             ))}
+                          </div>
+                          {!form.payer && (
+                            <div className="mt-1 text-xs text-red-400">
+                              Please select who pays
+                            </div>
+                          )}
+                          {/* ADD THIS: Info note about service provider not being payer */}
+                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
+                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
+                            <p className="text-xs text-cyan-300/80">
+                              The payer is the{" "}
+                              <span className="font-medium">
+                                service recipient
+                              </span>{" "}
+                              who funds the escrow. The{" "}
+                              <span className="font-medium">
+                                service provider
+                              </span>{" "}
+                              (who receives funds) cannot be the payer.
+                            </p>
                           </div>
                         </div>
                       ) : (
@@ -2110,10 +2020,32 @@ Created: ${new Date().toISOString()}
                               </label>
                             ))}
                           </div>
+                          {!form.payerOther && (
+                            <div className="mt-1 text-xs text-red-400">
+                              Please select who pays
+                            </div>
+                          )}
+
+                          {/* ADD THIS: Info note about service provider not being payer for "Two Other Parties" */}
+                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
+                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
+                            <p className="text-xs text-cyan-300/80">
+                              The payer is the{" "}
+                              <span className="font-medium">
+                                service recipient
+                              </span>{" "}
+                              who funds the escrow. The{" "}
+                              <span className="font-medium">
+                                service provider
+                              </span>{" "}
+                              (who receives funds) cannot be the payer.
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
 
+                    {/* Parties based on escrow type */}
                     {/* Parties based on escrow type */}
                     {escrowType === "myself" ? (
                       <div>
@@ -2129,6 +2061,29 @@ Created: ${new Date().toISOString()}
                           placeholder="@0xHandle or address"
                           required
                         />
+                        {!form.counterparty.trim() && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please enter counterparty's information
+                          </div>
+                        )}
+                        {/* ADD THIS: Clear role explanation */}
+                        {/* <div className="mt-2 flex items-center gap-2">
+                          <div className="text-xs text-cyan-300/70">
+                            <span className="font-medium text-cyan-200">
+                              Service Provider:
+                            </span>{" "}
+                            {form.payer === "me" ? form.counterparty : "You"}{" "}
+                            (receives funds)
+                          </div>
+                          <div className="text-xs text-cyan-300/70">•</div>
+                          <div className="text-xs text-cyan-300/70">
+                            <span className="font-medium text-cyan-200">
+                              Service Recipient:
+                            </span>{" "}
+                            {form.payer === "me" ? "You" : form.counterparty}{" "}
+                            (pays funds)
+                          </div>
+                        </div> */}
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
@@ -2145,6 +2100,11 @@ Created: ${new Date().toISOString()}
                             placeholder="@0xHandle or address"
                             required
                           />
+                          {!form.partyA.trim() && (
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter first party's information
+                            </div>
+                          )}
                         </div>
                         <div>
                           <label className="text-muted-foreground mb-2 block text-sm">
@@ -2159,7 +2119,42 @@ Created: ${new Date().toISOString()}
                             placeholder="@0xHandle or address"
                             required
                           />
+
+                          {!form.partyB.trim() && (
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter second party's information
+                            </div>
+                          )}
                         </div>
+                        {/* ADD THIS: Clear role explanation for "Two Other Parties" */}
+                        {/* <div className="col-span-2 mt-2 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
+                            <div className="font-medium text-cyan-200">
+                              Service Provider
+                            </div>
+                            <div className="text-cyan-300/70">
+                              {form.payerOther === "partyA"
+                                ? form.partyB
+                                : form.partyA}
+                            </div>
+                            <div className="mt-1 text-cyan-300/60">
+                              Receives funds
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
+                            <div className="font-medium text-cyan-200">
+                              Service Recipient
+                            </div>
+                            <div className="text-cyan-300/70">
+                              {form.payerOther === "partyA"
+                                ? form.partyA
+                                : form.partyB}
+                            </div>
+                            <div className="mt-1 text-cyan-300/60">
+                              Pays funds
+                            </div>
+                          </div>
+                        </div> */}
                       </div>
                     )}
 
@@ -2233,6 +2228,18 @@ Created: ${new Date().toISOString()}
                             />
                           </div>
                         )}
+
+                        {form.token === "custom" &&
+                          !form.customTokenAddress.trim() && (
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter custom token address
+                            </div>
+                          )}
+                        {!form.token && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please select payment token
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -2251,6 +2258,13 @@ Created: ${new Date().toISOString()}
                           step="0.01"
                           required
                         />
+                        {(!form.amount.trim() ||
+                          isNaN(Number(form.amount)) ||
+                          Number(form.amount) <= 0) && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please enter a valid amount
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2269,6 +2283,11 @@ Created: ${new Date().toISOString()}
                         placeholder="Describe deliverables, expectations, and terms"
                         required
                       />
+                      {!form.description.trim() && (
+                        <div className="mt-1 text-xs text-red-400">
+                          Please enter a description
+                        </div>
+                      )}
                     </div>
 
                     {/* Evidence Upload */}
@@ -2426,6 +2445,11 @@ Created: ${new Date().toISOString()}
                           minDate={new Date()}
                           required
                         />
+                        {!deadline && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please select a deadline
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2434,6 +2458,37 @@ Created: ${new Date().toISOString()}
                         <StatusMessages />
                       </div>
                     )}
+
+                    {/* Add this at the end of the form, before the buttons */}
+                    <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                        <div>
+                          <h4 className="text-sm font-medium text-blue-300">
+                            Understanding Escrow Roles
+                          </h4>
+                          <ul className="mt-1 space-y-1 text-xs text-blue-300/80">
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Provider:
+                              </span>{" "}
+                              Receives funds, delivers work/service
+                            </li>
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Recipient:
+                              </span>{" "}
+                              Pays funds into escrow, receives work/service
+                            </li>
+                            <li className="flex items-center gap-1 text-blue-200">
+                              <span className="font-medium">⚠️ Important:</span>{" "}
+                              The same party cannot be both provider and
+                              recipient
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
 
                     {/* Buttons */}
                     <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
@@ -2539,94 +2594,93 @@ Created: ${new Date().toISOString()}
 
           <aside className="space-y-4">
             {/* Custom Filter Component */}
-            <div className="mt-4 rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-transparent p-4 ring-1 ring-white/10 backdrop-blur-sm lg:mt-0">
-              <div className="mb-3 flex items-center justify-between"></div>
 
-              {/* Custom Filter Tabs */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  {
-                    value: "all",
-                    label: "All",
-                    count: escrowsWithOnChainData.length,
-                  },
-                  {
-                    value: "pending",
-                    label: "Pending",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending",
-                    ).length,
-                  },
-                  {
-                    value: "signed",
-                    label: "Signed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "signed",
-                    ).length,
-                  },
-                  {
-                    value: "pending_delivery",
-                    label: "Delivery",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending_delivery",
-                    ).length,
-                  },
-                  {
-                    value: "pending_approval",
-                    label: "Approval",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "pending_approval",
-                    ).length,
-                  },
-                  {
-                    value: "completed",
-                    label: "Completed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "completed",
-                    ).length,
-                  },
-                  {
-                    value: "disputed",
-                    label: "Disputed",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "disputed",
-                    ).length,
-                  },
-                  {
-                    value: "cancelled",
-                    label: "Cancelled",
-                    count: escrowsWithOnChainData.filter(
-                      (e) => e.status === "cancelled",
-                    ).length,
-                  },
-                ].map((tab) => (
-                  <button
-                    key={tab.value}
-                    onClick={() => setStatusTab(tab.value)}
-                    className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+            <div className="mb-3 flex items-center justify-between"></div>
+
+            {/* Custom Filter Tabs */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                {
+                  value: "all",
+                  label: "All",
+                  count: escrowsWithOnChainData.length,
+                },
+                {
+                  value: "pending",
+                  label: "Pending",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "pending",
+                  ).length,
+                },
+                {
+                  value: "signed",
+                  label: "Signed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "signed",
+                  ).length,
+                },
+                {
+                  value: "pending_approval",
+                  label: "Pending Approval",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "pending_approval",
+                  ).length,
+                },
+                {
+                  value: "completed",
+                  label: "Completed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "completed",
+                  ).length,
+                },
+                {
+                  value: "disputed",
+                  label: "Disputed",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "disputed",
+                  ).length,
+                },
+                {
+                  value: "cancelled",
+                  label: "Cancelled",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "cancelled",
+                  ).length,
+                },
+                {
+                  value: "expired", // Add expired filter
+                  label: "Expired",
+                  count: escrowsWithOnChainData.filter(
+                    (e) => e.status === "expired",
+                  ).length,
+                },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  onClick={() => setStatusTab(tab.value)}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                    statusTab === tab.value
+                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                  } `}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
                       statusTab === tab.value
-                        ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                        : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                        ? "bg-cyan-400/30 text-cyan-200"
+                        : "bg-white/10 text-white/60"
                     } `}
                   >
-                    <span>{tab.label}</span>
-                    <span
-                      className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                        statusTab === tab.value
-                          ? "bg-cyan-400/30 text-cyan-200"
-                          : "bg-white/10 text-white/60"
-                      } `}
-                    >
-                      {tab.count}
-                    </span>
+                    {tab.count}
+                  </span>
 
-                    {/* Active indicator dot */}
-                    {statusTab === tab.value && (
-                      <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                  {/* Active indicator dot */}
+                  {statusTab === tab.value && (
+                    <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
+                  )}
+                </button>
+              ))}
             </div>
           </aside>
         </div>
@@ -2703,10 +2757,12 @@ Created: ${new Date().toISOString()}
                 key={e.id}
                 className="web3-corner-border group relative rounded-3xl p-[2px]"
               >
-                <div className="h-fit rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
+                <div className="flex h-full flex-col rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
                   <div>
-                    <div className="text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
-                      {e.title}
+                    <div className="mb-4 min-h-[3.5rem]">
+                      <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+                        {e.title}
+                      </h3>
                     </div>
 
                     <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -2732,46 +2788,32 @@ Created: ${new Date().toISOString()}
                       <div className="flex flex-col gap-2">
                         <div className="text-muted-foreground">Status</div>
                         <div className="flex flex-col gap-1">
-                          {/* Primary status - prioritize on-chain status */}
+                          {/* Use only API status - no on-chain status */}
                           <div>
-                            {(() => {
-                              // Use on-chain status as primary, fallback to API status
-                              const displayStatus =
-                                e.onChainStatus && e.onChainStatus !== "unknown"
-                                  ? e.onChainStatus
-                                  : e.status;
-
-                              return (
-                                <span
-                                  className={`badge ${
-                                    displayStatus === "pending"
-                                      ? "badge-orange"
-                                      : displayStatus === "completed"
+                            <span
+                              className={`badge w-fit ${
+                                e.status === "pending"
+                                  ? "badge-yellow"
+                                  : e.status === "signed"
+                                    ? "badge-blue"
+                                    : e.status === "pending_approval"
+                                      ? "badge-orange" // Use purple for pending approval to differentiate
+                                      : e.status === "completed"
                                         ? "badge-green"
-                                        : displayStatus === "disputed"
-                                          ? "badge-purple"
-                                          : displayStatus === "signed"
-                                            ? "badge-blue"
-                                            : displayStatus === "cancelled"
-                                              ? "badge-red"
-                                              : displayStatus ===
-                                                  "pending_approval"
-                                                ? "badge-purple" // Using purple for pending_approval to match your pattern
-                                                : displayStatus ===
-                                                    "pending_delivery"
-                                                  ? "badge-orange" // Using orange for pending_delivery to match your pattern
-                                                  : "badge-orange" // Default to orange for any other status
-                                  }`}
-                                >
-                                  {displayStatus === "pending_approval"
-                                    ? "Pending Approval"
-                                    : displayStatus === "pending_delivery"
-                                      ? "Pending Delivery"
-                                      : displayStatus.charAt(0).toUpperCase() +
-                                        displayStatus.slice(1)}
-                                </span>
-                              );
-                            })()}
+                                        : e.status === "disputed"
+                                          ? "badge-purple" // Also purple for disputed
+                                          : e.status === "cancelled"
+                                            ? "badge-red"
+                                            : e.status === "expired"
+                                              ? "badge-gray" // Gray for expired
+                                              : "badge-orange" // Default fallback
+                              }`}
+                            >
+                              {e.status === "pending_approval"
+                                ? "Pending Approval"
+                                : e.status.charAt(0).toUpperCase() +
+                                  e.status.slice(1)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -2781,9 +2823,11 @@ Created: ${new Date().toISOString()}
                     {/* On-chain indicators */}
                   </div>
 
-                  <p className="text-muted-foreground mt-3 line-clamp-2 text-sm">
-                    {e.description}
-                  </p>
+                  <div className="mt-3 min-h-[2.5rem]">
+                    <p className="line-clamp-2 text-sm text-gray-300/70">
+                      {e.description}
+                    </p>
+                  </div>
 
                   <div className="mt-4 flex items-center justify-between">
                     <div className="text-muted-foreground text-xs">
@@ -2812,7 +2856,6 @@ Created: ${new Date().toISOString()}
           </div>
         )}
       </div>
-      <DebugOnChainData />
     </div>
   );
 }

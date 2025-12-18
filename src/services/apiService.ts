@@ -227,17 +227,49 @@ class ApiService {
     }
   }
 
+  // async getAllUsers(): Promise<AccountSummaryDTO[]> {
+  //   try {
+  //     const response = await this.request<any[]>({
+  //       method: "GET",
+  //       url: "/accounts",
+  //     });
+
+  //     return response.map((user) => this.transformToAccountSummaryDTO(user));
+  //   } catch (error) {
+  //     console.error("🔐 [API] Error getting all users:", error);
+  //     throw new Error("Failed to fetch users list");
+  //   }
+  // }
+
   async getAllUsers(): Promise<AccountSummaryDTO[]> {
     try {
-      const response = await this.request<any[]>({
+      const response = await this.request<any>({
         method: "GET",
         url: "/accounts",
       });
 
-      return response.map((user) => this.transformToAccountSummaryDTO(user));
+      console.log("🔐 [API] Raw getAllUsers response:", response);
+
+      let users: any[] = [];
+
+      // Based on your console output, the response has an 'accounts' property
+      if (response && response.accounts && Array.isArray(response.accounts)) {
+        users = response.accounts;
+        console.log(`🔐 [API] Found ${users.length} users in 'accounts' array`);
+      } else if (Array.isArray(response)) {
+        // Fallback: direct array response
+        users = response;
+        console.log(`🔐 [API] Found ${users.length} users in direct array`);
+      } else {
+        console.warn("🔐 [API] Unexpected users response format:", response);
+        return [];
+      }
+
+      // Transform to AccountSummaryDTO
+      return users.map((user) => this.transformToAccountSummaryDTO(user));
     } catch (error) {
       console.error("🔐 [API] Error getting all users:", error);
-      throw new Error("Failed to fetch users list");
+      return []; // Return empty array on error
     }
   }
 
@@ -276,6 +308,42 @@ class ApiService {
       throw new Error(`User with ID ${userId} not found`);
     }
   }
+
+  // Add to ApiService class in apiService.ts
+  // Add this method to ApiService class
+  async getUserByWalletAddress(
+    walletAddress: string,
+  ): Promise<AccountSummaryDTO> {
+    try {
+      console.log(
+        `🔐 [API] Looking up user by wallet address: ${walletAddress}`,
+      );
+
+      // Since there's no direct endpoint, fetch all users and search
+      const allUsers = await this.getAllUsers();
+
+      console.log(
+        `🔐 [API] Searching ${allUsers.length} users for wallet: ${walletAddress}`,
+      );
+
+      // Find user with matching wallet address (case-insensitive)
+      const user = allUsers.find((u) => {
+        if (!u.walletAddress) return false;
+        return u.walletAddress.toLowerCase() === walletAddress.toLowerCase();
+      });
+
+      if (!user) {
+        throw new Error(`User with wallet address ${walletAddress} not found`);
+      }
+
+      console.log(`🔐 [API] Found user:`, user);
+      return user;
+    } catch (error) {
+      console.error("🔐 [API] Error getting user by wallet address:", error);
+      throw error; // Re-throw the error
+    }
+  }
+
   // Helper function to transform any user object to AccountSummaryDTO
   private transformToAccountSummaryDTO(userData: any): AccountSummaryDTO {
     return {

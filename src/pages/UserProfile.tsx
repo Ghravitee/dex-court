@@ -25,22 +25,18 @@ import TrustMeter from "../components/TrustMeter";
 import useTrustScore from "../hooks/useTrustScore";
 // ADD THIS IMPORT
 import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
-import { useChainId, useContractReads } from "wagmi";
-import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
+
 import { cleanTelegramUsername } from "../lib/usernameUtils";
 
 // Add AgreementStatusBadge component (same as in Profile)
-// Replace the existing AgreementStatusBadge component with this enhanced version
 const AgreementStatusBadge = ({
   status,
-  agreement,
 }: {
   status: number;
-  agreement?: any;
+  agreement?: any; // Keep for compatibility but don't use
 }) => {
-  // Use on-chain status if available, otherwise use API status
-  const displayStatus =
-    agreement?.onChainStatus || mapAgreementStatusToEscrow(status);
+  // Use ONLY API status
+  const displayStatus = mapAgreementStatusToEscrow(status);
 
   const statusConfig = {
     pending: {
@@ -63,14 +59,20 @@ const AgreementStatusBadge = ({
       label: "Cancelled",
       color: "bg-red-500/20 text-red-300 border-red-400/30",
     },
-    pending_delivery: {
-      label: "Pending Delivery",
-      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    expired: {
+      // Add expired status
+      label: "Expired",
+      color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
     },
     pending_approval: {
       label: "Pending Approval",
-      color: "bg-purple-500/20 text-purple-300 border-purple-400/30",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
+    // Optionally keep if needed elsewhere
+    // pending_delivery: {
+    //   label: "Pending Delivery",
+    //   color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    // },
   };
 
   const config = statusConfig[displayStatus as keyof typeof statusConfig] || {
@@ -80,7 +82,8 @@ const AgreementStatusBadge = ({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color}`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color} max-w-[80px] truncate`}
+      title={config.label} // Add tooltip with full text
     >
       {config.label}
     </span>
@@ -141,12 +144,12 @@ const RoleBadge = ({
   );
 };
 
-// Add these types near the top with your other types
 type EscrowStatus =
   | "pending"
   | "signed"
   | "completed"
   | "cancelled"
+  | "expired" // Add expired status
   | "disputed"
   | "pending_approval"
   | "pending_delivery";
@@ -165,63 +168,29 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
     case 5:
       return "cancelled";
     case 6:
-      return "cancelled";
+      return "expired";
     case 7:
-      return "pending_delivery";
+      return "pending_approval";
     default:
       return "pending";
   }
 };
 
-// Enhanced status mapping from on-chain data
-const mapOnChainStatusFromArray = (agreementData: any[]): EscrowStatus => {
-  if (!agreementData || !Array.isArray(agreementData)) return "pending";
+// Helper function to format handle (username or wallet address)
+// Helper function to format handle (username or wallet address)
+const formatHandle = (handle: string | null | undefined): string => {
+  if (!handle) return "Unknown User";
 
-  if (agreementData[18]) return "completed";
-  if (agreementData[19]) return "disputed";
-  if (agreementData[21]) return "cancelled";
-  if (agreementData[23]) return "pending_approval";
-  if (agreementData[15] && agreementData[16] && agreementData[17]) {
-    return "signed";
+  // Remove @ prefix if present for checking
+  const cleanHandle = handle.replace(/^@/, "");
+
+  // Check if it's a wallet address (0x + 40 hex chars)
+  if (/^0x[a-fA-F0-9]{40}$/.test(cleanHandle)) {
+    return `${cleanHandle.slice(0, 6)}…${cleanHandle.slice(-4)}`;
   }
-  if (agreementData[15]) return "pending_delivery";
 
-  return "pending";
-};
-
-// Custom hook to fetch on-chain data for agreements
-const useOnChainAgreementData = (agreements: any[]) => {
-  const chainId = useChainId();
-  const contractAddress =
-    (chainId && ESCROW_CA[chainId as number]) || undefined;
-
-  // Create contract calls for each agreement that has a contractAgreementId
-  const contracts = useMemo(() => {
-    return agreements
-      .filter((agreement) => {
-        const contractAgreementId = agreement.contractAgreementId;
-        return contractAgreementId && contractAddress;
-      })
-      .map((agreement) => {
-        const contractAgreementId = agreement.contractAgreementId;
-        return {
-          address: contractAddress as `0x${string}`,
-          abi: ESCROW_ABI.abi,
-          functionName: "getAgreement" as const,
-          args: [BigInt(contractAgreementId)],
-        };
-      });
-  }, [agreements, contractAddress]);
-
-  // Fetch on-chain data
-  const { data: onChainData, isLoading } = useContractReads({
-    contracts,
-    query: {
-      enabled: contracts.length > 0,
-    },
-  });
-
-  return { onChainData, isLoading };
+  // Otherwise, return the handle as-is (with @ if it was originally there)
+  return handle.startsWith("@") ? handle : `@${handle}`;
 };
 
 export default function UserProfile() {
@@ -259,7 +228,6 @@ export default function UserProfile() {
     hasSecuredFunds: true,
   });
 
-  // Add this transform function (similar to Profile.tsx)
   const transformApiAgreementToEscrow = (apiAgreement: any) => {
     // Extract from on-chain metadata in description
     const extractServiceProviderFromDescription = (
@@ -313,6 +281,7 @@ export default function UserProfile() {
       to: finalServiceProvider,
       token: apiAgreement.tokenSymbol || "ETH",
       amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+      // Use ONLY API status
       status: mapAgreementStatusToEscrow(apiAgreement.status),
       deadline: apiAgreement.deadline
         ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
@@ -325,6 +294,8 @@ export default function UserProfile() {
       contractAgreementId: apiAgreement.contractAgreementId,
       firstParty: apiAgreement.firstParty,
       counterParty: apiAgreement.counterParty,
+      // Add API status number for reference
+      apiStatus: apiAgreement.status, // Add this line
     };
   };
 
@@ -337,62 +308,11 @@ export default function UserProfile() {
       .map(transformApiAgreementToEscrow);
   }, [agreementsWithSecuredFunds]);
 
-  // Fetch on-chain data for escrow agreements
-  const { onChainData } = useOnChainAgreementData(escrowAgreements);
-
-  // Merge API data with on-chain data for escrow deals
-  const escrowDealsWithOnChainData = useMemo(() => {
-    if (escrowAgreements.length === 0) return [];
-
-    // If we have on-chain data, merge it
-    if (onChainData && onChainData.length > 0) {
-      return escrowAgreements.map((escrow, index) => {
-        const onChainAgreement = onChainData[index];
-
-        if (onChainAgreement && onChainAgreement.status === "success") {
-          const agreementData = [
-            ...(onChainAgreement.result as readonly any[]),
-          ];
-
-          const onChainStatus = mapOnChainStatusFromArray(agreementData);
-
-          return {
-            ...escrow,
-            // Override the status with on-chain status when available
-            status: onChainStatus,
-            onChainStatus: onChainStatus,
-            onChainAmount: agreementData[5]?.toString(),
-            onChainDeadline: Number(agreementData[8]),
-            onChainParties: {
-              serviceProvider: agreementData[2],
-              serviceRecipient: agreementData[3],
-            },
-            onChainToken: agreementData[4],
-            isOnChainActive:
-              agreementData[15] === true && agreementData[14] === true,
-            isFunded: agreementData[14] === true,
-            isSigned: agreementData[15] === true,
-            isCompleted: agreementData[18] === true,
-            isDisputed: agreementData[19] === true,
-            isCancelled: agreementData[21] === true,
-            deliverySubmitted: agreementData[16] === true,
-            lastUpdated: Date.now(),
-          };
-        }
-
-        return escrow;
-      });
-    }
-
-    // Fallback to API data only
-    return escrowAgreements;
-  }, [escrowAgreements, onChainData]);
-
-  // Memoized escrow deals calculation - FILTER FOR CURRENT USER PROFILE
   const escrowDeals = useMemo(() => {
-    if (!escrowDealsWithOnChainData || !user?.id) return [];
+    if (!escrowAgreements || !user?.id) return [];
 
-    return escrowDealsWithOnChainData.filter((agreement: any) => {
+    // Filter agreements where user is involved
+    return escrowAgreements.filter((agreement: any) => {
       const userId = user.id.toString();
 
       // Handle different possible party structures
@@ -417,23 +337,32 @@ export default function UserProfile() {
         counterPartyWallet === userWallet
       );
     });
-  }, [escrowDealsWithOnChainData, user?.id, user?.walletAddress]);
+  }, [escrowAgreements, user?.id, user?.walletAddress]);
 
   // Memoized escrow stats
   const escrowStats = useMemo(
     () => ({
       total: escrowDeals.length,
       active: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "signed" || agreement.status === 2,
+        (agreement: any) => agreement.status === "signed",
       ).length,
       completed: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "completed" || agreement.status === 3,
+        (agreement: any) => agreement.status === "completed",
       ).length,
       disputed: escrowDeals.filter(
-        (agreement: any) =>
-          agreement.status === "disputed" || agreement.status === 4,
+        (agreement: any) => agreement.status === "disputed",
+      ).length,
+      pending: escrowDeals.filter(
+        (agreement: any) => agreement.status === "pending",
+      ).length,
+      pending_approval: escrowDeals.filter(
+        (agreement: any) => agreement.status === "pending_approval",
+      ).length,
+      expired: escrowDeals.filter(
+        (agreement: any) => agreement.status === "expired",
+      ).length,
+      cancelled: escrowDeals.filter(
+        (agreement: any) => agreement.status === "cancelled",
       ).length,
     }),
     [escrowDeals],
@@ -690,30 +619,54 @@ export default function UserProfile() {
           const apiUser = await apiService.getMyAccount();
           userData = mapApiUserToUser(apiUser);
         } else {
-          // Clean the handle (remove @ symbol)
+          // Clean the handle (remove @ symbol if present)
           const cleanHandle = decodedHandle.replace(/^@/, "");
 
-          console.log(`🔐 Loading other user by username: "${cleanHandle}"`);
-          try {
-            // Use the new username endpoint
-            const apiUser = await apiService.getUserByUsername(cleanHandle);
-            userData = mapApiUserToUser(apiUser);
-          } catch (usernameError) {
-            console.log("🔐 Username lookup failed:", usernameError);
+          // Check if the handle looks like a wallet address (0x + 40 hex chars)
+          const isWalletAddress = /^0x[a-fA-F0-9]{40}$/.test(cleanHandle);
+          const isNumericId = !isNaN(Number(cleanHandle));
 
-            // If username lookup fails, try ID as fallback
-            if (!isNaN(Number(cleanHandle))) {
+          if (isWalletAddress) {
+            console.log(
+              `🔐 Handle appears to be wallet address: ${cleanHandle}`,
+            );
+
+            try {
+              // Use the new wallet address lookup method
+              const apiUser =
+                await apiService.getUserByWalletAddress(cleanHandle);
+              userData = mapApiUserToUser(apiUser);
+            } catch (walletError) {
+              console.log("🔐 Wallet address lookup failed:", walletError);
+
+              // If wallet lookup fails, check if there's a user with wallet address as username
               try {
-                const apiUser = await apiService.getUserById(cleanHandle);
+                // Some users might have wallet address as username (like user ID 28)
+                const apiUser = await apiService.getUserByUsername(cleanHandle);
                 userData = mapApiUserToUser(apiUser);
-              } catch (idError) {
-                console.error(
-                  "🔐 Both username and ID lookup failed:",
-                  idError,
+              } catch (usernameError) {
+                console.log("🔐 Username lookup also failed:", usernameError);
+                throw new Error(
+                  `User with wallet address ${cleanHandle} not found`,
                 );
-                throw new Error(`User "${cleanHandle}" not found`);
               }
-            } else {
+            }
+          } else if (isNumericId) {
+            console.log(`🔐 Handle appears to be numeric ID: ${cleanHandle}`);
+            try {
+              const apiUser = await apiService.getUserById(cleanHandle);
+              userData = mapApiUserToUser(apiUser);
+            } catch (idError) {
+              console.log("🔐 ID lookup failed:", idError);
+              throw new Error(`User with ID ${cleanHandle} not found`);
+            }
+          } else {
+            console.log(`🔐 Handle appears to be username: ${cleanHandle}`);
+            try {
+              const apiUser = await apiService.getUserByUsername(cleanHandle);
+              userData = mapApiUserToUser(apiUser);
+            } catch (usernameError) {
+              console.log("🔐 Username lookup failed:", usernameError);
               throw new Error(`User "${cleanHandle}" not found`);
             }
           }
@@ -747,19 +700,17 @@ export default function UserProfile() {
       agreementsWithSecuredFunds,
     );
     console.log("🔍 UserProfile Debug - escrowAgreements:", escrowAgreements);
-    console.log(
-      "🔍 UserProfile Debug - escrowDealsWithOnChainData:",
-      escrowDealsWithOnChainData,
-    );
     console.log("🔍 UserProfile Debug - escrowDeals:", escrowDeals);
-    console.log("🔍 UserProfile Debug - onChainData:", onChainData);
-  }, [
-    agreementsWithSecuredFunds,
-    escrowAgreements,
-    escrowDealsWithOnChainData,
-    escrowDeals,
-    onChainData,
-  ]);
+    console.log(
+      "🔍 UserProfile Debug - API Status Samples:",
+      escrowDeals.map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        apiStatus: d.apiStatus,
+        status: d.status,
+      })),
+    );
+  }, [agreementsWithSecuredFunds, escrowAgreements, escrowDeals]);
 
   // Calculate agreement stats from real data
   // Add this memo to filter out escrow agreements from regular agreements
@@ -845,8 +796,14 @@ export default function UserProfile() {
               <div>
                 <p>User {handle} was not found.</p>
                 <p className="mt-2 text-sm">
-                  Make sure you're using the correct username or user ID.
+                  Make sure you're using one of these formats:
                 </p>
+                <ul className="mt-2 text-sm text-cyan-300">
+                  <li>• Username: /profile/username</li>
+                  <li>• Telegram: /profile/@telegramUsername</li>
+                  <li>• User ID: /profile/123</li>
+                  <li>• Wallet: /profile/0x123...abc</li>
+                </ul>
               </div>
             ) : (
               <div>
@@ -858,10 +815,12 @@ export default function UserProfile() {
                     {currentUser?.telegram?.username || currentUser?.username}
                   </p>
                   <p>• Your profile by ID: /profile/{currentUser?.id}</p>
-                  <p>
-                    • Other users: /profile/[telegram-username] or
-                    /profile/[user-id]
-                  </p>
+                  {currentUser?.walletAddress && (
+                    <p>
+                      • Your profile by wallet: /profile/
+                      {currentUser.walletAddress}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -876,7 +835,7 @@ export default function UserProfile() {
       <header className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-white/90">
-            {user.handle} {/* This now shows Telegram username */}
+            {formatHandle(user.handle)} {/* This now shows Telegram username */}
             {user.isVerified && (
               <span className="ml-2 rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-300">
                 Verified
@@ -894,7 +853,7 @@ export default function UserProfile() {
 
       {/* Profile Summary */}
       <section className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-        <div className="glass card-cyan grid items-center rounded-2xl px-6 py-3 ring-1 ring-white/10">
+        <div className="card-cyan grid items-center rounded-2xl px-6 py-3 ring-1 ring-white/10">
           <div className="flex items-center justify-between gap-2">
             <UserAvatar
               userId={user.id}
@@ -926,7 +885,7 @@ export default function UserProfile() {
               </div>
               <div className="text-muted-foreground mt-2 text-xs">
                 <div className="flex items-center gap-1 font-semibold text-white/90">
-                  {user.handle}
+                  {formatHandle(user.handle)}
                 </div>
                 {/* ADD WALLET ADDRESS DISPLAY */}
                 <div className="mt-1">
@@ -960,18 +919,11 @@ export default function UserProfile() {
 
         {/* Stats Cards */}
         <div className="space-y-4">
-          <div className="glass flex flex-col justify-between rounded-2xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/25 to-transparent p-6">
+          <div className="card-cyan flex flex-col justify-between rounded-2xl p-6">
             <h3 className="mb-4 text-lg font-semibold text-white/90">
               Activity Stats
             </h3>
             <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Deals</span>
-                <span className="font-semibold text-cyan-300">
-                  {safeStats.deals}
-                </span>
-              </div>
-
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Agreements</span>
                 <span className="font-semibold text-cyan-300">
@@ -996,7 +948,7 @@ export default function UserProfile() {
 
         {/* Trading Volume */}
         <div className="space-y-4">
-          <div className="glass flex flex-col justify-between rounded-2xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/25 to-transparent p-6">
+          <div className="card-cyan flex flex-col justify-between rounded-2xl p-6">
             <h3 className="mb-4 text-lg font-semibold text-white/90">
               Trading Volume
             </h3>
@@ -1032,7 +984,7 @@ export default function UserProfile() {
       <section className="flex flex-col gap-6 lg:grid lg:grid-cols-3">
         {/* User's Disputes */}
         <BentoCard
-          title={`${user?.handle}'s Disputes`}
+          title={`${formatHandle(user.handle)}'s Disputes`}
           icon={<FiAlertCircle />}
           color="cyan"
           count={disputeStats.total}
@@ -1057,7 +1009,8 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your dispute cases will appear here when you're involved in disagreements."
-                  : `${user?.handle} has not been involved in any disputes yet.`}
+                  : `${formatHandle(user.handle)} has not been involved in any disputes yet.`}{" "}
+                {/* Updated */}
               </div>
             </div>
           ) : (
@@ -1119,7 +1072,7 @@ export default function UserProfile() {
         </BentoCard>
         {/* User's Public Agreements */}
         <BentoCard
-          title={`${user.handle}'s Public Agreements`}
+          title={`${formatHandle(user.handle)}'s Public Agreements`}
           icon={<FaHandshake />}
           color="cyan"
           count={agreementStats.total}
@@ -1146,7 +1099,8 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your regular agreements will appear here. Escrow-protected deals are shown separately."
-                  : `${user.handle} has no regular agreements yet. Check their escrow deals for secured agreements.`}
+                  : `${formatHandle(user.handle)} has no regular agreements yet. Check their escrow deals for secured agreements.`}{" "}
+                {/* Updated */}
               </div>
             </div>
           ) : (
@@ -1211,7 +1165,7 @@ export default function UserProfile() {
         </BentoCard>{" "}
         {/* ADD ESCROW DEALS SECTION */}
         <BentoCard
-          title={`${user.handle}'s Escrow Deals`}
+          title={`${formatHandle(user.handle)}'s Escrow Deals`}
           icon={<FaHandshake />}
           color="cyan"
           count={escrowStats.total}
@@ -1242,7 +1196,8 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your escrow-protected deals will appear here once you start trading."
-                  : `${user.handle} has no escrow deals yet.`}
+                  : `${formatHandle(user.handle)} has no escrow deals yet.`}{" "}
+                {/* Updated */}
               </div>
             </div>
           ) : (
@@ -1271,9 +1226,9 @@ export default function UserProfile() {
                             {getAgreementTitle(agreement)}
                           </h4>
                           <div className="flex items-center gap-1">
+                            {/* Pass only API status, not agreement object */}
                             <AgreementStatusBadge
-                              status={agreement.status}
-                              agreement={agreement}
+                              status={agreement.apiStatus || agreement.status}
                             />
                           </div>
                         </div>
@@ -1309,18 +1264,7 @@ export default function UserProfile() {
                                   : "Unknown User"}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span>Creator:</span>
-                            <span className="text-white/80">
-                              {agreement.creator?.username
-                                ? agreement.creator.username.startsWith("0x")
-                                  ? `${agreement.creator.username.slice(0, 6)}…${agreement.creator.username.slice(-4)}`
-                                  : `@${agreement.creator.username}`
-                                : agreement.creator?.id
-                                  ? `User ${agreement.creator.id}`
-                                  : "Unknown User"}
-                            </span>
-                          </div>
+
                           <div className="flex justify-between">
                             <span>Amount:</span>
                             <span className="text-emerald-300">

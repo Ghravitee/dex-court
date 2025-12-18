@@ -558,7 +558,6 @@ export default function EscrowDetails() {
 
       console.log("🔄 Transformed Escrow:", transformedEscrow);
 
-      // FIX: Pass the entire agreementData to fetchOnChainAgreement
       // so it can extract the contractAgreementId
       fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
       setEscrow(transformedEscrow);
@@ -1478,50 +1477,33 @@ export default function EscrowDetails() {
     }
   };
 
-  // Role detection
-  // Role detection - FIXED
-  // Role detection using ON-CHAIN data - FIXED
-  const isCounterparty =
-    onChainAgreement && user
-      ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.serviceProvider?.toLowerCase()
-      : false;
+  // FIXED Role detection - Use on-chain data which has reliable wallet addresses
+  const userWalletAddress = user?.walletAddress?.toLowerCase();
 
-  const isFirstParty =
-    onChainAgreement && user
-      ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.serviceRecipient?.toLowerCase()
-      : false;
+  // Use on-chain agreement data for wallet addresses (most reliable)
+  const fromWallet = onChainAgreement?.serviceRecipient?.toLowerCase() || "";
+  const toWallet = onChainAgreement?.serviceProvider?.toLowerCase() || "";
+  const creatorWallet = onChainAgreement?.creator?.toLowerCase() || "";
 
-  const isCreator =
-    onChainAgreement && user
-      ? user.walletAddress?.toLowerCase() ===
-        onChainAgreement.creator?.toLowerCase()
-      : false;
+  // Compare wallet addresses
+  const isCounterparty = userWalletAddress === toWallet;
+  const isFirstParty = userWalletAddress === fromWallet;
+  const isCreator = userWalletAddress === creatorWallet;
 
-  // const isParticipant = isFirstParty || isCounterparty;
-
-  // console.log("Role debug with on-chain data:", {
-  //   isFirstParty,
-  //   isCounterparty,
-  //   isCreator,
-  //   isParticipant,
-  //   userWallet: user?.walletAddress,
-  //   onChainServiceProvider: onChainAgreement?.serviceProvider,
-  //   onChainServiceRecipient: onChainAgreement?.serviceRecipient,
-  //   onChainCreator: onChainAgreement?.creator,
-  // });
-
-  // console.log("Role debug:", {
-  //   isFirstParty,
-  //   isCounterparty,
-  //   isCreator,
-  //   isParticipant,
-  //   userWallet: user?.walletAddress,
-  //   firstParty: escrow?._raw?.firstParty,
-  //   counterParty: escrow?._raw?.counterParty,
-  //   creator: escrow?._raw?.creator,
-  // });
+  // Debug logging
+  // useEffect(() => {
+  //   if (onChainAgreement && user) {
+  //     console.log("Debug - On-Chain Role Verification:", {
+  //       userWalletAddress: user.walletAddress,
+  //       fromWallet: onChainAgreement.serviceRecipient,
+  //       toWallet: onChainAgreement.serviceProvider,
+  //       creatorWallet: onChainAgreement.creator,
+  //       isFirstParty,
+  //       isCounterparty,
+  //       isCreator,
+  //     });
+  //   }
+  // }, [onChainAgreement, user, fromWallet, toWallet, creatorWallet]);
 
   // Calculate days remaining
   const daysRemaining = escrow
@@ -1702,16 +1684,17 @@ export default function EscrowDetails() {
                           <span className="text-xs text-cyan-300 sm:text-base">
                             {formatWalletAddress(escrow.from)}
                           </span>
-                          {isCounterparty && (
+                          {isFirstParty && ( // THIS SHOULD SHOW TICK ON "FROM" USER
                             <VscVerifiedFilled className="size-5 text-green-400" />
                           )}
                         </div>
+
                         <span className="text-sm text-cyan-400 sm:text-base">
                           <FaArrowRightArrowLeft />
                         </span>
                         <div className="flex items-center gap-1">
                           <UserAvatar
-                            userId={escrow.toUserId || escrow.to}
+                            userId={escrow.toUserId || escrow.from}
                             avatarId={escrow.toAvatarId || null}
                             username={escrow.to}
                             size="sm"
@@ -1719,11 +1702,19 @@ export default function EscrowDetails() {
                           <span className="text-xs text-cyan-300 sm:text-base">
                             {formatWalletAddress(escrow.to)}
                           </span>
-                          {isFirstParty && (
+                          {isCounterparty && ( // THIS SHOULD SHOW TICK ON "TO" USER
                             <VscVerifiedFilled className="size-5 text-green-400" />
                           )}
                         </div>
                       </div>
+
+                      {/* In your Parties section, add this debug: */}
+                      {/* <div className="mt-2 text-xs text-red-400">
+                        Debug: User: {userWalletAddress} | To: {toWallet} |
+                        From: {fromWallet} | isCounterparty:{" "}
+                        {isCounterparty.toString()} | isFirstParty:{" "}
+                        {isFirstParty.toString()}
+                      </div> */}
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
