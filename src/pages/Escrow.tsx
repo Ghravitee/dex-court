@@ -479,7 +479,7 @@ export default function Escrow() {
     }
 
     // Generic error fallback
-    return `Blockchain error: ${errorMessage.substring(0, 100)}...`;
+    return `Blockchain error: ${errorMessage}...`;
   };
 
   // Reset error and success messages
