@@ -24,7 +24,6 @@ export const AgreementStatusEnum = {
   PARTY_SUBMITTED_DELIVERY: 7,
 } as const;
 
-// Request/Response Types (Keep all your existing interfaces)
 export interface AgreementsRequest {
   title: string;
   description: string;
@@ -39,8 +38,8 @@ export interface AgreementsRequest {
   contractAddress?: string;
   amount?: number;
   chainId?: number;
-  contractAgreementId?: string;
-  txHash?: string;
+  contractAgreementId?: string; // Add this
+  txHash?: string; // Add this
 }
 
 export interface AgreementSignRequest {
@@ -138,6 +137,13 @@ export interface AgreementsEditRequest {
   amount?: number;
   tokenSymbol?: string;
   contractAddress?: string;
+  contractAgreementId?: string; // Add this
+  txnhash?: string; // Add this (not txHash)
+  escrowContract?: string; // Add this
+  hasSecuredFunds?: boolean; // Add this
+  status?: number; // Add this if you want to update status
+  includesFunds?: boolean; // Add this for consistency
+  secureTheFunds?: boolean; // Add this for consistency
 }
 
 export interface AgreementCancelRespondRequest {
@@ -183,102 +189,195 @@ class AgreementService {
   }
 
   // Create new agreement
-  // Create new agreement
-  // Create new agreement
-  // Create new agreement
-  async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
-    console.log("🔄 Creating agreement with data:", data);
+  async createAgreement(data: AgreementsRequest, files: File[]): Promise<any> {
+    console.log(
+      "🔄 Creating agreement with data:",
+      JSON.stringify(data, null, 2),
+    );
 
     const formData = new FormData();
-    formData.append("title", data.title);
-    formData.append("description", data.description);
-    formData.append("type", data.type.toString());
-    formData.append("visibility", data.visibility.toString());
-    formData.append("firstParty", data.firstParty);
-    formData.append("counterParty", data.counterParty);
 
-    // FIX: Only append deadline if it has a value
-    if (data.deadline && data.deadline.trim() !== "") {
-      formData.append("deadline", data.deadline);
-      console.log("📅 Deadline included:", data.deadline);
-    } else {
-      console.log("📅 No deadline provided - skipping deadline field");
-    }
+    // Create a debug object to log all fields
+    const debugFields: Record<string, any> = {};
 
-    // === REQUIRED FIELDS FOR INCLUDES_FUNDS = true ===
-    if (data.includesFunds !== undefined) {
-      formData.append("includesFunds", data.includesFunds.toString());
-    }
+    // Append each field and track it
+    const appendField = (key: string, value: any) => {
+      if (value !== undefined && value !== null && value !== "") {
+        // ⚠️ CHANGED: Also exclude empty strings
+        formData.append(key, value.toString());
+        debugFields[key] = value;
+      }
+    };
 
-    if (data.tokenSymbol) {
-      formData.append("tokenSymbol", data.tokenSymbol);
-    }
+    // Required fields
+    appendField("title", data.title);
+    appendField("description", data.description);
+    appendField("type", data.type);
+    appendField("visibility", data.visibility);
+    appendField("firstParty", data.firstParty);
+    appendField("counterParty", data.counterParty);
 
-    if (data.amount) {
-      formData.append("amount", data.amount.toString());
-    }
+    // Conditional fields
+    if (data.deadline) appendField("deadline", data.deadline);
+    if (data.includesFunds !== undefined)
+      appendField("includesFunds", data.includesFunds);
+    if (data.tokenSymbol) appendField("tokenSymbol", data.tokenSymbol);
+    if (data.amount !== undefined) appendField("amount", data.amount);
+    if (data.contractAddress)
+      appendField("contractAddress", data.contractAddress);
+    if (data.secureTheFunds !== undefined)
+      appendField("secureTheFunds", data.secureTheFunds);
+    if (data.chainId !== undefined) appendField("chainId", data.chainId);
 
-    if (data.tokenSymbol && data.contractAddress) {
-      formData.append("contractAddress", data.contractAddress);
-    }
+    // ⚠️ IMPORTANT CHANGE: Only append if truthy (not empty string)
+    if (data.contractAgreementId)
+      appendField("contractAgreementId", data.contractAgreementId);
 
-    // === REQUIRED FIELDS FOR SECURED_FUNDS = true ===
-    if (data.secureTheFunds !== undefined) {
-      formData.append("secureTheFunds", data.secureTheFunds.toString());
-    }
-
-    // FIX: Use exact field names backend expects (lowercase)
-    if (data.chainId) {
-      formData.append("chainId", data.chainId.toString());
-    }
-
-    if (data.contractAgreementId) {
-      formData.append("contractAgreementId", data.contractAgreementId);
-    }
-
-    // FIX: Change txHash to txnhash (backend expects lowercase)
+    // Special handling for txHash -> txnhash
+    // ⚠️ IMPORTANT CHANGE: Only append if truthy (not empty string)
     if (data.txHash) {
-      formData.append("txnhash", data.txHash); // ← Changed from txHash to txnhash
+      formData.append("txnhash", data.txHash);
+      debugFields.txnhash = data.txHash;
+      debugFields.txHash = data.txHash; // Keep original too
     }
 
-    files.forEach((file) => {
+    // Files
+    files.forEach((file, index) => {
       formData.append("files", file);
+      debugFields[`file_${index}`] =
+        `${file.name} (${file.type}, ${file.size} bytes)`;
     });
 
-    console.log("📦 FormData fields:", {
-      title: data.title,
-      description: data.description,
-      type: data.type,
-      visibility: data.visibility,
-      firstParty: data.firstParty,
-      counterParty: data.counterParty,
-      deadline: data.deadline || "NOT INCLUDED", // Show if included or not
-      includesFunds: data.includesFunds,
-      secureTheFunds: data.secureTheFunds,
-      tokenSymbol: data.tokenSymbol,
-      amount: data.amount,
-      contractAddress: data.contractAddress,
-      chainId: data.chainId,
-      contractAgreementId: data.contractAgreementId,
-      txnhash: data.txHash,
-      files: files.map((f) => f.name),
-    });
+    // Log everything
+    console.log("📦 DEBUG - All fields being sent to backend:");
+    console.table(debugFields);
+
+    console.log("📦 FormData entries (raw):");
+    for (const pair of formData.entries()) {
+      const [key, value] = pair;
+      if (value instanceof File) {
+        console.log(`${key}: [File] ${value.name} (${value.size} bytes)`);
+      } else {
+        console.log(`${key}: "${value}"`);
+      }
+    }
 
     try {
+      console.log("📤 Making API call to /agreement...");
       const response = await api.post("/agreement", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
-      console.log("✅ Agreement created successfully:", response.data);
+      console.log("✅ Agreement created successfully!");
+      console.log("📥 Response:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error("❌ Agreement creation failed:", error);
-      console.error("📋 Error details:", error.response?.data);
+      console.error("❌ Agreement creation FAILED!");
+
+      if (error.response) {
+        console.error("🔴 Error Status:", error.response.status);
+        console.error("🔴 Error Data:", error.response.data);
+        console.error("🔴 Error Headers:", error.response.headers);
+
+        // Try to parse error details
+        if (error.response.data) {
+          console.error("🔴 Parsed Error:", {
+            errorCode: error.response.data.error,
+            errorMessage: error.response.data.message,
+            errorDetails: error.response.data.details,
+            validationErrors: error.response.data.errors,
+          });
+        }
+      } else if (error.request) {
+        console.error("🔴 No response received:", error.request);
+      } else {
+        console.error("🔴 Request setup error:", error.message);
+      }
+
+      console.error("🔴 Full error object:", error);
       throw error;
     }
   }
+
+  // Add this method to your AgreementService class
+  async updateAgreement(
+    agreementId: string | number,
+    data: {
+      contractAgreementId?: string;
+      txHash?: string; // For frontend convenience
+      txnhash?: string; // For backend - actual field name
+      description?: string;
+      escrowContract?: string; // Add this
+      hasSecuredFunds?: boolean; // Add this - set to true when blockchain succeeds
+      // Optional: You might want to update status to indicate blockchain success
+      status?: number; // Could update to ACTIVE (2) or similar
+    },
+  ): Promise<void> {
+    console.log("🔄 Updating agreement with blockchain data:", {
+      agreementId,
+      data,
+    });
+
+    try {
+      // Prepare the update payload
+      const updatePayload: any = {};
+
+      if (data.contractAgreementId) {
+        updatePayload.contractAgreementId = data.contractAgreementId;
+      }
+
+      // Handle both txHash and txnhash - prefer txnhash for backend
+      if (data.txnhash) {
+        updatePayload.txnhash = data.txnhash;
+      } else if (data.txHash) {
+        updatePayload.txnhash = data.txHash; // Map txHash to txnhash
+      }
+
+      if (data.description) {
+        updatePayload.description = data.description;
+      }
+
+      if (data.escrowContract) {
+        updatePayload.escrowContract = data.escrowContract;
+      }
+
+      if (data.hasSecuredFunds !== undefined) {
+        updatePayload.hasSecuredFunds = data.hasSecuredFunds;
+      }
+
+      if (data.status !== undefined) {
+        updatePayload.status = data.status;
+      }
+
+      console.log("📤 Sending update payload:", updatePayload);
+
+      // Use the existing editAgreement method which calls PATCH /agreement/:id
+      const response = await api.patch(
+        `/agreement/${agreementId}`,
+        updatePayload,
+      );
+
+      console.log("✅ Agreement updated successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Agreement update failed:", error);
+      console.error("📋 Error details:", error.response?.data);
+
+      // Provide more specific error messages
+      if (error.response?.status === 404) {
+        throw new Error(`Agreement ${agreementId} not found`);
+      } else if (error.response?.status === 400) {
+        throw new Error(
+          `Invalid update data: ${error.response.data?.message || "Bad request"}`,
+        );
+      }
+
+      throw error;
+    }
+  }
+
   // User search - now with proper error handling
   async searchUsers(query: string): Promise<any[]> {
     try {

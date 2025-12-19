@@ -101,10 +101,10 @@ const formatWalletAddress = (address: string): string => {
   return address;
 };
 
-const normalizeAddress = (address: string): string => {
-  if (!address) return "";
-  return address.toLowerCase();
-};
+// const normalizeAddress = (address: string): string => {
+//   if (!address) return "";
+//   return address.toLowerCase();
+// };
 
 // File upload types
 interface UploadedFile {
@@ -819,20 +819,41 @@ export default function Escrow() {
     writeContract,
   ]);
 
-  // Ref to store sync data
+  // Update syncDataRef type
   const syncDataRef = useRef<{
-    agreementIdNumber: number;
+    backendAgreementId: string; // Changed from agreementIdNumber
     serviceProviderAddr: string;
     serviceRecipientAddr: string;
     tokenAddr: string;
     vestingMode: boolean;
   } | null>(null);
 
+  // Add resetForm function
+  const resetForm = () => {
+    setForm({
+      title: "",
+      type: "",
+      counterparty: "",
+      payer: "",
+      partyA: "",
+      partyB: "",
+      payerOther: "",
+      token: "",
+      customTokenAddress: "",
+      amount: "",
+      description: "",
+      evidence: [],
+      milestones: [""],
+      tokenDecimals: 18,
+    });
+    setDeadline(null);
+    setEscrowType("myself");
+  };
   // 6. Load escrows on component mount
 
+  // Effect to sync backend after blockchain transaction
   useEffect(() => {
-    // Replace your current syncEscrowToBackend function with this enhanced version
-    const syncEscrowToBackend = async () => {
+    const updateBackendWithBlockchainData = async () => {
       if (
         !txSuccess ||
         !txHash ||
@@ -846,197 +867,51 @@ export default function Escrow() {
       setIsSyncing(true);
       setLastSyncedTxHash(txHash);
 
-      let normalizedServiceProvider = "";
-      let normalizedServiceRecipient = "";
-
       try {
         const {
-          agreementIdNumber,
+          backendAgreementId,
           serviceProviderAddr,
           serviceRecipientAddr,
           tokenAddr,
           vestingMode,
         } = syncDataRef.current;
 
-        console.log("🔄 Syncing escrow to backend...", {
+        console.log("🔄 Updating backend with blockchain data...", {
           txHash,
-          agreementId: agreementIdNumber,
+          backendAgreementId,
         });
 
-        // ===== NORMALIZE ADDRESSES FOR BACKEND =====
-        normalizedServiceProvider = normalizeAddress(serviceProviderAddr);
-        normalizedServiceRecipient = normalizeAddress(serviceRecipientAddr);
-        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
-        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
-
-        // ===== VALIDATE PARTIES =====
-        if (normalizedServiceProvider === normalizedServiceRecipient) {
-          throw new Error(
-            "Service provider and recipient cannot be the same address",
-          );
-        }
-
-        // ===== BUILD ON-CHAIN METADATA =====
-        const onChainMetadata = {
-          txHash,
-          contractId: agreementIdNumber,
-          serviceProvider: normalizedServiceProvider, // Use normalized address
-          serviceRecipient: normalizedServiceRecipient, // Use normalized address
-          token: tokenAddr,
-          amount: form.amount,
-          vestingMode,
-          chainId: chainId,
-          createdAt: new Date().toISOString(),
-        };
-
-        // Embed metadata in description for easy extraction later
-        const metadataString = `
-
+        // Build enhanced description with blockchain data
+        const onChainMetadata = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 ON-CHAIN ESCROW DATA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Transaction Hash: ${txHash}
-Contract Agreement ID: ${agreementIdNumber}
+Contract Agreement ID: ${backendAgreementId}
 Service Provider: ${serviceProviderAddr}
 Service Recipient: ${serviceRecipientAddr}
 Token Address: ${tokenAddr}
 Amount: ${form.amount}
 Vesting Enabled: ${vestingMode}
 Chain ID: ${chainId}
-Created: ${new Date().toISOString()}
+Blockchain Created: ${new Date().toISOString()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-        const fullDescription = form.description + metadataString;
+        const updatePayload = {
+          contractAgreementId: backendAgreementId, // Already a string
+          txHash: txHash,
+          description: form.description + onChainMetadata,
+        };
 
-        // ===== PREPARE FILES =====
-        let filesToUpload: File[];
-
-        if (form.evidence.length > 0) {
-          filesToUpload = form.evidence.map((f) => f.file);
-        } else {
-          // Create metadata file (backend requires at least 1 file)
-          const metadataJson = JSON.stringify(onChainMetadata, null, 2);
-          const metadataFile = new File(
-            [metadataJson],
-            `escrow-${agreementIdNumber}.json`,
-            { type: "application/json" },
-          );
-          filesToUpload = [metadataFile];
-        }
-
-        // ===== DETERMINE PARTIES FOR BACKEND =====
-        // Backend needs: firstParty = service provider, counterParty = service recipient
-        let firstPartyAddr: string;
-        let counterPartyAddr: string;
-
-        if (escrowType === "myself") {
-          if (form.payer === "me") {
-            // Creator pays - creator is service recipient, counterparty is service provider
-            // FIXED: Make connected address firstParty (service provider) and counterparty counterParty (service recipient)
-            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
-            counterPartyAddr = normalizedServiceProvider; // Service recipient (counterparty)
-          } else {
-            // Counterparty pays - creator is service provider, counterparty is service recipient
-            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
-            counterPartyAddr = normalizedServiceRecipient; // Service recipient (counterparty)
-          }
-        } else {
-          // Two other parties - creator is not involved as a party
-          if (form.payerOther === "partyA") {
-            firstPartyAddr = form.partyB.toLowerCase();
-            counterPartyAddr = form.partyA.toLowerCase();
-          } else {
-            firstPartyAddr = form.partyA.toLowerCase();
-            counterPartyAddr = form.partyB.toLowerCase();
-          }
-        }
-
-        console.log("🔍 CREATOR PARTY ASSIGNMENT:", {
-          creatorAddress: address!.toLowerCase(),
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          isCreatorFirstParty: firstPartyAddr === address!.toLowerCase(),
-          isCreatorCounterParty: counterPartyAddr === address!.toLowerCase(),
-          escrowType,
-          payer: form.payer,
-        });
-
-        console.log("🎯 Party Assignment:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          serviceProvider: normalizedServiceProvider,
-          serviceRecipient: normalizedServiceRecipient,
-          areEqual: firstPartyAddr === counterPartyAddr,
-        });
-
-        console.log("🔍 Final Party Assignment for Backend:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          areEqual: firstPartyAddr === counterPartyAddr,
-          firstPartyLower: firstPartyAddr.toLowerCase(),
-          counterPartyLower: counterPartyAddr.toLowerCase(),
-        });
-
-        // Add this new validation
-        if (firstPartyAddr.toLowerCase() === counterPartyAddr.toLowerCase()) {
-          throw new Error(
-            "Service provider and recipient cannot be the same address",
-          );
-        }
-
-        // Convert the deadline Date object to ISO string for backend
-        const deadlineForBackend = deadline?.toISOString();
-
-        if (!deadlineForBackend) {
-          throw new Error("Deadline is required");
-        }
-
-        console.log("📋 Escrow agreement data for backend:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          normalizedFirstParty: firstPartyAddr,
-          normalizedCounterParty: counterPartyAddr,
-          type: AgreementTypeEnum.ESCROW,
-          visibility:
-            form.type === "private"
-              ? AgreementVisibilityEnum.PRIVATE
-              : AgreementVisibilityEnum.PUBLIC,
-          deadline: deadlineForBackend,
-          includesFunds: true,
-          secureTheFunds: true,
-        });
-
-        // ===== CALL AGREEMENT API =====
-        await agreementService.createAgreement(
-          {
-            title: form.title,
-            description: fullDescription,
-            type: AgreementTypeEnum.ESCROW, // 2 = ESCROW
-            visibility:
-              form.type === "private"
-                ? AgreementVisibilityEnum.PRIVATE
-                : AgreementVisibilityEnum.PUBLIC,
-            firstParty: firstPartyAddr,
-            counterParty: counterPartyAddr,
-            deadline: deadlineForBackend,
-            amount: parseFloat(form.amount),
-            tokenSymbol: form.token === "custom" ? "custom" : form.token,
-            contractAddress:
-              form.token === "custom" ? form.customTokenAddress : undefined,
-            includesFunds: true, // Always true for escrow
-            secureTheFunds: true, // Always true for escrow
-            chainId: chainId,
-            contractAgreementId: agreementIdNumber.toString(),
-            txHash: txHash,
-          },
-          filesToUpload,
+        // Update backend agreement with blockchain data
+        await agreementService.updateAgreement(
+          Number(backendAgreementId), // Convert to number since backend expects number ID
+          updatePayload,
         );
 
         // ===== SUCCESS =====
-        console.log("✅ Escrow synced successfully!");
-
+        console.log("✅ Backend updated successfully!");
         setUiSuccess("✅ Escrow created and synced to database!");
-
         toast.success("Escrow Created Successfully!", {
           description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
         });
@@ -1048,13 +923,19 @@ Created: ${new Date().toISOString()}
           refetchAgreements();
         }, 1500);
       } catch (err: any) {
-        console.error("❌ Backend sync failed:", err);
-        handleBackendSyncError(
-          err,
-          txHash!,
-          normalizedServiceProvider,
-          normalizedServiceRecipient,
-        );
+        console.error("❌ Backend update failed:", err);
+        setUiError("⚠️ Failed to update backend with transaction data");
+        toast.error("Sync Error", {
+          description:
+            "Agreement created on-chain but backend sync failed. Please contact support.",
+          action: {
+            label: "Copy TX Hash",
+            onClick: () => {
+              navigator.clipboard.writeText(txHash!);
+              toast.info("Transaction hash copied!");
+            },
+          },
+        });
       } finally {
         setIsSyncing(false);
         resetWrite();
@@ -1062,142 +943,20 @@ Created: ${new Date().toISOString()}
       }
     };
 
-    // Enhanced error handler for backend sync
-    const handleBackendSyncError = (
-      err: any,
-      txHash: string,
-      normalizedServiceProvider: string,
-      normalizedServiceRecipient: string,
-    ) => {
-      const errorCode = err.response?.data?.error;
-      const errorMessage = err.response?.data?.message;
-      const errorDetails = err.response?.data?.details;
-
-      console.error("🔍 Backend Error Details:", {
-        errorCode,
-        errorMessage,
-        errorDetails,
-        responseData: err.response?.data,
-        status: err.response?.status,
-      });
-
-      let userMessage = "Failed to sync escrow to database";
-      let userDescription =
-        errorMessage || "Please try again or contact support";
-
-      switch (errorCode) {
-        case 1: // MissingData
-          userMessage = "Missing required information";
-          userDescription = "Please ensure all fields are filled correctly";
-          break;
-
-        case 5: // InvalidDate
-          userMessage = "Invalid deadline";
-          userDescription = "Deadline must be a future date";
-          break;
-
-        case 7: // AccountNotFound
-          userMessage = "User account not found";
-          userDescription = `One or both parties must connect their wallet to the platform first. Please ask them to visit the app and connect their wallet.`;
-          // Log which addresses are problematic
-          console.error("🔍 AccountNotFound - Check addresses:", {
-            firstParty: normalizedServiceProvider,
-            counterParty: normalizedServiceRecipient,
-            accountsInSystem: [
-              "0xa008df6bf68f4051b3f664ef6df86edb97a177cb", // Mystyri
-              "0x30398368287d2fe4a697238fa815f49c123ce300", // Ghravitee
-            ],
-          });
-          break;
-
-        case 11: // SameAccount
-          userMessage = "Invalid party configuration";
-          userDescription =
-            "Service provider and recipient cannot be the same account. Please ensure both parties have registered accounts.";
-          // Log the addresses being compared
-          console.error("🔍 SameAccount Error - Addresses:", {
-            firstParty: normalizedServiceProvider,
-            counterParty: normalizedServiceRecipient,
-            areEqual: normalizedServiceProvider === normalizedServiceRecipient,
-          });
-          break;
-
-        case 12: // MissingWallet
-          userMessage = "Wallet not connected";
-          userDescription =
-            "Your wallet must be connected to create escrow agreements";
-          break;
-
-        case 17: // Forbidden
-          userMessage = "Account restricted";
-          userDescription =
-            "Your account is currently restricted from creating agreements";
-          break;
-      }
-
-      setUiError(`⚠️ ${userMessage}`);
-
-      toast.error(userMessage, {
-        description: userDescription,
-        action: {
-          label: "Copy Transaction Hash",
-          onClick: () => {
-            navigator.clipboard.writeText(txHash);
-            toast.info("Transaction hash copied!");
-          },
-        },
-      });
-    };
-
-    // Reset form function
-    const resetForm = () => {
-      setForm({
-        title: "",
-        type: "",
-        counterparty: "",
-        payer: "",
-        partyA: "",
-        partyB: "",
-        payerOther: "",
-        token: "",
-        customTokenAddress: "",
-        amount: "",
-        description: "",
-        evidence: [],
-        milestones: [""],
-        tokenDecimals: 18,
-      });
-      setDeadline(null);
-      setEscrowType("myself");
-    };
-
-    syncEscrowToBackend();
+    updateBackendWithBlockchainData();
   }, [
     txSuccess,
     txHash,
     lastSyncedTxHash,
     isSyncing,
-    form.amount,
     form.description,
-    form.evidence,
-    form.type,
-    form.title,
-    form.token,
-    form.customTokenAddress,
-    form.payer,
-    form.counterparty,
-    form.payerOther,
-    form.partyB,
-    form.partyA,
-    escrowType,
-    deadline,
-    address,
+    form.amount,
+    chainId,
     resetWrite,
     refetchAgreements,
-    chainId,
   ]);
 
-  // ---------------- Create agreement handler (with enhanced error handling) ----------------
+  // ---------------- Create agreement handler with new flow ----------------
   const handleCreateAgreementOnChain = async () => {
     resetMessages();
 
@@ -1226,9 +985,12 @@ Created: ${new Date().toISOString()}
       return;
     }
 
-    // Determine parties
+    // Determine parties (keep existing logic)
     let serviceProviderAddr = "";
     let serviceRecipientAddr = "";
+    let firstPartyAddr = "";
+    let counterPartyAddr = "";
+
     if (escrowType === "myself") {
       if (!isValidAddress(form.counterparty)) {
         setUiError("Counterparty must be a valid address (0x...)");
@@ -1237,9 +999,13 @@ Created: ${new Date().toISOString()}
       if (form.payer === "me") {
         serviceRecipientAddr = address!;
         serviceProviderAddr = form.counterparty;
+        firstPartyAddr = address!.toLowerCase(); // Creator is service provider
+        counterPartyAddr = form.counterparty.toLowerCase();
       } else {
         serviceProviderAddr = address!;
         serviceRecipientAddr = form.counterparty;
+        firstPartyAddr = address!.toLowerCase(); // Creator is service provider
+        counterPartyAddr = form.counterparty.toLowerCase();
       }
     } else {
       if (!isValidAddress(form.partyA) || !isValidAddress(form.partyB)) {
@@ -1249,13 +1015,17 @@ Created: ${new Date().toISOString()}
       if (form.payerOther === "partyA") {
         serviceRecipientAddr = form.partyA;
         serviceProviderAddr = form.partyB;
+        firstPartyAddr = form.partyB.toLowerCase(); // Service provider is first party
+        counterPartyAddr = form.partyA.toLowerCase();
       } else {
         serviceRecipientAddr = form.partyB;
         serviceProviderAddr = form.partyA;
+        firstPartyAddr = form.partyA.toLowerCase(); // Service provider is first party
+        counterPartyAddr = form.partyB.toLowerCase();
       }
     }
 
-    // Check for same address error (contract will revert with CannotBeTheSame)
+    // Check for same address error
     if (
       serviceProviderAddr.toLowerCase() === serviceRecipientAddr.toLowerCase()
     ) {
@@ -1263,7 +1033,7 @@ Created: ${new Date().toISOString()}
       return;
     }
 
-    // token parsing
+    // Token parsing (keep existing logic)
     let tokenAddr: string = ZERO_ADDRESS;
     if (form.token === "custom") {
       if (!isValidAddress(form.customTokenAddress)) {
@@ -1274,7 +1044,6 @@ Created: ${new Date().toISOString()}
     } else if (form.token === "ETH") {
       tokenAddr = ZERO_ADDRESS;
     } else {
-      // For known tokens like USDC/DAI the UI currently expects a custom address to be pasted
       if (
         !form.customTokenAddress ||
         !isValidAddress(form.customTokenAddress)
@@ -1287,7 +1056,7 @@ Created: ${new Date().toISOString()}
       tokenAddr = form.customTokenAddress;
     }
 
-    // deadlineDuration
+    // Deadline calculation
     const now = Math.floor(Date.now() / 1000);
     const deadlineSeconds = Math.floor((deadline as Date).getTime() / 1000);
     if (deadlineSeconds <= now) {
@@ -1296,7 +1065,7 @@ Created: ${new Date().toISOString()}
     }
     const deadlineDuration = deadlineSeconds - now;
 
-    // parse milestones
+    // Parse milestones
     let vestingMode = false;
     let milestonePercs: number[] = [];
     let milestoneOffsets: number[] = [];
@@ -1319,7 +1088,7 @@ Created: ${new Date().toISOString()}
       return;
     }
 
-    // amount BN
+    // Amount parsing
     let amountBN: bigint;
     try {
       amountBN = parseAmount(
@@ -1337,80 +1106,147 @@ Created: ${new Date().toISOString()}
       return;
     }
 
-    // Agreement id: random
-    const agreementIdNumber = Number(Math.floor(Math.random() * 1_000_000_000));
+    // ================================================
+    // STEP A: Create agreement in backend first (off-chain)
+    // ================================================
+    setIsSubmitting(true);
 
-    const callerIsDepositor =
-      serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
-    const tokenIsETH = tokenAddr === ZERO_ADDRESS;
+    try {
+      // Prepare initial description (without on-chain data yet)
+      const initialDescription = form.description;
 
-    // Store sync data for backend integration
-    syncDataRef.current = {
-      agreementIdNumber,
-      serviceProviderAddr,
-      serviceRecipientAddr,
-      tokenAddr,
-      vestingMode,
-    };
+      // Prepare files for upload
+      let filesToUpload: File[] = [];
+      if (form.evidence.length > 0) {
+        filesToUpload = form.evidence.map((f) => f.file);
+      } else {
+        // Create minimal metadata file
+        const metadataJson = JSON.stringify(
+          {
+            title: form.title,
+            amount: form.amount,
+            token: form.token,
+            created: new Date().toISOString(),
+          },
+          null,
+          2,
+        );
+        const metadataFile = new File(
+          [metadataJson],
+          `escrow-draft-${Date.now()}.json`,
+          { type: "application/json" },
+        );
+        filesToUpload = [metadataFile];
+      }
 
-    // If ERC20 and caller is depositor (serviceRecipient), we must approve token first
-    if (!tokenIsETH && callerIsDepositor) {
-      setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+      // Call backend to create agreement first
+      console.log("📝 Creating agreement in backend first...", {
+        firstParty: firstPartyAddr,
+        counterParty: counterPartyAddr,
+      });
 
-      // build the create payload and store it so we can call it after approval
-      const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
-      const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+      // In the handleCreateAgreementOnChain function, fix the deadline section:
+      const agreementResponse = await agreementService.createAgreement(
+        {
+          title: form.title,
+          description: initialDescription,
+          type: AgreementTypeEnum.ESCROW,
+          visibility:
+            form.type === "private"
+              ? AgreementVisibilityEnum.PRIVATE
+              : AgreementVisibilityEnum.PUBLIC,
+          firstParty: firstPartyAddr,
+          counterParty: counterPartyAddr,
+          deadline: deadline.toISOString(),
+          amount: parseFloat(form.amount),
+          tokenSymbol: form.token === "custom" ? "custom" : form.token,
+          contractAddress:
+            form.token === "custom" ? form.customTokenAddress : undefined,
+          includesFunds: true,
+          secureTheFunds: true,
+          chainId: chainId,
 
-      const payload = {
-        address: contractAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "createAgreement",
-        args: [
-          BigInt(agreementIdNumber),
-          serviceProviderAddr as `0x${string}`,
-          serviceRecipientAddr as `0x${string}`,
-          tokenAddr as `0x${string}`,
-          BigInt(amountBN),
-          BigInt(deadlineDuration),
-          vestingMode,
-          form.type === "private",
-          milestonePercsBN,
-          milestoneOffsetsBN,
-        ],
-        value: 0n,
+          // contractAgreementId: undefined,
+          // txHash: undefined,
+        },
+        filesToUpload,
+      );
+      // Extract backend agreement ID
+      const backendAgreementId =
+        agreementResponse.id || agreementResponse.agreementId;
+      console.log("✅ Backend agreement created with ID:", backendAgreementId);
+
+      // Store backend ID for later update
+      syncDataRef.current = {
+        backendAgreementId,
+        serviceProviderAddr,
+        serviceRecipientAddr,
+        tokenAddr,
+        vestingMode,
       };
 
-      setPendingCreatePayload(payload);
+      // ================================================
+      // STEP B: Call smart contract with backend ID
+      // ================================================
 
-      // Trigger approval tx
-      try {
+      // Use backend agreement ID as the on-chain agreement ID
+      // Convert to a number that fits in uint256 (using first 8 digits)
+      const agreementIdNumber =
+        parseInt(backendAgreementId.slice(-8), 16) ||
+        Number(backendAgreementId) ||
+        Math.floor(Math.random() * 1_000_000_000);
+
+      const callerIsDepositor =
+        serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
+      const tokenIsETH = tokenAddr === ZERO_ADDRESS;
+
+      // If ERC20 and caller is depositor, handle approval
+      if (!tokenIsETH && callerIsDepositor) {
+        setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+
+        // Build the create payload with backend agreement ID
+        const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
+        const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+
+        const payload = {
+          address: contractAddress as `0x${string}`,
+          abi: ESCROW_ABI.abi,
+          functionName: "createAgreement",
+          args: [
+            BigInt(agreementIdNumber), // Use backend-derived ID
+            serviceProviderAddr as `0x${string}`,
+            serviceRecipientAddr as `0x${string}`,
+            tokenAddr as `0x${string}`,
+            BigInt(amountBN),
+            BigInt(deadlineDuration),
+            vestingMode,
+            form.type === "private",
+            milestonePercsBN,
+            milestoneOffsetsBN,
+          ],
+          value: 0n,
+        };
+
+        setPendingCreatePayload(payload);
+
+        // Trigger approval
         writeApproval({
           address: tokenAddr as `0x${string}`,
           abi: ERC20_ABI.abi,
           functionName: "approve",
           args: [contractAddress as `0x${string}`, amountBN],
         });
+
         setUiSuccess(
           "Approval submitted; will create agreement after confirmation",
         );
-      } catch (err) {
-        console.error("approve error", err);
-        setUiError("ERC20 approve failed");
-        setCreateApprovalState({
-          isApprovingToken: false,
-          needsApproval: false,
-        });
-        setPendingCreatePayload(null);
+        setIsSubmitting(false);
+        return;
       }
 
-      return;
-    }
-
-    // Otherwise call createAgreement directly
-    try {
+      // Otherwise call createAgreement directly
       const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
       const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
-
       const valueToSend = tokenIsETH && callerIsDepositor ? amountBN : 0n;
 
       writeContract({
@@ -1418,7 +1254,7 @@ Created: ${new Date().toISOString()}
         abi: ESCROW_ABI.abi,
         functionName: "createAgreement",
         args: [
-          BigInt(agreementIdNumber),
+          BigInt(agreementIdNumber), // Use backend-derived ID
           serviceProviderAddr as `0x${string}`,
           serviceRecipientAddr as `0x${string}`,
           tokenAddr as `0x${string}`,
@@ -1432,31 +1268,31 @@ Created: ${new Date().toISOString()}
         value: valueToSend,
       });
 
-      setUiSuccess("CreateAgreement tx submitted — check wallet");
+      setUiSuccess("CreateAgreement transaction submitted — check wallet");
+      setIsSubmitting(false);
+    } catch (backendErr: any) {
+      console.error("❌ Backend agreement creation failed:", backendErr);
+      setIsSubmitting(false);
 
-      // optimistic UI add (mirror prior mock behavior)
-      const id = `E-${agreementIdNumber}`;
-      const from = callerIsDepositor ? "@you" : serviceProviderAddr;
-      const to = callerIsDepositor ? serviceProviderAddr : "@you";
-      const next: ExtendedEscrowWithOnChain = {
-        id,
-        title: form.title,
-        from,
-        to,
-        token: form.token === "custom" ? form.customTokenAddress : form.token,
-        amount: Number(form.amount),
-        status: callerIsDepositor ? "signed" : "pending",
-        deadline: (deadline as Date).toISOString().split("T")[0],
-        type: form.type as "public" | "private",
-        description: form.description,
-        createdAt: Date.now(),
-        escrowType,
-      };
-      setEscrows((arr) => [next, ...arr]);
-      // setOpen(false);
-    } catch (err: any) {
-      console.error("createAgreement error:", err);
-      // Error will be handled by the useEffect that monitors writeError
+      const errorCode = backendErr.response?.data?.error;
+      let userMessage = "Failed to create agreement in backend";
+
+      switch (errorCode) {
+        case 1: // MissingData
+          userMessage = "Missing required information";
+          break;
+        case 7: // AccountNotFound
+          userMessage = "One or both parties need to register first";
+          break;
+        case 11: // SameAccount
+          userMessage = "Parties cannot be the same account";
+          break;
+      }
+
+      setUiError(userMessage);
+      toast.error("Backend Error", {
+        description: userMessage,
+      });
     }
   };
 
@@ -1857,6 +1693,37 @@ Created: ${new Date().toISOString()}
                       </div>
                     </div>
 
+                    {/* Add this at the end of the form, before the buttons */}
+                    <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                        <div>
+                          <h4 className="text-sm font-medium text-blue-300">
+                            Understanding Escrow Roles
+                          </h4>
+                          <ul className="mt-1 space-y-1 text-xs text-blue-300/80">
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Provider:
+                              </span>{" "}
+                              Receives funds, delivers work/service
+                            </li>
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Recipient:
+                              </span>{" "}
+                              Pays funds into escrow, receives work/service
+                            </li>
+                            <li className="flex items-center gap-1 text-blue-200">
+                              <span className="font-medium">⚠️ Important:</span>{" "}
+                              The same party cannot be both provider and
+                              recipient
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Title */}
                     <div>
                       <div className="mb-2 flex items-center justify-between">
@@ -1941,11 +1808,23 @@ Created: ${new Date().toISOString()}
                       </div>
 
                       {/* Who Pays based on escrow type */}
+                      {/* Who Pays based on escrow type */}
                       {escrowType === "myself" ? (
                         <div>
-                          <label className="text-muted-foreground mb-2 block text-sm">
-                            Who Pays? <span className="text-red-500">*</span>
-                          </label>
+                          <div className="mb-2 flex items-center justify-between">
+                            <label className="text-muted-foreground text-sm">
+                              Who Pays? <span className="text-red-500">*</span>
+                            </label>
+                            <div className="group relative cursor-help">
+                              <Info className="h-4 w-4 text-cyan-300" />
+                              <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                The payer is the{" "}
+                                <strong>service recipient</strong> who funds the
+                                escrow. The <strong>service provider</strong>{" "}
+                                (who receives funds) cannot be the payer.
+                              </div>
+                            </div>
+                          </div>
                           <div className="grid grid-cols-2 gap-2">
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
@@ -1974,27 +1853,23 @@ Created: ${new Date().toISOString()}
                               Please select who pays
                             </div>
                           )}
-                          {/* ADD THIS: Info note about service provider not being payer */}
-                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
-                            <p className="text-xs text-cyan-300/80">
-                              The payer is the{" "}
-                              <span className="font-medium">
-                                service recipient
-                              </span>{" "}
-                              who funds the escrow. The{" "}
-                              <span className="font-medium">
-                                service provider
-                              </span>{" "}
-                              (who receives funds) cannot be the payer.
-                            </p>
-                          </div>
                         </div>
                       ) : (
                         <div>
-                          <label className="text-muted-foreground mb-2 block text-sm">
-                            Who Pays? <span className="text-red-500">*</span>
-                          </label>
+                          <div className="mb-2 flex items-center justify-between">
+                            <label className="text-muted-foreground text-sm">
+                              Who Pays? <span className="text-red-500">*</span>
+                            </label>
+                            <div className="group relative cursor-help">
+                              <Info className="h-4 w-4 text-cyan-300" />
+                              <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                The payer is the{" "}
+                                <strong>service recipient</strong> who funds the
+                                escrow. The <strong>service provider</strong>{" "}
+                                (who receives funds) cannot be the payer.
+                              </div>
+                            </div>
+                          </div>
                           <div className="grid grid-cols-2 gap-2">
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
@@ -2025,22 +1900,6 @@ Created: ${new Date().toISOString()}
                               Please select who pays
                             </div>
                           )}
-
-                          {/* ADD THIS: Info note about service provider not being payer for "Two Other Parties" */}
-                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
-                            <p className="text-xs text-cyan-300/80">
-                              The payer is the{" "}
-                              <span className="font-medium">
-                                service recipient
-                              </span>{" "}
-                              who funds the escrow. The{" "}
-                              <span className="font-medium">
-                                service provider
-                              </span>{" "}
-                              (who receives funds) cannot be the payer.
-                            </p>
-                          </div>
                         </div>
                       )}
                     </div>
@@ -2458,37 +2317,6 @@ Created: ${new Date().toISOString()}
                         <StatusMessages />
                       </div>
                     )}
-
-                    {/* Add this at the end of the form, before the buttons */}
-                    <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3">
-                      <div className="flex items-start gap-2">
-                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
-                        <div>
-                          <h4 className="text-sm font-medium text-blue-300">
-                            Understanding Escrow Roles
-                          </h4>
-                          <ul className="mt-1 space-y-1 text-xs text-blue-300/80">
-                            <li className="flex items-center gap-1">
-                              <span className="font-medium">
-                                Service Provider:
-                              </span>{" "}
-                              Receives funds, delivers work/service
-                            </li>
-                            <li className="flex items-center gap-1">
-                              <span className="font-medium">
-                                Service Recipient:
-                              </span>{" "}
-                              Pays funds into escrow, receives work/service
-                            </li>
-                            <li className="flex items-center gap-1 text-blue-200">
-                              <span className="font-medium">⚠️ Important:</span>{" "}
-                              The same party cannot be both provider and
-                              recipient
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
 
                     {/* Buttons */}
                     <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">

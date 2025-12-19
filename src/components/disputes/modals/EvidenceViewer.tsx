@@ -120,14 +120,15 @@ const EvidenceViewer = ({
               )}
 
               {!pdfLoading && !pdfError && (
-                <object
-                  data={selectedEvidence.url}
-                  type="application/pdf"
+                <iframe
+                  src={`${selectedEvidence.url}#view=fitH`}
+                  title={selectedEvidence.name}
                   width="100%"
                   height="100%"
                   className="rounded-xl border border-white/10"
                   onLoad={onPdfLoad}
                   onError={onPdfError}
+                  sandbox="allow-scripts allow-same-origin allow-popups"
                 >
                   <div className="flex h-full flex-col items-center justify-center space-y-4 text-center">
                     <FileText className="h-16 w-16 text-yellow-400" />
@@ -135,7 +136,7 @@ const EvidenceViewer = ({
                       PDF Not Available
                     </h3>
                     <p className="text-yellow-200">
-                      The document isn't available at the moment.
+                      Your browser doesn't support embedded PDFs.
                     </p>
                     <Button
                       onClick={() =>
@@ -144,10 +145,10 @@ const EvidenceViewer = ({
                       variant="neon"
                       className="neon-hover"
                     >
-                      Try Opening in New Tab
+                      Download PDF
                     </Button>
                   </div>
-                </object>
+                </iframe>
               )}
             </div>
           </div>

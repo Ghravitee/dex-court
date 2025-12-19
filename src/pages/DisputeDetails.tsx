@@ -788,17 +788,19 @@ export default function DisputeDetails() {
 
   return (
     <div className="animate-fade-in space-y-6 py-6 text-white">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row">
         {/* Back Button */}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             onClick={() => navigate("/disputes")}
             variant="outline"
             className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           >
             <ArrowLeft className="h-4 w-4" />{" "}
-            <p className="hidden sm:block">Back to Disputes</p>
+            <p className="flex items-center gap-1">
+              Back<span className="hidden sm:block"> to Disputes</span>
+            </p>
           </Button>
 
           {/* Role Badge */}
@@ -811,28 +813,30 @@ export default function DisputeDetails() {
           {isUserCommunity() && (
             <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
               <Users className="h-3 w-3" />
-              <p className="hidden sm:block">Community</p>
+              <p className="block">Community</p>
             </span>
           )}
 
           {/* Status Badge */}
-          {dispute.status === "Settled" ? (
-            <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Settled
-            </span>
-          ) : dispute.status === "Pending" ? (
-            <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Pending
-            </span>
-          ) : dispute.status === "Dismissed" ? (
-            <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Dismissed
-            </span>
-          ) : (
-            <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
-              Vote in Progress
-            </span>
-          )}
+          <div>
+            {dispute.status === "Settled" ? (
+              <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Settled
+              </span>
+            ) : dispute.status === "Pending" ? (
+              <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Pending
+              </span>
+            ) : dispute.status === "Dismissed" ? (
+              <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Dismissed
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
+                Vote in Progress
+              </span>
+            )}
+          </div>
 
           {/* {dispute.agreementId && (
             <Link
@@ -851,7 +855,7 @@ export default function DisputeDetails() {
         </div>
         {/* Right Side Actions */}
         {/* Right Side Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           {/* Show Vote Outcome for Settled/Dismissed disputes */}
           {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
             <Button

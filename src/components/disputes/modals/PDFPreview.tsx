@@ -146,12 +146,13 @@ export const PDFPreview = ({
         )}
 
         {!isLoading && !hasError && blobUrl && (
-          <object
-            data={blobUrl}
-            type="application/pdf"
+          <iframe
+            src={`${blobUrl}#view=fitH&toolbar=0&navpanes=0`}
+            title={item.name}
             width="100%"
             height="100%"
             className="rounded-lg"
+            sandbox="allow-scripts allow-same-origin"
           >
             <div className="flex h-full flex-col items-center justify-center p-4 text-center">
               <FileText className="mb-2 h-10 w-10 text-yellow-400" />
@@ -167,7 +168,7 @@ export const PDFPreview = ({
                 Download PDF
               </Button>
             </div>
-          </object>
+          </iframe>
         )}
       </div>
     </div>
