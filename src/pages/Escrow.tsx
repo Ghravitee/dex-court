@@ -39,6 +39,7 @@ import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { agreementService } from "../services/agreementServices";
 import { cleanTelegramUsername } from "../lib/usernameUtils";
 import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
+import { isValidAddress, normalizeAddress } from "../web3/helper";
 
 // API Enum Mappings
 const AgreementTypeEnum = {
@@ -101,10 +102,11 @@ const formatWalletAddress = (address: string): string => {
   return address;
 };
 
-const normalizeAddress = (address: string): string => {
-  if (!address) return "";
-  return address.toLowerCase();
-};
+// const normalizeAddress = (address: string): string => {
+//   if (!address) return "";
+//   return address.toLowerCase();
+// };
+
 
 // File upload types
 interface UploadedFile {
@@ -166,9 +168,9 @@ interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
   lastUpdated?: number;
 }
 
-function isValidAddress(addr: string) {
-  return /^0x[a-fA-F0-9]{40}$/.test(addr);
-}
+// function isValidAddress(addr: string) {
+//   return /^0x[a-fA-F0-9]{40}$/.test(addr);
+// }
 
 // Smart contract error patterns (from your Solidity contract)
 const CONTRACT_ERRORS = {
@@ -519,9 +521,9 @@ export default function Escrow() {
     .filter((e) =>
       query.trim()
         ? e.title.toLowerCase().includes(query.toLowerCase()) ||
-          e.description.toLowerCase().includes(query.toLowerCase()) ||
-          e.from.toLowerCase().includes(query.toLowerCase()) ||
-          e.to.toLowerCase().includes(query.toLowerCase())
+        e.description.toLowerCase().includes(query.toLowerCase()) ||
+        e.from.toLowerCase().includes(query.toLowerCase()) ||
+        e.to.toLowerCase().includes(query.toLowerCase())
         : true,
     )
     .sort((a, b) =>
@@ -763,13 +765,25 @@ export default function Escrow() {
 
   // ---------------- New: decimals lookup for create form ----------------
   // Only attempt to read decimals for a valid customTokenAddress
+
+  // const { data: createTokenDecimals } = useReadContract({
+  //   address: isValidAddress(form.customTokenAddress)
+  //     ? (form.customTokenAddress as `0x${string}`)
+  //     : undefined,
+  //   abi: ERC20_ABI.abi,
+  //   functionName: "decimals",
+  //   query: { enabled: isValidAddress(form.customTokenAddress) },
+  // });
+
   const { data: createTokenDecimals } = useReadContract({
     address: isValidAddress(form.customTokenAddress)
       ? (form.customTokenAddress as `0x${string}`)
       : undefined,
     abi: ERC20_ABI.abi,
     functionName: "decimals",
-    query: { enabled: isValidAddress(form.customTokenAddress) },
+    query: {
+      enabled: isValidAddress(form.customTokenAddress) && form.token === "custom"
+    },
   });
 
   useEffect(() => {
@@ -822,9 +836,9 @@ export default function Escrow() {
   // Ref to store sync data
   const syncDataRef = useRef<{
     agreementIdNumber: number;
-    serviceProviderAddr: string;
-    serviceRecipientAddr: string;
-    tokenAddr: string;
+    serviceProviderAddr: `0x${string}`;
+    serviceRecipientAddr: `0x${string}`;
+    tokenAddr: `0x${string}`;
     vestingMode: boolean;
   } | null>(null);
 
@@ -1347,9 +1361,9 @@ Created: ${new Date().toISOString()}
     // Store sync data for backend integration
     syncDataRef.current = {
       agreementIdNumber,
-      serviceProviderAddr,
-      serviceRecipientAddr,
-      tokenAddr,
+      serviceProviderAddr: serviceProviderAddr as `0x${string}`,
+      serviceRecipientAddr: serviceRecipientAddr as `0x${string}`,
+      tokenAddr: tokenAddr as `0x${string}`,
       vestingMode,
     };
 
@@ -1823,11 +1837,10 @@ Created: ${new Date().toISOString()}
                         <button
                           type="button"
                           onClick={() => setEscrowType("myself")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "myself"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            }`}
                         >
                           <User className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -1840,11 +1853,10 @@ Created: ${new Date().toISOString()}
                         <button
                           type="button"
                           onClick={() => setEscrowType("others")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "others"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -1905,13 +1917,12 @@ Created: ${new Date().toISOString()}
                           <span>
                             {form.type
                               ? typeOptions.find((t) => t.value === form.type)
-                                  ?.label
+                                ?.label
                               : "Select Type"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTypeOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTypeOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTypeOpen && (
@@ -1950,11 +1961,10 @@ Created: ${new Date().toISOString()}
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payer === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -1999,11 +2009,10 @@ Created: ${new Date().toISOString()}
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payerOther === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -2064,6 +2073,11 @@ Created: ${new Date().toISOString()}
                         {!form.counterparty.trim() && (
                           <div className="mt-1 text-xs text-red-400">
                             Please enter counterparty's information
+                          </div>
+                        )}
+                        {form.counterparty && !isValidAddress(form.counterparty) && (
+                          <div className="mt-1 text-xs text-red-400">
+                            Please enter a valid Ethereum address (0x...)
                           </div>
                         )}
                         {/* ADD THIS: Clear role explanation */}
@@ -2175,13 +2189,12 @@ Created: ${new Date().toISOString()}
                           <span>
                             {form.token
                               ? tokenOptions.find((t) => t.value === form.token)
-                                  ?.label
+                                ?.label
                               : "Select Token"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTokenOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTokenOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTokenOpen && (
@@ -2261,10 +2274,10 @@ Created: ${new Date().toISOString()}
                         {(!form.amount.trim() ||
                           isNaN(Number(form.amount)) ||
                           Number(form.amount) <= 0) && (
-                          <div className="mt-1 text-xs text-red-400">
-                            Please enter a valid amount
-                          </div>
-                        )}
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter a valid amount
+                            </div>
+                          )}
                       </div>
                     </div>
 
@@ -2297,11 +2310,10 @@ Created: ${new Date().toISOString()}
                       </label>
 
                       <div
-                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                          isDragOver
-                            ? "border-cyan-400/60 bg-cyan-500/20"
-                            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                        }`}
+                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                          ? "border-cyan-400/60 bg-cyan-500/20"
+                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                          }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -2521,9 +2533,9 @@ Created: ${new Date().toISOString()}
                         }
                       >
                         {isSubmitting ||
-                        isTxPending ||
-                        isApprovalPending ||
-                        createApprovalState.isApprovingToken ? (
+                          isTxPending ||
+                          isApprovalPending ||
+                          createApprovalState.isApprovingToken ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             {createApprovalState.isApprovingToken
@@ -2658,19 +2670,17 @@ Created: ${new Date().toISOString()}
                 <button
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
-                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
-                    statusTab === tab.value
-                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                  } `}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
+                    ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    } `}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                      statusTab === tab.value
-                        ? "bg-cyan-400/30 text-cyan-200"
-                        : "bg-white/10 text-white/60"
-                    } `}
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
+                      ? "bg-cyan-400/30 text-cyan-200"
+                      : "bg-white/10 text-white/60"
+                      } `}
                   >
                     {tab.count}
                   </span>
@@ -2791,28 +2801,27 @@ Created: ${new Date().toISOString()}
                           {/* Use only API status - no on-chain status */}
                           <div>
                             <span
-                              className={`badge w-fit ${
-                                e.status === "pending"
-                                  ? "badge-yellow"
-                                  : e.status === "signed"
-                                    ? "badge-blue"
-                                    : e.status === "pending_approval"
-                                      ? "badge-orange" // Use purple for pending approval to differentiate
-                                      : e.status === "completed"
-                                        ? "badge-green"
-                                        : e.status === "disputed"
-                                          ? "badge-purple" // Also purple for disputed
-                                          : e.status === "cancelled"
-                                            ? "badge-red"
-                                            : e.status === "expired"
-                                              ? "badge-gray" // Gray for expired
-                                              : "badge-orange" // Default fallback
-                              }`}
+                              className={`badge w-fit ${e.status === "pending"
+                                ? "badge-yellow"
+                                : e.status === "signed"
+                                  ? "badge-blue"
+                                  : e.status === "pending_approval"
+                                    ? "badge-orange" // Use purple for pending approval to differentiate
+                                    : e.status === "completed"
+                                      ? "badge-green"
+                                      : e.status === "disputed"
+                                        ? "badge-purple" // Also purple for disputed
+                                        : e.status === "cancelled"
+                                          ? "badge-red"
+                                          : e.status === "expired"
+                                            ? "badge-gray" // Gray for expired
+                                            : "badge-orange" // Default fallback
+                                }`}
                             >
                               {e.status === "pending_approval"
                                 ? "Pending Approval"
                                 : e.status.charAt(0).toUpperCase() +
-                                  e.status.slice(1)}
+                                e.status.slice(1)}
                             </span>
                           </div>
                         </div>

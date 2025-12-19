@@ -39,6 +39,21 @@ export function useCountdown(targetTimestamp: bigint) {
   return timeLeft;
 }
 
+export const isValidAddress = (addr: string): boolean => {
+  if (!addr || typeof addr !== 'string') return false;
+  // Handle empty string, "0x", or malformed addresses
+  if (addr === '0x' || addr.trim() === '' || addr.length !== 42) return false;
+  return /^0x[a-fA-F0-9]{40}$/.test(addr);
+};
+
+export const normalizeAddress = (address: `0x${string}`): string => {
+  if (!address || typeof address !== `string`) return "";
+  // Handle empty or invalid addresses
+  if (!isValidAddress(address)) return address.toLowerCase(); // Return as is if not valid
+  return address.toLowerCase();
+};
+
+
 // Format amount for display
 export const formatAmount = (amount: bigint, decimals?: number) => {
   const actualDecimals = decimals || 18;
