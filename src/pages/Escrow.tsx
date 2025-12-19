@@ -4,6 +4,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 // import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import {
   Search,
   SortAsc,
@@ -31,7 +32,6 @@ import {
   useWriteContract,
   useReadContract,
   useWaitForTransactionReceipt,
-  useChainId,
   useContractReads,
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
@@ -299,12 +299,35 @@ export default function Escrow() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedTxHash, setLastSyncedTxHash] = useState<string | null>(null);
+  const [chainConfigError, setChainConfigError] = useState<string | null>(null);
 
   // ---------- wagmi / on-chain state ----------
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const contractAddress =
-    (chainId && ESCROW_CA[chainId as number]) || undefined;
+  const networkInfo = useNetworkEnvironment();
+
+  // const contractAddress =
+  //   (chainId && ESCROW_CA[chainId as number]) || undefined;
+
+  const contractAddress = useMemo(() => {
+    if (!networkInfo.chainId) return undefined;
+
+    const address = ESCROW_CA[networkInfo.chainId as number];
+
+    // Debug logging to see what's happening
+    console.log("🔄 Contract address lookup:", {
+      address,
+      isValid: address && isValidAddress(address),
+      ESCROW_CA
+    });
+
+    if (address && isValidAddress(address)) {
+      return address as `0x${string}`;
+    }
+
+    console.error(`❌ No valid contract address found for chainId ${networkInfo.chainId}`);
+    return undefined;
+  }, [networkInfo.chainId]);
+
 
   // Separate write hooks: one for general writes, one for approvals
   const {
@@ -899,7 +922,7 @@ export default function Escrow() {
           token: tokenAddr,
           amount: form.amount,
           vestingMode,
-          chainId: chainId,
+          chainId: networkInfo.chainId,
           createdAt: new Date().toISOString(),
         };
 
@@ -916,7 +939,7 @@ Service Recipient: ${serviceRecipientAddr}
 Token Address: ${tokenAddr}
 Amount: ${form.amount}
 Vesting Enabled: ${vestingMode}
-Chain ID: ${chainId}
+Chain ID: ${networkInfo.chainId}
 Created: ${new Date().toISOString()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
@@ -1039,7 +1062,7 @@ Created: ${new Date().toISOString()}
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true, // Always true for escrow
             secureTheFunds: true, // Always true for escrow
-            chainId: chainId,
+            chainId: networkInfo.chainId,
             contractAgreementId: agreementIdNumber.toString(),
             txHash: txHash,
           },
@@ -1208,17 +1231,22 @@ Created: ${new Date().toISOString()}
     address,
     resetWrite,
     refetchAgreements,
-    chainId,
+    networkInfo.chainId,
   ]);
 
   // ---------------- Create agreement handler (with enhanced error handling) ----------------
   const handleCreateAgreementOnChain = async () => {
     resetMessages();
 
-    if (!contractAddress) {
-      setUiError("Unsupported chain or contract not configured");
+    if (!contractAddress || !isValidAddress(contractAddress)) {
+      const errorMsg = chainConfigError || "Escrow contract not configured for this network";
+      setUiError(errorMsg);
+      toast.error("Network Error", {
+        description: `Please switch to a supported network. Current chain: ${networkInfo.chainId}`,
+      });
       return;
     }
+
     if (!isConnected) {
       setUiError("Connect your wallet");
       return;
@@ -1473,6 +1501,51 @@ Created: ${new Date().toISOString()}
       // Error will be handled by the useEffect that monitors writeError
     }
   };
+
+  const NetworkWarning = () => {
+    if (!isConnected || !chainConfigError) return null;
+
+    return (
+      <div className="mb-4 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
+        <div className="flex items-start gap-2">
+          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
+          <div>
+            <h4 className="text-sm font-medium text-orange-300">
+              Unsupported Network
+            </h4>
+            <p className="mt-1 text-xs text-orange-300/80">
+              {chainConfigError}
+            </p>
+            <p className="mt-2 text-xs text-orange-200/60">
+              Supported networks: {Object.keys(ESCROW_CA).map(id => `Chain ${id}`).join(', ')}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+
+  useEffect(() => {
+    if (isConnected) {
+      console.log("🔗 Chain configuration:", {
+        contractAddress,
+        contractConfig: ESCROW_CA,
+        isAddressValid: contractAddress && isValidAddress(contractAddress)
+      });
+
+      if (!contractAddress || !isValidAddress(contractAddress)) {
+        const errorMsg = `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`;
+        setChainConfigError(errorMsg);
+        toast.error("Unsupported Network", {
+          description: `Chain ID ${networkInfo.chainId} is not supported. Please switch to a supported network.`,
+        });
+      } else {
+        setChainConfigError(null);
+      }
+    }
+  }, [networkInfo.chainId, isConnected, contractAddress]);
+
 
   // Wrapper for modal submit: prefer on-chain if wallet connected, otherwise fallback to mock
   const createEscrowSubmit = async (e: React.FormEvent) => {
@@ -1756,6 +1829,7 @@ Created: ${new Date().toISOString()}
 
   return (
     <div className="relative">
+      <NetworkWarning />
       {/* Main */}
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
