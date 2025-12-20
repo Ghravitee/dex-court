@@ -120,7 +120,6 @@ const groupByTimeframe = (
     if (key.includes("W")) {
       period = `W${key.split("-W")[1]}`;
     } else {
-      // Fix the parseInt issue - use the second part of the key
       const parts = key.split("-");
       if (parts.length >= 2) {
         const monthIndex = parseInt(parts[1]);
@@ -722,8 +721,8 @@ function DisputesInfiniteCards() {
       </div>
       <InfiniteMovingCardsWithAvatars
         items={disputeItems}
-        direction="right"
-        speed="slow"
+        direction="left"
+        speed="normal"
         pauseOnHover={true}
         type="disputes" // New type for disputes
       />

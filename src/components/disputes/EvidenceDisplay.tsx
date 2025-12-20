@@ -2,6 +2,7 @@ import { ExternalLink, FileText, ImageIcon, MessageSquare } from "lucide-react";
 import { Button } from "../ui/button";
 import type { EvidenceItem, EvidenceType } from "../../types";
 import { PDFPreview } from "./modals/PDFPreview";
+import { ImagePreview } from "./modals/ImagePreview"; // Add this import
 
 // Evidence Display Component
 export const EvidenceDisplay = ({
@@ -28,14 +29,14 @@ export const EvidenceDisplay = ({
     }
   };
 
-  // Regular evidence item component (non-PDF)
+  // Regular evidence item component (non-PDF, non-Image)
   const RegularEvidenceItem = ({ item }: { item: EvidenceItem }) => (
     <div
       className={`relative flex items-center gap-2 rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4 transition-colors hover:bg-${color}-500/10 cursor-pointer`}
       onClick={() => onViewEvidence(item)}
     >
       <div className={`text-${color}-400`}>{getEvidenceIcon(item.type)}</div>
-      <div className="">
+      <div className="flex-1">
         <div className="text-sm font-medium break-all text-white">
           {item.name}
         </div>
@@ -66,6 +67,7 @@ export const EvidenceDisplay = ({
   return (
     <div className="space-y-3">
       {evidence.map((item, index) => {
+        // Handle PDF preview
         if (item.type === "pdf") {
           return (
             <PDFPreview
@@ -76,7 +78,21 @@ export const EvidenceDisplay = ({
               onViewEvidence={onViewEvidence}
             />
           );
-        } else {
+        }
+        // Handle Image preview
+        else if (item.type === "image") {
+          return (
+            <ImagePreview
+              key={index}
+              item={item}
+              color={color}
+              index={index}
+              onViewEvidence={onViewEvidence}
+            />
+          );
+        }
+        // Handle other evidence types
+        else {
           return <RegularEvidenceItem key={index} item={item} />;
         }
       })}

@@ -1,18 +1,22 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../../../components/ui/button";
-import type { EvidenceItem, EvidenceType } from "../../../types";
-import {
-  ExternalLink,
-  FileText,
-  ImageIcon,
-  Loader2,
-  MessageSquare,
-  X,
-} from "lucide-react";
+import type { EvidenceItem } from "../../../types";
+import { FileText, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 
-// Evidence Viewer Component
-const EvidenceViewer = ({
+// ================= PDF.js =================
+import * as pdfjsLib from "pdfjs-dist";
+import "pdfjs-dist/build/pdf.worker.mjs";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.mjs",
+  import.meta.url,
+).toString();
+// ==========================================
+
+// ================== Evidence Viewer ==================
+export const EvidenceViewer = ({
   isOpen,
   onClose,
   selectedEvidence,
@@ -24,192 +28,209 @@ const EvidenceViewer = ({
   isOpen: boolean;
   onClose: () => void;
   selectedEvidence: EvidenceItem | null;
-  onPdfLoad: () => void;
-  onPdfError: () => void;
-  pdfLoading: boolean;
-  pdfError: boolean;
+  // Add these optional props
+  onPdfLoad?: () => void;
+  onPdfError?: () => void;
+  pdfLoading?: boolean;
+  pdfError?: boolean;
 }) => {
-  const getEvidenceIcon = (type: EvidenceType) => {
-    switch (type) {
-      case "image":
-        return <ImageIcon className="h-4 w-4" />;
-      case "pdf":
-        return <FileText className="h-4 w-4" />;
-      case "transaction":
-        return <ExternalLink className="h-4 w-4" />;
-      case "chat":
-        return <MessageSquare className="h-4 w-4" />;
-      default:
-        return <FileText className="h-4 w-4" />;
-    }
-  };
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [numPages, setNumPages] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const handleModalClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfRef = useRef<any>(null);
 
-  const renderEvidenceContent = () => {
-    if (!selectedEvidence) return null;
+  useEffect(() => {
+    if (!selectedEvidence) return;
 
-    switch (selectedEvidence.type) {
-      case "image":
-      case "chat":
-        return (
-          <div className="flex h-full items-center justify-center p-4">
-            <img
-              src={selectedEvidence.preview}
-              alt={selectedEvidence.name}
-              className="max-h-full max-w-full rounded-lg border border-white/10 object-contain"
-            />
-          </div>
-        );
-      case "transaction":
-        return (
-          <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
-            <ExternalLink className="h-16 w-16 text-cyan-400" />
-            <div className="text-center">
-              <h3 className="mb-2 text-lg font-semibold text-white">
-                Blockchain Transaction
-              </h3>
-              <p className="mb-4 text-cyan-200">{selectedEvidence.name}</p>
-              <img
-                src={selectedEvidence.preview}
-                alt="Transaction preview"
-                className="mb-4 max-h-48 rounded-lg border border-white/10"
-              />
-              <Button
-                onClick={() => window.open(selectedEvidence.url, "_blank")}
-                variant="neon"
-                className="neon-hover"
-              >
-                View on Etherscan
-              </Button>
-            </div>
-          </div>
-        );
-      case "pdf":
-        return (
-          <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
-            <div className="h-[80vh] w-full">
-              {pdfLoading && (
-                <div className="flex h-full flex-col items-center justify-center space-y-4">
-                  <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-                  <p className="text-white/70">Loading PDF document...</p>
-                </div>
-              )}
+    let mounted = true;
+    let localBlobUrl: string | null = null;
 
-              {pdfError && (
-                <div className="flex h-full flex-col items-center justify-center space-y-4">
-                  <FileText className="h-16 w-16 text-red-400" />
-                  <div className="text-center">
-                    <h3 className="mb-2 text-lg font-semibold text-white">
-                      PDF Not Available
-                    </h3>
-                    <p className="text-red-200">
-                      The PDF document could not be loaded.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => window.open(selectedEvidence.url, "_blank")}
-                    variant="neon"
-                    className="neon-hover"
-                  >
-                    Try Opening in New Tab
-                  </Button>
-                </div>
-              )}
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(false);
+        setCurrentPage(1);
+        setNumPages(0);
 
-              {!pdfLoading && !pdfError && (
-                <object
-                  data={selectedEvidence.url}
-                  type="application/pdf"
-                  width="100%"
-                  height="100%"
-                  className="rounded-xl border border-white/10"
-                  onLoad={onPdfLoad}
-                  onError={onPdfError}
-                >
-                  <div className="flex h-full flex-col items-center justify-center space-y-4 text-center">
-                    <FileText className="h-16 w-16 text-yellow-400" />
-                    <h3 className="text-lg font-semibold text-white">
-                      PDF Not Available
-                    </h3>
-                    <p className="text-yellow-200">
-                      The document isn't available at the moment.
-                    </p>
-                    <Button
-                      onClick={() =>
-                        window.open(selectedEvidence.url, "_blank")
-                      }
-                      variant="neon"
-                      className="neon-hover"
-                    >
-                      Try Opening in New Tab
-                    </Button>
-                  </div>
-                </object>
-              )}
-            </div>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex h-full flex-col items-center justify-center space-y-6 py-6">
-            <FileText className="h-16 w-16 text-cyan-400" />
-            <div className="text-center">
-              <h3 className="mb-2 text-lg font-semibold text-white">
-                Evidence File
-              </h3>
-              <p className="text-cyan-200">{selectedEvidence.name}</p>
-            </div>
-          </div>
-        );
-    }
-  };
+        const res = await fetch(selectedEvidence.url);
+        if (!res.ok) throw new Error("Fetch failed");
+
+        const blob = await res.blob();
+        localBlobUrl = URL.createObjectURL(blob);
+
+        if (mounted) setBlobUrl(localBlobUrl);
+      } catch (err) {
+        console.error(err);
+        if (mounted) setError(true);
+        onPdfError?.(); // Call error handler if provided
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+      if (localBlobUrl) URL.revokeObjectURL(localBlobUrl);
+      pdfRef.current?.destroy?.();
+      pdfRef.current = null;
+    };
+  }, [selectedEvidence, onPdfError]);
+
+  // Render PDF page
+  useEffect(() => {
+    if (!blobUrl || !canvasRef.current || selectedEvidence?.type !== "pdf")
+      return;
+
+    let cancelled = false;
+
+    const render = async () => {
+      try {
+        const pdf =
+          pdfRef.current ??
+          (pdfRef.current = await pdfjsLib.getDocument(blobUrl).promise);
+
+        if (!cancelled && numPages === 0) setNumPages(pdf.numPages);
+
+        const page = await pdf.getPage(currentPage);
+        if (cancelled) return;
+
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext("2d")!;
+        const viewport = page.getViewport({ scale: 1 });
+        const container = canvas.parentElement!;
+        const width = container.clientWidth || viewport.width;
+
+        const scale = width / viewport.width;
+        const scaledViewport = page.getViewport({ scale });
+
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        canvas.style.display = "block";
+        canvas.style.maxWidth = "100%";
+
+        await page.render({ canvasContext: ctx, viewport: scaledViewport })
+          .promise;
+
+        if (!cancelled) onPdfLoad?.(); // Call load handler when PDF renders successfully
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setError(true);
+          onPdfError?.(); // Call error handler
+        }
+      }
+    };
+
+    render();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [blobUrl, currentPage, numPages, selectedEvidence, onPdfLoad, onPdfError]);
 
   if (!isOpen || !selectedEvidence) return null;
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence>
       <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          className="card-cyan relative h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl"
-          onClick={handleModalClick}
+          onClick={(e) => e.stopPropagation()}
+          className="relative h-[90vh] w-full max-w-4xl rounded-2xl bg-gray-900 p-6"
+          initial={{ scale: 0.95 }}
+          animate={{ scale: 1 }}
+          exit={{ scale: 0.95 }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 bg-gray-800/50 p-6">
-            <div className="flex items-center gap-3">
-              {getEvidenceIcon(selectedEvidence.type)}
-              <h3 className="text-lg font-semibold text-white">
-                {selectedEvidence.name}
-              </h3>
-              {pdfLoading && (
-                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="text-white/70 hover:text-white"
-            >
-              <X className="h-5 w-5" />
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-white">
+              {selectedEvidence.name}
+            </h3>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X />
             </Button>
           </div>
 
-          {/* Content */}
-          <div className="h-[calc(100%-80px)] overflow-auto p-6">
-            {renderEvidenceContent()}
-          </div>
+          {/* Loading */}
+          {(loading || pdfLoading) && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-10 w-10 animate-spin text-cyan-400" />
+            </div>
+          )}
+
+          {/* Error */}
+          {(error || pdfError) && (
+            <div className="flex h-full flex-col items-center justify-center">
+              <FileText className="h-12 w-12 text-red-400" />
+              <p className="text-red-300">
+                Failed to load {selectedEvidence.type}
+              </p>
+            </div>
+          )}
+
+          {/* PDF */}
+          {!loading &&
+            !error &&
+            !pdfLoading &&
+            !pdfError &&
+            selectedEvidence.type === "pdf" && (
+              <>
+                <div className="h-[70vh] overflow-x-hidden overflow-y-auto">
+                  <canvas ref={canvasRef} className="rounded-lg shadow-xl" />
+                </div>
+
+                {numPages > 1 && (
+                  <div className="mt-4 flex items-center justify-center gap-4">
+                    <Button
+                      size="sm"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => p - 1)}
+                    >
+                      <ChevronLeft />
+                    </Button>
+
+                    <span className="text-cyan-300">
+                      Page {currentPage} / {numPages}
+                    </span>
+
+                    <Button
+                      size="sm"
+                      disabled={currentPage >= numPages}
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                    >
+                      <ChevronRight />
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+
+          {/* IMAGE */}
+          {!loading &&
+            !error &&
+            !pdfLoading &&
+            !pdfError &&
+            selectedEvidence.type === "image" &&
+            blobUrl && (
+              <div className="flex h-[70vh] items-center justify-center overflow-auto">
+                <img
+                  src={blobUrl}
+                  alt={selectedEvidence.name}
+                  className="max-h-full max-w-full rounded-lg"
+                />
+              </div>
+            )}
         </motion.div>
       </motion.div>
     </AnimatePresence>

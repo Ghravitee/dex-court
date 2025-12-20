@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../../../components/ui/button";
 import type { EvidenceItem } from "../../../types";
-import { ExternalLink, FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, ImageIcon, ExternalLink } from "lucide-react";
+
 import { useEffect, useRef, useState } from "react";
 
 // ================= PDF.js =================
@@ -12,15 +13,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.mjs",
   import.meta.url,
 ).toString();
-// ==========================================
 
-export const PDFPreview = ({
+export const EvidencePreview = ({
   item,
   onViewEvidence,
+  color,
 }: {
   item: EvidenceItem;
   color: string;
-  index: number;
   onViewEvidence: (evidence: EvidenceItem) => void;
 }) => {
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,6 @@ export const PDFPreview = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfRef = useRef<any>(null);
 
-  // ================= FETCH PDF =================
   useEffect(() => {
     let mounted = true;
     let localBlobUrl: string | null = null;
@@ -41,7 +40,7 @@ export const PDFPreview = ({
         setError(false);
 
         const res = await fetch(item.url);
-        if (!res.ok) throw new Error("Failed to fetch PDF");
+        if (!res.ok) throw new Error("Fetch failed");
 
         const blob = await res.blob();
         localBlobUrl = URL.createObjectURL(blob);
@@ -49,10 +48,9 @@ export const PDFPreview = ({
         if (mounted) setBlobUrl(localBlobUrl);
       } catch (err) {
         console.error(err);
-        if (mounted) {
-          setError(true);
-          setLoading(false);
-        }
+        if (mounted) setError(true);
+      } finally {
+        if (mounted) setLoading(false);
       }
     };
 
@@ -66,9 +64,9 @@ export const PDFPreview = ({
     };
   }, [item.url]);
 
-  // ================= RENDER FIRST PAGE =================
+  // Render first page if PDF
   useEffect(() => {
-    if (!blobUrl || !canvasRef.current) return;
+    if (!blobUrl || !canvasRef.current || item.type !== "pdf") return;
 
     let cancelled = false;
 
@@ -77,19 +75,16 @@ export const PDFPreview = ({
         const pdf =
           pdfRef.current ??
           (pdfRef.current = await pdfjsLib.getDocument(blobUrl).promise);
-
         const page = await pdf.getPage(1);
         if (cancelled) return;
 
         const canvas = canvasRef.current!;
         const ctx = canvas.getContext("2d")!;
         const viewport = page.getViewport({ scale: 1 });
-
         const container = canvas.parentElement!;
         const width = container.clientWidth || viewport.width;
 
         const scale = width / viewport.width;
-
         const scaledViewport = page.getViewport({ scale });
 
         canvas.width = scaledViewport.width;
@@ -97,18 +92,11 @@ export const PDFPreview = ({
         canvas.style.maxWidth = "100%";
         canvas.style.display = "block";
 
-        await page.render({
-          canvasContext: ctx,
-          viewport: scaledViewport,
-        }).promise;
-
-        if (!cancelled) setLoading(false);
+        await page.render({ canvasContext: ctx, viewport: scaledViewport })
+          .promise;
       } catch (err) {
         console.error(err);
-        if (!cancelled) {
-          setError(true);
-          setLoading(false);
-        }
+        if (!cancelled) setError(true);
       }
     };
 
@@ -117,20 +105,22 @@ export const PDFPreview = ({
     return () => {
       cancelled = true;
     };
-  }, [blobUrl]);
+  }, [blobUrl, item]);
 
   return (
     <div
-      className="relative cursor-pointer rounded-lg border border-white/10 bg-white/5 p-4"
+      className={`relative cursor-pointer rounded-lg border border-${color}-400/20 bg-${color}-500/5 p-4`}
       onClick={() => onViewEvidence(item)}
     >
-      {/* Header */}
       <div className="mb-3 flex items-center gap-3">
-        <FileText className="h-4 w-4 text-cyan-400" />
-
+        {item.type === "image" ? (
+          <ImageIcon className="h-4 w-4 text-cyan-400" />
+        ) : (
+          <FileText className="h-4 w-4 text-cyan-400" />
+        )}
         <div className="flex-1">
           <div className="text-sm font-medium text-white">{item.name}</div>
-          <div className="text-xs text-gray-400">PDF Document</div>
+          <div className="text-xs text-gray-400">{item.type.toUpperCase()}</div>
         </div>
 
         <Button
@@ -146,13 +136,21 @@ export const PDFPreview = ({
         </Button>
       </div>
 
-      {/* Preview */}
-      <div className="relative h-64 w-full overflow-x-hidden overflow-y-auto rounded-lg border border-white/10 bg-black/20">
-        {/* Canvas is ALWAYS mounted */}
-        <canvas
-          ref={canvasRef}
-          className="mx-auto block rounded-lg shadow-lg"
-        />
+      <div className="relative flex h-64 w-full items-center justify-center overflow-auto rounded-lg border border-white/10 bg-black/20">
+        {item.type === "image" && blobUrl && (
+          <img
+            src={blobUrl}
+            alt={item.name}
+            className="max-h-full max-w-full rounded-lg"
+          />
+        )}
+
+        {item.type === "pdf" && (
+          <canvas
+            ref={canvasRef}
+            className="mx-auto block rounded-lg shadow-lg"
+          />
+        )}
 
         {loading && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center">
