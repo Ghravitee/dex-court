@@ -351,7 +351,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl rounded-2xl border border-cyan-700/30 bg-[#0e1116]/90 p-4 shadow-lg backdrop-blur-md">
+    <div className="card-cyan mx-auto w-full max-w-3xl rounded-2xl bg-[#0e1116]/90 p-4 shadow-lg backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between border-b border-cyan-800/30 pb-2">
         <div className="ml-auto flex items-center gap-2 text-sm text-cyan-300/70">
           {canSend ? (
@@ -478,47 +478,57 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
       {/* Input Section - Only show for authorized users */}
       {canSend ? (
         <>
-          <div className="mt-4 flex items-center gap-2 border-t border-cyan-800/40 pt-3">
-            <label
-              htmlFor="file-upload"
-              className="cursor-pointer text-cyan-400 transition-colors hover:text-cyan-300"
-              title="Attach files"
-            >
-              <div className="glass card-cyan flex size-10 items-center justify-center rounded-full">
-                <Paperclip className="text-[8px]" />
+          <div className="mt-4 border-t border-cyan-800/40 pt-3">
+            <div className="relative flex items-center gap-2">
+              {/* Combined input with upload button inside */}
+              <div className="relative flex-1">
+                <div className="absolute top-1/2 left-3 -translate-y-1/2">
+                  <label
+                    htmlFor="file-upload"
+                    className="cursor-pointer text-cyan-400 transition-colors hover:text-cyan-300"
+                    title="Attach files"
+                  >
+                    <Paperclip size={20} />
+                  </label>
+                  <input
+                    id="file-upload"
+                    type="file"
+                    multiple
+                    onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                    className="hidden"
+                  />
+                </div>
+
+                <input
+                  value={content}
+                  onChange={handleTyping}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Write a message..."
+                  disabled={isSending}
+                  className="w-full rounded-xl border border-cyan-800/40 bg-[#141920] py-3 pr-20 pl-12 text-gray-100 transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-50"
+                />
+
+                {/* Send button positioned inside the input on the right */}
+                <div className="absolute top-1/2 right-2 -translate-y-1/2">
+                  <button
+                    onClick={sendMessage}
+                    disabled={
+                      isSending || (!content.trim() && files.length === 0)
+                    }
+                    className="flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-2 font-medium text-white shadow-md transition-all hover:bg-cyan-500 hover:shadow-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSending ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                    <p className="ml-1 hidden sm:inline">
+                      {isSending ? "Sending..." : "Send"}
+                    </p>
+                  </button>
+                </div>
               </div>
-            </label>
-            <input
-              id="file-upload"
-              type="file"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-              className="hidden"
-            />
-
-            <input
-              value={content}
-              onChange={handleTyping}
-              onKeyPress={handleKeyPress}
-              placeholder="Write a message..."
-              disabled={isSending}
-              className="flex-1 rounded-xl border border-cyan-800/40 bg-[#141920] px-4 py-2 text-gray-100 transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-50"
-            />
-
-            <button
-              onClick={sendMessage}
-              disabled={isSending || (!content.trim() && files.length === 0)}
-              className="flex items-center gap-1 rounded-xl bg-cyan-600 px-4 py-2 font-medium text-white shadow-md transition-all hover:bg-cyan-500 hover:shadow-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSending ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Send size={16} />
-              )}
-              <p className="hidden sm:block">
-                {isSending ? "Sending..." : "Send"}
-              </p>
-            </button>
+            </div>
           </div>
 
           {files.length > 0 && (

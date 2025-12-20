@@ -43,6 +43,8 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/apiClient";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import OpenDisputeModal from "../components/OpenDisputeModal";
+import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
+import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -117,6 +119,55 @@ const formatNumberWithCommas = (value: string | undefined): string => {
 
   // Combine parts
   return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
+};
+
+// Add this helper function (similar to the one in DisputeDetails)
+const processAgreementFiles = (files: any[], agreementId: string): any[] => {
+  return files.map((file) => {
+    const name = file.fileName;
+
+    // Function to get file URL
+    const getFileUrl = (): string => {
+      // Use the same API endpoint pattern as in DisputeDetails
+      const API_BASE =
+        import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+      return `${API_BASE}/agreement/${agreementId}/file/${file.id}`;
+    };
+
+    const fileUrl = getFileUrl();
+
+    // Determine file type
+    if (/\.(webp|jpg|jpeg|png|gif)$/i.test(name)) {
+      return {
+        name,
+        type: "image",
+        url: fileUrl,
+        preview: fileUrl,
+      };
+    } else if (/\.pdf($|\?)/i.test(name)) {
+      return {
+        name,
+        type: "pdf",
+        url: fileUrl,
+        preview: "https://placehold.co/600x800/059669/white?text=PDF+Document",
+      };
+    } else if (name.match(/chat|screenshot|conversation/i)) {
+      return {
+        name,
+        type: "chat",
+        url: fileUrl,
+        preview:
+          "https://placehold.co/600x800/1f2937/white?text=Chat+Screenshot",
+      };
+    } else {
+      return {
+        name,
+        type: "document",
+        url: fileUrl,
+        preview: "https://placehold.co/600x800/059669/white?text=Document",
+      };
+    }
+  });
 };
 
 const getTelegramUsernameFromParty = (party: any): string => {
@@ -728,6 +779,10 @@ export default function AgreementDetails() {
   const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
   const [isOpeningDispute] = useState(false);
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
+  const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
 
   // ADD THESE NEW STATE VARIABLES FOR POLLING
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1395,6 +1450,22 @@ export default function AgreementDetails() {
       throw error;
     }
   };
+  // Add these handler functions
+  const handleViewEvidence = (evidence: any) => {
+    setSelectedEvidence(evidence);
+    setEvidenceViewerOpen(true);
+    setPdfLoading(evidence.type === "pdf");
+    setPdfError(false);
+  };
+
+  const handlePdfLoad = () => {
+    setPdfLoading(false);
+  };
+
+  const handlePdfError = () => {
+    setPdfLoading(false);
+    setPdfError(true);
+  };
 
   // Helper function to determine file type
   const getFileType = (filename: string): string => {
@@ -1451,15 +1522,15 @@ export default function AgreementDetails() {
   };
 
   // Helper function to format file size
-  const getFileSizeDisplay = (fileSize?: number): string => {
-    if (!fileSize) return "Unknown size";
+  // const getFileSizeDisplay = (fileSize?: number): string => {
+  //   if (!fileSize) return "Unknown size";
 
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(fileSize) / Math.log(1024));
-    return (
-      Math.round((fileSize / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
-    );
-  };
+  //   const sizes = ["Bytes", "KB", "MB", "GB"];
+  //   const i = Math.floor(Math.log(fileSize) / Math.log(1024));
+  //   return (
+  //     Math.round((fileSize / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
+  //   );
+  // };
 
   // FIXED: Enhanced counterparty detection
   const isCounterparty =
@@ -1878,21 +1949,41 @@ export default function AgreementDetails() {
                 </div>
               </div>
               {/* Attached Files */}
-              {agreement.images && agreement.images.length > 0 && (
+              {agreement._raw?.files && agreement._raw.files.length > 0 && (
                 <div className="mb-6">
                   <h3 className="mb-3 text-lg font-semibold text-white">
                     Supporting Documents
                   </h3>
+
+                  {/* Preview Section */}
+                  <div className="mb-4 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-cyan-400" />
+                      <h4 className="font-medium text-cyan-300">
+                        Preview Files
+                      </h4>
+                    </div>
+
+                    <EvidenceDisplay
+                      evidence={processAgreementFiles(
+                        agreement._raw.files,
+                        agreement.id,
+                      )}
+                      color="cyan"
+                      onViewEvidence={handleViewEvidence}
+                    />
+                  </div>
+
+                  {/* Download Section (keep your old download buttons) */}
                   <div className="space-y-2">
-                    {agreement.images.map((file, index) => {
-                      // Get file type for better icon display
+                    {(agreement.images || []).map((file, index) => {
                       const fileType = getFileType(file);
                       const fileIcon = getFileIcon(fileType);
 
                       return (
                         <div
                           key={index}
-                          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3 transition-colors duration-200 hover:bg-white/10"
+                          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
                         >
                           <div className="flex min-w-0 flex-1 items-center space-x-3">
                             {fileIcon}
@@ -1901,10 +1992,7 @@ export default function AgreementDetails() {
                                 {file}
                               </span>
                               <span className="text-xs text-cyan-300/70 capitalize">
-                                {fileType} •{" "}
-                                {getFileSizeDisplay(
-                                  agreement._raw?.files?.[index]?.fileSize,
-                                )}
+                                {fileType}
                               </span>
                             </div>
                           </div>
@@ -2709,6 +2797,20 @@ export default function AgreementDetails() {
           onDisputeCreated={handleDisputeCreated}
         />
       )}
+      {/* Evidence Viewer Modal */}
+      <EvidenceViewer
+        isOpen={evidenceViewerOpen}
+        onClose={() => {
+          setEvidenceViewerOpen(false);
+          setPdfLoading(false);
+          setPdfError(false);
+        }}
+        selectedEvidence={selectedEvidence}
+        onPdfLoad={handlePdfLoad}
+        onPdfError={handlePdfError}
+        pdfLoading={pdfLoading}
+        pdfError={pdfError}
+      />
     </div>
   );
 }

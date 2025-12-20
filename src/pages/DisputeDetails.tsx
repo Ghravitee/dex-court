@@ -208,17 +208,6 @@ export default function DisputeDetails() {
     };
   }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
 
-  useEffect(() => {
-    console.log("🔍 VOTING STATUS DEBUG:");
-    console.log("Dispute ID:", disputeId);
-    console.log("Dispute data:", dispute);
-    console.log("HasVoted from dispute:", dispute?.hasVoted);
-    console.log("Hook state - hasVoted:", hasVoted);
-    console.log("Hook state - canVote:", canVote);
-    console.log("Hook state - reason:", reason);
-    console.log("Hook state - isLoading:", votingStatusLoading);
-  }, [dispute, hasVoted, canVote, reason, votingStatusLoading, disputeId]);
-
   // Add effect to fetch agreement details if agreementId exists
   useEffect(() => {
     const fetchSourceAgreement = async () => {
@@ -627,7 +616,7 @@ export default function DisputeDetails() {
     // Show loading state
     if (votingStatusLoading) {
       return (
-        <div className="animate-fade-in card-cyan glass rounded-2xl p-6">
+        <div className="animate-fade-in card-cyan rounded-2xl p-6">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
             <p className="text-sm text-cyan-200">Checking voting status...</p>
@@ -788,17 +777,19 @@ export default function DisputeDetails() {
 
   return (
     <div className="animate-fade-in space-y-6 py-6 text-white">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row">
         {/* Back Button */}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             onClick={() => navigate("/disputes")}
             variant="outline"
             className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           >
             <ArrowLeft className="h-4 w-4" />{" "}
-            <p className="hidden sm:block">Back to Disputes</p>
+            <p className="flex items-center gap-1">
+              Back<span className="hidden sm:block"> to Disputes</span>
+            </p>
           </Button>
 
           {/* Role Badge */}
@@ -811,28 +802,30 @@ export default function DisputeDetails() {
           {isUserCommunity() && (
             <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
               <Users className="h-3 w-3" />
-              <p className="hidden sm:block">Community</p>
+              <p className="block">Community</p>
             </span>
           )}
 
           {/* Status Badge */}
-          {dispute.status === "Settled" ? (
-            <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Settled
-            </span>
-          ) : dispute.status === "Pending" ? (
-            <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Pending
-            </span>
-          ) : dispute.status === "Dismissed" ? (
-            <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
-              Dismissed
-            </span>
-          ) : (
-            <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
-              Vote in Progress
-            </span>
-          )}
+          <div>
+            {dispute.status === "Settled" ? (
+              <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Settled
+              </span>
+            ) : dispute.status === "Pending" ? (
+              <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Pending
+              </span>
+            ) : dispute.status === "Dismissed" ? (
+              <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                Dismissed
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
+                Vote in Progress
+              </span>
+            )}
+          </div>
 
           {/* {dispute.agreementId && (
             <Link
@@ -851,7 +844,7 @@ export default function DisputeDetails() {
         </div>
         {/* Right Side Actions */}
         {/* Right Side Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           {/* Show Vote Outcome for Settled/Dismissed disputes */}
           {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
             <Button
@@ -897,7 +890,7 @@ export default function DisputeDetails() {
       {/* Header Card */}
       {/* Header Card */}
       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
-        <div className="card-cyan glass max-w-2xl rounded-2xl p-6 shadow-lg">
+        <div className="card-cyan max-w-2xl rounded-2xl p-6 shadow-lg">
           <div className="flex items-start justify-between">
             <div>
               <h1 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
@@ -984,7 +977,7 @@ export default function DisputeDetails() {
         </div>
         {/* Agreement Information Section */}
         {dispute.agreementId && sourceAgreement && (
-          <div className="glass rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-6">
+          <div className="rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-6">
             <div className="space-y-4">
               <div className="p-4">
                 <div className="flex flex-col justify-between gap-2">
