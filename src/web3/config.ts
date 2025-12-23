@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x3dc919C7Bd0E136404539f5C26a2C9B6bA3CF06B", // Sepolia address
+  11155111: "0x07b4BC964E70b2B1291200958627A21EF016eC92", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x5ae134DA03fa6Eabd69eDAe7dE86F65Ff5eEf10F", // Sepolia address
+  11155111: "0x71b4DbF108e74811d9E558D489ca441Ef4337D01", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -986,6 +986,12 @@ export const ESCROW_ABI = {
           "type": "uint256",
           "indexed": true,
           "internalType": "uint256"
+        },
+        {
+          "name": "by",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
         },
         {
           "name": "token",
