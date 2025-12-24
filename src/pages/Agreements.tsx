@@ -457,18 +457,33 @@ export default function Agreements() {
     try {
       setLoading(true);
 
-      // Get ALL agreements without pagination
+      // 🔥 OPTIMIZATION: Use query parameter to filter by type=1 (reputational agreements only)
+      // This eliminates the need for fetching details just to check hasSecuredFunds
       const allAgreementsResponse = await agreementService.getAgreements({
-        top: 1000,
+        top: 100,
         skip: 0,
         sort: "desc",
+        type: 1, // 🆕 NEW: Only fetch reputational agreements (type 1)
       });
 
       const allAgreementsList = allAgreementsResponse.results || [];
 
-      // Get agreement details to check for secured funds for ALL agreements
-      const agreementsWithDetails = await Promise.all(
-        allAgreementsList.map(async (agreement) => {
+      console.log(
+        "🔍 Total reputational agreements (type=1):",
+        allAgreementsList.length,
+      );
+
+      // 🔥 MAJOR OPTIMIZATION: No need to fetch details for filtering!
+      // All agreements returned are already reputational (type=1)
+
+      // Only fetch details for agreements that will be displayed on current page
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const agreementsToDisplay = allAgreementsList.slice(startIndex, endIndex);
+
+      // 🔥 OPTIMIZATION: Only fetch details for agreements being displayed
+      const displayedAgreementsWithDetails = await Promise.all(
+        agreementsToDisplay.map(async (agreement) => {
           try {
             const details = await agreementService.getAgreementDetails(
               agreement.id,
@@ -484,28 +499,30 @@ export default function Agreements() {
         }),
       );
 
-      // Filter out agreements with secured funds
-      const filteredAgreements = agreementsWithDetails.filter(
-        (item) => item.details && !item.details.hasSecuredFunds,
+      // Transform agreements for display
+      const transformedDisplayedAgreements = displayedAgreementsWithDetails.map(
+        (item) => transformApiAgreement(item),
       );
+
+      // 🔥 OPTIMIZATION: Store ALL agreements without details for filtering/sorting
+      const allTransformedAgreements = allAgreementsList.map((agreement) =>
+        transformApiAgreement(agreement),
+      );
+
+      // Store ALL agreements (without details for filtering)
+      setAllAgreements(allTransformedAgreements);
+      setTotalAgreements(allAgreementsList.length);
+      setTotalResults(allAgreementsList.length);
+
+      // Set displayed agreements (with details)
+      setAgreements(transformedDisplayedAgreements);
 
       console.log(
-        "🔍 Total agreements after filtering:",
-        filteredAgreements.length,
+        "✅ Displaying",
+        transformedDisplayedAgreements.length,
+        "agreements on page",
+        currentPage,
       );
-
-      // Transform agreements for display
-      const transformedAgreements = filteredAgreements.map((item) =>
-        transformApiAgreement(item),
-      );
-
-      // Store ALL agreements
-      setAllAgreements(transformedAgreements);
-      setTotalAgreements(transformedAgreements.length);
-      setTotalResults(transformedAgreements.length);
-
-      // Apply initial pagination
-      applyPagination(transformedAgreements, currentPage, pageSize);
     } catch (error: any) {
       console.error("Failed to fetch agreements:", error);
       toast.error(error.message || "Failed to load agreements");
@@ -516,7 +533,7 @@ export default function Agreements() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, applyPagination]);
+  }, [currentPage, pageSize]);
 
   useEffect(() => {
     loadAgreements();

@@ -1,14 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // pages/UserProfile.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { apiService } from "../services/apiService";
-
+import { agreementService } from "../services/agreementServices";
 import type { User } from "../types/auth.types";
 import { FaUser, FaHandshake } from "react-icons/fa";
 import { FiAlertCircle } from "react-icons/fi";
-// import { RiShieldCheckFill } from "react-icons/ri";
 import { Button } from "../components/ui/button";
 import Judge from "../components/ui/svgcomponents/Judge";
 import Community from "../components/ui/svgcomponents/Community";
@@ -16,26 +15,14 @@ import UserIcon from "../components/ui/svgcomponents/UserIcon";
 import { BentoCard } from "./Profile";
 import { LoginModal } from "../components/LoginModal";
 import { UserAvatar } from "../components/UserAvatar";
-import { usePublicAgreementsApi } from "../hooks/usePublicAgreementsApi";
 import { useDisputesApi } from "../hooks/useDisputesApi";
-// import type { AgreementSummaryDTO } from "../services/agreementServices";
 import type { DisputeRow } from "../types";
 import { Loader2, Wallet } from "lucide-react";
 import TrustMeter from "../components/TrustMeter";
 import useTrustScore from "../hooks/useTrustScore";
-// ADD THIS IMPORT
-import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
 
-import { cleanTelegramUsername } from "../lib/usernameUtils";
-
-// Add AgreementStatusBadge component (same as in Profile)
-const AgreementStatusBadge = ({
-  status,
-}: {
-  status: number;
-  agreement?: any; // Keep for compatibility but don't use
-}) => {
-  // Use ONLY API status
+// Add AgreementStatusBadge component
+const AgreementStatusBadge = ({ status }: { status: number }) => {
   const displayStatus = mapAgreementStatusToEscrow(status);
 
   const statusConfig = {
@@ -60,7 +47,6 @@ const AgreementStatusBadge = ({
       color: "bg-red-500/20 text-red-300 border-red-400/30",
     },
     expired: {
-      // Add expired status
       label: "Expired",
       color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
     },
@@ -68,11 +54,6 @@ const AgreementStatusBadge = ({
       label: "Pending Approval",
       color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
     },
-    // Optionally keep if needed elsewhere
-    // pending_delivery: {
-    //   label: "Pending Delivery",
-    //   color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
-    // },
   };
 
   const config = statusConfig[displayStatus as keyof typeof statusConfig] || {
@@ -83,14 +64,14 @@ const AgreementStatusBadge = ({
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color} max-w-[80px] truncate`}
-      title={config.label} // Add tooltip with full text
+      title={config.label}
     >
       {config.label}
     </span>
   );
 };
 
-// ADD DisputeStatusBadge component
+// Add DisputeStatusBadge component
 const DisputeStatusBadge = ({ status }: { status: string }) => {
   const statusConfig = {
     Pending: {
@@ -149,7 +130,7 @@ type EscrowStatus =
   | "signed"
   | "completed"
   | "cancelled"
-  | "expired" // Add expired status
+  | "expired"
   | "disputed"
   | "pending_approval"
   | "pending_delivery";
@@ -176,7 +157,100 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   }
 };
 
-// Helper function to format handle (username or wallet address)
+// NEW: Helper function to extract roles from description
+const extractRolesFromDescription = (description: string) => {
+  if (!description) return { serviceProvider: null, serviceRecipient: null };
+
+  // Look for Service Provider pattern
+  const serviceProviderMatch = description.match(
+    /Service Provider:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
+  );
+  // Look for Service Recipient pattern
+  const serviceRecipientMatch = description.match(
+    /Service Recipient:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
+  );
+
+  // Look for alternative patterns
+  const alternativeProviderMatch = description.match(
+    /Provider:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
+  );
+  const alternativeRecipientMatch = description.match(
+    /Recipient:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
+  );
+
+  return {
+    serviceProvider:
+      serviceProviderMatch?.[1] || alternativeProviderMatch?.[1] || null,
+    serviceRecipient:
+      serviceRecipientMatch?.[1] || alternativeRecipientMatch?.[1] || null,
+  };
+};
+
+// NEW: Helper function to determine user's role in agreement
+const getUserRoleInAgreement = (
+  agreement: any,
+  userId: string | undefined,
+  userWalletAddress: string | undefined,
+  isEscrow: boolean = false,
+): string => {
+  if (!userId && !userWalletAddress) return "Unknown";
+
+  // For escrow agreements, check description for roles
+  if (isEscrow) {
+    const roles = extractRolesFromDescription(agreement.description || "");
+
+    if (userWalletAddress) {
+      // Check if user is Service Provider (from wallet address)
+      if (
+        roles.serviceProvider &&
+        roles.serviceProvider.toLowerCase() === userWalletAddress.toLowerCase()
+      ) {
+        return "Service Provider";
+      }
+      // Check if user is Service Recipient (from wallet address)
+      if (
+        roles.serviceRecipient &&
+        roles.serviceRecipient.toLowerCase() === userWalletAddress.toLowerCase()
+      ) {
+        return "Service Recipient";
+      }
+    }
+
+    // Check by Telegram username
+    const userTelegram = userId ? `@user${userId}` : null;
+    if (userTelegram) {
+      if (
+        roles.serviceProvider &&
+        roles.serviceProvider.toLowerCase() === userTelegram.toLowerCase()
+      ) {
+        return "Service Provider";
+      }
+      if (
+        roles.serviceRecipient &&
+        roles.serviceRecipient.toLowerCase() === userTelegram.toLowerCase()
+      ) {
+        return "Service Recipient";
+      }
+    }
+  }
+
+  // For regular agreements, check by user ID
+  const userIdNum = userId ? Number(userId) : null;
+  const firstPartyId = agreement.firstParty
+    ? Number(agreement.firstParty.id)
+    : null;
+  const counterPartyId = agreement.counterParty
+    ? Number(agreement.counterParty.id)
+    : null;
+
+  if (userIdNum) {
+    if (firstPartyId === userIdNum) return "First Party";
+    if (counterPartyId === userIdNum) return "Counter Party";
+  }
+
+  return "Creator";
+};
+
 // Helper function to format handle (username or wallet address)
 const formatHandle = (handle: string | null | undefined): string => {
   if (!handle) return "Unknown User";
@@ -205,12 +279,13 @@ export default function UserProfile() {
     user?.id || null,
   );
 
-  const {
-    agreements,
-    // agreementDetails,
-    loading: agreementsLoading,
-    error: agreementsError,
-  } = usePublicAgreementsApi(user?.id);
+  // NEW: State for agreements with type-based filtering
+  const [reputationalAgreements, setReputationalAgreements] = useState<any[]>(
+    [],
+  );
+  const [escrowAgreements, setEscrowAgreements] = useState<any[]>([]);
+  const [agreementsLoading, setAgreementsLoading] = useState(true);
+  const [agreementsError, setAgreementsError] = useState<string | null>(null);
 
   const {
     disputes,
@@ -218,160 +293,9 @@ export default function UserProfile() {
     error: disputesError,
   } = useDisputesApi(user?.id);
 
-  // ADD ESCROW HOOK
-  const {
-    data: agreementsWithSecuredFunds,
-    isLoading: escrowAgreementsLoading,
-    error: escrowAgreementsError,
-  } = useAgreementsWithDetailsAndFundsFilter({
-    includesFunds: true,
-    hasSecuredFunds: true,
-  });
-
-  const transformApiAgreementToEscrow = (apiAgreement: any) => {
-    // Extract from on-chain metadata in description
-    const extractServiceProviderFromDescription = (
-      description: string,
-    ): string | undefined => {
-      const match = description?.match(
-        /Service Provider: (0x[a-fA-F0-9]{40})/i,
-      );
-      return match?.[1];
-    };
-
-    const extractServiceRecipientFromDescription = (
-      description: string,
-    ): string | undefined => {
-      const match = description?.match(
-        /Service Recipient: (0x[a-fA-F0-9]{40})/i,
-      );
-      return match?.[1];
-    };
-
-    const serviceProvider = extractServiceProviderFromDescription(
-      apiAgreement.description,
-    );
-    const serviceRecipient = extractServiceRecipientFromDescription(
-      apiAgreement.description,
-    );
-
-    // Fallback to API party data
-    const getPartyIdentifier = (party: any): string => {
-      return (
-        party?.walletAddress ||
-        party?.wallet ||
-        party?.WalletAddress ||
-        cleanTelegramUsername(party?.telegramUsername) ||
-        "@unknown"
-      );
-    };
-
-    const fallbackServiceProvider = getPartyIdentifier(apiAgreement.firstParty);
-    const fallbackServiceRecipient = getPartyIdentifier(
-      apiAgreement.counterParty,
-    );
-
-    const finalServiceProvider = serviceProvider || fallbackServiceProvider;
-    const finalServiceRecipient = serviceRecipient || fallbackServiceRecipient;
-
-    return {
-      id: `${apiAgreement.id}`,
-      title: apiAgreement.title,
-      from: finalServiceRecipient,
-      to: finalServiceProvider,
-      token: apiAgreement.tokenSymbol || "ETH",
-      amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
-      // Use ONLY API status
-      status: mapAgreementStatusToEscrow(apiAgreement.status),
-      deadline: apiAgreement.deadline
-        ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
-        : "No deadline",
-      type: apiAgreement.visibility === 1 ? "private" : "public",
-      description: apiAgreement.description || "",
-      createdAt: new Date(
-        apiAgreement.dateCreated || apiAgreement.createdAt,
-      ).getTime(),
-      contractAgreementId: apiAgreement.contractAgreementId,
-      firstParty: apiAgreement.firstParty,
-      counterParty: apiAgreement.counterParty,
-      // Add API status number for reference
-      apiStatus: apiAgreement.status, // Add this line
-    };
-  };
-
-  // Transform escrow agreements
-  const escrowAgreements = useMemo(() => {
-    if (!agreementsWithSecuredFunds) return [];
-
-    return agreementsWithSecuredFunds
-      .filter((agreement: any) => agreement.type === 2) // ESCROW type
-      .map(transformApiAgreementToEscrow);
-  }, [agreementsWithSecuredFunds]);
-
-  const escrowDeals = useMemo(() => {
-    if (!escrowAgreements || !user?.id) return [];
-
-    // Filter agreements where user is involved
-    return escrowAgreements.filter((agreement: any) => {
-      const userId = user.id.toString();
-
-      // Handle different possible party structures
-      const firstPartyId =
-        agreement.firstParty?.id?.toString() ||
-        agreement.firstPartyId?.toString();
-      const counterPartyId =
-        agreement.counterParty?.id?.toString() ||
-        agreement.counterPartyId?.toString();
-
-      // Also check wallet addresses if available
-      const firstPartyWallet =
-        agreement.firstParty?.walletAddress || agreement.firstParty?.wallet;
-      const counterPartyWallet =
-        agreement.counterParty?.walletAddress || agreement.counterParty?.wallet;
-      const userWallet = user.walletAddress;
-
-      return (
-        firstPartyId === userId ||
-        counterPartyId === userId ||
-        firstPartyWallet === userWallet ||
-        counterPartyWallet === userWallet
-      );
-    });
-  }, [escrowAgreements, user?.id, user?.walletAddress]);
-
-  // Memoized escrow stats
-  const escrowStats = useMemo(
-    () => ({
-      total: escrowDeals.length,
-      active: escrowDeals.filter(
-        (agreement: any) => agreement.status === "signed",
-      ).length,
-      completed: escrowDeals.filter(
-        (agreement: any) => agreement.status === "completed",
-      ).length,
-      disputed: escrowDeals.filter(
-        (agreement: any) => agreement.status === "disputed",
-      ).length,
-      pending: escrowDeals.filter(
-        (agreement: any) => agreement.status === "pending",
-      ).length,
-      pending_approval: escrowDeals.filter(
-        (agreement: any) => agreement.status === "pending_approval",
-      ).length,
-      expired: escrowDeals.filter(
-        (agreement: any) => agreement.status === "expired",
-      ).length,
-      cancelled: escrowDeals.filter(
-        (agreement: any) => agreement.status === "cancelled",
-      ).length,
-    }),
-    [escrowDeals],
-  );
-
   // Decode the URL parameter to handle spaces and special characters
   const decodedHandle = useMemo(() => {
     if (!handle) return "";
-    // Decode URL-encoded characters (like %20 for spaces)
     return decodeURIComponent(handle);
   }, [handle]);
 
@@ -384,99 +308,187 @@ export default function UserProfile() {
     });
   }, []);
 
-  // Helper function to get agreement title with fallbacks
-  const getAgreementTitle = useCallback((agreement: any) => {
-    if (agreement.title) {
-      return agreement.title;
-    }
-    return `Agreement #${agreement.id}`;
-  }, []);
+  // NEW: Load agreements with type-based filtering
+  const loadAgreements = useCallback(async () => {
+    try {
+      setAgreementsLoading(true);
+      setAgreementsError(null);
 
-  // Handle agreement click to navigate to details
-  const handleAgreementClick = useCallback(
-    (agreementId: number) => {
-      // Check if this is an escrow agreement or regular agreement
-      const isEscrowAgreement = agreementsWithSecuredFunds?.some(
-        (agreement: any) => agreement.id === agreementId,
+      // Fetch all agreements
+      const allAgreementsResponse = await agreementService.getAgreements({
+        top: 100,
+        skip: 0,
+        sort: "desc",
+      });
+
+      const allAgreements = allAgreementsResponse.results || [];
+
+      // Separate agreements by type
+      const reputational = allAgreements.filter(
+        (agreement: any) => agreement.type === 1, // Type 1 = Reputational
+      );
+      const escrow = allAgreements.filter(
+        (agreement: any) => agreement.type === 2, // Type 2 = Escrow
       );
 
-      if (isEscrowAgreement) {
-        navigate(`/escrow/${agreementId}`);
-      } else {
-        navigate(`/agreements/${agreementId}`);
+      console.log("🔍 UserProfile - Agreement types loaded:", {
+        total: allAgreements.length,
+        reputational: reputational.length,
+        escrow: escrow.length,
+      });
+
+      setReputationalAgreements(reputational);
+      setEscrowAgreements(escrow);
+    } catch (error: any) {
+      console.error("Failed to fetch agreements:", error);
+      setAgreementsError(error.message || "Failed to load agreements");
+      setReputationalAgreements([]);
+      setEscrowAgreements([]);
+    } finally {
+      setAgreementsLoading(false);
+    }
+  }, []);
+
+  // Transform escrow agreement for display
+  const transformEscrowAgreement = (apiAgreement: any) => {
+    const roles = extractRolesFromDescription(apiAgreement.description || "");
+
+    const formatWalletAddress = (address: string): string => {
+      if (!address) return "Unknown";
+      if (address.startsWith("@")) return address;
+      if (address.startsWith("0x") && address.length === 42) {
+        return `${address.slice(0, 6)}...${address.slice(-4)}`;
       }
-    },
-    [navigate, agreementsWithSecuredFunds],
-  );
-
-  // ADD handle escrow click function
-  const handleEscrowClick = useCallback(
-    (agreementId: number) => {
-      navigate(`/escrow/${agreementId}`);
-    },
-    [navigate],
-  );
-
-  // ADD handle dispute click function
-  const handleDisputeClick = useCallback(
-    (disputeId: string) => {
-      navigate(`/disputes/${disputeId}`);
-    },
-    [navigate],
-  );
-
-  // ADD helper function to get user role in dispute
-  const getUserRoleInDispute = useMemo(() => {
-    return (dispute: DisputeRow) => {
-      const userId = user?.id;
-      if (!userId) return "Unknown";
-
-      if (dispute.plaintiffData?.userId === userId) return "Plaintiff";
-      if (dispute.defendantData?.userId === userId) return "Defendant";
-
-      // Check if user is a witness
-      let isPlaintiffWitness = false;
-      let isDefendantWitness = false;
-
-      if (dispute.witnesses && typeof dispute.witnesses === "object") {
-        const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
-        const defendantWitnesses = dispute.witnesses.defendant || [];
-
-        isPlaintiffWitness = plaintiffWitnesses.some(
-          (w) => w.id?.toString() === userId,
-        );
-        isDefendantWitness = defendantWitnesses.some(
-          (w) => w.id?.toString() === userId,
-        );
-      }
-
-      if (isPlaintiffWitness) return "Witness (Plaintiff)";
-      if (isDefendantWitness) return "Witness (Defendant)";
-
-      return "Observer";
+      return address;
     };
-  }, [user?.id]);
 
-  // ADD helper function to get user role in escrow deal
-  const getUserRoleInEscrowDeal = useCallback(
-    (agreement: any) => {
-      const userId = user?.id;
-      if (!userId) return "Unknown";
+    return {
+      id: `${apiAgreement.id}`,
+      title: apiAgreement.title || `Escrow Deal #${apiAgreement.id}`,
+      serviceProvider: roles.serviceProvider
+        ? formatWalletAddress(roles.serviceProvider)
+        : "Unknown",
+      serviceRecipient: roles.serviceRecipient
+        ? formatWalletAddress(roles.serviceRecipient)
+        : "Unknown",
+      rawServiceProvider: roles.serviceProvider,
+      rawServiceRecipient: roles.serviceRecipient,
+      token: apiAgreement.tokenSymbol || "ETH",
+      amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
+      status: mapAgreementStatusToEscrow(apiAgreement.status),
+      statusNumber: apiAgreement.status,
+      deadline: apiAgreement.deadline
+        ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
+        : "No deadline",
+      description: apiAgreement.description || "",
+      createdAt: apiAgreement.dateCreated || apiAgreement.createdAt,
+      firstParty: apiAgreement.firstParty,
+      counterParty: apiAgreement.counterParty,
+    };
+  };
 
-      // Convert both to strings for comparison to ensure type safety
-      const userIdStr = userId.toString();
-      const firstPartyId = agreement.firstParty?.id?.toString();
-      const counterPartyId = agreement.counterParty?.id?.toString();
-      const creatorId = agreement.creator?.id?.toString();
+  // Transform reputational agreement for display
+  const transformReputationalAgreement = (apiAgreement: any) => {
+    return {
+      id: apiAgreement.id,
+      title: apiAgreement.title || `Agreement #${apiAgreement.id}`,
+      status: apiAgreement.status,
+      dateCreated: apiAgreement.dateCreated || apiAgreement.createdAt,
+      firstParty: apiAgreement.firstParty,
+      counterParty: apiAgreement.counterParty,
+      description: apiAgreement.description || "",
+    };
+  };
 
-      if (firstPartyId === userIdStr) return "Service Recipient";
-      if (counterPartyId === userIdStr) return "Service Provider";
-      if (creatorId === userIdStr) return "Creator";
+  // Filter agreements where user is involved
+  const userReputationalAgreements = useMemo(() => {
+    if (!user?.id) return [];
 
-      return "Unknown";
-    },
-    [user?.id],
-  );
+    return reputationalAgreements
+      .filter((agreement: any) => {
+        const userId = user.id.toString();
+        const firstPartyId = agreement.firstParty?.id?.toString();
+        const counterPartyId = agreement.counterParty?.id?.toString();
+
+        return firstPartyId === userId || counterPartyId === userId;
+      })
+      .map(transformReputationalAgreement);
+  }, [reputationalAgreements, user?.id]);
+
+  const userEscrowDeals = useMemo(() => {
+    if (!user?.id && !user?.walletAddress) return [];
+
+    const userId = user.id?.toString();
+    const userWallet = user.walletAddress?.toLowerCase();
+
+    return escrowAgreements
+      .filter((agreement: any) => {
+        // Check by user ID
+        const firstPartyId = agreement.firstParty?.id?.toString();
+        const counterPartyId = agreement.counterParty?.id?.toString();
+
+        if (userId && (firstPartyId === userId || counterPartyId === userId)) {
+          return true;
+        }
+
+        // Check by wallet address from description
+        if (userWallet) {
+          const roles = extractRolesFromDescription(
+            agreement.description || "",
+          );
+          const provider = roles.serviceProvider?.toLowerCase();
+          const recipient = roles.serviceRecipient?.toLowerCase();
+
+          return provider === userWallet || recipient === userWallet;
+        }
+
+        return false;
+      })
+      .map(transformEscrowAgreement);
+  }, [escrowAgreements, user?.id, user?.walletAddress]);
+
+  // Calculate stats
+  const agreementStats = useMemo(() => {
+    return {
+      total: userReputationalAgreements.length,
+      active: userReputationalAgreements.filter(
+        (agreement) => agreement.status === 2,
+      ).length,
+      completed: userReputationalAgreements.filter(
+        (agreement) => agreement.status === 3,
+      ).length,
+      disputed: userReputationalAgreements.filter(
+        (agreement) => agreement.status === 4,
+      ).length,
+    };
+  }, [userReputationalAgreements]);
+
+  const escrowStats = useMemo(() => {
+    return {
+      total: userEscrowDeals.length,
+      active: userEscrowDeals.filter(
+        (agreement) => agreement.status === "signed",
+      ).length,
+      completed: userEscrowDeals.filter(
+        (agreement) => agreement.status === "completed",
+      ).length,
+      disputed: userEscrowDeals.filter(
+        (agreement) => agreement.status === "disputed",
+      ).length,
+      pending: userEscrowDeals.filter(
+        (agreement) => agreement.status === "pending",
+      ).length,
+      pending_approval: userEscrowDeals.filter(
+        (agreement) => agreement.status === "pending_approval",
+      ).length,
+      expired: userEscrowDeals.filter(
+        (agreement) => agreement.status === "expired",
+      ).length,
+      cancelled: userEscrowDeals.filter(
+        (agreement) => agreement.status === "cancelled",
+      ).length,
+    };
+  }, [userEscrowDeals]);
 
   const disputeStats = useMemo(
     () => ({
@@ -494,11 +506,75 @@ export default function UserProfile() {
     [disputes],
   );
 
-  // pages/UserProfile.tsx - Update mapApiUserToUser
+  // Handle agreement click - NEW: Route based on type
+  const handleAgreementClick = useCallback(
+    (agreementId: string, isEscrow: boolean = false) => {
+      if (isEscrow) {
+        navigate(`/escrow/${agreementId}`);
+      } else {
+        navigate(`/agreements/${agreementId}`);
+      }
+    },
+    [navigate],
+  );
+
+  // Handle dispute click
+  const handleDisputeClick = useCallback(
+    (disputeId: string) => {
+      navigate(`/disputes/${disputeId}`);
+    },
+    [navigate],
+  );
+
+  // Helper function to get user role in dispute
+  const getUserRoleInDispute = useMemo(() => {
+    return (dispute: DisputeRow) => {
+      const userId = user?.id;
+      if (!userId) return "Unknown";
+
+      if (dispute.plaintiffData?.userId === userId) return "Plaintiff";
+      if (dispute.defendantData?.userId === userId) return "Defendant";
+
+      let isPlaintiffWitness = false;
+      let isDefendantWitness = false;
+
+      if (dispute.witnesses && typeof dispute.witnesses === "object") {
+        const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
+        const defendantWitnesses = dispute.witnesses.defendant || [];
+
+        isPlaintiffWitness = plaintiffWitnesses.some(
+          (w: any) => w.id?.toString() === userId,
+        );
+        isDefendantWitness = defendantWitnesses.some(
+          (w: any) => w.id?.toString() === userId,
+        );
+      }
+
+      if (isPlaintiffWitness) return "Witness (Plaintiff)";
+      if (isDefendantWitness) return "Witness (Defendant)";
+
+      return "Observer";
+    };
+  }, [user?.id]);
+
+  // Helper function to get user role in escrow deal
+  const getUserRoleInEscrowDeal = useCallback(
+    (agreement: any) => {
+      const userRole = getUserRoleInAgreement(
+        agreement,
+        user?.id?.toString(),
+        user?.walletAddress?.toLowerCase(),
+        true,
+      );
+      return userRole;
+    },
+    [user?.id, user?.walletAddress],
+  );
+
   function mapApiUserToUser(apiUser: any): User {
     const getRolesFromRoleNumber = (role: number, isAdmin: boolean) => {
       return {
-        admin: isAdmin, // Use isAdmin field
+        admin: isAdmin,
         judge: role === 2,
         community: role === 1,
         user: true,
@@ -524,7 +600,7 @@ export default function UserProfile() {
       username: apiUser.telegram?.username || apiUser.username || "",
       bio: apiUser.bio || null,
       isVerified: apiUser.isVerified,
-      isAdmin: apiUser.isAdmin || false, // ADD THIS
+      isAdmin: apiUser.isAdmin || false,
       telegram: apiUser.telegram
         ? {
             username: apiUser.telegram.username,
@@ -552,7 +628,7 @@ export default function UserProfile() {
     };
   }
 
-  // Safe calculations for user stats - use real trust score
+  // Safe calculations for user stats
   const safeStats = user?.stats || {
     deals: 0,
     agreements: 0,
@@ -566,40 +642,25 @@ export default function UserProfile() {
     user: true,
   };
 
-  // Use the real trust score from the hook instead of the mock one
-  const safeTrustScore = trustScore; // This is the real trust score from API
+  const safeTrustScore = trustScore;
   const safeJoinedDate =
     user?.joinedDate || new Date().toISOString().split("T")[0];
 
-  // Calculate rates safely to avoid division by zero
-  // const disputeRate =
-  //   safeStats.deals > 0
-  //     ? Math.round((disputeStats.total / safeStats.deals) * 100)
-  //     : 0;
-
-  // const successRate =
-  //   safeStats.deals > 0
-  //     ? Math.round((safeStats.agreements / safeStats.deals) * 100)
-  //     : 0;
-
-  // Check if this is the current user's profile - UPDATED TO USE TELEGRAM USERNAME
+  // Check if this is the current user's profile
   const isOwnProfile = useMemo(() => {
     if (!currentUser || !decodedHandle) return false;
 
-    // Clean the handle for comparison (remove @ symbol and handle URL encoding)
     const cleanHandle = decodedHandle.replace(/^@/, "");
-
-    // Use Telegram username for comparison if available
     const currentUserTelegramUsername = currentUser.telegram?.username;
     const currentUserUsername = currentUser.username?.replace(/^@/, "") || "";
 
-    // Check if handle matches current user's Telegram username or fallback username
     return (
       cleanHandle === currentUserTelegramUsername ||
       cleanHandle === currentUserUsername
     );
   }, [currentUser, decodedHandle]);
 
+  // Load user data
   useEffect(() => {
     const loadUserData = async () => {
       if (!decodedHandle) {
@@ -619,10 +680,7 @@ export default function UserProfile() {
           const apiUser = await apiService.getMyAccount();
           userData = mapApiUserToUser(apiUser);
         } else {
-          // Clean the handle (remove @ symbol if present)
           const cleanHandle = decodedHandle.replace(/^@/, "");
-
-          // Check if the handle looks like a wallet address (0x + 40 hex chars)
           const isWalletAddress = /^0x[a-fA-F0-9]{40}$/.test(cleanHandle);
           const isNumericId = !isNaN(Number(cleanHandle));
 
@@ -632,16 +690,12 @@ export default function UserProfile() {
             );
 
             try {
-              // Use the new wallet address lookup method
               const apiUser =
                 await apiService.getUserByWalletAddress(cleanHandle);
               userData = mapApiUserToUser(apiUser);
             } catch (walletError) {
               console.log("🔐 Wallet address lookup failed:", walletError);
-
-              // If wallet lookup fails, check if there's a user with wallet address as username
               try {
-                // Some users might have wallet address as username (like user ID 28)
                 const apiUser = await apiService.getUserByUsername(cleanHandle);
                 userData = mapApiUserToUser(apiUser);
               } catch (usernameError) {
@@ -694,48 +748,12 @@ export default function UserProfile() {
     }
   }, [decodedHandle, isAuthenticated, isOwnProfile, currentUser]);
 
+  // Load agreements when user data is loaded
   useEffect(() => {
-    console.log(
-      "🔍 UserProfile Debug - agreementsWithSecuredFunds:",
-      agreementsWithSecuredFunds,
-    );
-    console.log("🔍 UserProfile Debug - escrowAgreements:", escrowAgreements);
-    console.log("🔍 UserProfile Debug - escrowDeals:", escrowDeals);
-    console.log(
-      "🔍 UserProfile Debug - API Status Samples:",
-      escrowDeals.map((d: any) => ({
-        id: d.id,
-        title: d.title,
-        apiStatus: d.apiStatus,
-        status: d.status,
-      })),
-    );
-  }, [agreementsWithSecuredFunds, escrowAgreements, escrowDeals]);
-
-  // Calculate agreement stats from real data
-  // Add this memo to filter out escrow agreements from regular agreements
-  const regularAgreements = useMemo(() => {
-    return agreements.filter((agreement) => {
-      // Filter out agreements that have secured funds (escrow deals)
-      const hasSecuredFunds = agreementsWithSecuredFunds?.some(
-        (securedAgreement: any) => securedAgreement.id === agreement.id,
-      );
-      return !hasSecuredFunds;
-    });
-  }, [agreements, agreementsWithSecuredFunds]);
-
-  // Update the agreement stats to use regular agreements
-  const agreementStats = useMemo(() => {
-    return {
-      total: regularAgreements.length,
-      active: regularAgreements.filter((agreement) => agreement.status === 2)
-        .length,
-      completed: regularAgreements.filter((agreement) => agreement.status === 3)
-        .length,
-      disputed: regularAgreements.filter((agreement) => agreement.status === 4)
-        .length,
-    };
-  }, [regularAgreements]);
+    if (user?.id && isAuthenticated) {
+      loadAgreements();
+    }
+  }, [user?.id, isAuthenticated, loadAgreements]);
 
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
@@ -781,8 +799,6 @@ export default function UserProfile() {
       </div>
     );
   }
-
-  // pages/UserProfile.tsx - Update the error section
 
   if (error || !user) {
     return (
@@ -835,7 +851,7 @@ export default function UserProfile() {
       <header className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-white/90">
-            {formatHandle(user.handle)} {/* This now shows Telegram username */}
+            {formatHandle(user.handle)}
             {user.isVerified && (
               <span className="ml-2 rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-300">
                 Verified
@@ -887,7 +903,6 @@ export default function UserProfile() {
                 <div className="flex items-center gap-1 font-semibold text-white/90">
                   {formatHandle(user.handle)}
                 </div>
-                {/* ADD WALLET ADDRESS DISPLAY */}
                 <div className="mt-1">
                   {user.walletAddress ? (
                     <div className="flex items-center gap-1 text-cyan-300">
@@ -1009,8 +1024,7 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your dispute cases will appear here when you're involved in disagreements."
-                  : `${formatHandle(user.handle)} has not been involved in any disputes yet.`}{" "}
-                {/* Updated */}
+                  : `${formatHandle(user.handle)} has not been involved in any disputes yet.`}
               </div>
             </div>
           ) : (
@@ -1043,7 +1057,7 @@ export default function UserProfile() {
                         </div>
 
                         <div className="flex justify-between">
-                          <span>Your Role:</span>
+                          <span>Their Role:</span>
                           <span
                             className={
                               getUserRoleInDispute(dispute) === "Plaintiff"
@@ -1070,9 +1084,10 @@ export default function UserProfile() {
             </div>
           )}
         </BentoCard>
-        {/* User's Public Agreements */}
+
+        {/* User's Public Agreements (Reputational) */}
         <BentoCard
-          title={`${formatHandle(user.handle)}'s Public Agreements`}
+          title={`${formatHandle(user.handle)}'s Agreements`}
           icon={<FaHandshake />}
           color="cyan"
           count={agreementStats.total}
@@ -1091,79 +1106,104 @@ export default function UserProfile() {
               </div>
               <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          ) : regularAgreements.length === 0 ? (
+          ) : userReputationalAgreements.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
-                No regular agreements yet
+                No reputational agreements yet
               </div>
               <div className="text-sm text-white/50">
                 {isOwnProfile
-                  ? "Your regular agreements will appear here. Escrow-protected deals are shown separately."
-                  : `${formatHandle(user.handle)} has no regular agreements yet. Check their escrow deals for secured agreements.`}{" "}
-                {/* Updated */}
+                  ? "Your reputational agreements will appear here. Escrow-protected deals are shown separately."
+                  : `${formatHandle(user.handle)} has no reputational agreements yet. Check their escrow deals for secured agreements.`}
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              {regularAgreements.map((agreement) => (
-                <div
-                  key={agreement.id}
-                  onClick={() => handleAgreementClick(agreement.id)}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center gap-2">
-                        <h4 className="truncate text-sm font-medium text-white/90">
-                          {getAgreementTitle(agreement)}
-                        </h4>
-                        <div className="ml-auto">
+              {userReputationalAgreements.map((agreement) => {
+                const userRole = getUserRoleInAgreement(
+                  agreement,
+                  user?.id?.toString(),
+                  user?.walletAddress?.toLowerCase(),
+                  false,
+                );
+
+                return (
+                  <div
+                    key={agreement.id}
+                    onClick={() =>
+                      handleAgreementClick(agreement.id.toString(), false)
+                    }
+                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                          <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
+                            {agreement.title}
+                          </h4>
                           <AgreementStatusBadge status={agreement.status} />
                         </div>
-                      </div>
 
-                      <div className="mb-2 text-xs text-white/70">
-                        Created: {formatDate(agreement.dateCreated)}
-                      </div>
-
-                      <div className="space-y-1 text-xs text-white/60">
-                        <div className="flex justify-between">
-                          <span className="text-cyan-300">First Party:</span>
-                          <span className="text-white/80">
-                            {agreement.firstParty.telegramUsername
-                              ? agreement.firstParty.telegramUsername.startsWith(
-                                  "0x",
-                                )
-                                ? `${agreement.firstParty.telegramUsername.slice(0, 6)}…${agreement.firstParty.telegramUsername.slice(-4)}`
-                                : `@${agreement.firstParty.telegramUsername}`
-                              : agreement.firstParty.wallet
-                                ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
-                                : "Unknown User"}
-                          </span>
+                        <div className="mb-2 text-xs text-white/70">
+                          Created: {formatDate(agreement.dateCreated)}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-pink-300">Counter Party:</span>
-                          <span className="text-white/80">
-                            {agreement.counterParty.telegramUsername
-                              ? agreement.counterParty.telegramUsername.startsWith(
-                                  "0x",
-                                )
-                                ? `${agreement.counterParty.telegramUsername.slice(0, 6)}…${agreement.counterParty.telegramUsername.slice(-4)}`
-                                : `@${agreement.counterParty.telegramUsername}`
-                              : agreement.counterParty.wallet
-                                ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
-                                : "Unknown User"}
-                          </span>
+
+                        <div className="space-y-1 text-xs text-white/60">
+                          <div className="flex justify-between">
+                            <span className="text-cyan-300">First Party:</span>
+                            <span className="text-white/80">
+                              {agreement.firstParty?.telegramUsername
+                                ? agreement.firstParty.telegramUsername.startsWith(
+                                    "0x",
+                                  )
+                                  ? `${agreement.firstParty.telegramUsername.slice(0, 6)}…${agreement.firstParty.telegramUsername.slice(-4)}`
+                                  : `@${agreement.firstParty.telegramUsername}`
+                                : agreement.firstParty?.wallet
+                                  ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
+                                  : "Unknown User"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-pink-300">
+                              Counter Party:
+                            </span>
+                            <span className="text-white/80">
+                              {agreement.counterParty?.telegramUsername
+                                ? agreement.counterParty.telegramUsername.startsWith(
+                                    "0x",
+                                  )
+                                  ? `${agreement.counterParty.telegramUsername.slice(0, 6)}…${agreement.counterParty.telegramUsername.slice(-4)}`
+                                  : `@${agreement.counterParty.telegramUsername}`
+                                : agreement.counterParty?.wallet
+                                  ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
+                                  : "Unknown User"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Their Role:</span>
+                            <span
+                              className={
+                                userRole === "First Party"
+                                  ? "text-blue-300"
+                                  : userRole === "Counter Party"
+                                    ? "text-pink-300"
+                                    : "text-purple-300"
+                              }
+                            >
+                              {userRole}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </BentoCard>{" "}
-        {/* ADD ESCROW DEALS SECTION */}
+        </BentoCard>
+
+        {/* Escrow Deals */}
         <BentoCard
           title={`${formatHandle(user.handle)}'s Escrow Deals`}
           icon={<FaHandshake />}
@@ -1172,23 +1212,21 @@ export default function UserProfile() {
           scrollable
           maxHeight="260px"
         >
-          {escrowAgreementsLoading ? (
+          {agreementsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
               <span className="ml-2 text-cyan-300">
                 Loading escrow deals...
               </span>
             </div>
-          ) : escrowAgreementsError ? (
+          ) : agreementsError ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-red-300">
                 Error loading escrow deals
               </div>
-              <div className="text-sm text-white/50">
-                {escrowAgreementsError.message}
-              </div>
+              <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          ) : escrowDeals.length === 0 ? (
+          ) : userEscrowDeals.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
                 No escrow deals yet
@@ -1196,13 +1234,12 @@ export default function UserProfile() {
               <div className="text-sm text-white/50">
                 {isOwnProfile
                   ? "Your escrow-protected deals will appear here once you start trading."
-                  : `${formatHandle(user.handle)} has no escrow deals yet.`}{" "}
-                {/* Updated */}
+                  : `${formatHandle(user.handle)} has no escrow deals yet.`}
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              {escrowDeals.map((agreement: any) => {
+              {userEscrowDeals.map((agreement: any) => {
                 const userRole = getUserRoleInEscrowDeal(agreement);
                 const roleColor =
                   userRole === "Service Recipient"
@@ -1216,23 +1253,23 @@ export default function UserProfile() {
                 return (
                   <div
                     key={agreement.id}
-                    onClick={() => handleEscrowClick(agreement.id)}
+                    onClick={() =>
+                      handleAgreementClick(agreement.id.toString(), true)
+                    }
                     className="cursor-pointer rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/20"
                   >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center justify-between">
-                          <h4 className="truncate text-sm font-medium text-white/90">
-                            {getAgreementTitle(agreement)}
+                        <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                          <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
+                            {agreement.title}
                           </h4>
                           <div className="flex items-center gap-1">
-                            {/* Pass only API status, not agreement object */}
                             <AgreementStatusBadge
-                              status={agreement.apiStatus || agreement.status}
+                              status={agreement.statusNumber || 1}
                             />
                           </div>
                         </div>
-
                         <div className="mb-2 text-xs text-white/70">
                           Created: {formatDate(agreement.createdAt)}
                         </div>
@@ -1241,35 +1278,20 @@ export default function UserProfile() {
                           <div className="flex justify-between">
                             <span>Service Provider:</span>
                             <span className="text-white/80">
-                              {agreement.counterParty?.username
-                                ? agreement.counterParty.username.startsWith(
-                                    "0x",
-                                  )
-                                  ? `${agreement.counterParty.username.slice(0, 6)}…${agreement.counterParty.username.slice(-4)}`
-                                  : `@${agreement.counterParty.username}`
-                                : agreement.counterParty?.id
-                                  ? `User ${agreement.counterParty.id}`
-                                  : "Unknown User"}
+                              {agreement.serviceProvider}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span>Service Recipient:</span>
                             <span className="text-white/80">
-                              {agreement.firstParty?.username
-                                ? agreement.firstParty.username.startsWith("0x")
-                                  ? `${agreement.firstParty.username.slice(0, 6)}…${agreement.firstParty.username.slice(-4)}`
-                                  : `@${agreement.firstParty.username}`
-                                : agreement.firstParty?.id
-                                  ? `User ${agreement.firstParty.id}`
-                                  : "Unknown User"}
+                              {agreement.serviceRecipient}
                             </span>
                           </div>
 
                           <div className="flex justify-between">
                             <span>Amount:</span>
                             <span className="text-emerald-300">
-                              {agreement.amount}{" "}
-                              {agreement.tokenSymbol || "ETH"}
+                              {agreement.amount} {agreement.token}
                             </span>
                           </div>
                           <div className="flex justify-between">

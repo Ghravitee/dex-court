@@ -781,8 +781,6 @@ export default function AgreementDetails() {
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState(false);
 
   // ADD THESE NEW STATE VARIABLES FOR POLLING
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1454,17 +1452,6 @@ export default function AgreementDetails() {
   const handleViewEvidence = (evidence: any) => {
     setSelectedEvidence(evidence);
     setEvidenceViewerOpen(true);
-    setPdfLoading(evidence.type === "pdf");
-    setPdfError(false);
-  };
-
-  const handlePdfLoad = () => {
-    setPdfLoading(false);
-  };
-
-  const handlePdfError = () => {
-    setPdfLoading(false);
-    setPdfError(true);
   };
 
   // Helper function to determine file type
@@ -2802,14 +2789,8 @@ export default function AgreementDetails() {
         isOpen={evidenceViewerOpen}
         onClose={() => {
           setEvidenceViewerOpen(false);
-          setPdfLoading(false);
-          setPdfError(false);
         }}
         selectedEvidence={selectedEvidence}
-        onPdfLoad={handlePdfLoad}
-        onPdfError={handlePdfError}
-        pdfLoading={pdfLoading}
-        pdfError={pdfError}
       />
     </div>
   );
