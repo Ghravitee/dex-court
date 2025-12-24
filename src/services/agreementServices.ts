@@ -182,11 +182,7 @@ class AgreementService {
     console.log("🔐 Agreement service token cleared");
   }
 
-  // Create new agreement
-  // Create new agreement
-  // Create new agreement
-  // Create new agreement
-  async createAgreement(data: AgreementsRequest, files: File[]): Promise<void> {
+  async createAgreement(data: AgreementsRequest, files: File[]): Promise<any> {
     console.log("🔄 Creating agreement with data:", data);
 
     const formData = new FormData();
@@ -197,17 +193,17 @@ class AgreementService {
     formData.append("firstParty", data.firstParty);
     formData.append("counterParty", data.counterParty);
 
-    // FIX: Only append deadline if it has a value
     if (data.deadline && data.deadline.trim() !== "") {
       formData.append("deadline", data.deadline);
-      console.log("📅 Deadline included:", data.deadline);
-    } else {
-      console.log("📅 No deadline provided - skipping deadline field");
     }
 
-    // === REQUIRED FIELDS FOR INCLUDES_FUNDS = true ===
+    // Required fields
     if (data.includesFunds !== undefined) {
       formData.append("includesFunds", data.includesFunds.toString());
+    }
+
+    if (data.secureTheFunds !== undefined) {
+      formData.append("secureTheFunds", data.secureTheFunds.toString());
     }
 
     if (data.tokenSymbol) {
@@ -218,16 +214,6 @@ class AgreementService {
       formData.append("amount", data.amount.toString());
     }
 
-    if (data.tokenSymbol && data.contractAddress) {
-      formData.append("contractAddress", data.contractAddress);
-    }
-
-    // === REQUIRED FIELDS FOR SECURED_FUNDS = true ===
-    if (data.secureTheFunds !== undefined) {
-      formData.append("secureTheFunds", data.secureTheFunds.toString());
-    }
-
-    // FIX: Use exact field names backend expects (lowercase)
     if (data.chainId) {
       formData.append("chainId", data.chainId.toString());
     }
@@ -236,32 +222,8 @@ class AgreementService {
       formData.append("contractAgreementId", data.contractAgreementId);
     }
 
-    // FIX: Change txHash to txnhash (backend expects lowercase)
-    if (data.txHash) {
-      formData.append("txnhash", data.txHash); // ← Changed from txHash to txnhash
-    }
-
     files.forEach((file) => {
       formData.append("files", file);
-    });
-
-    console.log("📦 FormData fields:", {
-      title: data.title,
-      description: data.description,
-      type: data.type,
-      visibility: data.visibility,
-      firstParty: data.firstParty,
-      counterParty: data.counterParty,
-      deadline: data.deadline || "NOT INCLUDED", // Show if included or not
-      includesFunds: data.includesFunds,
-      secureTheFunds: data.secureTheFunds,
-      tokenSymbol: data.tokenSymbol,
-      amount: data.amount,
-      contractAddress: data.contractAddress,
-      chainId: data.chainId,
-      contractAgreementId: data.contractAgreementId,
-      txnhash: data.txHash,
-      files: files.map((f) => f.name),
     });
 
     try {
@@ -275,10 +237,13 @@ class AgreementService {
       return response.data;
     } catch (error: any) {
       console.error("❌ Agreement creation failed:", error);
-      console.error("📋 Error details:", error.response?.data);
-      throw error;
+      // Re-throw the error but with a simpler message
+      throw new Error(
+        `Backend error: ${error.response?.data?.message || error.message}`,
+      );
     }
   }
+
   // User search - now with proper error handling
   async searchUsers(query: string): Promise<any[]> {
     try {
@@ -367,12 +332,14 @@ class AgreementService {
   }
 
   // Get agreements list with filters
+  // In agreementServices.ts - Update the getAgreements method
   async getAgreements(params?: {
     top?: number;
     skip?: number;
     status?: number;
     sort?: string;
     search?: string;
+    type?: number; // 🆕 ADD type filter parameter
   }): Promise<AgreementListDTO> {
     console.log("🔍 getAgreements called with params:", params);
 
@@ -382,6 +349,7 @@ class AgreementService {
       status: params?.status,
       sort: params?.sort || "desc",
       search: params?.search,
+      type: params?.type, // 🆕 Pass type parameter to API
     };
 
     // Remove undefined parameters
@@ -393,11 +361,13 @@ class AgreementService {
 
     const response = await api.get("/agreement", { params: requestParams });
 
-    console.log("📦 getAgreements response details:", {
+    console.log("📦 getAgreements response:", {
       totalResults: response.data.totalResults,
       totalAgreements: response.data.totalAgreements,
       resultsCount: response.data.results?.length,
       firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
+      // 🆕 Check the types of returned agreements
+      types: response.data.results?.map((a: any) => a.type),
     });
 
     return response.data;

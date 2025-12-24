@@ -1,7 +1,6 @@
 // src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState, useRef, useEffect } from "react";
-// import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
@@ -20,6 +19,19 @@ import {
   User,
   Users,
   Send,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  CheckCircle,
+  Link2,
+  Check,
+  AlertTriangle,
+  Copy,
+  ExternalLink,
+  Server,
+  ShieldCheck,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import type { Escrow, ExtendedEscrow } from "../types";
 import { Link } from "react-router-dom";
@@ -38,8 +50,7 @@ import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { agreementService } from "../services/agreementServices";
 import { cleanTelegramUsername } from "../lib/usernameUtils";
-import { useAgreementsWithDetailsAndFundsFilter } from "../hooks/useAgreementsWithDetails";
-import { isValidAddress, normalizeAddress } from "../web3/helper";
+import { isValidAddress } from "../web3/helper";
 
 // API Enum Mappings
 const AgreementTypeEnum = {
@@ -53,6 +64,16 @@ const AgreementVisibilityEnum = {
   AUTO_PUBLIC: 3,
 } as const;
 
+type CreationStep =
+  | "idle"
+  | "creating_backend"
+  | "awaiting_approval"
+  | "approving"
+  | "creating_onchain"
+  | "waiting_confirmation"
+  | "success"
+  | "error";
+
 // Helper function to extract transaction hash from description
 const extractTxHashFromDescription = (
   description: string,
@@ -61,36 +82,93 @@ const extractTxHashFromDescription = (
   return match?.[1];
 };
 
-// Helper function to extract on-chain ID from description
-// const extractOnChainIdFromDescription = (
-//   description: string,
-// ): string | undefined => {
-//   const match = description?.match(/Contract Agreement ID: (\d+)/);
-//   return match?.[1];
-// };
-
+// Enhanced extraction functions with better pattern matching
 const extractServiceProviderFromDescription = (
   description: string,
 ): string | undefined => {
-  const match = description?.match(/Service Provider: (0x[a-fA-F0-9]{40})/i);
-  return match?.[1];
+  if (!description) return undefined;
+
+  // Try multiple patterns in order of priority
+  const patterns = [
+    // Exact pattern from the new ON-CHAIN ESCROW DATA format
+    /Service Provider: (0x[a-fA-F0-9]{40})/,
+    // Alternative formats (case-insensitive)
+    /Service Provider:\s*(0x[a-fA-F0-9]{40})/i,
+    /Provider:\s*(0x[a-fA-F0-9]{40})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match?.[1]) {
+      // Validate it's a proper Ethereum address
+      const address = match[1];
+      if (isValidAddress(address)) {
+        return address.toLowerCase(); // Normalize to lowercase
+      }
+    }
+  }
+
+  return undefined;
 };
 
 // Helper function to extract service recipient from description
 const extractServiceRecipientFromDescription = (
   description: string,
 ): string | undefined => {
-  const match = description?.match(/Service Recipient: (0x[a-fA-F0-9]{40})/i);
-  return match?.[1];
+  if (!description) return undefined;
+
+  // Try multiple patterns in order of priority
+  const patterns = [
+    // Exact pattern from the new ON-CHAIN ESCROW DATA format
+    /Service Recipient: (0x[a-fA-F0-9]{40})/,
+    // Alternative formats (case-insensitive)
+    /Service Recipient:\s*(0x[a-fA-F0-9]{40})/i,
+    /Recipient:\s*(0x[a-fA-F0-9]{40})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match?.[1]) {
+      // Validate it's a proper Ethereum address
+      const address = match[1];
+      if (isValidAddress(address)) {
+        return address.toLowerCase(); // Normalize to lowercase
+      }
+    }
+  }
+
+  return undefined;
+};
+
+// Enhanced helper function to get wallet address from party object
+const getPartyWalletAddress = (party: any): string => {
+  if (!party) return "";
+
+  // Try multiple possible field names
+  return (
+    party.walletAddress ||
+    party.wallet ||
+    party.WalletAddress ||
+    party.address ||
+    (party.wallet && typeof party.wallet === "object"
+      ? party.wallet.address
+      : null) ||
+    ""
+  );
 };
 
 // Helper function to format wallet addresses for display
 const formatWalletAddress = (address: string): string => {
-  if (!address) return "@unknown";
+  if (!address || address === "@unknown") return "@unknown";
 
-  // If it's already a short format like "@you" or Telegram handle, return as is
-  if (address.startsWith("@") || address.length <= 15) {
+  // Check if it's already a short format
+  if (address.startsWith("@")) {
     return address;
+  }
+
+  // Check if it's a Telegram handle (no @ symbol but not a wallet address)
+  if (address.length <= 15 && !address.startsWith("0x")) {
+    return `@${address}`;
   }
 
   // If it's a wallet address (0x...), slice it
@@ -101,12 +179,6 @@ const formatWalletAddress = (address: string): string => {
   // Return original for any other case
   return address;
 };
-
-// const normalizeAddress = (address: string): string => {
-//   if (!address) return "";
-//   return address.toLowerCase();
-// };
-
 
 // File upload types
 interface UploadedFile {
@@ -126,7 +198,7 @@ type EscrowStatus =
   | "signed"
   | "completed"
   | "cancelled"
-  | "expired" // Add expired status
+  | "expired"
   | "disputed"
   | "pending_approval";
 
@@ -137,16 +209,12 @@ type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
 interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   txHash?: string;
   onChainId?: string;
-  // whether the API/agreement included funds metadata ("yes" | "no")
   includeFunds?: "yes" | "no";
-  // whether this agreement uses the escrow contract on-chain
   useEscrow?: boolean;
-  // optional escrow contract address returned/stored by API
   escrowAddress?: string;
-  // optional UI-side marker for create form type
   escrowType?: EscrowType;
-  // Use the expanded status type
   status: EscrowStatus;
+  source?: string;
 }
 
 // Enhanced interface for on-chain escrow data
@@ -167,10 +235,6 @@ interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
   isCancelled?: boolean;
   lastUpdated?: number;
 }
-
-// function isValidAddress(addr: string) {
-//   return /^0x[a-fA-F0-9]{40}$/.test(addr);
-// }
 
 // Smart contract error patterns (from your Solidity contract)
 const CONTRACT_ERRORS = {
@@ -200,8 +264,6 @@ const CONTRACT_ERRORS = {
 };
 
 // Enhanced status mapping for on-chain agreements
-// Enhanced status mapping for on-chain agreements
-// Enhanced status mapping for on-chain agreements
 const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   switch (status) {
     case 1:
@@ -215,7 +277,7 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
     case 5:
       return "cancelled"; // CANCELLED
     case 6:
-      return "expired"; // EXPIRED - now properly differentiated
+      return "expired"; // EXPIRED
     case 7:
       return "pending_approval"; // PARTY_SUBMITTED_DELIVERY
     default:
@@ -223,54 +285,115 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   }
 };
 
-// Enhanced transform function for escrow agreements
-// Enhanced transform function for escrow agreements - ONLY use API status
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
-  // Extract from on-chain metadata in description - this is the most reliable source
-  const serviceProvider = extractServiceProviderFromDescription(
-    apiAgreement.description,
-  );
-  const serviceRecipient = extractServiceRecipientFromDescription(
-    apiAgreement.description,
-  );
+  // Debug: Log the raw data for inspection
+  if (process.env.NODE_ENV === "development") {
+    console.log("🔍 Processing agreement:", {
+      id: apiAgreement.id,
+      title: apiAgreement.title,
+      hasOnChainData: apiAgreement.description?.includes(
+        "ON-CHAIN ESCROW DATA",
+      ),
+      descriptionPreview: apiAgreement.description?.substring(0, 150) + "...",
+      // Log the new fields
+      payeeWalletAddress: apiAgreement.payeeWalletAddress,
+      payerWalletAddress: apiAgreement.payerWalletAddress,
+    });
+  }
 
-  // Fallback to API party data if description extraction fails
-  const getPartyIdentifier = (party: any): string => {
-    // Try multiple possible field names
-    return (
-      party?.walletAddress ||
-      party?.wallet || // This might be the correct field name
-      party?.WalletAddress ||
-      cleanTelegramUsername(party?.telegramUsername) ||
-      "@unknown"
+  // FIRST: Try to use the new dedicated fields (most reliable)
+  let serviceProvider = apiAgreement.payeeWalletAddress; // Payee = Service Provider
+  let serviceRecipient = apiAgreement.payerWalletAddress; // Payer = Service Recipient
+
+  // SECOND: If new fields are null/empty, extract from description (current approach)
+  if (!serviceProvider || !serviceRecipient) {
+    console.log(
+      `⚠️ Using description extraction as fallback for agreement ${apiAgreement.id}`,
     );
-  };
 
-  const fallbackServiceProvider = getPartyIdentifier(apiAgreement.firstParty);
-  const fallbackServiceRecipient = getPartyIdentifier(
-    apiAgreement.counterParty,
-  );
+    const serviceProviderFromDesc = extractServiceProviderFromDescription(
+      apiAgreement.description,
+    );
+    const serviceRecipientFromDesc = extractServiceRecipientFromDescription(
+      apiAgreement.description,
+    );
 
-  // Use extracted addresses first, fallback to API data
-  const finalServiceProvider = serviceProvider || fallbackServiceProvider;
-  const finalServiceRecipient = serviceRecipient || fallbackServiceRecipient;
+    serviceProvider = serviceProviderFromDesc;
+    serviceRecipient = serviceRecipientFromDesc;
+  }
 
+  // THIRD: If description extraction also fails, fall back to party data (last resort)
+  if (!serviceProvider || !serviceRecipient) {
+    console.warn(
+      `⚠️ Could not extract roles from new fields or description for agreement ${apiAgreement.id}, using party data fallback`,
+    );
+
+    const serviceProviderWallet = getPartyWalletAddress(
+      apiAgreement.firstParty,
+    );
+    const serviceRecipientWallet = getPartyWalletAddress(
+      apiAgreement.counterParty,
+    );
+
+    // Normalize wallet addresses to lowercase for consistency
+    serviceProvider = serviceProviderWallet?.toLowerCase() || "";
+    serviceRecipient = serviceRecipientWallet?.toLowerCase() || "";
+
+    // Fallback to telegram username if wallet not found
+    const fallbackServiceProvider =
+      serviceProvider ||
+      cleanTelegramUsername(apiAgreement.firstParty?.telegramUsername) ||
+      "@unknown";
+
+    const fallbackServiceRecipient =
+      serviceRecipient ||
+      cleanTelegramUsername(apiAgreement.counterParty?.telegramUsername) ||
+      "@unknown";
+
+    serviceProvider = serviceProvider || fallbackServiceProvider;
+    serviceRecipient = serviceRecipient || fallbackServiceRecipient;
+  }
+
+  // Normalize addresses (lowercase for consistency)
+  if (serviceProvider && serviceProvider.startsWith("0x")) {
+    serviceProvider = serviceProvider.toLowerCase();
+  }
+  if (serviceRecipient && serviceRecipient.startsWith("0x")) {
+    serviceRecipient = serviceRecipient.toLowerCase();
+  }
+
+  // Log source for debugging
+  const source = apiAgreement.payeeWalletAddress
+    ? "new fields (payeeWalletAddress/payerWalletAddress)"
+    : "description extraction (fallback)";
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("✅ Final mapping for agreement:", {
+      id: apiAgreement.id,
+      title: apiAgreement.title,
+      source: source,
+      mapping: {
+        from: `Service Recipient (Payer) = ${serviceRecipient}`,
+        to: `Service Provider (Payee) = ${serviceProvider}`,
+      },
+    });
+  }
+
+  // Extract other fields...
   const includeFunds = apiAgreement.includesFunds ? "yes" : "no";
   const useEscrow = apiAgreement.hasSecuredFunds;
-
-  // Use the contractAgreementId from the API response directly
   const onChainId = apiAgreement.contractAgreementId;
 
   return {
     id: `${apiAgreement.id}`,
     title: apiAgreement.title,
-    from: finalServiceRecipient, // Service Recipient = Payer (sends funds)
-    to: finalServiceProvider, // Service Provider = Payee (receives funds)
+    // Use the determined values
+    from: serviceRecipient, // Service Recipient (Payer)
+    to: serviceProvider, // Service Provider (Payee)
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
-    // STATUS CHANGE: Use only API status, no on-chain override
     status: mapAgreementStatusToEscrow(apiAgreement.status),
     deadline: apiAgreement.deadline
       ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
@@ -280,22 +403,20 @@ const transformApiAgreementToEscrow = (
     createdAt: new Date(
       apiAgreement.dateCreated || apiAgreement.createdAt,
     ).getTime(),
-    // On-chain references - use the direct contractAgreementId from API
     txHash: extractTxHashFromDescription(apiAgreement.description),
-    onChainId: onChainId, // Use the direct contractAgreementId from API
+    onChainId: onChainId,
     includeFunds: includeFunds,
     useEscrow: useEscrow,
     escrowAddress: apiAgreement.escrowContractAddress,
-    // Remove on-chain status fields to prevent confusion
+    // Store the source for debugging
+    source: source,
   };
 };
 
 export default function Escrow() {
-  const [, setEscrows] = useState<ExtendedEscrowWithOnChain[]>([]);
   const [statusTab, setStatusTab] = useState("all");
   const [sortAsc, setSortAsc] = useState(false);
   const [query, setQuery] = useState("");
-  // Removed unused loading state
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedTxHash, setLastSyncedTxHash] = useState<string | null>(null);
@@ -305,29 +426,30 @@ export default function Escrow() {
   const { address, isConnected } = useAccount();
   const networkInfo = useNetworkEnvironment();
 
-  // const contractAddress =
-  //   (chainId && ESCROW_CA[chainId as number]) || undefined;
+  // Add this state near the top of the component, with other state declarations
+  const [creationStep, setCreationStep] = useState<CreationStep>("idle");
+  const [currentStepMessage, setCurrentStepMessage] = useState<string>("");
 
   const contractAddress = useMemo(() => {
     if (!networkInfo.chainId) return undefined;
 
     const address = ESCROW_CA[networkInfo.chainId as number];
 
-    // Debug logging to see what's happening
     console.log("🔄 Contract address lookup:", {
       address,
       isValid: address && isValidAddress(address),
-      ESCROW_CA
+      ESCROW_CA,
     });
 
     if (address && isValidAddress(address)) {
       return address as `0x${string}`;
     }
 
-    console.error(`❌ No valid contract address found for chainId ${networkInfo.chainId}`);
+    console.error(
+      `❌ No valid contract address found for chainId ${networkInfo.chainId}`,
+    );
     return undefined;
   }, [networkInfo.chainId]);
-
 
   // Separate write hooks: one for general writes, one for approvals
   const {
@@ -352,58 +474,131 @@ export default function Escrow() {
   const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
     hash: approvalHash,
   });
-  const {
-    data: agreementsWithSecuredFunds,
-    isLoading: agreementsLoading,
-    error: agreementsError,
-    refetch: refetchAgreements,
-  } = useAgreementsWithDetailsAndFundsFilter({
-    includesFunds: true,
-    hasSecuredFunds: true,
-  });
 
   // Enhanced error handling for contract errors
   const [uiError, setUiError] = useState<string | null>(null);
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
 
-  // Custom hook to fetch on-chain data for agreements
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalEscrows, setTotalEscrows] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [allEscrows, setAllEscrows] = useState<OnChainEscrowData[]>([]);
 
-  // Replace the useEffect that loads escrows
-  // Replace the entire useEffect that merges on-chain data with this simplified version:
-  useEffect(() => {
-    if (agreementsWithSecuredFunds) {
-      console.log(
-        "📥 Loaded agreements with secured funds:",
-        agreementsWithSecuredFunds,
+  // Add this function to update step messages
+  const updateStep = (step: CreationStep, message: string) => {
+    setCreationStep(step);
+    setCurrentStepMessage(message);
+    console.log(`🔄 ${step}: ${message}`);
+  };
+
+  // Load escrow agreements directly with type=2 (ESCROW)
+  const loadEscrowAgreements = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.log("📥 Loading escrow agreements (type=2)...");
+      }
+
+      // Fetch only escrow agreements (type=2)
+      const escrowAgreementsResponse = await agreementService.getAgreements({
+        top: 100,
+        skip: 0,
+        sort: "desc",
+        type: AgreementTypeEnum.ESCROW,
+      });
+
+      const escrowAgreementsList = escrowAgreementsResponse.results || [];
+
+      if (
+        process.env.NODE_ENV === "development" &&
+        escrowAgreementsList.length > 0
+      ) {
+        console.log(
+          "📋 First agreement description:",
+          escrowAgreementsList[0].description,
+        );
+        console.log(
+          "📋 Extracted provider:",
+          extractServiceProviderFromDescription(
+            escrowAgreementsList[0].description,
+          ),
+        );
+        console.log(
+          "📋 Extracted recipient:",
+          extractServiceRecipientFromDescription(
+            escrowAgreementsList[0].description,
+          ),
+        );
+      }
+
+      // Transform ALL escrow agreements (type=2)
+      const transformedEscrows = escrowAgreementsList.map(
+        transformApiAgreementToEscrow,
       );
 
-      const escrowAgreements = agreementsWithSecuredFunds
-        .filter((agreement: any) => agreement.type === AgreementTypeEnum.ESCROW)
-        .map(transformApiAgreementToEscrow);
+      // Store ALL escrows for filtering/sorting
+      setAllEscrows(transformedEscrows);
+      setTotalEscrows(transformedEscrows.length);
 
-      console.log(
-        "📊 Transformed escrow agreements (API status only):",
-        escrowAgreements,
-      );
-
-      // Set escrows directly without on-chain merging
-      setEscrowsWithOnChainData(escrowAgreements);
+      // Only log in development
+      if (process.env.NODE_ENV === "development") {
+        console.log("✅ Loaded escrow agreements:", transformedEscrows.length);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch escrow agreements:", error);
+      toast.error(error.message || "Failed to load escrow agreements");
+      setAllEscrows([]);
+      setTotalEscrows(0);
+    } finally {
+      setLoading(false);
     }
-  }, [agreementsWithSecuredFunds]);
+  }, []);
 
-  // Remove the useOnChainAgreementData hook call and the useEffect that merges on-chain data
-  // Replace these lines:
-  // const { onChainData } = useOnChainAgreementData(...);
-  // useEffect(() => { ... }, [escrowAgreements, onChainData]);
-
-  // Also handle loading and error states
+  // Load agreements on mount - with cleanup
   useEffect(() => {
-    if (agreementsError) {
-      console.error("Failed to load escrows:", agreementsError);
-      toast.error("Failed to load escrows from backend");
-      setEscrows([]);
+    let isMounted = true;
+
+    const loadData = async () => {
+      if (isMounted) {
+        await loadEscrowAgreements();
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadEscrowAgreements]);
+
+  // Refetch after successful creation - debounced
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (txSuccess) {
+        loadEscrowAgreements();
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [txSuccess, loadEscrowAgreements]);
+
+  // Load agreements on mount
+  useEffect(() => {
+    loadEscrowAgreements();
+  }, [loadEscrowAgreements]);
+
+  // Refetch after successful creation
+  useEffect(() => {
+    if (txSuccess) {
+      setTimeout(() => {
+        loadEscrowAgreements();
+      }, 3000);
     }
-  }, [agreementsError]);
+  }, [txSuccess, loadEscrowAgreements]);
 
   // Effect to handle write errors from smart contract
   useEffect(() => {
@@ -440,6 +635,57 @@ export default function Escrow() {
       resetApproval();
     }
   }, [approvalSuccess, resetApproval]);
+
+  // Effect to handle transaction success - NO PATCH CALL!
+  useEffect(() => {
+    const handleTransactionSuccess = async () => {
+      if (!txSuccess || !txHash || txHash === lastSyncedTxHash || isSyncing) {
+        return;
+      }
+
+      setIsSyncing(true);
+      setLastSyncedTxHash(txHash);
+      updateStep("success", "Escrow created successfully!");
+
+      try {
+        console.log("✅ Transaction confirmed on-chain:", txHash);
+
+        // SUCCESS MESSAGE ONLY - NO BACKEND UPDATE
+        setUiSuccess("✅ Escrow created successfully!");
+        toast.success("Escrow Created Successfully!", {
+          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
+        });
+
+        // Close modal and reset
+        setTimeout(() => {
+          setOpen(false);
+          resetForm();
+          setCreationStep("idle");
+          setCurrentStepMessage("");
+          loadEscrowAgreements();
+        }, 2000);
+      } catch (err: any) {
+        console.error("❌ Error handling success:", err);
+        updateStep("error", "Error finalizing escrow creation");
+        toast.error("Transaction Success", {
+          description:
+            "Escrow created on-chain but there was an issue updating UI.",
+        });
+      } finally {
+        setIsSyncing(false);
+        resetWrite();
+      }
+    };
+
+    handleTransactionSuccess();
+  }, [
+    txSuccess,
+    txHash,
+    lastSyncedTxHash,
+    isSyncing,
+    resetWrite,
+    loadEscrowAgreements,
+  ]);
 
   // Function to extract meaningful error messages from contract errors
   const extractContractErrorMessage = (error: any): string => {
@@ -491,7 +737,6 @@ export default function Escrow() {
       return "Insufficient funds for transaction";
     }
     if (errorMessage.includes("execution reverted")) {
-      // Extract the actual revert reason if available
       const revertMatch = errorMessage.match(
         /execution reverted: (.+?)(?="|$)/,
       );
@@ -501,7 +746,6 @@ export default function Escrow() {
       return "Transaction reverted by contract";
     }
 
-    // Generic error fallback
     return `Blockchain error: ${errorMessage}...`;
   };
 
@@ -516,45 +760,77 @@ export default function Escrow() {
     OnChainEscrowData[]
   >([]);
 
-  // Simplified listing logic - now status field contains on-chain data when available
-  const listed = escrowsWithOnChainData
-    .filter((e) => e.type === "public")
-    .filter((e) => {
-      switch (statusTab) {
-        case "all":
-          return true; // Show all escrows
-        case "pending":
-          return e.status === "pending";
-        case "signed":
-          return e.status === "signed";
-        case "pending_approval":
-          return e.status === "pending_approval";
-        case "completed":
-          return e.status === "completed";
-        case "disputed":
-          return e.status === "disputed";
-        case "cancelled":
-          return e.status === "cancelled";
-        case "expired": // Add expired case
-          return e.status === "expired";
-        default:
-          return true;
+  // Apply pagination to filtered results
+  const applyPagination = useCallback(
+    (escrowsList: OnChainEscrowData[], page: number, size: number) => {
+      const startIndex = (page - 1) * size;
+      const endIndex = startIndex + size;
+      const paginatedEscrows = escrowsList.slice(startIndex, endIndex);
+      setEscrowsWithOnChainData(paginatedEscrows);
+    },
+    [],
+  );
+
+  // Filter and sort logic
+  const filteredEscrows = useMemo(() => {
+    if (allEscrows.length === 0) return [];
+
+    let result = allEscrows.filter((e) => {
+      // Status filter
+      if (statusTab !== "all" && e.status !== statusTab) return false;
+
+      // Search filter
+      if (query.trim()) {
+        const searchQuery = query.toLowerCase();
+        return (
+          e.title.toLowerCase().includes(searchQuery) ||
+          e.description.toLowerCase().includes(searchQuery) ||
+          e.from.toLowerCase().includes(searchQuery) ||
+          e.to.toLowerCase().includes(searchQuery)
+        );
       }
-    })
-    .filter((e) =>
-      query.trim()
-        ? e.title.toLowerCase().includes(query.toLowerCase()) ||
-        e.description.toLowerCase().includes(query.toLowerCase()) ||
-        e.from.toLowerCase().includes(query.toLowerCase()) ||
-        e.to.toLowerCase().includes(query.toLowerCase())
-        : true,
-    )
-    .sort((a, b) =>
+      return true;
+    });
+
+    // Sort the results
+    result = result.sort((a, b) =>
       sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt,
     );
-  console.log("🔍 Listed escrows after filtering and sorting:", listed);
 
-  // ---------- UI state (unchanged) ----------
+    return result;
+  }, [allEscrows, statusTab, query, sortAsc]);
+
+  // Apply pagination when filters change
+  useEffect(() => {
+    if (filteredEscrows.length > 0) {
+      applyPagination(filteredEscrows, currentPage, pageSize);
+    } else {
+      setEscrowsWithOnChainData([]);
+    }
+  }, [filteredEscrows, currentPage, pageSize, applyPagination]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusTab, query, sortAsc]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredEscrows.length / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, filteredEscrows.length);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    applyPagination(filteredEscrows, newPage, pageSize);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    applyPagination(filteredEscrows, 1, newSize);
+  };
+
+  // ---------- UI state ----------
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -620,7 +896,7 @@ export default function Escrow() {
     { value: "custom", label: "Custom Token" },
   ];
 
-  // File handlers (unchanged)
+  // File handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
@@ -691,7 +967,7 @@ export default function Escrow() {
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // ---------- On-chain helpers (follow sample patterns) ----------
+  // ---------- On-chain helpers ----------
   const [viewId] = useState("");
 
   // percent string (like "50") -> basis points (5000)
@@ -787,17 +1063,6 @@ export default function Escrow() {
   });
 
   // ---------------- New: decimals lookup for create form ----------------
-  // Only attempt to read decimals for a valid customTokenAddress
-
-  // const { data: createTokenDecimals } = useReadContract({
-  //   address: isValidAddress(form.customTokenAddress)
-  //     ? (form.customTokenAddress as `0x${string}`)
-  //     : undefined,
-  //   abi: ERC20_ABI.abi,
-  //   functionName: "decimals",
-  //   query: { enabled: isValidAddress(form.customTokenAddress) },
-  // });
-
   const { data: createTokenDecimals } = useReadContract({
     address: isValidAddress(form.customTokenAddress)
       ? (form.customTokenAddress as `0x${string}`)
@@ -805,7 +1070,8 @@ export default function Escrow() {
     abi: ERC20_ABI.abi,
     functionName: "decimals",
     query: {
-      enabled: isValidAddress(form.customTokenAddress) && form.token === "custom"
+      enabled:
+        isValidAddress(form.customTokenAddress) && form.token === "custom",
     },
   });
 
@@ -822,7 +1088,6 @@ export default function Escrow() {
   }, [createTokenDecimals]);
 
   // ---------------- New: automatic approval continuation ----------------
-  // Store pending create payload to invoke after approval
   const [pendingCreatePayload, setPendingCreatePayload] = useState<any>(null);
   const [createApprovalState, setCreateApprovalState] = useState({
     isApprovingToken: false,
@@ -835,18 +1100,26 @@ export default function Escrow() {
       createApprovalState.needsApproval &&
       pendingCreatePayload
     ) {
-      // Call createAgreement with the stored payload
       try {
+        updateStep(
+          "creating_onchain",
+          "Token approved. Creating escrow on blockchain...",
+        );
         writeContract(pendingCreatePayload);
         setCreateApprovalState({
           isApprovingToken: false,
           needsApproval: false,
         });
         setPendingCreatePayload(null);
+        updateStep(
+          "waiting_confirmation",
+          "Escrow creation submitted. Waiting for confirmation...",
+        );
         setUiSuccess("Approval confirmed — creating agreement now");
       } catch (err) {
         console.error("auto-create after approval failed", err);
         setUiError("Failed to create agreement after approval");
+        updateStep("error", "Failed to create after approval");
       }
     }
   }, [
@@ -856,467 +1129,139 @@ export default function Escrow() {
     writeContract,
   ]);
 
-  // Ref to store sync data
-  const syncDataRef = useRef<{
-    agreementIdNumber: number;
-    serviceProviderAddr: `0x${string}`;
-    serviceRecipientAddr: `0x${string}`;
-    tokenAddr: `0x${string}`;
-    vestingMode: boolean;
+  // Simplified transaction data ref
+  const transactionDataRef = useRef<{
+    contractAgreementId: string;
   } | null>(null);
 
-  // 6. Load escrows on component mount
+  // Add resetForm function
+  const resetForm = () => {
+    setForm({
+      title: "",
+      type: "",
+      counterparty: "",
+      payer: "",
+      partyA: "",
+      partyB: "",
+      payerOther: "",
+      token: "",
+      customTokenAddress: "",
+      amount: "",
+      description: "",
+      evidence: [],
+      milestones: [""],
+      tokenDecimals: 18,
+    });
+    setDeadline(null);
+    setEscrowType("myself");
+  };
 
-  useEffect(() => {
-    // Replace your current syncEscrowToBackend function with this enhanced version
-    const syncEscrowToBackend = async () => {
-      if (
-        !txSuccess ||
-        !txHash ||
-        txHash === lastSyncedTxHash ||
-        isSyncing ||
-        !syncDataRef.current
-      ) {
-        return;
-      }
-
-      setIsSyncing(true);
-      setLastSyncedTxHash(txHash);
-
-      let normalizedServiceProvider = "";
-      let normalizedServiceRecipient = "";
-
-      try {
-        const {
-          agreementIdNumber,
-          serviceProviderAddr,
-          serviceRecipientAddr,
-          tokenAddr,
-          vestingMode,
-        } = syncDataRef.current;
-
-        console.log("🔄 Syncing escrow to backend...", {
-          txHash,
-          agreementId: agreementIdNumber,
-        });
-
-        // ===== NORMALIZE ADDRESSES FOR BACKEND =====
-        normalizedServiceProvider = normalizeAddress(serviceProviderAddr);
-        normalizedServiceRecipient = normalizeAddress(serviceRecipientAddr);
-        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
-        // const normalizedTokenAddr = normalizeAddress(tokenAddr);
-
-        // ===== VALIDATE PARTIES =====
-        if (normalizedServiceProvider === normalizedServiceRecipient) {
-          throw new Error(
-            "Service provider and recipient cannot be the same address",
-          );
-        }
-
-        // ===== BUILD ON-CHAIN METADATA =====
-        const onChainMetadata = {
-          txHash,
-          contractId: agreementIdNumber,
-          serviceProvider: normalizedServiceProvider, // Use normalized address
-          serviceRecipient: normalizedServiceRecipient, // Use normalized address
-          token: tokenAddr,
-          amount: form.amount,
-          vestingMode,
-          chainId: networkInfo.chainId,
-          createdAt: new Date().toISOString(),
-        };
-
-        // Embed metadata in description for easy extraction later
-        const metadataString = `
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 ON-CHAIN ESCROW DATA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Transaction Hash: ${txHash}
-Contract Agreement ID: ${agreementIdNumber}
-Service Provider: ${serviceProviderAddr}
-Service Recipient: ${serviceRecipientAddr}
-Token Address: ${tokenAddr}
-Amount: ${form.amount}
-Vesting Enabled: ${vestingMode}
-Chain ID: ${networkInfo.chainId}
-Created: ${new Date().toISOString()}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-
-        const fullDescription = form.description + metadataString;
-
-        // ===== PREPARE FILES =====
-        let filesToUpload: File[];
-
-        if (form.evidence.length > 0) {
-          filesToUpload = form.evidence.map((f) => f.file);
-        } else {
-          // Create metadata file (backend requires at least 1 file)
-          const metadataJson = JSON.stringify(onChainMetadata, null, 2);
-          const metadataFile = new File(
-            [metadataJson],
-            `escrow-${agreementIdNumber}.json`,
-            { type: "application/json" },
-          );
-          filesToUpload = [metadataFile];
-        }
-
-        // ===== DETERMINE PARTIES FOR BACKEND =====
-        // Backend needs: firstParty = service provider, counterParty = service recipient
-        let firstPartyAddr: string;
-        let counterPartyAddr: string;
-
-        if (escrowType === "myself") {
-          if (form.payer === "me") {
-            // Creator pays - creator is service recipient, counterparty is service provider
-            // FIXED: Make connected address firstParty (service provider) and counterparty counterParty (service recipient)
-            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
-            counterPartyAddr = normalizedServiceProvider; // Service recipient (counterparty)
-          } else {
-            // Counterparty pays - creator is service provider, counterparty is service recipient
-            firstPartyAddr = address!.toLowerCase(); // Service provider (creator)
-            counterPartyAddr = normalizedServiceRecipient; // Service recipient (counterparty)
-          }
-        } else {
-          // Two other parties - creator is not involved as a party
-          if (form.payerOther === "partyA") {
-            firstPartyAddr = form.partyB.toLowerCase();
-            counterPartyAddr = form.partyA.toLowerCase();
-          } else {
-            firstPartyAddr = form.partyA.toLowerCase();
-            counterPartyAddr = form.partyB.toLowerCase();
-          }
-        }
-
-        console.log("🔍 CREATOR PARTY ASSIGNMENT:", {
-          creatorAddress: address!.toLowerCase(),
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          isCreatorFirstParty: firstPartyAddr === address!.toLowerCase(),
-          isCreatorCounterParty: counterPartyAddr === address!.toLowerCase(),
-          escrowType,
-          payer: form.payer,
-        });
-
-        console.log("🎯 Party Assignment:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          serviceProvider: normalizedServiceProvider,
-          serviceRecipient: normalizedServiceRecipient,
-          areEqual: firstPartyAddr === counterPartyAddr,
-        });
-
-        console.log("🔍 Final Party Assignment for Backend:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          areEqual: firstPartyAddr === counterPartyAddr,
-          firstPartyLower: firstPartyAddr.toLowerCase(),
-          counterPartyLower: counterPartyAddr.toLowerCase(),
-        });
-
-        // Add this new validation
-        if (firstPartyAddr.toLowerCase() === counterPartyAddr.toLowerCase()) {
-          throw new Error(
-            "Service provider and recipient cannot be the same address",
-          );
-        }
-
-        // Convert the deadline Date object to ISO string for backend
-        const deadlineForBackend = deadline?.toISOString();
-
-        if (!deadlineForBackend) {
-          throw new Error("Deadline is required");
-        }
-
-        console.log("📋 Escrow agreement data for backend:", {
-          firstParty: firstPartyAddr,
-          counterParty: counterPartyAddr,
-          normalizedFirstParty: firstPartyAddr,
-          normalizedCounterParty: counterPartyAddr,
-          type: AgreementTypeEnum.ESCROW,
-          visibility:
-            form.type === "private"
-              ? AgreementVisibilityEnum.PRIVATE
-              : AgreementVisibilityEnum.PUBLIC,
-          deadline: deadlineForBackend,
-          includesFunds: true,
-          secureTheFunds: true,
-        });
-
-        // ===== CALL AGREEMENT API =====
-        await agreementService.createAgreement(
-          {
-            title: form.title,
-            description: fullDescription,
-            type: AgreementTypeEnum.ESCROW, // 2 = ESCROW
-            visibility:
-              form.type === "private"
-                ? AgreementVisibilityEnum.PRIVATE
-                : AgreementVisibilityEnum.PUBLIC,
-            firstParty: firstPartyAddr,
-            counterParty: counterPartyAddr,
-            deadline: deadlineForBackend,
-            amount: parseFloat(form.amount),
-            tokenSymbol: form.token === "custom" ? "custom" : form.token,
-            contractAddress:
-              form.token === "custom" ? form.customTokenAddress : undefined,
-            includesFunds: true, // Always true for escrow
-            secureTheFunds: true, // Always true for escrow
-            chainId: networkInfo.chainId,
-            contractAgreementId: agreementIdNumber.toString(),
-            txHash: txHash,
-          },
-          filesToUpload,
-        );
-
-        // ===== SUCCESS =====
-        console.log("✅ Escrow synced successfully!");
-
-        setUiSuccess("✅ Escrow created and synced to database!");
-
-        toast.success("Escrow Created Successfully!", {
-          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
-        });
-
-        // Close modal and reset
-        setTimeout(() => {
-          setOpen(false);
-          resetForm();
-          refetchAgreements();
-        }, 1500);
-      } catch (err: any) {
-        console.error("❌ Backend sync failed:", err);
-        handleBackendSyncError(
-          err,
-          txHash!,
-          normalizedServiceProvider,
-          normalizedServiceRecipient,
-        );
-      } finally {
-        setIsSyncing(false);
-        resetWrite();
-        syncDataRef.current = null;
-      }
-    };
-
-    // Enhanced error handler for backend sync
-    const handleBackendSyncError = (
-      err: any,
-      txHash: string,
-      normalizedServiceProvider: string,
-      normalizedServiceRecipient: string,
-    ) => {
-      const errorCode = err.response?.data?.error;
-      const errorMessage = err.response?.data?.message;
-      const errorDetails = err.response?.data?.details;
-
-      console.error("🔍 Backend Error Details:", {
-        errorCode,
-        errorMessage,
-        errorDetails,
-        responseData: err.response?.data,
-        status: err.response?.status,
-      });
-
-      let userMessage = "Failed to sync escrow to database";
-      let userDescription =
-        errorMessage || "Please try again or contact support";
-
-      switch (errorCode) {
-        case 1: // MissingData
-          userMessage = "Missing required information";
-          userDescription = "Please ensure all fields are filled correctly";
-          break;
-
-        case 5: // InvalidDate
-          userMessage = "Invalid deadline";
-          userDescription = "Deadline must be a future date";
-          break;
-
-        case 7: // AccountNotFound
-          userMessage = "User account not found";
-          userDescription = `One or both parties must connect their wallet to the platform first. Please ask them to visit the app and connect their wallet.`;
-          // Log which addresses are problematic
-          console.error("🔍 AccountNotFound - Check addresses:", {
-            firstParty: normalizedServiceProvider,
-            counterParty: normalizedServiceRecipient,
-            accountsInSystem: [
-              "0xa008df6bf68f4051b3f664ef6df86edb97a177cb", // Mystyri
-              "0x30398368287d2fe4a697238fa815f49c123ce300", // Ghravitee
-            ],
-          });
-          break;
-
-        case 11: // SameAccount
-          userMessage = "Invalid party configuration";
-          userDescription =
-            "Service provider and recipient cannot be the same account. Please ensure both parties have registered accounts.";
-          // Log the addresses being compared
-          console.error("🔍 SameAccount Error - Addresses:", {
-            firstParty: normalizedServiceProvider,
-            counterParty: normalizedServiceRecipient,
-            areEqual: normalizedServiceProvider === normalizedServiceRecipient,
-          });
-          break;
-
-        case 12: // MissingWallet
-          userMessage = "Wallet not connected";
-          userDescription =
-            "Your wallet must be connected to create escrow agreements";
-          break;
-
-        case 17: // Forbidden
-          userMessage = "Account restricted";
-          userDescription =
-            "Your account is currently restricted from creating agreements";
-          break;
-      }
-
-      setUiError(`⚠️ ${userMessage}`);
-
-      toast.error(userMessage, {
-        description: userDescription,
-        action: {
-          label: "Copy Transaction Hash",
-          onClick: () => {
-            navigator.clipboard.writeText(txHash);
-            toast.info("Transaction hash copied!");
-          },
-        },
-      });
-    };
-
-    // Reset form function
-    const resetForm = () => {
-      setForm({
-        title: "",
-        type: "",
-        counterparty: "",
-        payer: "",
-        partyA: "",
-        partyB: "",
-        payerOther: "",
-        token: "",
-        customTokenAddress: "",
-        amount: "",
-        description: "",
-        evidence: [],
-        milestones: [""],
-        tokenDecimals: 18,
-      });
-      setDeadline(null);
-      setEscrowType("myself");
-    };
-
-    syncEscrowToBackend();
-  }, [
-    txSuccess,
-    txHash,
-    lastSyncedTxHash,
-    isSyncing,
-    form.amount,
-    form.description,
-    form.evidence,
-    form.type,
-    form.title,
-    form.token,
-    form.customTokenAddress,
-    form.payer,
-    form.counterparty,
-    form.payerOther,
-    form.partyB,
-    form.partyA,
-    escrowType,
-    deadline,
-    address,
-    resetWrite,
-    refetchAgreements,
-    networkInfo.chainId,
-  ]);
-
-  // ---------------- Create agreement handler (with enhanced error handling) ----------------
+  // ---------------- Create agreement handler with new flow ----------------
+  // Update the handleCreateAgreementOnChain function to include step tracking
   const handleCreateAgreementOnChain = async () => {
     resetMessages();
+    setCreationStep("idle");
+    setCurrentStepMessage("");
 
     if (!contractAddress || !isValidAddress(contractAddress)) {
-      const errorMsg = chainConfigError || "Escrow contract not configured for this network";
+      const errorMsg =
+        chainConfigError || "Escrow contract not configured for this network";
       setUiError(errorMsg);
+      updateStep("error", errorMsg);
       toast.error("Network Error", {
         description: `Please switch to a supported network. Current chain: ${networkInfo.chainId}`,
       });
       return;
     }
-
     if (!isConnected) {
       setUiError("Connect your wallet");
+      updateStep("error", "Wallet not connected");
       return;
     }
     if (!form.title) {
       setUiError("Title required");
+      updateStep("error", "Missing title");
       return;
     }
     if (!form.type) {
       setUiError("Type required");
+      updateStep("error", "Missing escrow type");
       return;
     }
     if (!deadline) {
       setUiError("Deadline required");
+      updateStep("error", "Missing deadline");
       return;
     }
     if (!form.amount || Number(form.amount) <= 0) {
       setUiError("Amount must be > 0");
+      updateStep("error", "Invalid amount");
       return;
     }
 
     // Determine parties
     let serviceProviderAddr = "";
     let serviceRecipientAddr = "";
+    let firstPartyAddr = "";
+    let counterPartyAddr = "";
+
     if (escrowType === "myself") {
       if (!isValidAddress(form.counterparty)) {
         setUiError("Counterparty must be a valid address (0x...)");
+        updateStep("error", "Invalid counterparty address");
         return;
       }
       if (form.payer === "me") {
         serviceRecipientAddr = address!;
         serviceProviderAddr = form.counterparty;
+        firstPartyAddr = address!.toLowerCase();
+        counterPartyAddr = form.counterparty.toLowerCase();
       } else {
         serviceProviderAddr = address!;
         serviceRecipientAddr = form.counterparty;
+        firstPartyAddr = address!.toLowerCase();
+        counterPartyAddr = form.counterparty.toLowerCase();
       }
     } else {
       if (!isValidAddress(form.partyA) || !isValidAddress(form.partyB)) {
         setUiError("Both parties must be valid addresses");
+        updateStep("error", "Invalid party addresses");
         return;
       }
       if (form.payerOther === "partyA") {
         serviceRecipientAddr = form.partyA;
         serviceProviderAddr = form.partyB;
+        firstPartyAddr = form.partyB.toLowerCase();
+        counterPartyAddr = form.partyA.toLowerCase();
       } else {
         serviceRecipientAddr = form.partyB;
         serviceProviderAddr = form.partyA;
+        firstPartyAddr = form.partyA.toLowerCase();
+        counterPartyAddr = form.partyB.toLowerCase();
       }
     }
 
-    // Check for same address error (contract will revert with CannotBeTheSame)
+    // Check for same address error
     if (
       serviceProviderAddr.toLowerCase() === serviceRecipientAddr.toLowerCase()
     ) {
       setUiError("Service provider and recipient cannot be the same address");
+      updateStep("error", "Parties cannot be the same");
       return;
     }
 
-    // token parsing
+    // Token parsing
     let tokenAddr: string = ZERO_ADDRESS;
     if (form.token === "custom") {
       if (!isValidAddress(form.customTokenAddress)) {
         setUiError("Custom token must be a valid address");
+        updateStep("error", "Invalid custom token address");
         return;
       }
       tokenAddr = form.customTokenAddress;
     } else if (form.token === "ETH") {
       tokenAddr = ZERO_ADDRESS;
     } else {
-      // For known tokens like USDC/DAI the UI currently expects a custom address to be pasted
       if (
         !form.customTokenAddress ||
         !isValidAddress(form.customTokenAddress)
@@ -1324,21 +1269,23 @@ Created: ${new Date().toISOString()}
         setUiError(
           `${form.token} selected — paste its contract address in Custom Token field`,
         );
+        updateStep("error", `Missing ${form.token} contract address`);
         return;
       }
       tokenAddr = form.customTokenAddress;
     }
 
-    // deadlineDuration
+    // Deadline calculation
     const now = Math.floor(Date.now() / 1000);
     const deadlineSeconds = Math.floor((deadline as Date).getTime() / 1000);
     if (deadlineSeconds <= now) {
       setUiError("Deadline must be in the future");
+      updateStep("error", "Deadline must be in the future");
       return;
     }
     const deadlineDuration = deadlineSeconds - now;
 
-    // parse milestones
+    // Parse milestones
     let vestingMode = false;
     let milestonePercs: number[] = [];
     let milestoneOffsets: number[] = [];
@@ -1353,15 +1300,17 @@ Created: ${new Date().toISOString()}
           setUiError(
             "Milestone percentages must sum to 100% (10000 basis points)",
           );
+          updateStep("error", "Milestone percentages don't sum to 100%");
           return;
         }
       }
     } catch (err: any) {
       setUiError(err.message || "Invalid milestones");
+      updateStep("error", "Invalid milestone format");
       return;
     }
 
-    // amount BN
+    // Amount parsing
     let amountBN: bigint;
     try {
       amountBN = parseAmount(
@@ -1371,88 +1320,178 @@ Created: ${new Date().toISOString()}
       ) as bigint;
       if (amountBN <= 0n) {
         setUiError("Parsed amount invalid");
+        updateStep("error", "Invalid amount");
         return;
       }
     } catch (err) {
       console.error("parse amount error", err);
       setUiError("Invalid amount format");
+      updateStep("error", "Could not parse amount");
       return;
     }
 
-    // Agreement id: random
-    const agreementIdNumber = Number(Math.floor(Math.random() * 1_000_000_000));
-
-    const callerIsDepositor =
-      serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
-    const tokenIsETH = tokenAddr === ZERO_ADDRESS;
-
-    // Store sync data for backend integration
-    syncDataRef.current = {
-      agreementIdNumber,
-      serviceProviderAddr: serviceProviderAddr as `0x${string}`,
-      serviceRecipientAddr: serviceRecipientAddr as `0x${string}`,
-      tokenAddr: tokenAddr as `0x${string}`,
-      vestingMode,
+    // Generate 9-digit contract agreement ID
+    const generateContractAgreementId = () => {
+      const min = 100000000;
+      const max = 999999999;
+      const randomId = Math.floor(Math.random() * (max - min + 1)) + min;
+      return randomId.toString();
     };
 
-    // If ERC20 and caller is depositor (serviceRecipient), we must approve token first
-    if (!tokenIsETH && callerIsDepositor) {
-      setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+    const contractAgreementId = generateContractAgreementId();
+    console.log(
+      "🔑 Generated 9-digit contract agreement ID:",
+      contractAgreementId,
+    );
 
-      // build the create payload and store it so we can call it after approval
-      const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
-      const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+    // ================================================
+    // STEP 1: Create agreement in backend (off-chain)
+    // ================================================
+    setIsSubmitting(true);
+    updateStep("creating_backend", "Creating agreement in database...");
 
-      const payload = {
-        address: contractAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "createAgreement",
-        args: [
-          BigInt(agreementIdNumber),
-          serviceProviderAddr as `0x${string}`,
-          serviceRecipientAddr as `0x${string}`,
-          tokenAddr as `0x${string}`,
-          BigInt(amountBN),
-          BigInt(deadlineDuration),
-          vestingMode,
-          form.type === "private",
-          milestonePercsBN,
-          milestoneOffsetsBN,
-        ],
-        value: 0n,
+    try {
+      // Prepare files for upload
+      let filesToUpload: File[] = [];
+      if (form.evidence.length > 0) {
+        filesToUpload = form.evidence.map((f) => f.file);
+      }
+
+      console.log("📝 Creating agreement in backend...");
+
+      // Prepare description with on-chain metadata
+      const onChainMetadata = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ON-CHAIN ESCROW DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Contract Agreement ID: ${contractAgreementId}
+Service Provider: ${serviceProviderAddr}
+Service Recipient: ${serviceRecipientAddr}
+Token Address: ${tokenAddr}
+Amount: ${form.amount}
+Vesting Enabled: ${vestingMode}
+Chain ID: ${networkInfo.chainId}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+      const fullDescription = form.description + onChainMetadata;
+
+      let backendAgreementId = contractAgreementId;
+
+      try {
+        updateStep("creating_backend", "Sending data to backend server...");
+        const agreementResponse = await agreementService.createAgreement(
+          {
+            title: form.title,
+            description: fullDescription,
+            type: AgreementTypeEnum.ESCROW,
+            visibility:
+              form.type === "private"
+                ? AgreementVisibilityEnum.PRIVATE
+                : AgreementVisibilityEnum.PUBLIC,
+            firstParty: firstPartyAddr,
+            counterParty: counterPartyAddr,
+            deadline: deadline.toISOString(),
+            amount: parseFloat(form.amount),
+            tokenSymbol: form.token === "custom" ? "custom" : form.token,
+            contractAddress:
+              form.token === "custom" ? form.customTokenAddress : undefined,
+            includesFunds: true,
+            secureTheFunds: true,
+            chainId: networkInfo.chainId,
+            contractAgreementId: contractAgreementId,
+          },
+          filesToUpload,
+        );
+
+        console.log("✅ Backend response:", agreementResponse);
+
+        if (agreementResponse && agreementResponse.id) {
+          backendAgreementId = String(agreementResponse.id);
+        }
+
+        updateStep(
+          "creating_backend",
+          "Backend agreement created successfully",
+        );
+      } catch (backendErr) {
+        console.warn(
+          "⚠️ Backend creation had minor issues, continuing anyway:",
+          backendErr,
+        );
+        updateStep("creating_backend", "Backend completed (with warnings)");
+      }
+
+      console.log("🔗 Agreement references:", {
+        backendAgreementId,
+        contractAgreementId,
+      });
+
+      // Store minimal data
+      transactionDataRef.current = {
+        contractAgreementId,
       };
 
-      setPendingCreatePayload(payload);
+      // ================================================
+      // STEP 2: Call smart contract
+      // ================================================
+      const agreementIdNumber = BigInt(contractAgreementId);
 
-      // Trigger approval tx
-      try {
+      const callerIsDepositor =
+        serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
+      const tokenIsETH = tokenAddr === ZERO_ADDRESS;
+
+      // If ERC20 and caller is depositor, handle approval
+      if (!tokenIsETH && callerIsDepositor) {
+        updateStep(
+          "awaiting_approval",
+          "Token approval required. Please check your wallet...",
+        );
+
+        setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+
+        const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
+        const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+
+        const payload = {
+          address: contractAddress as `0x${string}`,
+          abi: ESCROW_ABI.abi,
+          functionName: "createAgreement",
+          args: [
+            agreementIdNumber,
+            serviceProviderAddr as `0x${string}`,
+            serviceRecipientAddr as `0x${string}`,
+            tokenAddr as `0x${string}`,
+            BigInt(amountBN),
+            BigInt(deadlineDuration),
+            vestingMode,
+            form.type === "private",
+            milestonePercsBN,
+            milestoneOffsetsBN,
+          ],
+          value: 0n,
+        };
+
+        setPendingCreatePayload(payload);
+
+        updateStep("approving", "Approving token spending...");
         writeApproval({
           address: tokenAddr as `0x${string}`,
           abi: ERC20_ABI.abi,
           functionName: "approve",
           args: [contractAddress as `0x${string}`, amountBN],
         });
+
         setUiSuccess(
           "Approval submitted; will create agreement after confirmation",
         );
-      } catch (err) {
-        console.error("approve error", err);
-        setUiError("ERC20 approve failed");
-        setCreateApprovalState({
-          isApprovingToken: false,
-          needsApproval: false,
-        });
-        setPendingCreatePayload(null);
+        setIsSubmitting(false);
+        return;
       }
 
-      return;
-    }
-
-    // Otherwise call createAgreement directly
-    try {
+      // Otherwise call createAgreement directly
+      updateStep("creating_onchain", "Creating escrow on blockchain...");
       const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
       const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
-
       const valueToSend = tokenIsETH && callerIsDepositor ? amountBN : 0n;
 
       writeContract({
@@ -1460,7 +1499,7 @@ Created: ${new Date().toISOString()}
         abi: ESCROW_ABI.abi,
         functionName: "createAgreement",
         args: [
-          BigInt(agreementIdNumber),
+          agreementIdNumber,
           serviceProviderAddr as `0x${string}`,
           serviceRecipientAddr as `0x${string}`,
           tokenAddr as `0x${string}`,
@@ -1474,85 +1513,46 @@ Created: ${new Date().toISOString()}
         value: valueToSend,
       });
 
-      setUiSuccess("CreateAgreement tx submitted — check wallet");
+      updateStep(
+        "waiting_confirmation",
+        "Transaction submitted. Waiting for blockchain confirmation...",
+      );
+      setUiSuccess("CreateAgreement transaction submitted — check wallet");
+      setIsSubmitting(false);
+    } catch (backendErr: any) {
+      console.error("❌ Failed:", backendErr);
+      setIsSubmitting(false);
+      updateStep("error", "Failed to create agreement");
 
-      // optimistic UI add (mirror prior mock behavior)
-      const id = `E-${agreementIdNumber}`;
-      const from = callerIsDepositor ? "@you" : serviceProviderAddr;
-      const to = callerIsDepositor ? serviceProviderAddr : "@you";
-      const next: ExtendedEscrowWithOnChain = {
-        id,
-        title: form.title,
-        from,
-        to,
-        token: form.token === "custom" ? form.customTokenAddress : form.token,
-        amount: Number(form.amount),
-        status: callerIsDepositor ? "signed" : "pending",
-        deadline: (deadline as Date).toISOString().split("T")[0],
-        type: form.type as "public" | "private",
-        description: form.description,
-        createdAt: Date.now(),
-        escrowType,
-      };
-      setEscrows((arr) => [next, ...arr]);
-      // setOpen(false);
-    } catch (err: any) {
-      console.error("createAgreement error:", err);
-      // Error will be handled by the useEffect that monitors writeError
-    }
-  };
+      const errorCode = backendErr.response?.data?.error;
+      let userMessage = "Failed to create agreement";
 
-  const NetworkWarning = () => {
-    if (!isConnected || !chainConfigError) return null;
-
-    return (
-      <div className="mb-4 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
-        <div className="flex items-start gap-2">
-          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
-          <div>
-            <h4 className="text-sm font-medium text-orange-300">
-              Unsupported Network
-            </h4>
-            <p className="mt-1 text-xs text-orange-300/80">
-              {chainConfigError}
-            </p>
-            <p className="mt-2 text-xs text-orange-200/60">
-              Supported networks: {Object.keys(ESCROW_CA).map(id => `Chain ${id}`).join(', ')}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-
-  useEffect(() => {
-    if (isConnected) {
-      console.log("🔗 Chain configuration:", {
-        contractAddress,
-        contractConfig: ESCROW_CA,
-        isAddressValid: contractAddress && isValidAddress(contractAddress)
-      });
-
-      if (!contractAddress || !isValidAddress(contractAddress)) {
-        const errorMsg = `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`;
-        setChainConfigError(errorMsg);
-        toast.error("Unsupported Network", {
-          description: `Chain ID ${networkInfo.chainId} is not supported. Please switch to a supported network.`,
-        });
-      } else {
-        setChainConfigError(null);
+      switch (errorCode) {
+        case 1:
+          userMessage = "Missing required information";
+          break;
+        case 7:
+          userMessage = "One or both parties need to register first";
+          break;
+        case 11:
+          userMessage = "Parties cannot be the same account";
+          break;
       }
+
+      setUiError(userMessage);
+      toast.error("Error", {
+        description: userMessage,
+      });
     }
-  }, [networkInfo.chainId, isConnected, contractAddress]);
+  };
 
-
-  // Wrapper for modal submit: prefer on-chain if wallet connected, otherwise fallback to mock
+  // Wrapper for modal submit
   const createEscrowSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     resetMessages();
+    setCreationStep("idle");
+    setCurrentStepMessage("");
 
-    // local validations (same as original)
     if (!form.title.trim()) {
       setUiError("Please enter a title");
       return;
@@ -1608,14 +1608,13 @@ Created: ${new Date().toISOString()}
     setIsSubmitting(true);
 
     try {
-      // if wallet connected and contract configured — do on-chain flow
       if (isConnected && contractAddress) {
         await handleCreateAgreementOnChain();
         setIsSubmitting(false);
         return;
       }
 
-      // fallback mock (existing behavior)
+      // fallback mock
       if (form.evidence.length > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
@@ -1648,7 +1647,8 @@ Created: ${new Date().toISOString()}
         escrowType: escrowType,
       };
 
-      setEscrows((arr) => [next, ...arr]);
+      // Add to local state (for demo/testing)
+      setEscrowsWithOnChainData((arr) => [next, ...arr]);
       setOpen(false);
 
       const successMessage =
@@ -1661,26 +1661,10 @@ Created: ${new Date().toISOString()}
         description: `${successMessage} • ${form.amount} ${form.token} • ${form.evidence.length} files uploaded`,
       });
 
-      setForm({
-        title: "",
-        type: "",
-        counterparty: "",
-        payer: "",
-        partyA: "",
-        partyB: "",
-        payerOther: "",
-        token: "",
-        customTokenAddress: "",
-        amount: "",
-        description: "",
-        evidence: [],
-        milestones: [""],
-        tokenDecimals: 18,
-      });
-      setDeadline(null);
-      setEscrowType("myself");
+      resetForm();
     } catch (error) {
       setUiError("Failed to create escrow");
+      updateStep("error", "Failed to create escrow");
       toast.error("Failed to create escrow", {
         description: "Please try again later",
       });
@@ -1690,6 +1674,459 @@ Created: ${new Date().toISOString()}
     }
   };
 
+  const NetworkWarning = () => {
+    if (!isConnected || !chainConfigError) return null;
+
+    return (
+      <div className="mb-4 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
+        <div className="flex items-start gap-2">
+          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
+          <div>
+            <h4 className="text-sm font-medium text-orange-300">
+              Unsupported Network
+            </h4>
+            <p className="mt-1 text-xs text-orange-300/80">
+              {chainConfigError}
+            </p>
+            <p className="mt-2 text-xs text-orange-200/60">
+              Supported networks:{" "}
+              {Object.keys(ESCROW_CA)
+                .map((id) => `Chain ${id}`)
+                .join(", ")}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    if (isConnected) {
+      console.log("🔗 Chain configuration:", {
+        contractAddress,
+        contractConfig: ESCROW_CA,
+        isAddressValid: contractAddress && isValidAddress(contractAddress),
+      });
+
+      if (!contractAddress || !isValidAddress(contractAddress)) {
+        const errorMsg = `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`;
+        setChainConfigError(errorMsg);
+        toast.error("Unsupported Network", {
+          description: `Chain ID ${networkInfo.chainId} is not supported. Please switch to a supported network.`,
+        });
+      } else {
+        setChainConfigError(null);
+      }
+    }
+  }, [networkInfo.chainId, isConnected, contractAddress]);
+
+  const CreationProgress = () => {
+    if (creationStep === "idle") return null;
+
+    const steps = [
+      {
+        id: "creating_backend",
+        label: "Backend Setup",
+        description: "Creating agreement in database",
+        icon: Server,
+        color: "text-blue-400",
+        bgColor: "bg-blue-400/10",
+        borderColor: "border-blue-400/20",
+      },
+      {
+        id: "awaiting_approval",
+        label: "Awaiting Approval",
+        description: "Waiting for token approval",
+        icon: Clock,
+        color: "text-amber-400",
+        bgColor: "bg-amber-400/10",
+        borderColor: "border-amber-400/20",
+      },
+      {
+        id: "approving",
+        label: "Token Approval",
+        description: "Approving token spending",
+        icon: ShieldCheck,
+        color: "text-purple-400",
+        bgColor: "bg-purple-400/10",
+        borderColor: "border-purple-400/20",
+      },
+      {
+        id: "creating_onchain",
+        label: "On-Chain Creation",
+        description: "Deploying smart contract",
+        icon: Link2,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-400/10",
+        borderColor: "border-cyan-400/20",
+      },
+      {
+        id: "waiting_confirmation",
+        label: "Confirmation",
+        description: "Waiting for blockchain",
+        icon: Loader2,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-400/10",
+        borderColor: "border-indigo-400/20",
+      },
+      {
+        id: "success",
+        label: "Success",
+        description: "Escrow created successfully",
+        icon: Sparkles,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-400/10",
+        borderColor: "border-emerald-400/20",
+      },
+    ];
+
+    const currentStepIndex = steps.findIndex(
+      (step) => step.id === creationStep,
+    );
+    const isError = creationStep === "error";
+    const isSuccess = creationStep === "success";
+
+    return (
+      <div className="mb-6 rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-900/30 p-6 backdrop-blur-sm">
+        {/* Header */}
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                  isError
+                    ? "bg-red-500/10"
+                    : isSuccess
+                      ? "bg-emerald-500/10"
+                      : "bg-cyan-500/10"
+                }`}
+              >
+                {isError ? (
+                  <AlertCircle className="h-5 w-5 text-red-400" />
+                ) : isSuccess ? (
+                  <CheckCircle className="h-5 w-5 text-emerald-400" />
+                ) : (
+                  <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  {isError
+                    ? "Creation Failed"
+                    : isSuccess
+                      ? "Escrow Created Successfully"
+                      : "Creating Escrow"}
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {isError
+                    ? "An error occurred during creation"
+                    : isSuccess
+                      ? "Your escrow is now live on the blockchain"
+                      : "Please wait while we set up your escrow agreement"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-full bg-white/5 px-3 py-1.5">
+            <span className="text-sm font-medium text-cyan-300">
+              Step {Math.min(currentStepIndex + 1, steps.length - 1)} of{" "}
+              {steps.length - 1}
+            </span>
+          </div>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="relative mb-8">
+          {/* Connection Line */}
+          {/* <div className="absolute top-6 right-0 left-0 h-0.5 -translate-y-1/2 bg-white/10">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-500"
+              style={{
+                width: `${
+                  isError
+                    ? 100
+                    : ((currentStepIndex + 1) / (steps.length - 1)) * 100
+                }%`,
+              }}
+            />
+          </div> */}
+
+          {/* Steps */}
+          <div className="relative z-10 grid grid-cols-3 gap-4 md:grid-cols-6">
+            {steps.slice(0, -1).map((step, index) => {
+              const StepIcon = step.icon;
+              const isCompleted = index < currentStepIndex;
+              const isCurrent = index === currentStepIndex;
+              const isPending = index > currentStepIndex;
+
+              return (
+                <div key={step.id} className="relative">
+                  <div
+                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${
+                      isCompleted
+                        ? "border-emerald-500/30 bg-emerald-500/5"
+                        : isCurrent
+                          ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
+                          : isPending
+                            ? "border-white/10 bg-white/5"
+                            : "border-white/10 bg-white/5"
+                    }`}
+                  >
+                    {/* Step Indicator */}
+                    <div
+                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                        isCompleted
+                          ? "border-emerald-500 bg-emerald-500/20"
+                          : isCurrent
+                            ? "border-cyan-500 bg-cyan-500/20"
+                            : "border-white/20 bg-white/10"
+                      }`}
+                    >
+                      {isCompleted ? (
+                        <Check className="h-5 w-5 text-emerald-400" />
+                      ) : (
+                        <StepIcon
+                          className={`h-5 w-5 ${
+                            isCurrent
+                              ? "text-cyan-400"
+                              : isPending
+                                ? "text-gray-400"
+                                : "text-gray-500"
+                          }`}
+                        />
+                      )}
+                    </div>
+
+                    {/* Step Label */}
+                    <div className="text-center">
+                      <div
+                        className={`text-xs font-semibold ${
+                          isCompleted
+                            ? "text-emerald-300"
+                            : isCurrent
+                              ? "text-cyan-300"
+                              : "text-gray-400"
+                        }`}
+                      >
+                        {step.label}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {step.description}
+                      </div>
+                    </div>
+
+                    {/* Step Number */}
+                    <div
+                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                        isCompleted
+                          ? "bg-emerald-500 text-white"
+                          : isCurrent
+                            ? "bg-cyan-500 text-white"
+                            : "bg-white/10 text-gray-400"
+                      }`}
+                    >
+                      {index + 1}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Current Status */}
+        <div className="rounded-xl border border-white/10 bg-gradient-to-r from-white/5 to-transparent p-5">
+          <div className="flex items-start gap-4">
+            <div
+              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${
+                isError
+                  ? "bg-red-500/10"
+                  : isSuccess
+                    ? "bg-emerald-500/10"
+                    : "bg-cyan-500/10"
+              }`}
+            >
+              {isError ? (
+                <AlertTriangle className="h-6 w-6 text-red-400" />
+              ) : isSuccess ? (
+                <CheckCircle className="h-6 w-6 text-emerald-400" />
+              ) : (
+                <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-white">
+                  {isError
+                    ? "Error occurred"
+                    : isSuccess
+                      ? "Success!"
+                      : "Current Status"}
+                </h4>
+                {isSuccess && (
+                  <div className="rounded-full bg-emerald-500/20 px-3 py-1">
+                    <span className="text-xs font-medium text-emerald-300">
+                      Complete
+                    </span>
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-sm text-gray-300">{currentStepMessage}</p>
+
+              {/* Additional Instructions */}
+              {creationStep === "creating_onchain" && (
+                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="mt-0.5 h-4 w-4 text-amber-400" />
+                    <div className="text-xs text-amber-300">
+                      Please check your wallet and confirm the transaction to
+                      continue.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {creationStep === "waiting_confirmation" && (
+                <div className="mt-3 rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <Clock className="mt-0.5 h-4 w-4 text-indigo-400" />
+                    <div className="text-xs text-indigo-300">
+                      Waiting for blockchain confirmation. This usually takes
+                      15-30 seconds.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isSuccess && (
+                <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="mt-0.5 h-4 w-4 text-emerald-400" />
+                    <div className="text-xs text-emerald-300">
+                      Your escrow is now live! The page will refresh
+                      automatically.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Transaction Hash */}
+          {txHash && !isSuccess && !isError && (
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-cyan-400" />
+                  <span className="text-sm font-medium text-cyan-300">
+                    Transaction
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(txHash);
+                      toast.success("Transaction hash copied!");
+                    }}
+                    className="flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-500/20"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy Hash
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Open in block explorer (you'll need to implement this based on chain)
+                      window.open(
+                        `https://etherscan.io/tx/${txHash}`,
+                        "_blank",
+                      );
+                    }}
+                    className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-white/10"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    View
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 overflow-hidden rounded-md bg-black/30 p-3">
+                <div className="font-mono text-sm text-gray-300">
+                  {txHash.slice(0, 30)}...
+                  {txHash.slice(-30)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error State */}
+        {isError && (
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-gradient-to-r from-red-500/10 to-transparent p-5">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 text-red-400" />
+              <div>
+                <h4 className="font-medium text-red-300">Error Details</h4>
+                <p className="mt-1 text-sm text-red-200/80">
+                  Please check your connection and try again. If the problem
+                  persists, contact support.
+                </p>
+                <button
+                  onClick={() => {
+                    resetMessages();
+                    setCreationStep("idle");
+                  }}
+                  className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const previewCreationSteps = () => {
+    setCreationStep("idle");
+    setCurrentStepMessage("Starting preview...");
+
+    // Simulate each step with delays
+    const steps = [
+      {
+        step: "creating_backend",
+        message: "Creating agreement in database...",
+      },
+      {
+        step: "awaiting_approval",
+        message: "Token approval required. Please check your wallet...",
+      },
+      { step: "approving", message: "Approving token spending..." },
+      { step: "creating_onchain", message: "Creating escrow on blockchain..." },
+      {
+        step: "waiting_confirmation",
+        message:
+          "Transaction submitted. Waiting for blockchain confirmation...",
+      },
+      { step: "success", message: "Escrow created successfully!" },
+    ];
+
+    steps.forEach(({ step, message }, index) => {
+      setTimeout(() => {
+        updateStep(step as CreationStep, message);
+      }, index * 2500);
+    });
+
+    // Auto-reset after preview
+    setTimeout(
+      () => {
+        setCreationStep("idle");
+        setCurrentStepMessage("");
+      },
+      steps.length * 2500 + 3000,
+    );
+  };
+
+  // Update the StatusMessages component to include CreationProgress
   const StatusMessages = () => (
     <div className="space-y-2">
       {uiError && (
@@ -1708,149 +2145,66 @@ Created: ${new Date().toISOString()}
           Transaction pending...
         </div>
       )}
+      {/* Add the creation progress here */}
+      <CreationProgress />
     </div>
   );
 
-  // Temporary debug component - add it somewhere in your JSX
-  // Enhanced debug component to show what's actually being loaded
-  // const DebugAgreementInfo = () => {
-  //   const { data, isLoading, error } = useAgreementsWithDetailsAndFundsFilter({
-  //     includesFunds: true,
-  //     hasSecuredFunds: true,
-  //   });
-
-  //   if (isLoading) {
-  //     return <div className="text-cyan-300">Loading agreements...</div>;
-  //   }
-
-  //   if (error) {
-  //     return (
-  //       <div className="text-red-300">
-  //         Error loading agreements: {error.message}
-  //       </div>
-  //     );
-  //   }
-
-  //   return (
-  //     <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-  //       <h3 className="font-semibold text-yellow-300">
-  //         Debug: Party Information
-  //       </h3>
-  //       <div className="mt-2 text-xs text-yellow-200/70">
-  //         Showing {data?.length || 0} agreements with hasSecuredFunds=true
-  //       </div>
-  //       <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
-  //         {data?.map((agreement) => {
-  //           const serviceProvider = agreement.firstParty?.wallet;
-  //           const serviceRecipient = agreement.counterParty?.wallet;
-
-  //           return (
-  //             <div
-  //               key={agreement.id}
-  //               className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
-  //             >
-  //               <div>
-  //                 <strong>ID:</strong> {agreement.id}
-  //               </div>
-  //               <div>
-  //                 <strong>Title:</strong> {agreement.title}
-  //               </div>
-  //               <div>
-  //                 <strong>First Party (Service Provider = Payee):</strong>{" "}
-  //                 {serviceProvider}
-  //               </div>
-  //               <div>
-  //                 <strong>Counter Party (Service Recipient = Payer):</strong>{" "}
-  //                 {serviceRecipient}
-  //               </div>
-  //               <div>
-  //                 <strong>Displayed as:</strong> {serviceRecipient} →{" "}
-  //                 {serviceProvider}
-  //               </div>
-  //             </div>
-  //           );
-  //         })}
-  //       </div>
-  //     </div>
-  //   );
-  // };
-
-  // const DebugOnChainData = () => {
-  //   if (!onChainData) return null;
-
-  //   return (
-  //     <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-  //       <h3 className="font-semibold text-yellow-300">Debug: On-Chain Data</h3>
-  //       <div className="mt-2 text-xs text-yellow-200/70">
-  //         Contracts queried: {onChainData.length}
-  //       </div>
-  //       <div className="mt-2 max-h-40 space-y-2 overflow-y-auto">
-  //         {onChainData.map((item, index) => (
-  //           <div
-  //             key={index}
-  //             className="border-b border-yellow-500/20 pb-2 text-xs text-yellow-200/70"
-  //           >
-  //             <div>
-  //               <strong>Status:</strong> {item.status}
-  //             </div>
-  //             {item.status === "success" &&
-  //               item.result &&
-  //               Array.isArray(item.result) && (
-  //                 <>
-  //                   <div>
-  //                     <strong>ID:</strong>{" "}
-  //                     {(item.result[0] as bigint)?.toString()}
-  //                   </div>
-  //                   <div>
-  //                     <strong>Funded:</strong> {item.result[14]?.toString()}
-  //                   </div>
-  //                   <div>
-  //                     <strong>Signed:</strong> {item.result[15]?.toString()}
-  //                   </div>
-  //                   <div>
-  //                     <strong>Completed:</strong> {item.result[18]?.toString()}
-  //                   </div>
-  //                   <div>
-  //                     <strong>Disputed:</strong> {item.result[19]?.toString()}
-  //                   </div>
-  //                   <div>
-  //                     <strong>Cancelled:</strong> {item.result[21]?.toString()}
-  //                   </div>
-  //                 </>
-  //               )}
-  //           </div>
-  //         ))}
-  //       </div>
-  //     </div>
-  //   );
-  // };
-
-  // Add <DebugAgreementInfo /> temporarily to your JSX to see what agreements are available
+  // Skeleton loading component
+  const EscrowSkeleton = () => (
+    <div className="web3-corner-border group relative rounded-3xl p-[2px]">
+      <div className="h-fit rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl">
+        <div className="mb-4">
+          <div className="h-6 w-3/4 animate-pulse rounded-lg bg-cyan-500/20"></div>
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i}>
+              <div className="mb-2 h-4 w-12 animate-pulse rounded bg-white/10"></div>
+              <div className="h-5 w-20 animate-pulse rounded bg-cyan-400/20"></div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4">
+          <div className="mb-2 h-4 w-full animate-pulse rounded bg-white/10"></div>
+          <div className="h-4 w-2/3 animate-pulse rounded bg-white/10"></div>
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <div className="h-4 w-24 animate-pulse rounded bg-white/10"></div>
+          <div className="h-9 w-20 animate-pulse rounded bg-cyan-400/20"></div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="relative">
       <NetworkWarning />
-      {/* Main */}
+
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
       <div className="space-y-4">
-        {/* <DebugAgreementInfo /> */}
         <div className="justify-between lg:flex">
           <header className="flex flex-col gap-3">
             <div>
               <h2 className="space mb-4 text-[22px] font-semibold text-white/90">
                 Escrow Center
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="mb-4 flex items-center gap-3">
                 <Button
                   variant="neon"
-                  className="neon-hover mb-4 w-fit"
+                  className="neon-hover w-fit"
                   onClick={() => setOpen(true)}
                 >
                   Create Escrow
                 </Button>
-
-                {/* {connectHint} */}
+                <Button
+                  variant="outline"
+                  className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                  onClick={previewCreationSteps}
+                >
+                  Preview Creation Steps
+                </Button>
               </div>
 
               <p className="text-muted-foreground max-w-[20rem] text-lg">
@@ -1859,7 +2213,6 @@ Created: ${new Date().toISOString()}
               </p>
             </div>
 
-            {/* Display status messages */}
             <StatusMessages />
 
             {/* Enhanced Modal */}
@@ -1867,7 +2220,6 @@ Created: ${new Date().toISOString()}
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
                 <div
                   onClick={(e) => {
-                    // Only close if clicking the backdrop itself, not children
                     if (e.target === e.currentTarget) {
                       setOpen(false);
                       resetMessages();
@@ -1875,7 +2227,6 @@ Created: ${new Date().toISOString()}
                   }}
                   className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl"
                 >
-                  {/* Close button */}
                   <button
                     onClick={() => {
                       setOpen(false);
@@ -1886,7 +2237,6 @@ Created: ${new Date().toISOString()}
                     ✕
                   </button>
 
-                  {/* Modal Header */}
                   <div className="mb-5 border-b border-white/10 pb-3">
                     <h2 className="text-lg font-semibold text-white/90">
                       Create New Escrow
@@ -1896,7 +2246,6 @@ Created: ${new Date().toISOString()}
                     </p>
                   </div>
 
-                  {/* Enhanced Form */}
                   <form
                     onSubmit={createEscrowSubmit}
                     className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
@@ -1911,10 +2260,11 @@ Created: ${new Date().toISOString()}
                         <button
                           type="button"
                           onClick={() => setEscrowType("myself")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
-                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                            }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                            escrowType === "myself"
+                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                          }`}
                         >
                           <User className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -1927,10 +2277,11 @@ Created: ${new Date().toISOString()}
                         <button
                           type="button"
                           onClick={() => setEscrowType("others")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
-                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                            }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                            escrowType === "others"
+                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                          }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -1940,6 +2291,36 @@ Created: ${new Date().toISOString()}
                             Escrow between two other users
                           </span>
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3">
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                        <div>
+                          <h4 className="text-sm font-medium text-blue-300">
+                            Understanding Escrow Roles
+                          </h4>
+                          <ul className="mt-1 space-y-1 text-xs text-blue-300/80">
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Provider:
+                              </span>{" "}
+                              Receives funds, delivers work/service
+                            </li>
+                            <li className="flex items-center gap-1">
+                              <span className="font-medium">
+                                Service Recipient:
+                              </span>{" "}
+                              Pays funds into escrow, receives work/service
+                            </li>
+                            <li className="flex items-center gap-1 text-blue-200">
+                              <span className="font-medium">⚠️ Important:</span>{" "}
+                              The same party cannot be both provider and
+                              recipient
+                            </li>
+                          </ul>
+                        </div>
                       </div>
                     </div>
 
@@ -1966,7 +2347,6 @@ Created: ${new Date().toISOString()}
                         placeholder="e.g. Website Design & Development"
                         required
                       />
-                      {/* Add validation message under title */}
                       {!form.title.trim() && (
                         <div className="mt-1 text-xs text-red-400">
                           Please enter a title
@@ -1976,7 +2356,6 @@ Created: ${new Date().toISOString()}
 
                     {/* Type and Payer */}
                     <div className="grid grid-cols-2 gap-4">
-                      {/* Type Dropdown */}
                       <div
                         className="relative flex w-full flex-col gap-2"
                         ref={typeRef}
@@ -1991,12 +2370,13 @@ Created: ${new Date().toISOString()}
                           <span>
                             {form.type
                               ? typeOptions.find((t) => t.value === form.type)
-                                ?.label
+                                  ?.label
                               : "Select Type"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${isTypeOpen ? "rotate-180" : ""
-                              }`}
+                            className={`transition-transform ${
+                              isTypeOpen ? "rotate-180" : ""
+                            }`}
                           />
                         </div>
                         {isTypeOpen && (
@@ -2025,20 +2405,30 @@ Created: ${new Date().toISOString()}
                         )}
                       </div>
 
-                      {/* Who Pays based on escrow type */}
                       {escrowType === "myself" ? (
                         <div>
-                          <label className="text-muted-foreground mb-2 block text-sm">
-                            Who Pays? <span className="text-red-500">*</span>
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="mb-2 flex items-center justify-between">
+                            <label className="text-muted-foreground text-sm">
+                              Who Pays? <span className="text-red-500">*</span>
+                            </label>
+                            <div className="group relative cursor-help">
+                              <Info className="h-4 w-4 text-cyan-300" />
+                              <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                The payer is the{" "}
+                                <strong>service recipient</strong> who funds the
+                                escrow.
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
-                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                  : "border-white/10 bg-white/5 text-white/70"
-                                  }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                                  form.payer === p
+                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                    : "border-white/10 bg-white/5 text-white/70"
+                                }`}
                               >
                                 <input
                                   type="radio"
@@ -2058,35 +2448,31 @@ Created: ${new Date().toISOString()}
                               Please select who pays
                             </div>
                           )}
-                          {/* ADD THIS: Info note about service provider not being payer */}
-                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
-                            <p className="text-xs text-cyan-300/80">
-                              The payer is the{" "}
-                              <span className="font-medium">
-                                service recipient
-                              </span>{" "}
-                              who funds the escrow. The{" "}
-                              <span className="font-medium">
-                                service provider
-                              </span>{" "}
-                              (who receives funds) cannot be the payer.
-                            </p>
-                          </div>
                         </div>
                       ) : (
                         <div>
-                          <label className="text-muted-foreground mb-2 block text-sm">
-                            Who Pays? <span className="text-red-500">*</span>
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="mb-2 flex items-center justify-between">
+                            <label className="text-muted-foreground text-sm">
+                              Who Pays? <span className="text-red-500">*</span>
+                            </label>
+                            <div className="group relative cursor-help">
+                              <Info className="h-4 w-4 text-cyan-300" />
+                              <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                                The payer is the{" "}
+                                <strong>service recipient</strong> who funds the
+                                escrow.
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
-                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                  : "border-white/10 bg-white/5 text-white/70"
-                                  }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                                  form.payerOther === p
+                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                    : "border-white/10 bg-white/5 text-white/70"
+                                }`}
                               >
                                 <input
                                   type="radio"
@@ -2108,27 +2494,10 @@ Created: ${new Date().toISOString()}
                               Please select who pays
                             </div>
                           )}
-
-                          {/* ADD THIS: Info note about service provider not being payer for "Two Other Parties" */}
-                          <div className="mt-2 flex items-start gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <Info className="mt-0.5 h-3 w-3 flex-shrink-0 text-cyan-400" />
-                            <p className="text-xs text-cyan-300/80">
-                              The payer is the{" "}
-                              <span className="font-medium">
-                                service recipient
-                              </span>{" "}
-                              who funds the escrow. The{" "}
-                              <span className="font-medium">
-                                service provider
-                              </span>{" "}
-                              (who receives funds) cannot be the payer.
-                            </p>
-                          </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Parties based on escrow type */}
                     {/* Parties based on escrow type */}
                     {escrowType === "myself" ? (
                       <div>
@@ -2141,37 +2510,14 @@ Created: ${new Date().toISOString()}
                             setForm({ ...form, counterparty: e.target.value })
                           }
                           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder="@0xHandle or address"
+                          placeholder="0x..."
                           required
                         />
                         {!form.counterparty.trim() && (
                           <div className="mt-1 text-xs text-red-400">
-                            Please enter counterparty's information
+                            Please enter counterparty's wallet address
                           </div>
                         )}
-                        {form.counterparty && !isValidAddress(form.counterparty) && (
-                          <div className="mt-1 text-xs text-red-400">
-                            Please enter a valid Ethereum address (0x...)
-                          </div>
-                        )}
-                        {/* ADD THIS: Clear role explanation */}
-                        {/* <div className="mt-2 flex items-center gap-2">
-                          <div className="text-xs text-cyan-300/70">
-                            <span className="font-medium text-cyan-200">
-                              Service Provider:
-                            </span>{" "}
-                            {form.payer === "me" ? form.counterparty : "You"}{" "}
-                            (receives funds)
-                          </div>
-                          <div className="text-xs text-cyan-300/70">•</div>
-                          <div className="text-xs text-cyan-300/70">
-                            <span className="font-medium text-cyan-200">
-                              Service Recipient:
-                            </span>{" "}
-                            {form.payer === "me" ? "You" : form.counterparty}{" "}
-                            (pays funds)
-                          </div>
-                        </div> */}
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
@@ -2185,12 +2531,12 @@ Created: ${new Date().toISOString()}
                               setForm({ ...form, partyA: e.target.value })
                             }
                             className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
-                            placeholder="@0xHandle or address"
+                            placeholder="0x..."
                             required
                           />
                           {!form.partyA.trim() && (
                             <div className="mt-1 text-xs text-red-400">
-                              Please enter first party's information
+                              Please enter first party's wallet address
                             </div>
                           )}
                         </div>
@@ -2204,51 +2550,21 @@ Created: ${new Date().toISOString()}
                               setForm({ ...form, partyB: e.target.value })
                             }
                             className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
-                            placeholder="@0xHandle or address"
+                            placeholder="0x..."
                             required
                           />
 
                           {!form.partyB.trim() && (
                             <div className="mt-1 text-xs text-red-400">
-                              Please enter second party's information
+                              Please enter second party's wallet address
                             </div>
                           )}
                         </div>
-                        {/* ADD THIS: Clear role explanation for "Two Other Parties" */}
-                        {/* <div className="col-span-2 mt-2 grid grid-cols-2 gap-2 text-xs">
-                          <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <div className="font-medium text-cyan-200">
-                              Service Provider
-                            </div>
-                            <div className="text-cyan-300/70">
-                              {form.payerOther === "partyA"
-                                ? form.partyB
-                                : form.partyA}
-                            </div>
-                            <div className="mt-1 text-cyan-300/60">
-                              Receives funds
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2">
-                            <div className="font-medium text-cyan-200">
-                              Service Recipient
-                            </div>
-                            <div className="text-cyan-300/70">
-                              {form.payerOther === "partyA"
-                                ? form.partyA
-                                : form.partyB}
-                            </div>
-                            <div className="mt-1 text-cyan-300/60">
-                              Pays funds
-                            </div>
-                          </div>
-                        </div> */}
                       </div>
                     )}
 
                     {/* Token and Amount */}
                     <div className="grid grid-cols-2 gap-4">
-                      {/* Token Dropdown with Custom Option */}
                       <div
                         className="relative flex w-full flex-col gap-2"
                         ref={tokenRef}
@@ -2263,12 +2579,13 @@ Created: ${new Date().toISOString()}
                           <span>
                             {form.token
                               ? tokenOptions.find((t) => t.value === form.token)
-                                ?.label
+                                  ?.label
                               : "Select Token"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${isTokenOpen ? "rotate-180" : ""
-                              }`}
+                            className={`transition-transform ${
+                              isTokenOpen ? "rotate-180" : ""
+                            }`}
                           />
                         </div>
                         {isTokenOpen && (
@@ -2348,10 +2665,10 @@ Created: ${new Date().toISOString()}
                         {(!form.amount.trim() ||
                           isNaN(Number(form.amount)) ||
                           Number(form.amount) <= 0) && (
-                            <div className="mt-1 text-xs text-red-400">
-                              Please enter a valid amount
-                            </div>
-                          )}
+                          <div className="mt-1 text-xs text-red-400">
+                            Please enter a valid amount
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2384,10 +2701,11 @@ Created: ${new Date().toISOString()}
                       </label>
 
                       <div
-                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                          ? "border-cyan-400/60 bg-cyan-500/20"
-                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                          }`}
+                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                          isDragOver
+                            ? "border-cyan-400/60 bg-cyan-500/20"
+                            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                        }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -2519,7 +2837,7 @@ Created: ${new Date().toISOString()}
                         Deadline <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
-                        <Calendar className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                        <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                         <ReactDatePicker
                           selected={deadline}
                           onChange={(date) => setDeadline(date)}
@@ -2544,37 +2862,6 @@ Created: ${new Date().toISOString()}
                         <StatusMessages />
                       </div>
                     )}
-
-                    {/* Add this at the end of the form, before the buttons */}
-                    <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3">
-                      <div className="flex items-start gap-2">
-                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
-                        <div>
-                          <h4 className="text-sm font-medium text-blue-300">
-                            Understanding Escrow Roles
-                          </h4>
-                          <ul className="mt-1 space-y-1 text-xs text-blue-300/80">
-                            <li className="flex items-center gap-1">
-                              <span className="font-medium">
-                                Service Provider:
-                              </span>{" "}
-                              Receives funds, delivers work/service
-                            </li>
-                            <li className="flex items-center gap-1">
-                              <span className="font-medium">
-                                Service Recipient:
-                              </span>{" "}
-                              Pays funds into escrow, receives work/service
-                            </li>
-                            <li className="flex items-center gap-1 text-blue-200">
-                              <span className="font-medium">⚠️ Important:</span>{" "}
-                              The same party cannot be both provider and
-                              recipient
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
 
                     {/* Buttons */}
                     <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
@@ -2606,7 +2893,23 @@ Created: ${new Date().toISOString()}
                           createApprovalState.isApprovingToken
                         }
                       >
-                        {isSubmitting ||
+                        {creationStep !== "idle" ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            {creationStep === "creating_backend" &&
+                              "Creating Backend..."}
+                            {creationStep === "awaiting_approval" &&
+                              "Awaiting Approval..."}
+                            {creationStep === "approving" &&
+                              "Approving Token..."}
+                            {creationStep === "creating_onchain" &&
+                              "Creating On-Chain..."}
+                            {creationStep === "waiting_confirmation" &&
+                              "Waiting Confirmation..."}
+                            {creationStep === "success" && "Success!"}
+                            {creationStep === "error" && "Error - Retry"}
+                          </>
+                        ) : isSubmitting ||
                           isTxPending ||
                           isApprovalPending ||
                           createApprovalState.isApprovingToken ? (
@@ -2626,7 +2929,7 @@ Created: ${new Date().toISOString()}
                     </div>
                   </form>
 
-                  {/* Conditional note (unchanged) */}
+                  {/* Conditional note */}
                   {escrowType === "myself" && form.payer === "me" ? (
                     <p className="text-muted-foreground mt-4 text-xs">
                       After signing, you will be prompted to deposit{" "}
@@ -2679,8 +2982,6 @@ Created: ${new Date().toISOString()}
           </header>
 
           <aside className="space-y-4">
-            {/* Custom Filter Component */}
-
             <div className="mb-3 flex items-center justify-between"></div>
 
             {/* Custom Filter Tabs */}
@@ -2689,77 +2990,71 @@ Created: ${new Date().toISOString()}
                 {
                   value: "all",
                   label: "All",
-                  count: escrowsWithOnChainData.length,
+                  count: allEscrows.length,
                 },
                 {
                   value: "pending",
                   label: "Pending",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "pending",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "pending")
+                    .length,
                 },
                 {
                   value: "signed",
                   label: "Signed",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "signed",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "signed").length,
                 },
                 {
                   value: "pending_approval",
                   label: "Pending Approval",
-                  count: escrowsWithOnChainData.filter(
+                  count: allEscrows.filter(
                     (e) => e.status === "pending_approval",
                   ).length,
                 },
                 {
                   value: "completed",
                   label: "Completed",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "completed",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "completed")
+                    .length,
                 },
                 {
                   value: "disputed",
                   label: "Disputed",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "disputed",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "disputed")
+                    .length,
                 },
                 {
                   value: "cancelled",
                   label: "Cancelled",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "cancelled",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "cancelled")
+                    .length,
                 },
                 {
-                  value: "expired", // Add expired filter
+                  value: "expired",
                   label: "Expired",
-                  count: escrowsWithOnChainData.filter(
-                    (e) => e.status === "expired",
-                  ).length,
+                  count: allEscrows.filter((e) => e.status === "expired")
+                    .length,
                 },
               ].map((tab) => (
                 <button
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
-                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
-                    ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                    } `}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                    statusTab === tab.value
+                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                  } `}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
-                      ? "bg-cyan-400/30 text-cyan-200"
-                      : "bg-white/10 text-white/60"
-                      } `}
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
+                      statusTab === tab.value
+                        ? "bg-cyan-400/30 text-cyan-200"
+                        : "bg-white/10 text-white/60"
+                    } `}
                   >
                     {tab.count}
                   </span>
 
-                  {/* Active indicator dot */}
                   {statusTab === tab.value && (
                     <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50"></div>
                   )}
@@ -2769,47 +3064,37 @@ Created: ${new Date().toISOString()}
           </aside>
         </div>
 
-        {agreementsLoading ? (
-          // Enhanced loading state with skeleton cards
+        {/* Page Size Selector */}
+        <div className="flex items-center gap-2 px-4 py-2">
+          <span className="text-sm text-cyan-300">Show:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
+          >
+            <option className="text-black" value={10}>
+              10
+            </option>
+            <option className="text-black" value={20}>
+              20
+            </option>
+            <option className="text-black" value={30}>
+              30
+            </option>
+            <option className="text-black" value={40}>
+              40
+            </option>
+          </select>
+          <span className="text-sm text-cyan-300">per page</span>
+        </div>
+
+        {loading ? (
           <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {[...Array(6)].map((_, index) => (
-              <div
-                key={index}
-                className="web3-corner-border group relative rounded-3xl p-[2px]"
-              >
-                <div className="h-fit rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl">
-                  {/* Skeleton title */}
-                  <div className="mb-4">
-                    <div className="h-6 w-3/4 animate-pulse rounded-lg bg-cyan-500/20"></div>
-                  </div>
-
-                  {/* Skeleton content grid */}
-                  <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-4">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i}>
-                        <div className="mb-2 h-4 w-12 animate-pulse rounded bg-white/10"></div>
-                        <div className="h-5 w-20 animate-pulse rounded bg-cyan-400/20"></div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Skeleton description */}
-                  <div className="mt-4">
-                    <div className="mb-2 h-4 w-full animate-pulse rounded bg-white/10"></div>
-                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/10"></div>
-                  </div>
-
-                  {/* Skeleton footer */}
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="h-4 w-24 animate-pulse rounded bg-white/10"></div>
-                    <div className="h-9 w-20 animate-pulse rounded bg-cyan-400/20"></div>
-                  </div>
-                </div>
-              </div>
+              <EscrowSkeleton key={index} />
             ))}
           </div>
-        ) : listed.length === 0 ? (
-          // Only show "No escrows found" after loading is complete AND there are no escrows
+        ) : escrowsWithOnChainData.length === 0 ? (
           <div className="mt-8 flex flex-col items-center justify-center py-12 text-center">
             <div className="mb-4 rounded-full bg-cyan-500/10 p-6">
               <Search className="h-12 w-12 text-cyan-400/60" />
@@ -2833,110 +3118,183 @@ Created: ${new Date().toISOString()}
             )}
           </div>
         ) : (
-          // Actual escrows grid
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {listed.map((e) => (
-              <Link
-                to={`/escrow/${e.id}`}
-                key={e.id}
-                className="web3-corner-border group relative rounded-3xl p-[2px]"
-              >
-                <div className="flex h-full flex-col rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
-                  <div>
-                    <div className="mb-4 min-h-[3.5rem]">
-                      <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
-                        {e.title}
-                      </h3>
-                    </div>
-
-                    <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                      <div>
-                        <div className="text-muted-foreground">Payer</div>
-                        <div className="text-cyan-300/90">
-                          {formatWalletAddress(e.from)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Payee</div>
-                        <div className="text-pink-300/90">
-                          {formatWalletAddress(e.to)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Amount</div>
-                        <div className="font-bold text-green-500/90">
-                          {e.amount} {e.token}
-                        </div>
+          <>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {escrowsWithOnChainData.map((e) => (
+                <Link
+                  to={`/escrow/${e.id}`}
+                  key={e.id}
+                  className="web3-corner-border group relative rounded-3xl p-[2px]"
+                >
+                  <div className="flex h-full flex-col rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
+                    <div>
+                      <div className="mb-4 min-h-[3.5rem]">
+                        <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+                          {e.title}
+                        </h3>
                       </div>
 
-                      <div className="flex flex-col gap-2">
-                        <div className="text-muted-foreground">Status</div>
-                        <div className="flex flex-col gap-1">
-                          {/* Use only API status - no on-chain status */}
-                          <div>
-                            <span
-                              className={`badge w-fit ${e.status === "pending"
-                                ? "badge-yellow"
-                                : e.status === "signed"
-                                  ? "badge-blue"
-                                  : e.status === "pending_approval"
-                                    ? "badge-orange" // Use purple for pending approval to differentiate
-                                    : e.status === "completed"
-                                      ? "badge-green"
-                                      : e.status === "disputed"
-                                        ? "badge-purple" // Also purple for disputed
-                                        : e.status === "cancelled"
-                                          ? "badge-red"
-                                          : e.status === "expired"
-                                            ? "badge-gray" // Gray for expired
-                                            : "badge-orange" // Default fallback
+                      <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">Payer</div>
+                          <div className="text-cyan-300/90">
+                            {formatWalletAddress(e.from)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Payee</div>
+                          <div className="text-pink-300/90">
+                            {formatWalletAddress(e.to)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Amount</div>
+                          <div className="font-bold text-green-500/90">
+                            {e.amount} {e.token}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <div className="text-muted-foreground">Status</div>
+                          <div className="flex flex-col gap-1">
+                            <div>
+                              <span
+                                className={`badge w-fit ${
+                                  e.status === "pending"
+                                    ? "badge-yellow"
+                                    : e.status === "signed"
+                                      ? "badge-blue"
+                                      : e.status === "pending_approval"
+                                        ? "badge-orange"
+                                        : e.status === "completed"
+                                          ? "badge-green"
+                                          : e.status === "disputed"
+                                            ? "badge-purple"
+                                            : e.status === "cancelled"
+                                              ? "badge-red"
+                                              : e.status === "expired"
+                                                ? "badge-gray"
+                                                : "badge-orange"
                                 }`}
-                            >
-                              {e.status === "pending_approval"
-                                ? "Pending Approval"
-                                : e.status.charAt(0).toUpperCase() +
-                                e.status.slice(1)}
-                            </span>
+                              >
+                                {e.status === "pending_approval"
+                                  ? "Pending Approval"
+                                  : e.status.charAt(0).toUpperCase() +
+                                    e.status.slice(1)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* On-chain indicators */}
-                    {/* On-chain indicators */}
-                  </div>
-
-                  <div className="mt-3 min-h-[2.5rem]">
-                    <p className="line-clamp-2 text-sm text-gray-300/70">
-                      {e.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="text-muted-foreground text-xs">
-                      {e.onChainDeadline ? (
-                        <>
-                          Deadline:{" "}
-                          {new Date(
-                            Number(e.onChainDeadline) * 1000,
-                          ).toLocaleDateString()}
-                        </>
-                      ) : (
-                        <>Deadline: {e.deadline}</>
-                      )}
+                    <div className="mt-3 min-h-[2.5rem]">
+                      <p className="line-clamp-2 text-sm text-gray-300/70">
+                        {e.description}
+                      </p>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    >
-                      <Eye className="mr-2 h-4 w-4" /> View
-                    </Button>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="text-muted-foreground text-xs">
+                        {e.onChainDeadline ? (
+                          <>
+                            Deadline:{" "}
+                            {new Date(
+                              Number(e.onChainDeadline) * 1000,
+                            ).toLocaleDateString()}
+                          </>
+                        ) : (
+                          <>Deadline: {e.deadline}</>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      >
+                        <Eye className="mr-2 h-4 w-4" /> View
+                      </Button>
+                    </div>
                   </div>
+                </Link>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {!loading && totalEscrows > 0 && (
+              <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
+                <div className="text-sm whitespace-nowrap text-cyan-300">
+                  Showing {startItem} to {endItem} of {filteredEscrows.length}{" "}
+                  escrows
                 </div>
-              </Link>
-            ))}
-          </div>
+
+                <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
+                  {/* Previous Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="sr-only sm:not-sr-only sm:ml-1">
+                      Previous
+                    </span>
+                  </Button>
+
+                  {/* Page Numbers - Hide on very small screens, show on sm+ */}
+                  <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "neon" : "outline"}
+                          size="sm"
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`${
+                            currentPage === pageNum
+                              ? "neon-hover"
+                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Current Page Indicator (for very small screens) */}
+                  <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
+                    Page {currentPage} of {totalPages}
+                  </div>
+
+                  {/* Next Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
+                  >
+                    <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

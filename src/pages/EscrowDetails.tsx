@@ -37,6 +37,10 @@ import { useAuth } from "../hooks/useAuth";
 import { UserAvatar } from "../components/UserAvatar";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
+import { Image, Paperclip } from "lucide-react";
+import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
+import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
+import { api } from "../lib/apiClient";
 
 // Use the same services as Escrow.tsx
 import { agreementService } from "../services/agreementServices";
@@ -100,6 +104,112 @@ const apiStatusToFrontend = (status: number): string => {
       return "pending_approval";
     default:
       return "pending";
+  }
+};
+
+// Helper function to process agreement files for display
+// Helper function to process agreement files for display (with draft filtering)
+const processEscrowFiles = (files: any[], escrowId: string): any[] => {
+  return files
+    .filter((file) => !file.fileName.toLowerCase().includes("escrow-draft")) // Filter out draft files
+    .map((file) => {
+      const name = file.fileName;
+
+      // Function to get file URL
+      const getFileUrl = (): string => {
+        const API_BASE =
+          import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+        return `${API_BASE}/agreement/${escrowId}/file/${file.id}`;
+      };
+
+      const fileUrl = getFileUrl();
+
+      // Determine file type
+      if (/\.(webp|jpg|jpeg|png|gif)$/i.test(name)) {
+        return {
+          name,
+          type: "image",
+          url: fileUrl,
+          preview: fileUrl,
+        };
+      } else if (/\.pdf($|\?)/i.test(name)) {
+        return {
+          name,
+          type: "pdf",
+          url: fileUrl,
+          preview:
+            "https://placehold.co/600x800/059669/white?text=PDF+Document",
+        };
+      } else if (name.match(/chat|screenshot|conversation/i)) {
+        return {
+          name,
+          type: "chat",
+          url: fileUrl,
+          preview:
+            "https://placehold.co/600x800/1f2937/white?text=Chat+Screenshot",
+        };
+      } else {
+        return {
+          name,
+          type: "document",
+          url: fileUrl,
+          preview: "https://placehold.co/600x800/059669/white?text=Document",
+        };
+      }
+    });
+};
+
+// Helper function to determine file type
+const getFileType = (filename: string): string => {
+  if (!filename) return "document";
+
+  const ext = filename.toLowerCase().split(".").pop();
+  switch (ext) {
+    case "pdf":
+      return "pdf";
+    case "jpg":
+    case "jpeg":
+    case "png":
+    case "gif":
+    case "webp":
+    case "svg":
+      return "image";
+    case "doc":
+    case "docx":
+      return "word";
+    case "xls":
+    case "xlsx":
+      return "excel";
+    case "zip":
+    case "rar":
+    case "7z":
+      return "archive";
+    case "txt":
+      return "text";
+    default:
+      return "document";
+  }
+};
+
+// Helper function to get appropriate file icon
+const getFileIcon = (fileType: string) => {
+  const className = "h-5 w-5";
+
+  switch (fileType) {
+    case "pdf":
+      return <FileText className={`${className} text-red-400`} />;
+    case "image":
+      return <Image className={`${className} text-green-400`} />;
+    case "word":
+      return <FileText className={`${className} text-blue-400`} />;
+    case "excel":
+      return <FileText className={`${className} text-green-500`} />;
+    case "archive":
+      return <Paperclip className={`${className} text-yellow-400`} />;
+    case "text":
+      return <FileText className={`${className} text-gray-400`} />;
+    default:
+      return <Paperclip className={`${className} text-cyan-400`} />;
   }
 };
 
@@ -376,6 +486,11 @@ export default function EscrowDetails() {
     feeAmount: "",
   });
 
+  const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
+  const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
+
   // Status configuration
   const statusConfig = {
     pending: {
@@ -434,6 +549,121 @@ export default function EscrowDetails() {
       label: "Cancelled",
       description: "Agreement cancelled",
     },
+  };
+
+  // Handler functions for file viewing
+  const handleViewEvidence = (evidence: any) => {
+    setSelectedEvidence(evidence);
+    setEvidenceViewerOpen(true);
+    setPdfLoading(evidence.type === "pdf");
+    setPdfError(false);
+  };
+
+  const handlePdfLoad = () => {
+    setPdfLoading(false);
+  };
+
+  const handlePdfError = () => {
+    setPdfLoading(false);
+    setPdfError(true);
+  };
+
+  // File download handler
+  // File download handler with draft filtering
+  const handleDownloadFile = async (fileIndex: number) => {
+    if (!id || !escrow) return;
+
+    try {
+      const escrowId = parseInt(id);
+
+      // Filter out escrow-draft.json files
+      const allFiles = escrow._raw?.files || [];
+      const filteredFiles = allFiles.filter(
+        (file: any) => !file.fileName.toLowerCase().includes("escrow-draft"),
+      );
+
+      if (filteredFiles.length === 0 || fileIndex >= filteredFiles.length) {
+        toast.error("File not found in escrow data");
+        return;
+      }
+
+      const file = filteredFiles[fileIndex];
+      const fileId = file.id;
+
+      if (!fileId) {
+        toast.error("File ID not found");
+        return;
+      }
+
+      // Find the original index in the full files array
+      const originalFile = allFiles.find((f: any) => f.id === fileId);
+      if (!originalFile) {
+        toast.error("Original file not found");
+        return;
+      }
+
+      // Show loading state
+      toast.info("Downloading file...");
+
+      // Create a custom download function that preserves the original filename
+      await downloadFileWithOriginalName(
+        escrowId,
+        fileId,
+        originalFile.fileName,
+      );
+      toast.success("File downloaded successfully!");
+    } catch (error: any) {
+      console.error("Failed to download file:", error);
+      const errorMessage =
+        error.message || "Failed to download file. Please try again.";
+      toast.error(errorMessage);
+    }
+  };
+
+  // Enhanced download function that preserves original filename
+  const downloadFileWithOriginalName = async (
+    escrowId: number,
+    fileId: number,
+    originalFileName: string,
+  ) => {
+    try {
+      const response = await api.get(`/agreement/${escrowId}/file/${fileId}`, {
+        responseType: "blob",
+      });
+
+      // Use the original filename from the file data
+      let filename = originalFileName;
+
+      // If the original filename doesn't have an extension, try to get it from headers
+      if (!filename.includes(".")) {
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1];
+          }
+        }
+      }
+
+      // Create blob with proper MIME type
+      const contentType = response.headers["content-type"];
+      const blob = contentType
+        ? new Blob([response.data], { type: contentType })
+        : new Blob([response.data]);
+
+      // Create and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed:", error);
+      throw error;
+    }
   };
 
   const getCurrentStatus = () => {
@@ -531,8 +761,9 @@ export default function EscrowDetails() {
           agreementData.visibility === AgreementVisibilityEnum.PRIVATE
             ? "private"
             : "public",
-        from: getWalletAddressFromParty(agreementData.counterParty),
-        to: getWalletAddressFromParty(agreementData.firstParty),
+        from: getWalletAddressFromParty(agreementData.firstParty),
+
+        to: getWalletAddressFromParty(agreementData.counterParty),
         status: apiStatusToFrontend(agreementData.status),
         dateCreated: agreementData.createdAt,
         deadline: agreementData.deadline,
@@ -546,10 +777,10 @@ export default function EscrowDetails() {
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
-        fromAvatarId: getAvatarIdFromParty(agreementData.counterParty),
-        toAvatarId: getAvatarIdFromParty(agreementData.firstParty),
-        fromUserId: getUserIdFromParty(agreementData.counterParty),
-        toUserId: getUserIdFromParty(agreementData.firstParty),
+        fromAvatarId: getAvatarIdFromParty(agreementData.firstParty), // FIXED: Mystyri's avatar
+        toAvatarId: getAvatarIdFromParty(agreementData.counterParty), // FIXED: SaffronSonder's avatar
+        fromUserId: getUserIdFromParty(agreementData.firstParty), // FIXED: Mystyri's user ID
+        toUserId: getUserIdFromParty(agreementData.counterParty),
         creator: getWalletAddressFromParty(agreementData.creator),
         creatorUserId: getUserIdFromParty(agreementData.creator),
         creatorAvatarId: getAvatarIdFromParty(agreementData.creator),
@@ -572,6 +803,7 @@ export default function EscrowDetails() {
   }, [id, fetchOnChainAgreement]);
 
   // Background refresh
+  // Background refresh
   const fetchEscrowDetailsBackground = useCallback(async () => {
     if (isRefreshing || !id) return;
 
@@ -581,7 +813,7 @@ export default function EscrowDetails() {
       const agreementData =
         await agreementService.getAgreementDetails(escrowId);
 
-      // Transform API data to frontend format
+      // Transform API data to frontend format - FIX THIS MAPPING
       const transformedEscrow: EscrowDetailsData = {
         id: `${agreementData.id}`,
         title: agreementData.title,
@@ -590,8 +822,10 @@ export default function EscrowDetails() {
           agreementData.visibility === AgreementVisibilityEnum.PRIVATE
             ? "private"
             : "public",
-        from: getWalletAddressFromParty(agreementData.counterParty),
-        to: getWalletAddressFromParty(agreementData.firstParty),
+        // FIXED: First party (Mystyri) is "from"
+        from: getWalletAddressFromParty(agreementData.firstParty),
+        // FIXED: Counter party (SaffronSonder) is "to"
+        to: getWalletAddressFromParty(agreementData.counterParty),
         status: apiStatusToFrontend(agreementData.status),
         dateCreated: agreementData.createdAt,
         deadline: agreementData.deadline,
@@ -605,10 +839,11 @@ export default function EscrowDetails() {
         escrowAddress: agreementData.escrowContract || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
-        fromAvatarId: getAvatarIdFromParty(agreementData.counterParty),
-        toAvatarId: getAvatarIdFromParty(agreementData.firstParty),
-        fromUserId: getUserIdFromParty(agreementData.counterParty),
-        toUserId: getUserIdFromParty(agreementData.firstParty),
+        // FIXED: Match avatar IDs with the "from" and "to" assignments
+        fromAvatarId: getAvatarIdFromParty(agreementData.firstParty),
+        toAvatarId: getAvatarIdFromParty(agreementData.counterParty),
+        fromUserId: getUserIdFromParty(agreementData.firstParty),
+        toUserId: getUserIdFromParty(agreementData.counterParty),
         creator: getWalletAddressFromParty(agreementData.creator),
         creatorUserId: getUserIdFromParty(agreementData.creator),
         creatorAvatarId: getAvatarIdFromParty(agreementData.creator),
@@ -1478,32 +1713,18 @@ export default function EscrowDetails() {
   };
 
   // FIXED Role detection - Use on-chain data which has reliable wallet addresses
-  const userWalletAddress = user?.walletAddress?.toLowerCase();
 
-  // Use on-chain agreement data for wallet addresses (most reliable)
-  const fromWallet = onChainAgreement?.serviceRecipient?.toLowerCase() || "";
-  const toWallet = onChainAgreement?.serviceProvider?.toLowerCase() || "";
-  const creatorWallet = onChainAgreement?.creator?.toLowerCase() || "";
+  const userId = user?.id?.toString();
 
-  // Compare wallet addresses
-  const isCounterparty = userWalletAddress === toWallet;
-  const isFirstParty = userWalletAddress === fromWallet;
-  const isCreator = userWalletAddress === creatorWallet;
+  // Get user IDs from raw agreement data (most accurate)
+  const firstPartyUserId = escrow?._raw?.firstParty?.id?.toString();
+  const counterPartyUserId = escrow?._raw?.counterParty?.id?.toString();
+  const creatorUserId = escrow?._raw?.creator?.id?.toString();
 
-  // Debug logging
-  // useEffect(() => {
-  //   if (onChainAgreement && user) {
-  //     console.log("Debug - On-Chain Role Verification:", {
-  //       userWalletAddress: user.walletAddress,
-  //       fromWallet: onChainAgreement.serviceRecipient,
-  //       toWallet: onChainAgreement.serviceProvider,
-  //       creatorWallet: onChainAgreement.creator,
-  //       isFirstParty,
-  //       isCounterparty,
-  //       isCreator,
-  //     });
-  //   }
-  // }, [onChainAgreement, user, fromWallet, toWallet, creatorWallet]);
+  // Simple comparison: check if logged-in user matches any party by user ID
+  const isFirstParty = userId === firstPartyUserId;
+  const isCounterparty = userId === counterPartyUserId;
+  const isCreator = userId === creatorUserId;
 
   // Calculate days remaining
   const daysRemaining = escrow
@@ -1578,6 +1799,10 @@ export default function EscrowDetails() {
   const StatusIcon = statusInfo.icon;
   return (
     <div className="min-h-screen">
+      <div className="mt-1 text-xs text-cyan-300">
+        Debug: From = {escrow.from} | To = {escrow.to} | isFirstParty ={" "}
+        {isFirstParty.toString()} | isCounterparty = {isCounterparty.toString()}
+      </div>
       <div className="container mx-auto py-2 lg:px-4 lg:py-8">
         {/* Header */}
         <div className="mb-8 flex flex-col items-center justify-between space-y-4 sm:flex-row">
@@ -1781,6 +2006,87 @@ export default function EscrowDetails() {
                   </p>
                 </div>
               </div>
+
+              {escrow._raw?.files && escrow._raw.files.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="mb-3 text-lg font-semibold text-white">
+                    Supporting Documents
+                  </h3>
+
+                  {/* Filter out escrow-draft.json files */}
+                  {(() => {
+                    // Filter out escrow-draft.json files
+                    const filteredFiles = escrow._raw.files.filter(
+                      (file: any) =>
+                        !file.fileName.toLowerCase().includes("escrow-draft"),
+                    );
+
+                    // If no files remain after filtering, don't show the section
+                    if (filteredFiles.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <>
+                        {/* Preview Section */}
+                        <div className="mb-4 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+                          <div className="mb-3 flex items-center gap-2">
+                            <Eye className="h-4 w-4 text-cyan-400" />
+                            <h4 className="font-medium text-cyan-300">
+                              Preview Files ({filteredFiles.length})
+                            </h4>
+                          </div>
+
+                          <EvidenceDisplay
+                            evidence={processEscrowFiles(
+                              filteredFiles,
+                              escrow.id,
+                            )}
+                            color="cyan"
+                            onViewEvidence={handleViewEvidence}
+                          />
+                        </div>
+
+                        {/* Download Section */}
+                        <div className="space-y-2">
+                          {filteredFiles.map((file: any, index: number) => {
+                            const fileType = getFileType(file.fileName);
+                            const fileIcon = getFileIcon(fileType);
+
+                            return (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
+                              >
+                                <div className="flex min-w-0 flex-1 items-center space-x-3">
+                                  {fileIcon}
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-white">
+                                      {file.fileName}
+                                    </span>
+                                    <span className="text-xs text-cyan-300/70 capitalize">
+                                      {fileType}
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
+                                  onClick={() => handleDownloadFile(index)}
+                                >
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Download
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Complete On-Chain Agreement Details */}
               {/* Complete On-Chain Agreement Details */}
@@ -3082,7 +3388,7 @@ export default function EscrowDetails() {
                 Your Role
               </h3>
               <div className="space-y-3">
-                {/* Show all applicable roles */}
+                {/* Show all applicable roles using accurate data */}
                 {isCreator && (
                   <div className="rounded-lg bg-purple-500/10 p-3">
                     <div className="flex items-center gap-2">
@@ -3096,21 +3402,9 @@ export default function EscrowDetails() {
                     </p>
                   </div>
                 )}
-                {isFirstParty && (
-                  <div className="rounded-lg bg-blue-500/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-blue-400" />
-                      <span className="font-medium text-blue-300">
-                        Service Recipient (Payer)
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-blue-200/80">
-                      You receive the service and provide payment secured in
-                      escrow.
-                    </p>
-                  </div>
-                )}
-                {isCounterparty && (
+
+                {/* Use on-chain roles for accurate financial role display */}
+                {isServiceProvider && (
                   <div className="rounded-lg bg-green-500/10 p-3">
                     <div className="flex items-center gap-2">
                       <UserCheck className="h-4 w-4 text-green-400" />
@@ -3124,7 +3418,42 @@ export default function EscrowDetails() {
                     </p>
                   </div>
                 )}
-                {!isFirstParty && !isCounterparty && !isCreator && (
+
+                {isServiceRecipient && (
+                  <div className="rounded-lg bg-blue-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-400" />
+                      <span className="font-medium text-blue-300">
+                        Service Recipient (Payer)
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-blue-200/80">
+                      You receive the service and provide payment secured in
+                      escrow.
+                    </p>
+                  </div>
+                )}
+
+                {/* Show UI relationship role separately if needed */}
+                {(isFirstParty || isCounterparty) &&
+                  !isServiceProvider &&
+                  !isServiceRecipient && (
+                    <div className="rounded-lg bg-yellow-500/10 p-3">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-yellow-400" />
+                        <span className="font-medium text-yellow-300">
+                          {isFirstParty ? "First Party" : "Counterparty"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-yellow-200/80">
+                        {isFirstParty
+                          ? "You are the first party in this agreement."
+                          : "You are the counterparty in this agreement."}
+                      </p>
+                    </div>
+                  )}
+
+                {!isServiceProvider && !isServiceRecipient && !isCreator && (
                   <div className="rounded-lg bg-gray-500/10 p-3">
                     <div className="flex items-center gap-2">
                       <Eye className="h-4 w-4 text-gray-400" />
@@ -3173,6 +3502,20 @@ export default function EscrowDetails() {
           </div>
         </div>
       </div>
+      {/* Evidence Viewer Modal */}
+      {/* Evidence Viewer Modal */}
+      <EvidenceViewer
+        isOpen={evidenceViewerOpen}
+        onClose={() => {
+          setEvidenceViewerOpen(false);
+          setSelectedEvidence(null); // Clear selected evidence when closing
+        }}
+        selectedEvidence={selectedEvidence}
+        onPdfLoad={handlePdfLoad}
+        onPdfError={handlePdfError}
+        pdfLoading={pdfLoading}
+        pdfError={pdfError}
+      />
     </div>
   );
 }

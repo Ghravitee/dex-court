@@ -1,138 +1,178 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Button } from "../../../components/ui/button";
-import type { EvidenceItem } from "../../../types";
-import { FileText, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "../../../components/ui/button";
+import { FileText, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
+import type { EvidenceItem } from "../../../types";
 
-// ================= PDF.js =================
+// ================= pdf.js =================
 import * as pdfjsLib from "pdfjs-dist";
-import "pdfjs-dist/build/pdf.worker.mjs";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.mjs",
-  import.meta.url,
-).toString();
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 // ==========================================
 
-// ================== Evidence Viewer ==================
 export const EvidenceViewer = ({
   isOpen,
   onClose,
   selectedEvidence,
-  onPdfLoad,
-  onPdfError,
-  pdfLoading,
-  pdfError,
 }: {
   isOpen: boolean;
   onClose: () => void;
   selectedEvidence: EvidenceItem | null;
-  // Add these optional props
-  onPdfLoad?: () => void;
-  onPdfError?: () => void;
-  pdfLoading?: boolean;
-  pdfError?: boolean;
 }) => {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const pdfRef = useRef<any>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pdfRef = useRef<any>(null);
-
+  // ================= IMAGE LOADER =================
   useEffect(() => {
-    if (!selectedEvidence) return;
+    if (!selectedEvidence || selectedEvidence.type !== "image") return;
 
-    let mounted = true;
-    let localBlobUrl: string | null = null;
+    let cancelled = false;
+    let localUrl: string | null = null;
 
-    const load = async () => {
+    const loadImage = async () => {
+      try {
+        setLoading(true);
+        setError(false);
+
+        const res = await fetch(selectedEvidence.url);
+        if (!res.ok) throw new Error("Image fetch failed");
+
+        const blob = await res.blob();
+        localUrl = URL.createObjectURL(blob);
+
+        if (!cancelled) setImageUrl(localUrl);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      cancelled = true;
+      if (localUrl) URL.revokeObjectURL(localUrl);
+    };
+  }, [selectedEvidence]);
+
+  // ================= PDF LOADER =================
+  useEffect(() => {
+    if (!selectedEvidence || selectedEvidence.type !== "pdf") return;
+
+    let cancelled = false;
+
+    const loadPdf = async () => {
       try {
         setLoading(true);
         setError(false);
         setCurrentPage(1);
-        setNumPages(0);
 
-        const res = await fetch(selectedEvidence.url);
-        if (!res.ok) throw new Error("Fetch failed");
+        const task = pdfjsLib.getDocument({
+          url: selectedEvidence.url,
+          withCredentials: false,
+        });
 
-        const blob = await res.blob();
-        localBlobUrl = URL.createObjectURL(blob);
+        const pdf = await task.promise;
+        if (cancelled) return;
 
-        if (mounted) setBlobUrl(localBlobUrl);
-      } catch (err) {
-        console.error(err);
-        if (mounted) setError(true);
-        onPdfError?.(); // Call error handler if provided
+        pdfRef.current = pdf;
+        setNumPages(pdf.numPages);
+      } catch (e) {
+        console.error("PDF load error:", e);
+        if (!cancelled) setError(true);
       } finally {
-        if (mounted) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    load();
+    loadPdf();
 
     return () => {
-      mounted = false;
-      if (localBlobUrl) URL.revokeObjectURL(localBlobUrl);
+      cancelled = true;
       pdfRef.current?.destroy?.();
       pdfRef.current = null;
     };
-  }, [selectedEvidence, onPdfError]);
+  }, [selectedEvidence]);
 
-  // Render PDF page
+  // ================= PDF PAGE RENDER =================
   useEffect(() => {
-    if (!blobUrl || !canvasRef.current || selectedEvidence?.type !== "pdf")
+    if (
+      !pdfRef.current ||
+      !canvasContainerRef.current ||
+      selectedEvidence?.type !== "pdf"
+    )
       return;
 
     let cancelled = false;
 
-    const render = async () => {
+    const renderPage = async () => {
       try {
-        const pdf =
-          pdfRef.current ??
-          (pdfRef.current = await pdfjsLib.getDocument(blobUrl).promise);
+        setLoading(true);
 
-        if (!cancelled && numPages === 0) setNumPages(pdf.numPages);
-
-        const page = await pdf.getPage(currentPage);
+        const page = await pdfRef.current.getPage(currentPage);
         if (cancelled) return;
 
-        const canvas = canvasRef.current!;
-        const ctx = canvas.getContext("2d")!;
-        const viewport = page.getViewport({ scale: 1 });
-        const container = canvas.parentElement!;
-        const width = container.clientWidth || viewport.width;
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-        const scale = width / viewport.width;
+        const viewport = page.getViewport({ scale: 1 });
+        const containerWidth =
+          canvasContainerRef.current!.clientWidth || viewport.width;
+
+        const scale = containerWidth / viewport.width;
         const scaledViewport = page.getViewport({ scale });
 
-        canvas.width = scaledViewport.width;
-        canvas.height = scaledViewport.height;
-        canvas.style.display = "block";
-        canvas.style.maxWidth = "100%";
+        canvas.width = Math.floor(scaledViewport.width);
+        canvas.height = Math.floor(scaledViewport.height);
 
-        await page.render({ canvasContext: ctx, viewport: scaledViewport })
-          .promise;
+        // Clear old canvas safely
+        canvasContainerRef.current!.innerHTML = "";
+        canvasContainerRef.current!.appendChild(canvas);
 
-        if (!cancelled) onPdfLoad?.(); // Call load handler when PDF renders successfully
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          setError(true);
-          onPdfError?.(); // Call error handler
-        }
+        await page.render({
+          canvasContext: ctx,
+          viewport: scaledViewport,
+        }).promise;
+      } catch (e) {
+        console.error("PDF render error:", e);
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
-    render();
+    renderPage();
 
     return () => {
       cancelled = true;
     };
-  }, [blobUrl, currentPage, numPages, selectedEvidence, onPdfLoad, onPdfError]);
+  }, [currentPage, numPages, selectedEvidence]);
+
+  // ================= RESET ON CLOSE =================
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPage(1);
+      setNumPages(0);
+      setError(false);
+      setImageUrl(null);
+      pdfRef.current = null;
+
+      if (canvasContainerRef.current) {
+        canvasContainerRef.current.innerHTML = "";
+      }
+    }
+  }, [isOpen]);
 
   if (!isOpen || !selectedEvidence) return null;
 
@@ -140,17 +180,11 @@ export const EvidenceViewer = ({
     <AnimatePresence>
       <motion.div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
         onClick={onClose}
       >
         <motion.div
           onClick={(e) => e.stopPropagation()}
           className="relative h-[90vh] w-full max-w-4xl rounded-2xl bg-gray-900 p-6"
-          initial={{ scale: 0.95 }}
-          animate={{ scale: 1 }}
-          exit={{ scale: 0.95 }}
         >
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
@@ -163,69 +197,60 @@ export const EvidenceViewer = ({
           </div>
 
           {/* Loading */}
-          {(loading || pdfLoading) && (
+          {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="h-10 w-10 animate-spin text-cyan-400" />
             </div>
           )}
 
           {/* Error */}
-          {(error || pdfError) && (
+          {error && (
             <div className="flex h-full flex-col items-center justify-center">
               <FileText className="h-12 w-12 text-red-400" />
-              <p className="text-red-300">
-                Failed to load {selectedEvidence.type}
-              </p>
+              <p className="text-red-300">Failed to load file</p>
             </div>
           )}
 
           {/* PDF */}
-          {!loading &&
-            !error &&
-            !pdfLoading &&
-            !pdfError &&
-            selectedEvidence.type === "pdf" && (
-              <>
-                <div className="h-[70vh] overflow-x-hidden overflow-y-auto">
-                  <canvas ref={canvasRef} className="rounded-lg shadow-xl" />
+          {!loading && !error && selectedEvidence.type === "pdf" && (
+            <>
+              <div
+                ref={canvasContainerRef}
+                className="flex h-[70vh] justify-center overflow-auto"
+              />
+
+              {numPages > 1 && (
+                <div className="mt-4 flex justify-center gap-4">
+                  <Button
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => p - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <span className="text-cyan-300">
+                    {currentPage} / {numPages}
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={currentPage >= numPages}
+                    onClick={() => setCurrentPage((p) => p + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
                 </div>
-
-                {numPages > 1 && (
-                  <div className="mt-4 flex items-center justify-center gap-4">
-                    <Button
-                      size="sm"
-                      disabled={currentPage <= 1}
-                      onClick={() => setCurrentPage((p) => p - 1)}
-                    >
-                      <ChevronLeft />
-                    </Button>
-
-                    <span className="text-cyan-300">
-                      Page {currentPage} / {numPages}
-                    </span>
-
-                    <Button
-                      size="sm"
-                      disabled={currentPage >= numPages}
-                      onClick={() => setCurrentPage((p) => p + 1)}
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
+              )}
+            </>
+          )}
 
           {/* IMAGE */}
           {!loading &&
             !error &&
-            !pdfLoading &&
-            !pdfError &&
             selectedEvidence.type === "image" &&
-            blobUrl && (
-              <div className="flex h-[70vh] items-center justify-center overflow-auto">
+            imageUrl && (
+              <div className="flex h-[70vh] items-center justify-center">
                 <img
-                  src={blobUrl}
+                  src={imageUrl}
                   alt={selectedEvidence.name}
                   className="max-h-full max-w-full rounded-lg"
                 />
