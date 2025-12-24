@@ -488,8 +488,6 @@ export default function EscrowDetails() {
 
   const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState(false);
 
   // Status configuration
   const statusConfig = {
@@ -555,17 +553,6 @@ export default function EscrowDetails() {
   const handleViewEvidence = (evidence: any) => {
     setSelectedEvidence(evidence);
     setEvidenceViewerOpen(true);
-    setPdfLoading(evidence.type === "pdf");
-    setPdfError(false);
-  };
-
-  const handlePdfLoad = () => {
-    setPdfLoading(false);
-  };
-
-  const handlePdfError = () => {
-    setPdfLoading(false);
-    setPdfError(true);
   };
 
   // File download handler
@@ -3511,10 +3498,6 @@ export default function EscrowDetails() {
           setSelectedEvidence(null); // Clear selected evidence when closing
         }}
         selectedEvidence={selectedEvidence}
-        onPdfLoad={handlePdfLoad}
-        onPdfError={handlePdfError}
-        pdfLoading={pdfLoading}
-        pdfError={pdfError}
       />
     </div>
   );
