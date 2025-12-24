@@ -71,6 +71,22 @@ const AgreementStatusBadge = ({ status }: { status: number }) => {
   );
 };
 
+// Helper function to format dispute parties (plaintiff/defendant)
+const formatDisputeParty = (party: string): string => {
+  if (!party) return "Unknown";
+
+  // Clean the party string
+  const cleaned = party.replace(/^@/, "");
+
+  // Check if it's a wallet address (0x + 40 hex chars)
+  if (/^0x[a-fA-F0-9]{40}$/.test(cleaned)) {
+    return `${cleaned.slice(0, 6)}…${cleaned.slice(-4)}`;
+  }
+
+  // For Telegram usernames, add @ prefix
+  return `@${cleaned}`;
+};
+
 // Add DisputeStatusBadge component
 const DisputeStatusBadge = ({ status }: { status: string }) => {
   const statusConfig = {
@@ -1052,7 +1068,8 @@ export default function UserProfile() {
                         <div className="flex justify-between">
                           <span>Parties:</span>
                           <span className="text-white/80">
-                            @{dispute.plaintiff} vs @{dispute.defendant}
+                            {formatDisputeParty(dispute.plaintiff)} vs{" "}
+                            {formatDisputeParty(dispute.defendant)}
                           </span>
                         </div>
 
