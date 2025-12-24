@@ -59,8 +59,7 @@ export default function DisputeDetails() {
     null,
   );
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState(false);
+
   const [settleModalOpen, setSettleModalOpen] = useState(false);
   const [sourceAgreement, setSourceAgreement] = useState<any>(null);
   const [, setAgreementLoading] = useState(false);
@@ -363,18 +362,6 @@ export default function DisputeDetails() {
   const handleViewEvidence = (evidence: EvidenceItem) => {
     setSelectedEvidence(evidence);
     setEvidenceViewerOpen(true);
-    setPdfLoading(evidence.type === "pdf");
-    setPdfError(false);
-  };
-
-  // Function to handle PDF load events
-  const handlePdfLoad = () => {
-    setPdfLoading(false);
-  };
-
-  const handlePdfError = () => {
-    setPdfLoading(false);
-    setPdfError(true);
   };
 
   // Voting handlers
@@ -1320,14 +1307,8 @@ export default function DisputeDetails() {
         isOpen={evidenceViewerOpen}
         onClose={() => {
           setEvidenceViewerOpen(false);
-          setPdfLoading(false);
-          setPdfError(false);
         }}
         selectedEvidence={selectedEvidence}
-        onPdfLoad={handlePdfLoad}
-        onPdfError={handlePdfError}
-        pdfLoading={pdfLoading}
-        pdfError={pdfError}
       />
       {/* Vote Outcome Modal */}
       <VoteOutcomeModal
