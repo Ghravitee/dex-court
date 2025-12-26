@@ -48,6 +48,20 @@ import type { DisputeChatRole } from "./DisputeChat/types/dto";
 import { useVotingStatus } from "../hooks/useVotingStatus";
 import { agreementService } from "../services/agreementServices";
 
+// Add this helper function near your other imports
+const formatDisplayName = (username: string) => {
+  // Clean the username first
+  const cleaned = cleanTelegramUsername(username);
+
+  // Check if it's a wallet address (starts with 0x and is 42 chars)
+  if (cleaned.startsWith("0x") && cleaned.length === 42) {
+    // Truncate wallet address and remove any @ prefix
+    return `${cleaned.slice(0, 6)}...${cleaned.slice(-4)}`;
+  }
+  // For Telegram usernames, use the existing formatter
+  return formatTelegramUsernameForDisplay(username);
+};
+
 // Main Component
 export default function DisputeDetails() {
   const { id } = useParams();
@@ -913,6 +927,7 @@ export default function DisputeDetails() {
                     size="sm"
                   />
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       const cleanUsername = cleanTelegramUsername(
@@ -923,7 +938,7 @@ export default function DisputeDetails() {
                     }}
                     className="flex items-center gap-2 text-cyan-300 hover:text-cyan-200 hover:underline"
                   >
-                    {formatTelegramUsernameForDisplay(dispute.plaintiff)}
+                    {formatDisplayName(dispute.plaintiff)} {/* Updated */}
                     {isCurrentUserPlaintiff() && (
                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                     )}
@@ -942,6 +957,7 @@ export default function DisputeDetails() {
                     size="sm"
                   />
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       const cleanUsername = cleanTelegramUsername(
@@ -952,7 +968,7 @@ export default function DisputeDetails() {
                     }}
                     className="flex items-center gap-2 text-yellow-300 hover:text-yellow-200 hover:underline"
                   >
-                    {formatTelegramUsernameForDisplay(dispute.defendant)}
+                    {formatDisplayName(dispute.defendant)} {/* Updated */}
                     {isCurrentUserDefendant() && (
                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                     )}
@@ -1018,6 +1034,7 @@ export default function DisputeDetails() {
               <h2 className="text-lg font-bold text-cyan-400">Plaintiff</h2>
               <div className="flex items-center gap-2 text-sm text-cyan-300">
                 <button
+                  type="button"
                   onClick={() => {
                     const cleanUsername = cleanTelegramUsername(
                       dispute.plaintiff,
@@ -1027,7 +1044,7 @@ export default function DisputeDetails() {
                   }}
                   className="hover:text-cyan-200 hover:underline"
                 >
-                  {formatTelegramUsernameForDisplay(dispute.plaintiff)}
+                  {formatDisplayName(dispute.plaintiff)} {/* Updated */}
                 </button>
                 {isCurrentUserPlaintiff() && (
                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
@@ -1103,7 +1120,7 @@ export default function DisputeDetails() {
                       key={index}
                       className="rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300"
                     >
-                      {witness}
+                      {formatDisplayName(witness)} {/* Updated */}
                     </span>
                   ))}
                 </div>
@@ -1130,6 +1147,7 @@ export default function DisputeDetails() {
               <h2 className="text-lg font-bold text-yellow-400">Defendant</h2>
               <div className="flex items-center gap-2 text-sm text-yellow-300">
                 <button
+                  type="button"
                   onClick={() => {
                     const cleanUsername = cleanTelegramUsername(
                       dispute.defendant,
@@ -1139,7 +1157,7 @@ export default function DisputeDetails() {
                   }}
                   className="hover:text-yellow-200 hover:underline"
                 >
-                  {formatTelegramUsernameForDisplay(dispute.defendant)}
+                  {formatDisplayName(dispute.defendant)} {/* Updated */}
                 </button>
                 {isCurrentUserDefendant() && (
                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
@@ -1206,7 +1224,7 @@ export default function DisputeDetails() {
                     key={index}
                     className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300"
                   >
-                    {witness}
+                    {formatDisplayName(witness)} {/* Updated */}
                   </span>
                 ))}
               </div>

@@ -193,6 +193,14 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
+const formatPartyDisplay = (username: string) => {
+  // Check if it's a wallet address (starts with 0x and is 42 chars)
+  if (username.startsWith("0x") && username.length === 42) {
+    return `${username.slice(0, 6)}...${username.slice(-4)}`;
+  }
+  return formatTelegramUsernameForDisplay(username);
+};
+
 export default function Disputes() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
@@ -816,7 +824,8 @@ export default function Disputes() {
                               }}
                               className="text-cyan-300 hover:text-cyan-200 hover:underline"
                             >
-                              {formatTelegramUsernameForDisplay(d.plaintiff)}
+                              {formatPartyDisplay(d.plaintiff)}{" "}
+                              {/* Updated here */}
                             </button>
                           </div>
 
@@ -848,7 +857,8 @@ export default function Disputes() {
                               }}
                               className="text-cyan-300 hover:text-cyan-200 hover:underline"
                             >
-                              {formatTelegramUsernameForDisplay(d.defendant)}
+                              {formatPartyDisplay(d.defendant)}{" "}
+                              {/* Updated here */}
                             </button>
                           </div>
                         </div>
