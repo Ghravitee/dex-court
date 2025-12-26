@@ -988,23 +988,10 @@ export const ESCROW_ABI = {
           internalType: "uint256",
         },
         {
-<<<<<<< HEAD
-          "name": "by",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "token",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-=======
           name: "by",
           type: "address",
           indexed: false,
           internalType: "address",
->>>>>>> de82dbe919c3d29ddb916be2d5a27ffcfbab4370
         },
         {
           name: "token",
