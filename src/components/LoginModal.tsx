@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Button } from "./ui/button";
 import { useAuth } from "../hooks/useAuth";
 import { X, Wallet, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../hooks/useWalletLogin";
 
 interface LoginModalProps {
@@ -21,7 +22,6 @@ export function LoginModal({
   const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
   const { login, isLoading, linkTelegram, user } = useAuth();
   const { isConnected, address } = useAccount();
-  const { connect, connectors } = useConnect();
 
   const {
     loginWithConnectedWallet,
@@ -95,30 +95,6 @@ export function LoginModal({
     }
   };
 
-  // src/components/LoginModal.tsx - Add this check before wallet login
-  // In LoginModal.tsx - Update handleWalletLogin
-  const handleWalletLogin = async () => {
-    if (!isConnected) {
-      if (connectors[0]) {
-        connect({ connector: connectors[0] });
-      }
-      return;
-    }
-
-    // NEW: For linking mode, validate wallet matches before proceeding
-    if (mode === "link" && user?.walletAddress && address) {
-      if (user.walletAddress.toLowerCase() !== address.toLowerCase()) {
-        setWalletError();
-        return;
-      }
-    }
-
-    const success = await loginWithConnectedWallet();
-    if (success) {
-      onClose();
-    }
-  };
-
   // Update the wallet section text to be clearer
   <p className="text-sm text-gray-300">
     {mode === "link"
@@ -138,17 +114,6 @@ export function LoginModal({
       return isLoading ? "Linking..." : "Link Telegram";
     }
     return isLoading ? "Continuing..." : "Continue with Telegram";
-  };
-
-  // NEW: Better wallet button text that shows progress
-  const getWalletButtonText = () => {
-    if (!isConnected) {
-      return "Connect Wallet";
-    }
-    if (isLoggingIn) {
-      return "Signing Message...";
-    }
-    return "Verify Ownership";
   };
 
   // Replace the renderWalletProgress function with this:
@@ -210,7 +175,7 @@ export function LoginModal({
 
   const handleClose = () => {
     setOtp("");
-    setWalletError();
+    setWalletError(null);
     onClose();
   };
 
@@ -233,7 +198,7 @@ export function LoginModal({
           <button
             onClick={() => {
               setActiveTab("wallet");
-              setWalletError();
+              setWalletError(null);
             }}
             className={`flex-1 py-2 text-sm font-medium ${
               activeTab === "wallet"
@@ -316,32 +281,63 @@ export function LoginModal({
                   </div>
                 )}
 
-                <Button
-                  onClick={handleWalletLogin}
-                  disabled={isLoggingIn}
-                  className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
-                >
-                  {isLoggingIn ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      {getWalletButtonText()}
-                    </>
-                  ) : (
-                    <>
-                      {!isConnected ? (
-                        <>
-                          <Wallet className="mr-2 h-5 w-5" />
-                          {getWalletButtonText()}
-                        </>
-                      ) : (
-                        <>
-                          <ArrowRight className="mr-2 h-5 w-5" />
-                          {getWalletButtonText()}
-                        </>
-                      )}
-                    </>
-                  )}
-                </Button>
+                <ConnectButton.Custom>
+                  {({ openConnectModal, mounted }) => {
+                    const ready = mounted;
+
+                    return (
+                      <Button
+                        disabled={!ready || isLoggingIn}
+                        onClick={async () => {
+                          // STEP 1 — not connected → open RainbowKit modal
+                          if (!isConnected) {
+                            openConnectModal();
+                            return;
+                          }
+
+                          // STEP 2 — linking safety check
+                          if (
+                            mode === "link" &&
+                            user?.walletAddress &&
+                            address
+                          ) {
+                            if (
+                              user.walletAddress.toLowerCase() !==
+                              address.toLowerCase()
+                            ) {
+                              setWalletError(
+                                "This wallet does not match your linked wallet.",
+                              );
+                              return;
+                            }
+                          }
+
+                          // STEP 3 — sign message / authenticate
+                          const success = await loginWithConnectedWallet();
+                          if (success) onClose();
+                        }}
+                        className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                      >
+                        {isLoggingIn ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Signing...
+                          </>
+                        ) : !isConnected ? (
+                          <>
+                            <Wallet className="mr-2 h-5 w-5" />
+                            Connect Wallet
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight className="mr-2 h-5 w-5" />
+                            Verify Ownership
+                          </>
+                        )}
+                      </Button>
+                    );
+                  }}
+                </ConnectButton.Custom>
 
                 {/* NEW: Dynamic help text based on connection state */}
                 {!isConnected ? (

@@ -1,8 +1,10 @@
 // Topbar.tsx - UPDATED WITH AVATAR IN USERNAME DISPLAY
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useAccountEffect, useDisconnect } from "wagmi";
+import { toast } from "sonner";
+
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import {
   Menu,
@@ -30,27 +32,38 @@ export function Topbar({
   const { isAuthenticated, user, loginMethod, logout } = useAuth();
 
   const { isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+  const [isConnecting, setIsConnecting] = useState(false);
   const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
     useWalletLogin();
 
   // Get wallet validation status
   const walletValidation = getWalletValidationStatus();
 
+  useAccountEffect({
+    onConnect: (data) => {
+      console.log("🔗 Wallet connected:", data.address);
+      setIsConnecting(false);
+    },
+    onDisconnect: () => {
+      console.log("🔗 Wallet disconnected");
+      setIsConnecting(false);
+
+      reloadAfterDisconnect(); // ✅ fixes MetaMask reconnect bug
+    },
+  });
+
   // Handler for wallet authentication
+  // In Topbar.tsx - Update handleWalletAuth
   const handleWalletAuth = async () => {
-    // If wallet not connected, connect first
-    if (!isConnected) {
-      if (connectors[0]) {
-        connect({ connector: connectors[0] });
-      }
+    if (isAuthenticated) {
+      console.log("Already authenticated — skipping wallet login");
       return;
     }
-
-    // If already authenticated via wallet and clicking "Wallet Connected",
-    // we should NOT try to sign in again - RainbowKit will handle this
-    if (isAuthenticated && loginMethod === "wallet") {
-      // RainbowKit ConnectButton.Custom will handle opening account modal
+    // This should ONLY be called AFTER wallet is connected
+    if (!isConnected) {
+      // DO NOT TRY TO CONNECT HERE - RainbowKit handles this
+      console.log("Wallet not connected - RainbowKit will handle connection");
       return;
     }
 
@@ -68,19 +81,30 @@ export function Topbar({
     }
   };
 
+  const reloadAfterDisconnect = () => {
+    // Small delay allows wagmi + RainbowKit to fully reset
+    setTimeout(() => {
+      window.location.reload();
+    }, 150);
+  };
+
   // Handler for Telegram login/logout
   const handleTelegramAuth = () => {
     if (isAuthenticated) {
-      // Logout if already authenticated
       logout();
+      disconnect();
+
+      reloadAfterDisconnect(); // ✅ force clean reconnect state
     } else {
-      // Show login modal if not authenticated
       setShowLoginModal(true);
     }
   };
 
   // Get wallet button text based on state
   const getWalletButtonText = () => {
+    if (isConnecting) {
+      return "Connecting...";
+    }
     if (isAuthenticating || isLoggingIn) {
       return "Signing...";
     }
@@ -102,7 +126,7 @@ export function Topbar({
 
     // If authenticated but wallet is wrong
     if (isAuthenticated && !walletValidation.isValid) {
-      return "Wrong Wallet";
+      return "Switch Wallet";
     }
 
     // If connected but not authenticated
@@ -116,6 +140,9 @@ export function Topbar({
 
   // Get wallet button icon
   const getWalletButtonIcon = () => {
+    if (isConnecting) {
+      return <Loader2 className="h-4 w-4 animate-spin" />;
+    }
     if (isAuthenticating || isLoggingIn) {
       return <Loader2 className="h-4 w-4 animate-spin" />;
     }
@@ -160,10 +187,7 @@ export function Topbar({
 
   // Get Telegram button text - ADD AVATAR HERE
   const getTelegramButtonText = () => {
-    if (isAuthenticated) {
-      return user?.telegram?.username ? `@${user.telegram.username}` : "Logout";
-    }
-    return "Login via Telegram";
+    return getLogoutDisplayName();
   };
 
   // Get Telegram button styling
@@ -181,6 +205,42 @@ export function Topbar({
     }
     return user?.username || "unknown";
   };
+
+  const getLogoutDisplayName = () => {
+    if (!isAuthenticated) return "Login via Telegram";
+
+    if (user?.telegram?.username) {
+      return `@${user.telegram.username}`;
+    }
+
+    if (user?.walletAddress) {
+      return `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`;
+    }
+
+    return "Account";
+  };
+
+  useEffect(() => {
+    if (
+      isAuthenticated &&
+      !walletValidation.isValid &&
+      walletValidation.message
+    ) {
+      toast.error(
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <span className="font-medium">Wrong wallet connected</span>
+          </div>
+          <span className="text-xs opacity-90">{walletValidation.message}</span>
+          <span className="mt-1 text-xs text-red-200">
+            Please switch wallets to continue.
+          </span>
+        </div>,
+        { duration: 8000 }, // shows for 8 seconds
+      );
+    }
+  }, [isAuthenticated, walletValidation]);
 
   return (
     <>
@@ -242,21 +302,35 @@ export function Topbar({
               </>
             )}
           </button>
-
           {/* Wallet Connect Button */}
+
           <ConnectButton.Custom>
-            {({ account, chain, openAccountModal, mounted }) => {
+            {({
+              account,
+              chain,
+              openAccountModal,
+              openConnectModal,
+              mounted,
+            }) => {
               const ready = mounted;
               const connected = ready && account && chain;
 
-              // Case 1: User is authenticated via wallet
+              console.log("🔐 ConnectButton state:", {
+                connected,
+                account: account?.address,
+                isAuthenticated,
+                loginMethod,
+                walletValidation: walletValidation.isValid,
+              });
+
+              // Case 1: Wallet connected AND authenticated with wallet
               if (isAuthenticated && loginMethod === "wallet" && connected) {
                 return (
                   <button
                     onClick={openAccountModal}
                     className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getWalletButtonVariant()}`}
                   >
-                    {getWalletButtonIcon()}
+                    <ChevronDown className="h-4 w-4" />
                     <span className="max-w-[100px] truncate">
                       {account.displayName}
                     </span>
@@ -265,7 +339,7 @@ export function Topbar({
                 );
               }
 
-              // Case 2: User is authenticated via Telegram with correct wallet
+              // Case 2: Telegram authenticated with correct wallet
               if (
                 isAuthenticated &&
                 loginMethod === "telegram" &&
@@ -286,23 +360,61 @@ export function Topbar({
                 );
               }
 
-              // Case 3: All other states (connect, sign in, wrong wallet, etc.)
+              // Connected wallet — always show address + balance
+              if (connected) {
+                return (
+                  <button
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        handleWalletAuth();
+                      } else {
+                        openAccountModal();
+                      }
+                    }}
+                    className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getWalletButtonVariant()}`}
+                  >
+                    {!isAuthenticated ? (
+                      <>
+                        <span className="text-sm font-semibold">Sign in</span>
+                        <ArrowRight className="h-4 w-4 opacity-80" />
+
+                        <span className="ml-1 max-w-[100px] truncate opacity-90">
+                          {account.displayName}
+                        </span>
+
+                        <span className="opacity-70">
+                          {account.displayBalance}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        <span className="max-w-[100px] truncate">
+                          {account.displayName}
+                        </span>
+                        <span className="opacity-80">
+                          {account.displayBalance}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                );
+              }
+
+              // Case 4: Not connected - show connect button
               return (
                 <button
-                  onClick={handleWalletAuth}
-                  disabled={
-                    isAuthenticating ||
-                    isLoggingIn ||
-                    (isAuthenticated && !walletValidation.isValid)
-                  }
-                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${getWalletButtonVariant()}`}
+                  onClick={openConnectModal}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getWalletButtonVariant()}`}
                 >
-                  {getWalletButtonIcon()}
+                  <Wallet className="h-4 w-4" />
                   {getWalletButtonText()}
                 </button>
               );
             }}
           </ConnectButton.Custom>
+          {/* 
+          <ConnectButton /> */}
         </div>
 
         {/* Right: Mobile Hamburger Menu */}
