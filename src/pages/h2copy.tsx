@@ -1204,8 +1204,6 @@ function Web3Escrow() {
       // Validate dispute form
       if (!disputeForm.votingId) return setUiError("Voting ID is required");
 
-      const votingId = BigInt(disputeForm.votingId);
-
       let feeAmount = 0n;
       if (!disputeForm.proBono) {
         if (!disputeForm.feeAmount || Number(disputeForm.feeAmount) <= 0)
@@ -1226,11 +1224,7 @@ function Web3Escrow() {
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
         args: [
-          BigInt(agreementId),
-          votingId,
-          disputeForm.plaintiffIsServiceRecipient,
-          disputeForm.proBono,
-          feeAmount,
+          BigInt(agreementId)
         ],
         value: isETHFee ? feeAmount : 0n,
       });
