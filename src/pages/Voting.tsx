@@ -31,6 +31,41 @@ import { useAuth } from "../hooks/useAuth";
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
 
+// Helper function to check if it's a wallet address
+const isWalletAddress = (address: string): boolean => {
+  if (!address) return false;
+  return address.startsWith("0x") && address.length > 10;
+};
+
+// Helper function to slice wallet addresses
+const sliceWalletAddress = (address: string): string => {
+  if (!address) return "";
+
+  // Check if it looks like a wallet address (starts with 0x and has length)
+  if (isWalletAddress(address)) {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  // For non-wallet addresses (usernames), return as is
+  return address;
+};
+
+// Helper function to format display name with @ symbol only for usernames
+const formatDisplayName = (address: string): string => {
+  if (!address) return "";
+
+  const slicedAddress = sliceWalletAddress(address);
+
+  // Only add @ for non-wallet addresses (Telegram usernames)
+  if (isWalletAddress(address)) {
+    return slicedAddress;
+  } else {
+    // Remove any existing @ and add it back if not present
+
+    return `@${slicedAddress}`;
+  }
+};
+
 // Memoized utility functions
 const now = () => Date.now();
 
@@ -116,20 +151,18 @@ const UsernameWithAvatar = ({
   username,
   avatarId,
   userId,
-  showAtSymbol = true,
 }: {
   username: string;
   avatarId: number | null;
   userId: string;
-  showAtSymbol?: boolean;
 }) => {
-  const displayName = useMemo(
-    () =>
-      showAtSymbol && !username.startsWith("@") ? `@${username}` : username,
-    [username, showAtSymbol],
-  );
+  const displayName = useMemo(() => {
+    return formatDisplayName(username);
+  }, [username]);
 
-  const cleanUsername = useMemo(() => username.replace("@", ""), [username]);
+  const cleanUsername = useMemo(() => {
+    return username.replace("@", "");
+  }, [username]);
 
   return (
     <div className="flex items-center gap-2">
@@ -171,6 +204,15 @@ const VoteOption = ({
   avatarId?: number | null;
   userId?: string;
 }) => {
+  // Format the display name for wallet addresses
+  const displayLabel = useMemo(() => {
+    if (username) {
+      const formattedName = formatDisplayName(username);
+      return optionType === "dismissed" ? "Dismiss Case" : `${formattedName}`;
+    }
+    return label;
+  }, [username, label, optionType]);
+
   // Show thumbs up only when this option is active
   const showThumbsUp = active;
 
@@ -199,18 +241,18 @@ const VoteOption = ({
     >
       {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
       {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
-      {username && avatarId && userId ? (
+      {username && avatarId && userId && optionType !== "dismissed" ? (
         <div className="flex items-center gap-2">
           <UserAvatar
             userId={userId}
             avatarId={avatarId}
-            username={username}
+            username={username.replace("@", "")}
             size="sm"
           />
-          <span>{label}</span>
+          <span>{displayLabel}</span>
         </div>
       ) : (
-        label
+        displayLabel
       )}
     </button>
   );
@@ -309,6 +351,7 @@ const LiveCaseCard = ({
       setIsVoting(false);
     }
   }, [choice, comment, c.id, refetchLiveDisputes]);
+
   const handleCommentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       if (e.target.value.length <= 1200) {
@@ -338,7 +381,6 @@ const LiveCaseCard = ({
                     username={c.parties.plaintiff}
                     avatarId={c.parties.plaintiffAvatar || null}
                     userId={c.parties.plaintiffId}
-                    showAtSymbol={true}
                   />
                 </div>
                 vs{" "}
@@ -348,7 +390,6 @@ const LiveCaseCard = ({
                     username={c.parties.defendant}
                     avatarId={c.parties.defendantAvatar || null}
                     userId={c.parties.defendantId}
-                    showAtSymbol={true}
                   />
                 </div>
               </div>
@@ -483,7 +524,6 @@ const LiveCaseCard = ({
               </div>
 
               {/* Comment Section */}
-              {/* Comment Section */}
               {!localHasVoted && !isExpired && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
@@ -606,7 +646,6 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                     username={c.parties.plaintiff}
                     avatarId={c.parties.plaintiffAvatar || null}
                     userId={c.parties.plaintiffId}
-                    showAtSymbol={true}
                   />
                 </div>
                 vs{" "}
@@ -616,7 +655,6 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                     username={c.parties.defendant}
                     avatarId={c.parties.defendantAvatar || null}
                     userId={c.parties.defendantId}
-                    showAtSymbol={true}
                   />
                 </div>
               </div>
@@ -853,9 +891,7 @@ const CommentsSection = ({ comments }: { comments: any[] }) => (
               size="sm"
             />
             <div className="text-sm font-medium text-cyan-300">
-              {comment.handle.startsWith("@")
-                ? comment.handle
-                : `@${comment.handle}`}
+              {formatDisplayName(comment.handle)}
             </div>
           </div>
           <div className="mt-2 text-white/80">{comment.text}</div>

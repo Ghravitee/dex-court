@@ -143,6 +143,39 @@ export const InfiniteMovingCardsWithAvatars = ({
     addAnimation();
   }, [direction, speed]);
 
+  // Helper function to check if it's a wallet address
+  const isWalletAddress = (address: string): boolean => {
+    if (!address) return false;
+    return address.startsWith("0x") && address.length > 10;
+  };
+
+  // Helper function to slice wallet addresses
+  const sliceWalletAddress = (address: string): string => {
+    if (!address) return "";
+
+    // Check if it looks like a wallet address (starts with 0x and has length)
+    if (isWalletAddress(address)) {
+      return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+
+    // For non-wallet addresses (usernames), return as is
+    return address;
+  };
+
+  // Helper function to format display name with @ symbol only for usernames
+  const formatDisplayName = (address: string): string => {
+    if (!address) return "";
+
+    const slicedAddress = sliceWalletAddress(address);
+
+    // Only add @ for non-wallet addresses (Telegram usernames)
+    if (isWalletAddress(address)) {
+      return slicedAddress;
+    } else {
+      return `@${slicedAddress}`;
+    }
+  };
+
   // Helper function to render the appropriate card content based on type
   const renderCardContent = (
     item: AgreementItem | JudgeItem | DisputeItem | LiveVotingItem,
@@ -275,7 +308,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                @{disputeItem.plaintiff}
+                {formatDisplayName(disputeItem.plaintiff)}
               </span>
             </div>
             <span className="text-cyan-400">
@@ -295,7 +328,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                @{disputeItem.defendant}
+                {formatDisplayName(disputeItem.defendant)}
               </span>
             </div>
           </div>
@@ -368,7 +401,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                {votingItem.plaintiff}
+                {formatDisplayName(votingItem.plaintiff)}
               </span>
             </div>
             <span className="text-cyan-400">
@@ -388,7 +421,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                 size="md"
               />
               <span className="text-xs text-cyan-300">
-                {votingItem.defendant}
+                {formatDisplayName(votingItem.defendant)}
               </span>
             </div>
           </div>

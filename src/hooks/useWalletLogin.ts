@@ -6,7 +6,7 @@ import { useAccount, useSignMessage } from "wagmi";
 
 export function useWalletLogin() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
   const { loginWithWallet, generateLoginNonce, user, isAuthenticated } =
     useAuth();
   const { address, isConnected } = useAccount();
@@ -206,16 +206,12 @@ export function useWalletLogin() {
     }
   };
 
-  const clearError = () => {
-    setError("");
-  };
-
   return {
     loginWithConnectedWallet,
     isLoggingIn,
     error,
-    setError: clearError,
-    clearError,
+    setError, // ✅ allow message input
+    clearError: () => setError(null),
     isWalletConnected: isConnected,
     walletAddress: address,
     validateWalletForUser,

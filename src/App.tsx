@@ -31,6 +31,7 @@ import AdminAnalytics from "./pages/AdminAnalytics"; // NEW
 import { GlobalLoader } from "./components/GlobalLoader";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
+import { ConnectionStatus } from "./components/ConnectionStatus";
 
 // Auto Login Modal Component
 function AutoLoginModal() {
@@ -86,6 +87,7 @@ function AppContent() {
 
       <ScrollToTop />
       <AutoLoginModal />
+      <ConnectionStatus />
 
       {/* Full screen initial loader */}
       {showInitialLoader && <GlobalLoader />}

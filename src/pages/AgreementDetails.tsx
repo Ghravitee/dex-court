@@ -1660,7 +1660,7 @@ export default function AgreementDetails() {
 
   if (!agreement || !canViewAgreement) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-cyan-900/20 to-purple-900/20">
+      <div className="justify-center0 flex min-h-screen items-center">
         <div className="text-center">
           <div className="mb-4 text-lg text-white">
             {!agreement

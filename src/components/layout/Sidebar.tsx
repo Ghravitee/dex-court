@@ -1,4 +1,3 @@
-// src/layout/Sidebar.tsx - UPDATED WITH AVATAR IN USERNAME DISPLAY
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   BadgeDollarSign,
@@ -6,7 +5,7 @@ import {
   Home,
   Scale,
   Star,
-  User,
+  // User,
   Vote,
   ChevronLeft,
   ChevronRight,
@@ -22,11 +21,12 @@ import {
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
 import { useAdminAccess } from "../../hooks/useAdmin";
-import { useState } from "react";
-import { useAccount, useConnect } from "wagmi";
+
+import { useAccount } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import { FaTelegramPlane } from "react-icons/fa";
-import { UserAvatar } from "../../components/UserAvatar"; // Add this import
+import { UserAvatar } from "../../components/UserAvatar";
 
 export function Sidebar({
   expanded,
@@ -41,16 +41,14 @@ export function Sidebar({
   setMobileOpen?: (v: boolean) => void;
   onLoginClick: () => void;
 }) {
+  const navigate = useNavigate();
   const { isAuthenticated, user, logout, loginMethod } = useAuth();
   const { isAdmin } = useAdminAccess();
-  const navigate = useNavigate();
-
-  // Wallet authentication state
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const { isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
   const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
     useWalletLogin();
+
+  const walletValidation = getWalletValidationStatus();
 
   const nav = [
     { to: "/", label: "Home", icon: <Home size={18} /> },
@@ -65,8 +63,6 @@ export function Sidebar({
     },
     { to: "/web3vote", label: "Theo's Voting", icon: <Vote size={18} /> },
     { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
-
-    // NEW: Admin link - only show for admin users
     ...(isAdmin
       ? [
           {
@@ -78,7 +74,8 @@ export function Sidebar({
       : []),
   ];
 
-  // Handler for Telegram login/logout
+  /* ---------------- TELEGRAM AUTH ---------------- */
+
   const handleTelegramAuth = () => {
     if (isAuthenticated) {
       logout();
@@ -89,49 +86,36 @@ export function Sidebar({
     }
   };
 
-  // Handler for wallet authentication
-  const handleWalletAuth = async () => {
-    if (!isConnected) {
-      if (connectors[0]) {
-        connect({ connector: connectors[0] });
-      }
-      return;
-    }
-
-    // If already authenticated via wallet, just return (RainbowKit handles this)
-    if (isAuthenticated && loginMethod === "wallet") {
-      return;
-    }
-
-    // If authenticated via Telegram and wallet is wrong, don't proceed
-    const walletValidation = getWalletValidationStatus();
-    if (isAuthenticated && user?.walletAddress && !walletValidation.isValid) {
-      return;
-    }
-
-    // Wallet login flow
-    setIsAuthenticating(true);
-    try {
-      await loginWithConnectedWallet();
-      if (mobile && setMobileOpen) setMobileOpen(false);
-    } finally {
-      setIsAuthenticating(false);
-    }
+  const getTelegramButtonText = () => {
+    if (!isAuthenticated) return "Login via Telegram";
+    if (user?.telegram?.username) return `@${user.telegram.username}`;
+    return "Account";
   };
 
-  // Get wallet button text
-  const getWalletButtonText = () => {
-    if (isAuthenticating || isLoggingIn) {
-      return "Signing...";
-    }
+  const getTelegramButtonVariant = () =>
+    isAuthenticated
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+      : "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:border-blue-400 hover:bg-blue-500/20";
 
-    // If authenticated via wallet
+  const getUsernameForAvatar = () => {
+    if (user?.telegram?.username) return user.telegram.username;
+    return user?.username || "unknown";
+  };
+
+  /* ---------------- WALLET UI HELPERS ---------------- */
+
+  const shortAddress = (address?: string) => {
+    if (!address) return "";
+    return `${address.slice(0, 4)}…${address.slice(-3)}`;
+  };
+
+  const getWalletButtonText = (address?: string) => {
+    if (isLoggingIn) return "Signing...";
+
     if (isAuthenticated && loginMethod === "wallet" && isConnected) {
       return "Wallet";
     }
 
-    // If authenticated via Telegram with correct wallet
-    const walletValidation = getWalletValidationStatus();
     if (
       isAuthenticated &&
       loginMethod === "telegram" &&
@@ -141,27 +125,22 @@ export function Sidebar({
       return "Web3 Ready";
     }
 
-    // If authenticated but wallet is wrong
     if (isAuthenticated && !walletValidation.isValid) {
       return "Wrong Wallet";
     }
 
-    // If connected but not authenticated
     if (isConnected && !isAuthenticated) {
-      return "Sign In";
+      return `Sign in ${shortAddress(address)}`;
     }
 
-    // Default: Connect wallet
     return "Connect Wallet";
   };
 
-  // Get wallet button icon
   const getWalletButtonIcon = () => {
-    if (isAuthenticating || isLoggingIn) {
+    if (isLoggingIn) {
       return <Loader2 className="h-4 w-4 animate-spin" />;
     }
 
-    // If authenticated via wallet
     if (isAuthenticated && loginMethod === "wallet" && isConnected) {
       return <ChevronDown className="h-4 w-4" />;
     }
@@ -170,8 +149,6 @@ export function Sidebar({
       return <ArrowRight className="h-4 w-4" />;
     }
 
-    // Show warning for wrong wallet
-    const walletValidation = getWalletValidationStatus();
     if (isAuthenticated && !walletValidation.isValid) {
       return <AlertTriangle className="h-4 w-4" />;
     }
@@ -179,16 +156,11 @@ export function Sidebar({
     return <Wallet className="h-4 w-4" />;
   };
 
-  // Get wallet button styling
   const getWalletButtonVariant = () => {
-    const walletValidation = getWalletValidationStatus();
-
-    // Error state for wrong wallet
     if (isAuthenticated && !walletValidation.isValid) {
       return "border-red-500/30 bg-red-500/10 text-red-300 hover:border-red-400 hover:bg-red-500/20";
     }
 
-    // Success state for correct wallet
     if (
       (isAuthenticated && loginMethod === "wallet") ||
       (isAuthenticated &&
@@ -198,35 +170,11 @@ export function Sidebar({
       return "border-green-500/30 bg-green-500/10 text-green-300 hover:border-green-400 hover:bg-green-500/20";
     }
 
-    // Neutral state for connection
     return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
   };
 
-  // Get Telegram button text
-  const getTelegramButtonText = () => {
-    if (isAuthenticated) {
-      return user?.telegram?.username ? `@${user.telegram.username}` : "Logout";
-    }
-    return "Login via Telegram";
-  };
+  /* ---------------- PROFILE CLICK ---------------- */
 
-  // Get Telegram button styling
-  const getTelegramButtonVariant = () => {
-    if (isAuthenticated) {
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20";
-    }
-    return "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:border-blue-400 hover:bg-blue-500/20";
-  };
-
-  // Extract username for the avatar component
-  const getUsernameForAvatar = () => {
-    if (isAuthenticated && user?.telegram?.username) {
-      return user.telegram.username;
-    }
-    return user?.username || "unknown";
-  };
-
-  // For desktop sidebar, we keep the Profile button
   const handleProfileClick = () => {
     if (isAuthenticated) {
       navigate("/profile");
@@ -241,12 +189,12 @@ export function Sidebar({
       className={cn(
         mobile ? "flex" : "hidden lg:flex",
         "fixed top-0 left-0 z-40 h-[100vh] flex-col border-r border-white/10",
-        "transition-all duration-200 ease-in-out", // Changed from 300ms to 200ms
+        "transition-all duration-200",
         expanded ? "w-64" : "w-16",
       )}
     >
-      {/* Glow effect */}
-      <div className="absolute top-[300px] right-0 block rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]"></div>
+      {/* Glow */}
+      <div className="absolute top-[300px] right-0 rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]" />
 
       {/* Header */}
       <div className="relative flex h-16 items-center justify-between gap-3 px-4">
@@ -255,16 +203,16 @@ export function Sidebar({
             <Scale size={18} />
           </div>
           {expanded && (
-            <div className="glow-text leading-none font-semibold text-cyan-300 transition-opacity duration-300">
+            <span className="glow-text font-semibold text-cyan-300">
               DexCourt
-            </div>
+            </span>
           )}
         </div>
+
         {!mobile && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-muted-foreground absolute -right-4 rounded-md border border-white/20 p-1 hover:text-white"
-            aria-label="Toggle sidebar"
+            className="absolute -right-4 rounded-md border border-white/20 p-1 hover:text-white"
           >
             {expanded ? (
               <ChevronLeft className="h-5 w-5" />
@@ -281,34 +229,24 @@ export function Sidebar({
           <NavLink
             key={item.to}
             to={item.to}
-            onClick={() => {
-              if (mobile && setMobileOpen) setMobileOpen(false);
-            }}
+            onClick={() => mobile && setMobileOpen?.(false)}
             className={({ isActive }) =>
               cn(
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                "neon-hover hover:bg-white/5",
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
+                "hover:bg-white/5",
                 isActive
                   ? "bg-white/5 text-cyan-200 ring-1 ring-cyan-400/30"
                   : "text-foreground/80",
               )
             }
           >
-            <span className="relative flex items-center justify-center text-lg">
-              {item.icon}
-              {!expanded && (
-                <span className="pointer-events-none absolute left-full z-50 ml-2 rounded bg-black/80 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-all duration-200 group-hover:opacity-100">
-                  {item.label}
-                </span>
-              )}
-            </span>
-
+            <span className="text-lg">{item.icon}</span>
             <span
               className={cn(
-                "font-medium transition-all delay-75 duration-150", // Changed from 300ms to 200ms
+                "transition-all",
                 expanded
                   ? "translate-x-0 opacity-100"
-                  : "w-0 -translate-x-5 overflow-hidden opacity-0",
+                  : "w-0 -translate-x-4 overflow-hidden opacity-0",
               )}
             >
               {item.label}
@@ -316,138 +254,151 @@ export function Sidebar({
           </NavLink>
         ))}
 
-        {/* Mobile Authentication Section */}
+        {/* MOBILE AUTH */}
         {mobile && (
-          <>
-            {/* Add Profile to navigation links when authenticated */}
-            {isAuthenticated && (
-              <NavLink
-                to="/profile"
-                onClick={() => {
-                  if (setMobileOpen) setMobileOpen(false);
-                }}
-                className={({ isActive }) =>
-                  cn(
-                    "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                    "neon-hover hover:bg-white/5",
-                    isActive
-                      ? "bg-white/5 text-cyan-200 ring-1 ring-cyan-400/30"
-                      : "text-foreground/80",
-                  )
-                }
-              >
-                <span className="relative flex items-center justify-center text-lg">
-                  <User />
-                </span>
-                <span className="font-medium">Profile</span>
-              </NavLink>
-            )}
+          <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
+            {/* Telegram */}
+            <button
+              onClick={handleTelegramAuth}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
+                getTelegramButtonVariant(),
+              )}
+            >
+              {isAuthenticated ? (
+                <UserAvatar
+                  userId={user?.id || ""}
+                  avatarId={user?.avatarId || null}
+                  username={getUsernameForAvatar()}
+                  size="sm"
+                  className="border-emerald-400/40"
+                />
+              ) : (
+                <FaTelegramPlane className="h-4 w-4" />
+              )}
+              <span className="flex-1 truncate text-left font-medium">
+                {getTelegramButtonText()}
+              </span>
+              {isAuthenticated && <LogOut className="h-4 w-4" />}
+            </button>
 
-            <div className="my-4 border-t border-white/10 pt-4">
-              {/* Telegram Login/Logout Button - UPDATED WITH AVATAR */}
-              {/* Telegram Login/Logout Button - UPDATED WITH AVATAR */}
-              <button
-                onClick={handleTelegramAuth}
-                className={cn(
-                  "group relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                  "neon-hover hover:bg-white/5",
-                  getTelegramButtonVariant(),
-                )}
-              >
-                <span className="relative flex flex-shrink-0 items-center justify-center text-lg">
-                  {" "}
-                  {/* ADD flex-shrink-0 HERE */}
-                  {isAuthenticated ? (
-                    <>
-                      {/* Add UserAvatar component here */}
-                      <UserAvatar
-                        userId={user?.id || ""}
-                        avatarId={user?.avatarId || null}
-                        username={getUsernameForAvatar()}
-                        size="sm"
-                        className="border-emerald-400/40"
-                      />
-                    </>
-                  ) : (
-                    <FaTelegramPlane className="h-4 w-4" />
-                  )}
-                </span>
-                <span className="flex-1 truncate text-left font-medium">
-                  {getTelegramButtonText()}
-                </span>
-                {isAuthenticated && <LogOut className="ml-auto h-4 w-4" />}
-              </button>
+            {/* WALLET — SAME AS TOPBAR */}
+            <ConnectButton.Custom>
+              {({
+                account,
+                chain,
+                mounted,
+                openConnectModal,
+                openAccountModal,
+              }) => {
+                const ready = mounted;
+                const connected = ready && account && chain;
 
-              {/* Wallet Connect Button */}
-              <button
-                onClick={handleWalletAuth}
-                disabled={
-                  isAuthenticating ||
-                  isLoggingIn ||
-                  (isAuthenticated && !getWalletValidationStatus().isValid)
+                if (isAuthenticated && loginMethod === "wallet" && connected) {
+                  return (
+                    <button
+                      onClick={openAccountModal}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                        getWalletButtonVariant(),
+                      )}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                      <span className="truncate">{account.displayName}</span>
+                    </button>
+                  );
                 }
-                className={cn(
-                  "group relative mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-                  "neon-hover hover:bg-white/5 disabled:opacity-50",
-                  getWalletButtonVariant(),
-                )}
-              >
-                <span className="relative flex items-center justify-center text-lg">
-                  {getWalletButtonIcon()}
-                </span>
-                <span className="flex-1 truncate text-left font-medium">
-                  {getWalletButtonText()}
-                </span>
-              </button>
-            </div>
-          </>
+
+                if (
+                  isAuthenticated &&
+                  loginMethod === "telegram" &&
+                  connected &&
+                  walletValidation.isValid
+                ) {
+                  return (
+                    <button
+                      onClick={openAccountModal}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                        getWalletButtonVariant(),
+                      )}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                      <span className="truncate">{account.displayName}</span>
+                    </button>
+                  );
+                }
+
+                if (connected) {
+                  return (
+                    <button
+                      onClick={() => {
+                        if (!isAuthenticated) {
+                          loginWithConnectedWallet();
+                        } else {
+                          openAccountModal();
+                        }
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                        getWalletButtonVariant(),
+                      )}
+                    >
+                      {getWalletButtonIcon()}
+                      <span className="truncate">
+                        {getWalletButtonText(account?.address)}
+                      </span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    onClick={openConnectModal}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                      getWalletButtonVariant(),
+                    )}
+                  >
+                    <Wallet className="h-4 w-4" />
+                    <span className="truncate">
+                      {getWalletButtonText(account?.address)}
+                    </span>
+                  </button>
+                );
+              }}
+            </ConnectButton.Custom>
+          </div>
         )}
 
-        {/* Desktop Profile/Login Button (different from mobile) */}
-        {/* Desktop Profile/Login Button (different from mobile) */}
+        {/* Desktop profile button */}
         {!mobile && (
           <button
             onClick={handleProfileClick}
             className={cn(
-              "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
-              "neon-hover text-foreground/80 hover:bg-white/5",
+              "group mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
+              "hover:bg-white/5",
               location.pathname === "/profile" && isAuthenticated
                 ? "bg-white/5 text-cyan-200 ring-1 ring-cyan-400/30"
                 : "text-foreground/80",
             )}
           >
-            <span className="relative flex flex-shrink-0 items-center justify-center text-lg">
-              {" "}
-              {/* ADD flex-shrink-0 HERE */}
-              {isAuthenticated ? (
-                // Add avatar for authenticated user in desktop sidebar
-                isAuthenticated && user ? (
-                  <UserAvatar
-                    userId={user.id}
-                    avatarId={user.avatarId || null}
-                    username={getUsernameForAvatar()}
-                    size="sm"
-                    className="border-cyan-400/40"
-                  />
-                ) : (
-                  <User size={18} />
-                )
-              ) : (
-                <LogIn size={18} />
-              )}
-              {!expanded && (
-                <span className="pointer-events-none absolute left-full z-50 ml-2 rounded bg-black/80 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-all duration-200 group-hover:opacity-100">
-                  {isAuthenticated ? "Profile" : "Login"}
-                </span>
-              )}
-            </span>
-
+            {isAuthenticated ? (
+              <UserAvatar
+                userId={user?.id ?? "anonymous"}
+                avatarId={user?.avatarId || null}
+                username={getUsernameForAvatar()}
+                size="sm"
+                className="border-cyan-400/40"
+              />
+            ) : (
+              <LogIn size={18} />
+            )}
             <span
               className={cn(
-                "font-medium transition-all duration-200", // Changed from 300ms to 200ms
                 expanded
                   ? "translate-x-0 opacity-100"
-                  : "w-0 -translate-x-5 overflow-hidden opacity-0",
+                  : "w-0 -translate-x-4 overflow-hidden opacity-0",
               )}
             >
               {isAuthenticated ? "Profile" : "Login"}

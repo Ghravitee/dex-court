@@ -1000,11 +1000,18 @@ export default function DisputeDetails() {
                     )}
                   </div>
                   <Link
-                    to={`/agreements/${dispute.agreementId}`}
+                    to={
+                      sourceAgreement.type === 2 // Type 2 = Escrow agreement
+                        ? `/escrow/${dispute.agreementId}` // Escrow details page
+                        : `/agreements/${dispute.agreementId}` // Regular agreement details page
+                    }
                     className="flex w-fit items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
                   >
                     <FileText className="h-4 w-4" />
                     View Source Agreement
+                    <span className="ml-1 text-xs opacity-70">
+                      ({sourceAgreement.type === 2 ? "Escrow" : "Reputational"})
+                    </span>
                   </Link>
                 </div>
               </div>
