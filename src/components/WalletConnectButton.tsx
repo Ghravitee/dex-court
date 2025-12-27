@@ -39,7 +39,7 @@ export function WalletConnectButton() {
                     type="button"
                     className="w-full rounded-md border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 transition-colors hover:bg-cyan-500/30"
                   >
-                    Connect Wallet
+                    Connect Wallet Button
                   </button>
                 );
               }

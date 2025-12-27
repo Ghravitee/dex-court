@@ -152,7 +152,7 @@ export function Sidebar({
     }
 
     // Default: Connect wallet
-    return "Connect Wallet";
+    return "Connect Wallet SideBar";
   };
 
   // Get wallet button icon
