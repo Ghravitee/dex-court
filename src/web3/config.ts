@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xFAB88e9bE7da19d2f74b300dEB56F0E5b70b0999", // Sepolia address
+  11155111: "0xEeBaF81a357f5486FD07D9113532C6C1AE8E8159", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x049969901C4c21e322068b259DB40DDf4D72463a", // Sepolia address
+  11155111: "0x14D6dc12b7B60e9466A7817A7993235952883DAf", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -544,6 +544,11 @@ export const ESCROW_ABI = {
           "name": "id",
           "type": "uint256",
           "internalType": "uint256"
+        },
+        {
+          "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -680,11 +685,6 @@ export const ESCROW_ABI = {
       "inputs": [
         {
           "name": "id",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "votingId",
           "type": "uint256",
           "internalType": "uint256"
         },
@@ -1305,6 +1305,11 @@ export const ESCROW_ABI = {
     },
     {
       "type": "error",
+      "name": "InvalidAgreement",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "InvalidAmount",
       "inputs": []
     },
@@ -1408,6 +1413,11 @@ export const ESCROW_ABI = {
     },
     {
       "type": "error",
+      "name": "VoteCannotBeStartedYet",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "ZeroAddress",
       "inputs": []
     }
@@ -1417,1115 +1427,1158 @@ export const ESCROW_ABI = {
 export const VOTING_ABI = {
   abi: [
     {
-      type: "constructor",
-      inputs: [
+      "type": "constructor",
+      "inputs": [
         {
-          name: "initialOwner",
-          type: "address",
-          internalType: "address",
+          "name": "initialOwner",
+          "type": "address",
+          "internalType": "address"
         },
         {
-          name: "_feeRecipient",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "_feeRecipient",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      stateMutability: "nonpayable",
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "batchFinalize",
-      inputs: [
+      "type": "function",
+      "name": "batchFinalize",
+      "inputs": [
         {
-          name: "disputeIds",
-          type: "uint256[]",
-          internalType: "uint256[]",
-        },
+          "name": "disputeIds",
+          "type": "uint256[]",
+          "internalType": "uint256[]"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "commitVote",
-      inputs: [
+      "type": "function",
+      "name": "commitVote",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "commitHash",
-          type: "bytes32",
-          internalType: "bytes32",
-        },
+          "name": "commitHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "feeRecipient",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "feeRecipient",
+      "inputs": [],
+      "outputs": [
         {
-          name: "",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "finalizeExpiredDisputes",
-      inputs: [
+      "type": "function",
+      "name": "finalizeExpiredDisputes",
+      "inputs": [
         {
-          name: "disputeIds",
-          type: "uint256[]",
-          internalType: "uint256[]",
-        },
+          "name": "disputeIds",
+          "type": "uint256[]",
+          "internalType": "uint256[]"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "finalizeVote",
-      inputs: [
+      "type": "function",
+      "name": "finalizeVote",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "getDisputeStats",
-      inputs: [
+      "type": "function",
+      "name": "getDisputeStats",
+      "inputs": [
         {
-          name: "_id",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "_id",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "id",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "id",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "active",
-          type: "bool",
-          internalType: "bool",
+          "name": "active",
+          "type": "bool",
+          "internalType": "bool"
         },
         {
-          name: "createdAt",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "createdAt",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "endTime",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "endTime",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "finalized",
-          type: "bool",
-          internalType: "bool",
+          "name": "finalized",
+          "type": "bool",
+          "internalType": "bool"
         },
         {
-          name: "result",
-          type: "uint8",
-          internalType: "uint8",
+          "name": "result",
+          "type": "uint8",
+          "internalType": "uint8"
         },
         {
-          name: "totalVotes",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "totalVotes",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "weightedPlaintiff",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "weightedPlaintiff",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "weightedDefendant",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "weightedDefendant",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "weightedDismiss",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "weightedDismiss",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getLeaderboard",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "getLeaderboard",
+      "inputs": [],
+      "outputs": [
         {
-          name: "",
-          type: "tuple",
-          internalType: "struct Voting.Leaderboard",
-          components: [
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct Voting.Leaderboard",
+          "components": [
             {
-              name: "mostActiveJudge",
-              type: "address",
-              internalType: "address",
+              "name": "mostActiveJudge",
+              "type": "address",
+              "internalType": "address"
             },
             {
-              name: "mostActiveTier1",
-              type: "address",
-              internalType: "address",
+              "name": "mostActiveTier1",
+              "type": "address",
+              "internalType": "address"
             },
             {
-              name: "mostActiveTier2",
-              type: "address",
-              internalType: "address",
+              "name": "mostActiveTier2",
+              "type": "address",
+              "internalType": "address"
             },
             {
-              name: "mostActiveOverall",
-              type: "address",
-              internalType: "address",
-            },
-          ],
-        },
+              "name": "mostActiveOverall",
+              "type": "address",
+              "internalType": "address"
+            }
+          ]
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getRevealedVoters",
-      inputs: [
+      "type": "function",
+      "name": "getRevealedVoters",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "",
-          type: "address[]",
-          internalType: "address[]",
-        },
+          "name": "",
+          "type": "address[]",
+          "internalType": "address[]"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getVoterReveal",
-      inputs: [
+      "type": "function",
+      "name": "getVoterReveal",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "voter",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "voter",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "isRevealed",
-          type: "bool",
-          internalType: "bool",
+          "name": "isRevealed",
+          "type": "bool",
+          "internalType": "bool"
         },
         {
-          name: "vote",
-          type: "uint8",
-          internalType: "uint8",
+          "name": "vote",
+          "type": "uint8",
+          "internalType": "uint8"
         },
         {
-          name: "tier",
-          type: "uint8",
-          internalType: "uint8",
+          "name": "tier",
+          "type": "uint8",
+          "internalType": "uint8"
         },
         {
-          name: "weight",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "weight",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "timestamp",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "timestamp",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getVoterStats",
-      inputs: [
+      "type": "function",
+      "name": "getVoterStats",
+      "inputs": [
         {
-          name: "user",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "user",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "tier",
-          type: "uint8",
-          internalType: "uint8",
+          "name": "tier",
+          "type": "uint8",
+          "internalType": "uint8"
         },
         {
-          name: "totalVotes",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "totalVotes",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "votesForPlaintiff",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "votesForPlaintiff",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "votesForDefendant",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "votesForDefendant",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "votesForDismiss",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "votesForDismiss",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getVoterTier",
-      inputs: [
+      "type": "function",
+      "name": "getVoterTier",
+      "inputs": [
         {
-          name: "voter",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "voter",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "tier",
-          type: "uint8",
-          internalType: "uint8",
+          "name": "tier",
+          "type": "uint8",
+          "internalType": "uint8"
         },
         {
-          name: "weight",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "weight",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getVotingConfig",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "getVotingConfig",
+      "inputs": [],
+      "outputs": [
         {
-          name: "",
-          type: "tuple",
-          internalType: "struct Voting.VotingConfig",
-          components: [
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct Voting.VotingConfig",
+          "components": [
             {
-              name: "tier1ThresholdPercent",
-              type: "uint256",
-              internalType: "uint256",
-            },
-            {
-              name: "tier2ThresholdPercent",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "tier1ThresholdPercent",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "divisor",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "tier2ThresholdPercent",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "tier1Weight",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "divisor",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "tier2Weight",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "tier1Weight",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "judgeWeight",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "tier2Weight",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "votingDuration",
-              type: "uint256",
-              internalType: "uint256",
-            },
-          ],
-        },
-      ],
-      stateMutability: "view",
-    },
-    {
-      type: "function",
-      name: "getVotingStats",
-      inputs: [],
-      outputs: [
-        {
-          name: "",
-          type: "tuple",
-          internalType: "struct Voting.VotingStats",
-          components: [
-            {
-              name: "totalDisputesOpened",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "judgeWeight",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalVotesCast",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "votingDuration",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getVotingStats",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct Voting.VotingStats",
+          "components": [
+            {
+              "name": "totalDisputesOpened",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalJudgeVotes",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalVotesCast",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalTier1Votes",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalJudgeVotes",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalTier2Votes",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalTier1Votes",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalFinalizedVotes",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalTier2Votes",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalPlaintiffWins",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalFinalizedVotes",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalDefendantWins",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalPlaintiffWins",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "totalDismissedCases",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalDefendantWins",
+              "type": "uint256",
+              "internalType": "uint256"
             },
             {
-              name: "cumulativeResolutionTime",
-              type: "uint256",
-              internalType: "uint256",
+              "name": "totalDismissedCases",
+              "type": "uint256",
+              "internalType": "uint256"
             },
-          ],
-        },
+            {
+              "name": "cumulativeResolutionTime",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "getVotingStatsWithAvg",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "getVotingStatsWithAvg",
+      "inputs": [],
+      "outputs": [
         {
-          name: "disputesOpened",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "disputesOpened",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "votesCast",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "votesCast",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "finalized",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "finalized",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "plaintiffWins",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "plaintiffWins",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "defendantWins",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "defendantWins",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "dismissed",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "dismissed",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "tier1Votes",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "tier1Votes",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "tier2Votes",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "tier2Votes",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "judgeVotes",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "judgeVotes",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "avgResolutionTime",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "avgResolutionTime",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "openVote",
-      inputs: [
+      "type": "function",
+      "name": "openVote",
+      "inputs": [
         {
-          name: "votingId",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "proBono",
-          type: "bool",
-          internalType: "bool",
+          "name": "proBono",
+          "type": "bool",
+          "internalType": "bool"
         },
         {
-          name: "feeAmount",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "feeAmount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [
+      "outputs": [
         {
-          name: "",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      stateMutability: "payable",
+      "stateMutability": "payable"
     },
     {
-      type: "function",
-      name: "owner",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [
         {
-          name: "",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      stateMutability: "view",
+      "stateMutability": "view"
     },
     {
-      type: "function",
-      name: "renounceOwnership",
-      inputs: [],
-      outputs: [],
-      stateMutability: "nonpayable",
-    },
-    {
-      type: "function",
-      name: "revealMyVote",
-      inputs: [
+      "type": "function",
+      "name": "raiseDispute",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "vote",
-          type: "uint8",
-          internalType: "uint8",
-        },
-        {
-          name: "nonce",
-          type: "bytes",
-          internalType: "bytes",
-        },
+          "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
-    },
-    {
-      type: "function",
-      name: "revealVotesInBatch",
-      inputs: [
+      "outputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "voters",
-          type: "address[]",
-          internalType: "address[]",
-        },
-        {
-          name: "votes",
-          type: "uint8[]",
-          internalType: "uint8[]",
-        },
-        {
-          name: "nonces",
-          type: "bytes[]",
-          internalType: "bytes[]",
-        },
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "stateMutability": "payable"
     },
     {
-      type: "function",
-      name: "setFeeRecipient",
-      inputs: [
+      "type": "function",
+      "name": "renounceOwnership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "revealMyVote",
+      "inputs": [
         {
-          name: "_recipient",
-          type: "address",
-          internalType: "address",
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
         },
+        {
+          "name": "vote",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "nonce",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "setJudge",
-      inputs: [
+      "type": "function",
+      "name": "revealVotesInBatch",
+      "inputs": [
         {
-          name: "judge",
-          type: "address",
-          internalType: "address",
+          "name": "disputeId",
+          "type": "uint256",
+          "internalType": "uint256"
         },
         {
-          name: "status",
-          type: "bool",
-          internalType: "bool",
+          "name": "voters",
+          "type": "address[]",
+          "internalType": "address[]"
         },
+        {
+          "name": "votes",
+          "type": "uint8[]",
+          "internalType": "uint8[]"
+        },
+        {
+          "name": "nonces",
+          "type": "bytes[]",
+          "internalType": "bytes[]"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "setVotingConfig",
-      inputs: [
+      "type": "function",
+      "name": "setFeeRecipient",
+      "inputs": [
         {
-          name: "_tier1Percent",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "_tier2Percent",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "_tier1Weight",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "_tier2Weight",
-          type: "uint256",
-          internalType: "uint256",
-        },
-        {
-          name: "_judgeWeight",
-          type: "uint256",
-          internalType: "uint256",
-        },
+          "name": "_recipient",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "setVotingDuration",
-      inputs: [
+      "type": "function",
+      "name": "setJudge",
+      "inputs": [
         {
-          name: "duration",
-          type: "uint256",
-          internalType: "uint256",
+          "name": "judge",
+          "type": "address",
+          "internalType": "address"
         },
+        {
+          "name": "status",
+          "type": "bool",
+          "internalType": "bool"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "setVotingToken",
-      inputs: [
+      "type": "function",
+      "name": "setVotingConfig",
+      "inputs": [
         {
-          name: "_token",
-          type: "address",
-          internalType: "address",
+          "name": "_tier1Percent",
+          "type": "uint256",
+          "internalType": "uint256"
         },
+        {
+          "name": "_tier2Percent",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_tier1Weight",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_tier2Weight",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_judgeWeight",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "transferOwnership",
-      inputs: [
+      "type": "function",
+      "name": "setVotingDuration",
+      "inputs": [
         {
-          name: "newOwner",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "duration",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
       ],
-      outputs: [],
-      stateMutability: "nonpayable",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "function",
-      name: "votingToken",
-      inputs: [],
-      outputs: [
+      "type": "function",
+      "name": "setVotingToken",
+      "inputs": [
         {
-          name: "",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "_token",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      stateMutability: "view",
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "event",
-      name: "JudgeUpdated",
-      inputs: [
+      "type": "function",
+      "name": "transferOwnership",
+      "inputs": [
         {
-          name: "judge",
-          type: "address",
-          indexed: true,
-          internalType: "address",
-        },
-        {
-          name: "status",
-          type: "bool",
-          indexed: false,
-          internalType: "bool",
-        },
+          "name": "newOwner",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      anonymous: false,
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-      type: "event",
-      name: "MostActiveUpdated",
-      inputs: [
+      "type": "function",
+      "name": "votingToken",
+      "inputs": [],
+      "outputs": [
         {
-          name: "topJudge",
-          type: "address",
-          indexed: false,
-          internalType: "address",
-        },
-        {
-          name: "topTier1",
-          type: "address",
-          indexed: false,
-          internalType: "address",
-        },
-        {
-          name: "topTier2",
-          type: "address",
-          indexed: false,
-          internalType: "address",
-        },
-        {
-          name: "topOverall",
-          type: "address",
-          indexed: false,
-          internalType: "address",
-        },
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
       ],
-      anonymous: false,
+      "stateMutability": "view"
     },
     {
-      type: "event",
-      name: "OwnershipTransferred",
-      inputs: [
+      "type": "event",
+      "name": "DisputeRaised",
+      "inputs": [
         {
-          name: "previousOwner",
-          type: "address",
-          indexed: true,
-          internalType: "address",
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
         },
         {
-          name: "newOwner",
-          type: "address",
-          indexed: true,
-          internalType: "address",
+          "name": "createdAt",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         },
+        {
+          "name": "voteStartedAt",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "PendingWithdrawn",
-      inputs: [
+      "type": "event",
+      "name": "JudgeUpdated",
+      "inputs": [
         {
-          name: "recipient",
-          type: "address",
-          indexed: true,
-          internalType: "address",
+          "name": "judge",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
-          name: "amount",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
+          "name": "status",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VoteCasted",
-      inputs: [
+      "type": "event",
+      "name": "MostActiveUpdated",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          indexed: true,
-          internalType: "uint256",
+          "name": "topJudge",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
         },
         {
-          name: "voter",
-          type: "address",
-          indexed: true,
-          internalType: "address",
+          "name": "topTier1",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
         },
         {
-          name: "tier",
-          type: "uint8",
-          indexed: false,
-          internalType: "uint8",
+          "name": "topTier2",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
         },
         {
-          name: "option",
-          type: "uint8",
-          indexed: false,
-          internalType: "uint8",
-        },
-        {
-          name: "weight",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
+          "name": "topOverall",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VoteCommitted",
-      inputs: [
+      "type": "event",
+      "name": "OwnershipTransferred",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          indexed: true,
-          internalType: "uint256",
+          "name": "previousOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
-          name: "voter",
-          type: "address",
-          indexed: true,
-          internalType: "address",
-        },
-        {
-          name: "tier",
-          type: "uint8",
-          indexed: false,
-          internalType: "uint8",
-        },
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VoteFinalized",
-      inputs: [
+      "type": "event",
+      "name": "PendingWithdrawn",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          indexed: true,
-          internalType: "uint256",
+          "name": "recipient",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
-          name: "result",
-          type: "uint8",
-          indexed: false,
-          internalType: "uint8",
-        },
-        {
-          name: "plaintiffPoints",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
-        {
-          name: "defendantPoints",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
-        {
-          name: "dismissPoints",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VoteOpened",
-      inputs: [
+      "type": "event",
+      "name": "VoteCasted",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          indexed: true,
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
         },
         {
-          name: "proBono",
-          type: "bool",
-          indexed: false,
-          internalType: "bool",
+          "name": "voter",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
-          name: "startTime",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "tier",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
         },
         {
-          name: "endTime",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "option",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
         },
+        {
+          "name": "weight",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VoteRevealed",
-      inputs: [
+      "type": "event",
+      "name": "VoteCommitted",
+      "inputs": [
         {
-          name: "disputeId",
-          type: "uint256",
-          indexed: true,
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
         },
         {
-          name: "voter",
-          type: "address",
-          indexed: true,
-          internalType: "address",
+          "name": "voter",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
-          name: "vote",
-          type: "uint8",
-          indexed: false,
-          internalType: "uint8",
-        },
+          "name": "tier",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VotingConfigUpdated",
-      inputs: [
+      "type": "event",
+      "name": "VoteFinalized",
+      "inputs": [
         {
-          name: "tier1ThresholdPercent",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
         },
         {
-          name: "tier2ThresholdPercent",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "result",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
         },
         {
-          name: "tier1Weight",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "plaintiffPoints",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         },
         {
-          name: "tier2Weight",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "defendantPoints",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         },
         {
-          name: "judgeWeight",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
-        },
+          "name": "dismissPoints",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
       ],
-      anonymous: false,
+      "anonymous": false
     },
     {
-      type: "event",
-      name: "VotingDurationUpdated",
-      inputs: [
+      "type": "event",
+      "name": "VoteOpened",
+      "inputs": [
         {
-          name: "duration",
-          type: "uint256",
-          indexed: false,
-          internalType: "uint256",
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
         },
-      ],
-      anonymous: false,
-    },
-    {
-      type: "error",
-      name: "AlreadyRevealed",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "AlreadyVoted",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidDispute",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidFee",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidHash",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidLenght",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidOption",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidParties",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidReveal",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "InvalidSupply",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "NoCommitmentFound",
-      inputs: [],
-    },
-    {
-      type: "error",
-      name: "OwnableInvalidOwner",
-      inputs: [
         {
-          name: "owner",
-          type: "address",
-          internalType: "address",
+          "name": "proBono",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
         },
-      ],
-    },
-    {
-      type: "error",
-      name: "OwnableUnauthorizedAccount",
-      inputs: [
         {
-          name: "account",
-          type: "address",
-          internalType: "address",
-        },
+          "name": "feeAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
       ],
+      "anonymous": false
     },
     {
-      type: "error",
-      name: "PlntfSameWithDfndnt",
-      inputs: [],
+      "type": "event",
+      "name": "VoteRevealed",
+      "inputs": [
+        {
+          "name": "disputeId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "voter",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "vote",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        }
+      ],
+      "anonymous": false
     },
     {
-      type: "error",
-      name: "ReentrancyGuardReentrantCall",
-      inputs: [],
+      "type": "event",
+      "name": "VotingConfigUpdated",
+      "inputs": [
+        {
+          "name": "tier1ThresholdPercent",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "tier2ThresholdPercent",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "tier1Weight",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "tier2Weight",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "judgeWeight",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
     },
     {
-      type: "error",
-      name: "Tier1ExceedsMax",
-      inputs: [],
+      "type": "event",
+      "name": "VotingDurationUpdated",
+      "inputs": [
+        {
+          "name": "duration",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
     },
     {
-      type: "error",
-      name: "Tier1LessThanTier2",
-      inputs: [],
+      "type": "error",
+      "name": "AlreadyRevealed",
+      "inputs": []
     },
     {
-      type: "error",
-      name: "Tier2ExceedsMax",
-      inputs: [],
+      "type": "error",
+      "name": "AlreadyVoted",
+      "inputs": []
     },
     {
-      type: "error",
-      name: "VotingEnded",
-      inputs: [],
+      "type": "error",
+      "name": "InvalidDispute",
+      "inputs": []
     },
     {
-      type: "error",
-      name: "VotingOngoing",
-      inputs: [],
+      "type": "error",
+      "name": "InvalidFee",
+      "inputs": []
     },
     {
-      type: "error",
-      name: "WeightLessThanZero",
-      inputs: [],
+      "type": "error",
+      "name": "InvalidHash",
+      "inputs": []
     },
+    {
+      "type": "error",
+      "name": "InvalidLenght",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidOption",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidParties",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidReveal",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidSupply",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NoCommitmentFound",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "OwnableInvalidOwner",
+      "inputs": [
+        {
+          "name": "owner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "OwnableUnauthorizedAccount",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PlntfSameWithDfndnt",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ReentrancyGuardReentrantCall",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Tier1ExceedsMax",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Tier1LessThanTier2",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "Tier2ExceedsMax",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "VoteCannotBeStartedYet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "VotingEnded",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "VotingOngoing",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "WeightLessThanZero",
+      "inputs": []
+    }
   ],
 } as const;
 

@@ -331,8 +331,8 @@ interface EscrowDetailsData {
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
     className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
       }`}
   >
     <div
@@ -360,8 +360,8 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
     className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
       }`}
   >
     <div
@@ -1396,12 +1396,15 @@ export default function EscrowDetails() {
       if (onChainAgreement.disputed)
         return setUiError("The agreement is already in dispute");
 
+      const votingId = 35050; // Fix voting ID to be random
+
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
         args: [
-          BigInt(onChainAgreement?.id)
+          BigInt(onChainAgreement?.id),
+          BigInt(votingId),
         ]
       });
 
@@ -1761,10 +1764,10 @@ export default function EscrowDetails() {
             </span>
             <span
               className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
-                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                  : isUrgent
-                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                : isUrgent
+                  ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                  : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
                 }`}
             >
               {isOverdue ? "Overdue" : `${daysRemaining} days left`}
@@ -2133,8 +2136,8 @@ export default function EscrowDetails() {
                           </div>
                           <div
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
-                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
                               }`}
                           >
                             <div

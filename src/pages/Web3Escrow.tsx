@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useContractReads, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
-import { formatAmount } from "../web3/helper"; 
+import { formatAmount } from "../web3/helper";
 import {
     FileText,
     Calendar,
@@ -907,13 +907,15 @@ function Web3Escrow() {
             }
 
             const isETHFee = !disputeForm.proBono;
+            const votingId = 35050; // Fix voting ID to be random
 
             writeContract({
                 address: contractAddress,
                 abi: ESCROW_ABI.abi,
                 functionName: "raiseDispute",
                 args: [
-                    BigInt(agreement?.id)
+                    BigInt(agreement?.id),
+                    BigInt(votingId)
                 ],
                 value: isETHFee ? feeAmount : 0n,
             });
@@ -932,7 +934,7 @@ function Web3Escrow() {
             console.error("Error raising dispute:", error);
         }
     };
-  
+
     useEffect(() => {
         if (manageMilestoneCount) {
             // refetch contract reads if milestone count changed
@@ -1226,7 +1228,7 @@ function Web3Escrow() {
                                                 Waiting for Service Provider Signature
                                             </span>
                                         </div>
-                                    )}  
+                                    )}
                                     {!agreement.acceptedByServiceRecipient && (
                                         <div className="flex items-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 p-3">
                                             <UserCheck className="h-4 w-4 text-purple-400" />
@@ -1240,7 +1242,7 @@ function Web3Escrow() {
                         </div>
                     )}
 
-{/* start here */}
+                    {/* start here */}
 
                     {agreement && (
                         <>
