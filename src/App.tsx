@@ -21,7 +21,6 @@ import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
 import Web3Vote from "./pages/h3copy";
-import Web3Escrow from "./pages/Web3Escrow";
 import { useEffect, useState } from "react";
 import { LoginModal } from "./components/LoginModal";
 import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
@@ -101,7 +100,6 @@ function AppContent() {
           <Route path="agreements" element={<Agreements />} />
           <Route path="agreements/:id" element={<AgreementDetails />} />
           <Route path="web3vote" element={<Web3Vote />} />
-          <Route path="web3escrow" element={<Web3Escrow />} />
           <Route path="disputes" element={<Disputes />} />
           <Route path="/disputes/:id" element={<DisputeDetails />} />
           <Route path="voting" element={<Voting />} />
