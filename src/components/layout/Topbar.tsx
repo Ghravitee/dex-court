@@ -135,7 +135,7 @@ export function Topbar({
     }
 
     // Default: Connect wallet
-    return "Connect Wallet TopBar";
+    return "Connect Wallet";
   };
 
   // Get wallet button icon

@@ -640,6 +640,23 @@ class DisputeService {
     }
   }
 
+  // Add this method to your DisputeService class
+  async escalateDisputesToVote(disputeIds: number[]): Promise<void> {
+    try {
+      console.log(`🚀 Escalating disputes to vote:`, disputeIds);
+
+      const response = await api.post("/testing/escalate-votes", {
+        disputeIds,
+      });
+
+      console.log("✅ Disputes escalated successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Failed to escalate disputes:", error);
+      this.handleError(error);
+    }
+  }
+
   // Transform API data to frontend format
   // In disputeServices.ts - update transformDisputeDetailsToRow function
   transformDisputeDetailsToRow(dispute: DisputeDetails): DisputeRow {

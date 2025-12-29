@@ -77,6 +77,7 @@ export default function DisputeDetails() {
   const [settleModalOpen, setSettleModalOpen] = useState(false);
   const [sourceAgreement, setSourceAgreement] = useState<any>(null);
   const [, setAgreementLoading] = useState(false);
+  const [escalating, setEscalating] = useState(false);
 
   // Voting state
   // Voting state
@@ -610,6 +611,32 @@ export default function DisputeDetails() {
     return trimmedDesc !== "" && trimmedDesc !== "No response description";
   };
 
+  const handleEscalateToVote = useCallback(async () => {
+    if (!disputeId || !user || !isUserAdmin()) return;
+
+    try {
+      setEscalating(true);
+      await disputeService.escalateDisputesToVote([disputeId]);
+
+      toast.success("Dispute escalated to voting period!", {
+        description:
+          "The dispute has been moved from Pending to Vote in Progress.",
+      });
+
+      // Refresh dispute details
+      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+      const transformedDispute =
+        disputeService.transformDisputeDetailsToRow(disputeDetails);
+      setDispute(transformedDispute);
+    } catch (error: any) {
+      toast.error("Failed to escalate dispute", {
+        description: error.message || "Please try again later",
+      });
+    } finally {
+      setEscalating(false);
+    }
+  }, [disputeId, user, isUserAdmin]);
+
   // Add this component inside your DisputeDetails component
   const VotingStatus = () => {
     if (dispute?.status !== "Vote in Progress") return null;
@@ -873,6 +900,22 @@ export default function DisputeDetails() {
                 Cast {isUserJudge() ? "Judge" : "Community"} Vote
               </Button>
             )}
+
+          {dispute?.status === "Pending" && (
+            <Button
+              variant="outline"
+              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              onClick={handleEscalateToVote}
+              disabled={escalating}
+            >
+              {escalating ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Vote className="mr-2 h-4 w-4" />
+              )}
+              {escalating ? "Escalating..." : "Test: Escalate to Vote"}
+            </Button>
+          )}
 
           {/* Show voted status ONLY if user is NOT plaintiff/defendant */}
           {dispute.status === "Vote in Progress" &&
