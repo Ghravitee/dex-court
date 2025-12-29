@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xEeBaF81a357f5486FD07D9113532C6C1AE8E8159", // Sepolia address
+  11155111: "0x65069Bd955210E80049cafd92798d6946A5850C4", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x14D6dc12b7B60e9466A7817A7993235952883DAf", // Sepolia address
+  11155111: "0x261aEaCC0716379eB065B474636D3205278754c7", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -83,6 +83,11 @@ export const ESCROW_ABI = {
           "name": "_final",
           "type": "bool",
           "internalType": "bool"
+        },
+        {
+          "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -668,6 +673,19 @@ export const ESCROW_ABI = {
     },
     {
       "type": "function",
+      "name": "settleDispute",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
       "name": "signAgreement",
       "inputs": [
         {
@@ -962,6 +980,12 @@ export const ESCROW_ABI = {
           "type": "address",
           "indexed": false,
           "internalType": "address"
+        },
+        {
+          "name": "votingId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         }
       ],
       "anonymous": false

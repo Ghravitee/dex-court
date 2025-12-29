@@ -1087,7 +1087,7 @@ export default function EscrowDetails() {
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, final],
+        args: [onChainAgreement.id, final, BigInt(votingId)],
       });
       setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
     } catch (error) {
@@ -1380,6 +1380,8 @@ export default function EscrowDetails() {
     }
   };
 
+  const votingId = 35050; // Fix voting ID to be random
+
   const handleRaiseDispute = async () => {
     resetMessages();
     setLoading("raiseDispute", true);
@@ -1395,8 +1397,6 @@ export default function EscrowDetails() {
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       if (onChainAgreement.disputed)
         return setUiError("The agreement is already in dispute");
-
-      const votingId = 35050; // Fix voting ID to be random
 
       writeContract({
         address: contractAddress,
