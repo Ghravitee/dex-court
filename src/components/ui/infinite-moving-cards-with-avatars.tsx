@@ -1,9 +1,10 @@
 import { cn } from "../../lib/utils";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { UserAvatar } from "../UserAvatar";
 import { Link } from "react-router-dom";
-import { FaArrowRightArrowLeft } from "react-icons/fa6";
+import { FaArrowRightArrowLeft, FaPause, FaPlay } from "react-icons/fa6";
 import { AvatarErrorBoundary } from "../AvatarErrorBoundary";
+import { FaStepBackward, FaStepForward } from "react-icons/fa";
 
 interface AgreementItem {
   quote: string;
@@ -43,12 +44,11 @@ interface DisputeItem {
     avatarId?: number | null;
     username?: string;
   };
-  plaintiffUserId?: string; // ADD THIS
-  defendantUserId?: string; // ADD THIS
+  plaintiffUserId?: string;
+  defendantUserId?: string;
   evidenceCount?: number;
 }
 
-// ADD NEW LiveVotingItem interface
 interface LiveVotingItem {
   id: string;
   quote: string;
@@ -66,20 +66,21 @@ interface LiveVotingItem {
     avatarId?: number | null;
     username?: string;
   };
-  plaintiffUserId?: string; // ADD THIS
-  defendantUserId?: string; // ADD THIS
+  plaintiffUserId?: string;
+  defendantUserId?: string;
   endsAt?: number;
   hasVoted?: boolean;
   timeRemaining?: string;
 }
 
 interface InfiniteMovingCardsWithAvatarsProps {
-  items: (AgreementItem | JudgeItem | DisputeItem | LiveVotingItem)[]; // UPDATE to include LiveVotingItem
+  items: (AgreementItem | JudgeItem | DisputeItem | LiveVotingItem)[];
   direction?: "left" | "right";
-  speed?: "fast" | "normal" | "slow";
+  speed?: "fast" | "normal" | "slow" | "manual"; // Added "manual" speed
   pauseOnHover?: boolean;
   className?: string;
-  type: "agreements" | "judges" | "disputes" | "live-voting"; // ADD "live-voting" type
+  type: "agreements" | "judges" | "disputes" | "live-voting";
+  showControls?: boolean; // Added prop to show/hide controls
 }
 
 export const InfiniteMovingCardsWithAvatars = ({
@@ -89,11 +90,37 @@ export const InfiniteMovingCardsWithAvatars = ({
   pauseOnHover = true,
   className,
   type,
+  showControls = true, // Default to true
 }: InfiniteMovingCardsWithAvatarsProps) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLUListElement>(null);
   const [start, setStart] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [scrollLeftStart, setScrollLeftStart] = useState(0);
+  const [currentPosition, setCurrentPosition] = useState(0);
+  const animationRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
+  const scrollSpeedRef = useRef<number>(0.5);
 
+  // Calculate speed value
+  const getSpeedValue = useCallback(() => {
+    switch (speed) {
+      case "fast":
+        return 0.8;
+      case "normal":
+        return 0.4;
+      case "slow":
+        return 0.2;
+      case "manual":
+        return 0;
+      default:
+        return 0.4;
+    }
+  }, [speed]);
+
+  // Initialize animation
   useEffect(() => {
     const getDirection = () => {
       if (containerRef.current) {
@@ -112,13 +139,16 @@ export const InfiniteMovingCardsWithAvatars = ({
     };
 
     const getSpeed = () => {
-      if (containerRef.current) {
+      if (containerRef.current && speed !== "manual") {
         if (speed === "fast") {
           containerRef.current.style.setProperty("--animation-duration", "20s");
+          scrollSpeedRef.current = 0.8;
         } else if (speed === "normal") {
           containerRef.current.style.setProperty("--animation-duration", "40s");
-        } else {
+          scrollSpeedRef.current = 0.4;
+        } else if (speed === "slow") {
           containerRef.current.style.setProperty("--animation-duration", "80s");
+          scrollSpeedRef.current = 0.2;
         }
       }
     };
@@ -127,12 +157,15 @@ export const InfiniteMovingCardsWithAvatars = ({
       if (containerRef.current && scrollerRef.current) {
         const scrollerContent = Array.from(scrollerRef.current.children);
 
-        scrollerContent.forEach((item) => {
-          const duplicatedItem = item.cloneNode(true);
-          if (scrollerRef.current) {
-            scrollerRef.current.appendChild(duplicatedItem);
-          }
-        });
+        // Only duplicate if not in manual mode
+        if (speed !== "manual") {
+          scrollerContent.forEach((item) => {
+            const duplicatedItem = item.cloneNode(true);
+            if (scrollerRef.current) {
+              scrollerRef.current.appendChild(duplicatedItem);
+            }
+          });
+        }
 
         getDirection();
         getSpeed();
@@ -143,32 +176,147 @@ export const InfiniteMovingCardsWithAvatars = ({
     addAnimation();
   }, [direction, speed]);
 
-  // Helper function to check if it's a wallet address
+  // Manual scroll animation
+  useEffect(() => {
+    if (speed === "manual" && scrollerRef.current && !isPaused && !isDragging) {
+      const animate = (timestamp: number) => {
+        if (!lastTimeRef.current) lastTimeRef.current = timestamp;
+        const delta = timestamp - lastTimeRef.current;
+        lastTimeRef.current = timestamp;
+
+        if (scrollerRef.current) {
+          const newPosition =
+            currentPosition +
+            getSpeedValue() * delta * (direction === "left" ? -1 : 1);
+          setCurrentPosition(newPosition);
+          scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
+        }
+
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animationRef.current = requestAnimationFrame(animate);
+
+      return () => {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+      };
+    }
+  }, [speed, isPaused, isDragging, currentPosition, getSpeedValue, direction]);
+
+  // Mouse drag handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scrollerRef.current) {
+      setIsDragging(true);
+      setDragStartX(e.clientX);
+      setScrollLeftStart(currentPosition);
+
+      // Pause animation while dragging
+      setIsPaused(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && scrollerRef.current) {
+      const delta = e.clientX - dragStartX;
+      const newPosition = scrollLeftStart + delta;
+      setCurrentPosition(newPosition);
+      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    // Resume animation after a short delay
+    setTimeout(() => setIsPaused(false), 100);
+  };
+
+  // Touch handlers for mobile
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (scrollerRef.current) {
+      setIsDragging(true);
+      setDragStartX(e.touches[0].clientX);
+      setScrollLeftStart(currentPosition);
+      setIsPaused(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isDragging && scrollerRef.current) {
+      const delta = e.touches[0].clientX - dragStartX;
+      const newPosition = scrollLeftStart + delta;
+      setCurrentPosition(newPosition);
+      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    setTimeout(() => setIsPaused(false), 100);
+  };
+
+  // Control functions
+  const togglePause = () => {
+    setIsPaused(!isPaused);
+
+    if (scrollerRef.current) {
+      if (!isPaused) {
+        scrollerRef.current.style.animationPlayState = "paused";
+      } else {
+        scrollerRef.current.style.animationPlayState = "running";
+      }
+    }
+  };
+
+  const scrollToPrevious = () => {
+    if (scrollerRef.current) {
+      const cardWidth = 450; // Approximate card width with gap
+      const newPosition =
+        currentPosition + (direction === "left" ? cardWidth : -cardWidth);
+      setCurrentPosition(newPosition);
+      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
+    }
+  };
+
+  const scrollToNext = () => {
+    if (scrollerRef.current) {
+      const cardWidth = 450;
+      const newPosition =
+        currentPosition + (direction === "left" ? -cardWidth : cardWidth);
+      setCurrentPosition(newPosition);
+      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
+    }
+  };
+
+  // Click handler for cards to bring into focus
+  const handleCardClick = (index: number) => {
+    if (scrollerRef.current) {
+      const cardWidth = 450;
+      const containerWidth = containerRef.current?.offsetWidth || 0;
+      const targetPosition =
+        -(index * cardWidth) + containerWidth / 2 - cardWidth / 2;
+      setCurrentPosition(targetPosition);
+      scrollerRef.current.style.transform = `translateX(${targetPosition}px)`;
+    }
+  };
+
   const isWalletAddress = (address: string): boolean => {
     if (!address) return false;
     return address.startsWith("0x") && address.length > 10;
   };
 
-  // Helper function to slice wallet addresses
   const sliceWalletAddress = (address: string): string => {
     if (!address) return "";
-
-    // Check if it looks like a wallet address (starts with 0x and has length)
     if (isWalletAddress(address)) {
       return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
-
-    // For non-wallet addresses (usernames), return as is
     return address;
   };
 
-  // Helper function to format display name with @ symbol only for usernames
   const formatDisplayName = (address: string): string => {
     if (!address) return "";
-
     const slicedAddress = sliceWalletAddress(address);
-
-    // Only add @ for non-wallet addresses (Telegram usernames)
     if (isWalletAddress(address)) {
       return slicedAddress;
     } else {
@@ -176,15 +324,12 @@ export const InfiniteMovingCardsWithAvatars = ({
     }
   };
 
-  // Helper function to render the appropriate card content based on type
   const renderCardContent = (
     item: AgreementItem | JudgeItem | DisputeItem | LiveVotingItem,
   ) => {
-    // Agreements type
     if (type === "agreements" && "createdBy" in item) {
       return (
         <>
-          {/* Avatars Section */}
           <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
             <div className="flex items-center gap-2">
               <AvatarErrorBoundary>
@@ -210,12 +355,10 @@ export const InfiniteMovingCardsWithAvatars = ({
             </div>
           </div>
 
-          {/* Quote */}
           <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
             {item.quote}
           </span>
 
-          {/* Additional Info */}
           <div className="relative z-20 mt-4 flex flex-row items-center justify-between">
             <span className="text-sm leading-[1.6] font-normal text-cyan-300">
               {item.name}
@@ -228,7 +371,6 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    // Judges type
     if (type === "judges" && "avatar" in item) {
       return (
         <>
@@ -255,12 +397,10 @@ export const InfiniteMovingCardsWithAvatars = ({
             </div>
           </div>
 
-          {/* Quote */}
           <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
             {item.quote}
           </span>
 
-          {/* Additional Info */}
           <div className="relative z-20 mt-4 flex flex-row items-center justify-between">
             <span className="text-sm leading-[1.6] font-normal text-cyan-300">
               {item.name}
@@ -273,26 +413,17 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    // Disputes type
     if (type === "disputes" && "plaintiff" in item) {
       const disputeItem = item as DisputeItem;
       return (
         <div className="flex flex-col">
-          {/* Avatars Section for Disputes */}
-
           <h2 className="mb-4 block text-[16px] leading-[1.6] font-normal text-amber-300">
             {disputeItem.title}
           </h2>
 
-          {/* Quote */}
           <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
             {disputeItem.quote}
           </span>
-
-          {/* Additional Info */}
-          {/* <div className="flex items-center justify-between text-sm leading-[1.6] font-normal text-cyan-200/70">
-            <p>{disputeItem.title}</p>
-          </div> */}
 
           <div className="relative z-20 mt-10 flex items-center justify-center gap-3">
             <div className="flex flex-col items-center gap-2">
@@ -336,12 +467,10 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    // Live Voting type - NEW
     if (type === "live-voting" && "plaintiff" in item) {
       const votingItem = item as LiveVotingItem;
       return (
         <>
-          {/* Voting Badge */}
           <div className="relative z-20 mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500/20">
@@ -356,19 +485,16 @@ export const InfiniteMovingCardsWithAvatars = ({
             )}
           </div>
 
-          {/* Quote */}
           <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
             {votingItem.quote}
           </span>
 
-          {/* Additional Info */}
           <div className="relative z-20 my-4 flex flex-row items-center justify-between">
             <span className="text-sm leading-[1.6] font-normal text-cyan-200/70">
               {votingItem.title}
             </span>
           </div>
 
-          {/* Time Remaining */}
           {votingItem.timeRemaining && (
             <div className="relative z-20 mt-3 flex items-center justify-between">
               <span className="text-xs text-amber-400">
@@ -386,7 +512,6 @@ export const InfiniteMovingCardsWithAvatars = ({
             </div>
           )}
 
-          {/* Avatars Section for Live Voting */}
           <div className="relative z-20 mb-4 flex items-center justify-center gap-3">
             <div className="flex items-center gap-2">
               <UserAvatar
@@ -429,7 +554,6 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    // Fallback for unknown types
     return (
       <>
         <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
@@ -448,42 +572,120 @@ export const InfiniteMovingCardsWithAvatars = ({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className={cn(
-        "scroller relative z-20 max-w-7xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,white_20%,white_80%,transparent)]",
-        className,
-      )}
-    >
-      <ul
-        ref={scrollerRef}
-        className={cn(
-          "flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4",
-          start && "animate-scroll",
-          pauseOnHover && "hover:[animation-play-state:paused]",
-        )}
-      >
-        {items.map((item, idx) => (
-          <li
-            className="relative w-[350px] max-w-full shrink-0 cursor-pointer rounded-2xl border border-b-0 border-cyan-400/60 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br" // ADD hover effects and cursor
-            key={`${item.name}-${idx}`}
+    <div className="relative">
+      {/* Controls */}
+      {showControls && (
+        <div className="absolute top-4 right-4 z-30 flex items-center gap-2 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
+          <button
+            onClick={scrollToPrevious}
+            className="rounded-full p-2 hover:bg-cyan-500/20"
+            title="Previous card"
           >
-            {/* WRAP CONTENT IN LINK FOR DISPUTES AND LIVE VOTING */}
-            {(type === "disputes" || type === "live-voting") && "id" in item ? (
-              <Link
-                to={type === "live-voting" ? `/voting` : `/disputes/${item.id}`}
-                className="block h-full w-full"
-              >
-                <blockquote className="h-full">
-                  {renderCardContent(item)}
-                </blockquote>
-              </Link>
+            <FaStepBackward className="h-4 w-4 text-cyan-300" />
+          </button>
+          <button
+            onClick={togglePause}
+            className="rounded-full p-2 hover:bg-cyan-500/20"
+            title={isPaused ? "Play animation" : "Pause animation"}
+          >
+            {isPaused ? (
+              <FaPlay className="h-4 w-4 text-cyan-300" />
             ) : (
-              <blockquote>{renderCardContent(item)}</blockquote>
+              <FaPause className="h-4 w-4 text-cyan-300" />
             )}
-          </li>
-        ))}
-      </ul>
+          </button>
+          <button
+            onClick={scrollToNext}
+            className="rounded-full p-2 hover:bg-cyan-500/20"
+            title="Next card"
+          >
+            <FaStepForward className="h-4 w-4 text-cyan-300" />
+          </button>
+        </div>
+      )}
+
+      {/* Drag overlay indicator */}
+      {isDragging && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+          <div className="rounded-lg bg-cyan-500/20 px-4 py-2 text-cyan-300">
+            Dragging to scroll...
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={containerRef}
+        className={cn(
+          "scroller relative z-10 max-w-7xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,white_20%,white_80%,transparent)]",
+          isDragging && "cursor-grabbing",
+          !isDragging && "cursor-grab",
+          className,
+        )}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <ul
+          ref={scrollerRef}
+          className={cn(
+            "flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4",
+            start && speed !== "manual" && "animate-scroll",
+            pauseOnHover &&
+              speed !== "manual" &&
+              "hover:[animation-play-state:paused]",
+            speed === "manual" && "transition-transform duration-300 ease-out",
+            // Add this line - it ensures the animation is paused when isPaused is true
+            isPaused && speed !== "manual" && "[animation-play-state:paused]",
+          )}
+          style={
+            speed === "manual"
+              ? { transform: `translateX(${currentPosition}px)` }
+              : {}
+          }
+        >
+          {items.map((item, idx) => (
+            <li
+              className={cn(
+                "relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br",
+                isDragging ? "cursor-grabbing" : "cursor-pointer",
+              )}
+              key={`${item.name}-${idx}`}
+              onClick={(e) => {
+                if (!isDragging) {
+                  e.stopPropagation();
+                  handleCardClick(idx);
+                }
+              }}
+            >
+              {(type === "disputes" || type === "live-voting") &&
+              "id" in item ? (
+                <Link
+                  to={
+                    type === "live-voting" ? `/voting` : `/disputes/${item.id}`
+                  }
+                  className="block h-full w-full"
+                  onClick={(e) => isDragging && e.preventDefault()}
+                >
+                  <blockquote className="h-full">
+                    {renderCardContent(item)}
+                  </blockquote>
+                </Link>
+              ) : (
+                <blockquote>{renderCardContent(item)}</blockquote>
+              )}
+
+              {/* Click indicator */}
+              <div className="absolute right-2 bottom-2 opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="text-xs text-cyan-400/70">Click to focus</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 };
