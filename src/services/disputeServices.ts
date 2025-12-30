@@ -309,7 +309,7 @@ class DisputeService {
     // ✅ Optional witnesses
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((w, i) => {
-        formData.append(`witnesses[${i}]`, w.trim());
+        formData.append(`witnesses[${i}]`, cleanTelegramUsername(w));
       });
     }
 
@@ -416,6 +416,23 @@ class DisputeService {
       return response.data;
     } catch (error: any) {
       console.error("❌ [DisputeService] Vote failed:", error);
+      this.handleError(error);
+    }
+  }
+
+  async escalateDisputesToVote(disputeIds: number[]): Promise<void> {
+    try {
+      console.log(`🚀 Escalating disputes to vote (PATCH):`, disputeIds);
+
+      // Changed from POST to PATCH
+      const response = await api.patch("/testing/escalate-votes", {
+        disputeIds,
+      });
+
+      console.log("✅ Disputes escalated successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Failed to escalate disputes:", error);
       this.handleError(error);
     }
   }
