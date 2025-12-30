@@ -51,7 +51,7 @@ export const DefendantReplyModal = ({
   );
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [witnesses, setWitnesses] = useState<string[]>(
-    dispute?.witnesses?.plaintiff?.map((w) => w.username) || [],
+    dispute?.witnesses?.defendant?.map((w) => w.username) || [],
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 

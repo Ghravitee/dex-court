@@ -309,7 +309,7 @@ class DisputeService {
     // ✅ Optional witnesses
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((w, i) => {
-        formData.append(`witnesses[${i}]`, w.trim());
+        formData.append(`witnesses[${i}]`, cleanTelegramUsername(w));
       });
     }
 

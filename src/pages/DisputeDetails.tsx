@@ -1157,6 +1157,7 @@ export default function DisputeDetails() {
             )}
 
             {/* Witnesses */}
+            {/* Plaintiff's Witnesses */}
             {plaintiffWitnesses.length > 0 && (
               <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
                 <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
@@ -1165,12 +1166,20 @@ export default function DisputeDetails() {
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {plaintiffWitnesses.map((witness, index) => (
-                    <span
+                    <button
                       key={index}
-                      className="rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const cleanUsername = cleanTelegramUsername(witness);
+                        const encodedUsername =
+                          encodeURIComponent(cleanUsername);
+                        navigate(`/profile/${encodedUsername}`);
+                      }}
+                      className="rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300 transition-colors hover:bg-cyan-500/30 hover:text-cyan-200 hover:underline"
                     >
-                      {formatDisplayName(witness)} {/* Updated */}
-                    </span>
+                      {formatDisplayName(witness)}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1261,6 +1270,7 @@ export default function DisputeDetails() {
           )}
 
           {/* Defendant Witnesses Section */}
+          {/* Defendant's Witnesses Section */}
           {defendantWitnesses.length > 0 && (
             <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
               <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
@@ -1269,12 +1279,19 @@ export default function DisputeDetails() {
               </h3>
               <div className="flex flex-wrap gap-2">
                 {defendantWitnesses.map((witness, index) => (
-                  <span
+                  <button
                     key={index}
-                    className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const cleanUsername = cleanTelegramUsername(witness);
+                      const encodedUsername = encodeURIComponent(cleanUsername);
+                      navigate(`/profile/${encodedUsername}`);
+                    }}
+                    className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300 transition-colors hover:bg-yellow-500/30 hover:text-yellow-200 hover:underline"
                   >
-                    {formatDisplayName(witness)} {/* Updated */}
-                  </span>
+                    {formatDisplayName(witness)}
+                  </button>
                 ))}
               </div>
             </div>
