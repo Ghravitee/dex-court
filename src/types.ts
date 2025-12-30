@@ -375,6 +375,20 @@ export interface DisputeDetails {
   hasVoted: boolean;
   agreementId?: number;
   agreementTitle?: string;
+
+  // NEW FIELDS based on the API response
+  votingId?: number | null;
+  contractAgreementId?: number | null;
+  chainId?: number | null;
+  txnhash?: string | null;
+
+  // The agreement object from the API
+  agreement?: {
+    id: number;
+    type: number;
+    status: number;
+    title: string;
+  } | null;
 }
 
 // In your types file, update the DisputeListItem interface
@@ -498,6 +512,23 @@ export interface DisputeRow {
   hasVoted?: boolean;
   agreementId?: number;
   agreementTitle?: string;
+
+  votingId?: number | null;
+  contractAgreementId?: number | null;
+  chainId?: number | null;
+  txnhash?: string | null;
+  type?: number;
+  result?: number;
+  votePendingAt?: string | null;
+  voteStartedAt?: string | null;
+  voteEndedAt?: string | null;
+
+  agreement?: {
+    id: number;
+    type: number;
+    status: number;
+    title: string;
+  } | null;
 }
 
 // Update EvidenceFile to have all required properties

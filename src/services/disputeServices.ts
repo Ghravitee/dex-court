@@ -659,6 +659,7 @@ class DisputeService {
 
   // Transform API data to frontend format
   // In disputeServices.ts - update transformDisputeDetailsToRow function
+  // In disputeServices.ts - update transformDisputeDetailsToRow function
   transformDisputeDetailsToRow(dispute: DisputeDetails): DisputeRow {
     // Helper function to extract user data with fallbacks
     const extractUserData = (user: any) => {
@@ -753,9 +754,37 @@ class DisputeService {
       defendantData,
 
       hasVoted: dispute.hasVoted,
-      agreementId: dispute.agreementId, // This should come from the API
+      agreementId: dispute.agreementId,
       agreementTitle: dispute.agreementTitle,
+
+      // NEW FIELDS: Add all the fields from the API response
+      votingId: dispute.votingId,
+      contractAgreementId: dispute.contractAgreementId,
+      chainId: dispute.chainId,
+      txnhash: dispute.txnhash,
+      type: dispute.type,
+      result: dispute.result,
+      votePendingAt: dispute.votePendingAt,
+      voteStartedAt: dispute.voteStartedAt,
+      voteEndedAt: dispute.voteEndedAt,
+
+      // Agreement object
+      agreement: dispute.agreement
+        ? {
+            id: dispute.agreement.id,
+            type: dispute.agreement.type,
+            status: dispute.agreement.status,
+            title: dispute.agreement.title,
+          }
+        : null,
     };
+
+    console.log("🔄 Transformed dispute with new fields:", {
+      votingId: transformed.votingId,
+      contractAgreementId: transformed.contractAgreementId,
+      chainId: transformed.chainId,
+      agreementType: transformed.agreement?.type,
+    });
 
     return transformed;
   }
