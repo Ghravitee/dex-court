@@ -787,7 +787,6 @@ export default function AgreementDetails() {
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
 
   // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
-  // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
   const fetchAgreementDetails = useCallback(async () => {
     if (!id) return;
 
@@ -895,7 +894,6 @@ export default function AgreementDetails() {
     }
   }, [id]);
 
-  // Wrap fetchAgreementDetailsBackground in useCallback to stabilize the reference
   // Wrap fetchAgreementDetailsBackground in useCallback to stabilize the reference
   const fetchAgreementDetailsBackground = useCallback(async () => {
     if (isRefreshing || !id) return;
