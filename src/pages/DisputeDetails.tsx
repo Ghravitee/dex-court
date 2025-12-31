@@ -16,6 +16,12 @@ import {
   Vote,
   Gavel,
   FileText,
+  AlertTriangle,
+  Package,
+  XCircle,
+  Hourglass,
+  CheckCircle,
+  ArrowRight,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { useAuth } from "../hooks/useAuth";
@@ -46,7 +52,6 @@ import SettleConfirmationModal from "../components/disputes/modals/SettleConfirm
 import DisputeChat from "./DisputeChat";
 import type { DisputeChatRole } from "./DisputeChat/types/dto";
 import { useVotingStatus } from "../hooks/useVotingStatus";
-import { agreementService } from "../services/agreementServices";
 
 // Add this helper function near your other imports
 const formatDisplayName = (username: string) => {
@@ -62,6 +67,100 @@ const formatDisplayName = (username: string) => {
   return formatTelegramUsernameForDisplay(username);
 };
 
+// Helper function to map agreement status codes to human-readable labels
+const getAgreementStatusLabel = (status: number): string => {
+  switch (status) {
+    case 1:
+      return "pending_acceptance"; // Use the same string as your color system expects
+    case 2:
+      return "signed";
+    case 3:
+      return "completed";
+    case 4:
+      return "disputed";
+    case 5:
+      return "cancelled";
+    case 6:
+      return "expired";
+    case 7:
+      return "pending_approval";
+    default:
+      return "pending";
+  }
+};
+
+// Use your existing color-coded status icon function
+const getAgreementStatusIcon = (status: number) => {
+  const statusLabel = getAgreementStatusLabel(status);
+
+  switch (statusLabel) {
+    case "completed":
+      return <CheckCircle className="h-4 w-4 text-green-400" />;
+    case "pending":
+    case "pending_acceptance":
+      return <Clock className="h-4 w-4 text-yellow-400" />;
+    case "signed":
+      return <FileText className="h-4 w-4 text-blue-400" />;
+    case "cancelled":
+      return <XCircle className="h-4 w-4 text-red-400" />;
+    case "expired":
+      return <Hourglass className="h-4 w-4 text-gray-400" />;
+    case "disputed":
+      return <AlertTriangle className="h-4 w-4 text-purple-400" />;
+    case "pending_approval":
+      return <Package className="h-4 w-4 text-orange-400" />;
+    default:
+      return <FileText className="h-4 w-4 text-gray-400" />;
+  }
+};
+
+// Helper function for status badge text
+const getAgreementStatusText = (status: number): string => {
+  switch (status) {
+    case 1:
+      return "Pending Acceptance";
+    case 2:
+      return "Signed / Active";
+    case 3:
+      return "Completed";
+    case 4:
+      return "Disputed";
+    case 5:
+      return "Cancelled";
+    case 6:
+      return "Expired";
+    case 7:
+      return "Pending Approval";
+    default:
+      return "Unknown Status";
+  }
+};
+
+// Helper function for status badge colors (optional, for text/background)
+const getAgreementStatusBadgeColor = (status: number): string => {
+  const statusLabel = getAgreementStatusLabel(status);
+
+  switch (statusLabel) {
+    case "completed":
+      return "bg-green-500/10 text-green-300 border-green-500/30";
+    case "pending":
+    case "pending_acceptance":
+      return "bg-yellow-500/10 text-yellow-300 border-yellow-500/30";
+    case "signed":
+      return "bg-blue-500/10 text-blue-300 border-blue-500/30";
+    case "cancelled":
+      return "bg-red-500/10 text-red-300 border-red-500/30";
+    case "expired":
+      return "bg-gray-500/10 text-gray-300 border-gray-500/30";
+    case "disputed":
+      return "bg-purple-500/10 text-purple-300 border-purple-500/30";
+    case "pending_approval":
+      return "bg-orange-500/10 text-orange-300 border-orange-500/30";
+    default:
+      return "bg-gray-500/10 text-gray-300 border-gray-500/30";
+  }
+};
+
 // Main Component
 export default function DisputeDetails() {
   const { id } = useParams();
@@ -75,8 +174,7 @@ export default function DisputeDetails() {
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
 
   const [settleModalOpen, setSettleModalOpen] = useState(false);
-  const [sourceAgreement, setSourceAgreement] = useState<any>(null);
-  const [, setAgreementLoading] = useState(false);
+
   const [escalating, setEscalating] = useState(false);
 
   // Voting state
@@ -221,28 +319,6 @@ export default function DisputeDetails() {
       isJudge,
     };
   }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
-
-  // Add effect to fetch agreement details if agreementId exists
-  useEffect(() => {
-    const fetchSourceAgreement = async () => {
-      if (!dispute?.agreementId) return;
-
-      setAgreementLoading(true);
-      try {
-        // You'll need to import your agreement service
-        const agreementDetails = await agreementService.getAgreementDetails(
-          dispute.agreementId,
-        );
-        setSourceAgreement(agreementDetails);
-      } catch (error) {
-        console.error("Failed to fetch source agreement:", error);
-      } finally {
-        setAgreementLoading(false);
-      }
-    };
-
-    fetchSourceAgreement();
-  }, [dispute?.agreementId]);
 
   // Fetch dispute details
   // Fetch dispute details
@@ -854,21 +930,6 @@ export default function DisputeDetails() {
               </span>
             )}
           </div>
-
-          {/* {dispute.agreementId && (
-            <Link
-              to={`/agreements/${dispute.agreementId}`}
-              className="flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200"
-            >
-              <FileText className="h-4 w-4" />
-              View Source Agreement
-              {dispute.agreementTitle && (
-                <span className="max-w-[200px] truncate text-xs text-blue-400/70">
-                  {dispute.agreementTitle}
-                </span>
-              )}
-            </Link>
-          )} */}
         </div>
         {/* Right Side Actions */}
         {/* Right Side Actions */}
@@ -949,7 +1010,7 @@ export default function DisputeDetails() {
               Agreement & Contract Details
             </h3>
 
-            <div className="grid w-fit grid-cols-1 gap-2">
+            <div className="flex flex-wrap gap-2">
               {/* Agreement Type Card */}
               {dispute.agreement?.type && (
                 <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
@@ -1086,33 +1147,10 @@ export default function DisputeDetails() {
             )}
           </div>
         )}
-
-        {/* Additional Information Row */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {/* Chain ID */}
-          {dispute.chainId && (
-            <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
-              <span className="text-sm text-cyan-300">Chain ID</span>
-              <span className="font-mono text-sm font-bold text-cyan-200">
-                {dispute.chainId}
-              </span>
-            </div>
-          )}
-
-          {/* Transaction Hash */}
-          {dispute.txnhash && (
-            <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
-              <span className="text-sm text-amber-300">Transaction Hash</span>
-              <span className="truncate font-mono text-xs text-amber-200">
-                {dispute.txnhash}
-              </span>
-            </div>
-          )}
-        </div>
       </div>
       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
-        <div className="card-cyan max-w-2xl rounded-2xl p-6 shadow-lg">
-          <div className="flex items-start justify-between">
+        <div className="card-cyan rounded-2xl p-6 shadow-lg">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <h1 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
                 {dispute.title}
@@ -1198,41 +1236,67 @@ export default function DisputeDetails() {
             </div>
           </div>
         </div>
-        {/* Agreement Information Section */}
-        {dispute.agreementId && sourceAgreement && (
-          <div className="rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-6">
+
+        {/* Source Agreement Information Section - Using data from dispute.agreement */}
+        {dispute.agreement && (
+          <div className="rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-4">
             <div className="space-y-4">
-              <div className="p-4">
+              <div className="px-4">
+                <h2 className="">Source Agreement</h2>
                 <div className="flex flex-col justify-between gap-2">
                   <div>
-                    <h4 className="font-medium text-blue-300">
-                      {sourceAgreement.title ||
-                        `Agreement #${dispute.agreementId}`}
+                    <h4 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
+                      {dispute.agreement.title ||
+                        `Agreement #${dispute.agreement.id}`}
                     </h4>
-                    <p className="mt-1 text-sm text-blue-200/80">
-                      Created:{" "}
-                      {new Date(sourceAgreement.createdAt).toLocaleDateString()}
-                    </p>
-                    {sourceAgreement.description && (
-                      <p className="mt-2 line-clamp-2 text-xs text-blue-300/70">
-                        {sourceAgreement.description}
-                      </p>
-                    )}
+
+                    {/* Agreement Status and Type Row */}
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      {/* Agreement Status with Icon */}
+                      {dispute.agreement.status && (
+                        <div
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${getAgreementStatusBadgeColor(dispute.agreement.status)}`}
+                        >
+                          {getAgreementStatusIcon(dispute.agreement.status)}
+                          <span>
+                            {getAgreementStatusText(dispute.agreement.status)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Agreement Type Badge */}
+                      <span
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
+                          dispute.agreement.type === 2
+                            ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                            : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
+                        }`}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        {dispute.agreement.type === 2
+                          ? "Escrow Agreement"
+                          : "Reputational Agreement"}
+                      </span>
+                    </div>
+
+                    {/* Agreement Details Grid */}
                   </div>
-                  <Link
-                    to={
-                      sourceAgreement.type === 2 // Type 2 = Escrow agreement
-                        ? `/escrow/${dispute.agreementId}` // Escrow details page
-                        : `/agreements/${dispute.agreementId}` // Regular agreement details page
-                    }
-                    className="flex w-fit items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
-                  >
-                    <FileText className="h-4 w-4" />
-                    View Source Agreement
-                    <span className="ml-1 text-xs opacity-70">
-                      ({sourceAgreement.type === 2 ? "Escrow" : "Reputational"})
-                    </span>
-                  </Link>
+
+                  {/* Action Buttons */}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Link
+                      to={
+                        dispute.agreement.type === 2
+                          ? `/escrow/${dispute.agreement.id}`
+                          : `/agreements/${dispute.agreement.id}`
+                      }
+                      className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
+                    >
+                      <FileText className="h-4 w-4" />
+                      View Source Agreementsss
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
