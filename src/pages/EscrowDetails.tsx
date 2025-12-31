@@ -1415,7 +1415,12 @@ export default function EscrowDetails() {
     }
   };
 
-  const votingId = 35050; // Fix voting ID to be random
+  const votingId = useMemo(() => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    // Generate a 6-digit number (100000 - 999999)
+    return 100000 + (array[0] % 900000);
+  }, []);
 
   const handleRaiseDispute = async () => {
     resetMessages();
