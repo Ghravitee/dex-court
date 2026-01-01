@@ -671,45 +671,79 @@ export default function DisputeDetails() {
     [id, dispute],
   );
 
-  const handleStartVote = useCallback(async (probono: boolean) => {
-    try {
-      const fee = probono
-        ? BigInt(0)
-        : BigInt(parseEther(FEE_AMOUNT).toString());
+  const handleStartVote = useCallback(
+    async (probono: boolean) => {
+      try {
+        // Check if dispute exists
+        if (!dispute) {
+          toast.error("Cannot start vote: Dispute data not loaded");
+          return;
+        }
 
-      console.log("Starting vote with params:", {
-        contractAgreementId: dispute?.contractAgreementId!,
-        probono,
-        fee: fee.toString(),
-      });
+        // Check if contractAgreementId exists
+        if (!dispute.contractAgreementId) {
+          console.error("Missing contract agreement ID");
+          toast.error("Cannot start vote: Contract agreement ID is missing");
+          return;
+        }
 
-      writeContract({
-        address: contractAddress,
-        abi: ESCROW_ABI.abi,
-        functionName: "startVote",
-        args: [BigInt(dispute?.contractAgreementId!), probono, fee],
-      });
+        const fee = probono
+          ? BigInt(0)
+          : BigInt(parseEther(FEE_AMOUNT).toString());
 
-      setStartVoteModalOpen(false);
-    } catch (error: unknown) {
-      console.error("Error starting vote:", error);
-    }
-  }, []);
+        console.log("Starting vote with params:", {
+          contractAgreementId: dispute.contractAgreementId,
+          probono,
+          fee: fee.toString(),
+        });
+
+        writeContract({
+          address: contractAddress,
+          abi: ESCROW_ABI.abi,
+          functionName: "startVote",
+          args: [BigInt(dispute.contractAgreementId), probono, fee],
+        });
+
+        setStartVoteModalOpen(false);
+      } catch (error: unknown) {
+        console.error("Error starting vote:", error);
+        toast.error("Failed to start vote", {
+          description:
+            error instanceof Error ? error.message : "Unknown error occurred",
+        });
+      }
+    },
+    [dispute, contractAddress, FEE_AMOUNT, writeContract],
+  );
 
   const handleOnchainSettleDispute = useCallback(async () => {
     try {
+      // Check if dispute and contractAgreementId exist
+      if (!dispute || !dispute.contractAgreementId) {
+        console.error(
+          "Missing contract agreement ID:",
+          dispute?.contractAgreementId,
+        );
+        toast.error("Cannot settle dispute: Contract agreement ID is missing");
+        return;
+      }
+
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "settleDispute",
-        args: [BigInt(dispute?.contractAgreementId!)],
+        args: [BigInt(dispute.contractAgreementId)],
       });
 
       setSettleModalOpen(false);
     } catch (error: unknown) {
-      console.error("Error raising dispute:", error);
+      console.error("Error settling dispute:", error);
+      toast.error("Failed to settle dispute", {
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      });
     }
-  }, []);
+  }, [dispute, contractAddress, writeContract]); // Add dependencies
 
   const handleSettleDispute = useCallback(async () => {
     if (!id) return;
