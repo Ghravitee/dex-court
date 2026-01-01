@@ -315,13 +315,13 @@ export function Topbar({
               const ready = mounted;
               const connected = ready && account && chain;
 
-              console.log("🔐 ConnectButton state:", {
-                connected,
-                account: account?.address,
-                isAuthenticated,
-                loginMethod,
-                walletValidation: walletValidation.isValid,
-              });
+              // console.log("🔐 ConnectButton state:", {
+              //   connected,
+              //   account: account?.address,
+              //   isAuthenticated,
+              //   loginMethod,
+              //   walletValidation: walletValidation.isValid,
+              // });
 
               // Case 1: Wallet connected AND authenticated with wallet
               if (isAuthenticated && loginMethod === "wallet" && connected) {
