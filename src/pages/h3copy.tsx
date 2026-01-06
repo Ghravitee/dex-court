@@ -497,7 +497,7 @@ function Web3Vote() {
         address: contractAddress,
         abi: VOTING_ABI.abi,
         functionName: "commitVote",
-        args: [disputeId, commitment as `0x${string}`],
+        args: [disputeId, commitment as `0x${string}`, [], 0, 0n],
       });
 
       setUiSuccess("Commitment generated, saved, and transaction submitted");
