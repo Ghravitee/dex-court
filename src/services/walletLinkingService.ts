@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// services/walletLinkingService.ts
 import { api } from "../lib/apiClient";
 
 export interface WalletNonceResponse {
@@ -13,91 +12,67 @@ export interface WalletVerifyRequest {
 }
 
 class WalletLinkingService {
-  private baseURL =
-    import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+  /* ------------------------------------------------------------------ */
+  /* ---------------------- WALLET LINKING ----------------------------- */
+  /* ------------------------------------------------------------------ */
 
   /**
-   * NEW: Generate nonce for wallet linking (different from login nonce)
+   * Generate nonce for linking wallet to an existing account
    */
   async generateLinkingNonce(
     walletAddress: string,
   ): Promise<WalletNonceResponse> {
     try {
-      const response = await api({
-        method: "POST",
-        url: `${this.baseURL}/link/wallet/nonce`,
-        data: { walletAddress },
+      const response = await api.post("/link/wallet/nonce", {
+        walletAddress,
       });
       return response.data;
     } catch (error: any) {
       console.error("🔐 Wallet linking nonce error:", error);
-      throw new Error(
-        error.response?.data?.message || "Failed to generate wallet nonce",
-      );
-    }
-  }
-
-  /**
-   * NEW: Verify signed nonce and link wallet to account
-   */
-  // Update walletLinkingService.ts to log the actual error
-  async verifyAndLinkWallet(verifyData: WalletVerifyRequest): Promise<void> {
-    try {
-      const response = await api({
-        method: "POST",
-        url: `${this.baseURL}/link/wallet/verify`,
-        data: verifyData,
-      });
-      return response.data;
-    } catch (error: any) {
-      console.error("🔐 Wallet linking verification error:", error);
-
-      // Log the actual response data for debugging
-      if (error.response?.data) {
-        console.error("🔐 Server response:", error.response.data);
-      }
 
       throw new Error(
         error.response?.data?.message ||
-          error.response?.data?.error ||
-          "Failed to link wallet",
+          "Failed to generate wallet linking nonce",
       );
     }
   }
 
   /**
-   * NEW: Link Telegram account using OTP
+   * Verify signed nonce and link wallet
    */
-  async linkTelegram(otp: string): Promise<void> {
+  async verifyAndLinkWallet(verifyData: WalletVerifyRequest): Promise<void> {
     try {
-      await api({
-        method: "POST",
-        url: `${this.baseURL}/link/telegram`,
-        data: { otp },
-      });
+      await api.post("/link/wallet/verify", verifyData);
     } catch (error: any) {
-      console.error("🔐 Telegram linking error:", error);
-      throw new Error(
-        error.response?.data?.message || "Failed to link Telegram account",
-      );
+      console.error("🔐 Wallet linking verification error:", {
+        response: error.response?.data,
+        message: error.message,
+      });
+
+      throw new Error(error.response?.data?.message || "Failed to link wallet");
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /* ------------------------- WALLET LOGIN ---------------------------- */
+  /* ------------------------------------------------------------------ */
+
   /**
-   * OLD: Wallet login nonce (keep this separate from linking)
+   * Generate login nonce (NO AUTH HEADER)
    */
   async generateLoginNonce(
     walletAddress: string,
   ): Promise<WalletNonceResponse> {
     try {
-      const response = await api({
-        method: "POST",
-        url: `${this.baseURL}/login/wallet/nonce`,
-        data: { walletAddress },
-      });
+      const response = await api.post(
+        "/login/wallet/nonce",
+        { walletAddress },
+        { timeout: 20000 }, // nonce-safe retry window
+      );
       return response.data;
     } catch (error: any) {
       console.error("🔐 Wallet login nonce error:", error);
+
       throw new Error(
         error.response?.data?.message || "Failed to generate login nonce",
       );
@@ -105,22 +80,38 @@ class WalletLinkingService {
   }
 
   /**
-   * OLD: Wallet login verification (keep this separate from linking)
+   * Verify wallet login signature
    */
   async verifyWalletLogin(
     verifyData: WalletVerifyRequest,
   ): Promise<{ token: string }> {
     try {
-      const response = await api({
-        method: "POST",
-        url: `${this.baseURL}/login/wallet/verify`,
-        data: verifyData,
-      });
+      const response = await api.post("/login/wallet/verify", verifyData);
       return response.data;
     } catch (error: any) {
-      console.error("🔐 Wallet login verification error:", error);
+      console.error("🔐 Wallet login verification error:", {
+        response: error.response?.data,
+        message: error.message,
+      });
+
       throw new Error(
         error.response?.data?.message || "Failed to verify wallet login",
+      );
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* ----------------------- TELEGRAM LINKING -------------------------- */
+  /* ------------------------------------------------------------------ */
+
+  async linkTelegram(otp: string): Promise<void> {
+    try {
+      await api.post("/link/telegram", { otp });
+    } catch (error: any) {
+      console.error("🔐 Telegram linking error:", error);
+
+      throw new Error(
+        error.response?.data?.message || "Failed to link Telegram account",
       );
     }
   }
