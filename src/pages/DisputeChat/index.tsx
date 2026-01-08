@@ -410,7 +410,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
               )}
 
               <div
-                className={`max-w-[75%] rounded-2xl px-1 py-2 text-sm shadow-sm sm:px-4 ${
+                className={`max-w-[90%] rounded-2xl px-2 py-2 text-sm shadow-sm sm:px-4 ${
                   isMine
                     ? "card-cyan text-cyan-100"
                     : "border border-gray-700/40 bg-[#1a1f27]/80 text-gray-200"
@@ -432,7 +432,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
                     {/* Always show role badge if role exists */}
                     {m.role && <RoleBadge role={m.role} />}
                   </div>
-                  <span className="text-xs font-normal text-gray-400/70">
+                  <span className="text-[10px] font-normal text-gray-400/70">
                     {formatMessageTime(m.creationDate)}
                   </span>
                 </div>

@@ -1523,7 +1523,7 @@ export default function Agreements() {
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
                                   {a.createdBy.startsWith("@0x")
-                                    ? `${a.createdBy.slice(1, 5)}..${a.createdBy.slice(-5)}`
+                                    ? `${a.createdBy.slice(1, 5)}..${a.createdBy.slice(-6)}`
                                     : formatTelegramUsernameForDisplay(
                                         a.createdBy,
                                       )}
@@ -1557,7 +1557,7 @@ export default function Agreements() {
                                   className="text-cyan-300 hover:text-cyan-200 hover:underline"
                                 >
                                   {a.counterparty.startsWith("@0x")
-                                    ? `${a.counterparty.slice(1, 5)}..${a.counterparty.slice(-5)}`
+                                    ? `${a.counterparty.slice(1, 5)}..${a.counterparty.slice(-6)}`
                                     : formatTelegramUsernameForDisplay(
                                         a.counterparty,
                                       )}

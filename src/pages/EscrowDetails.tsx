@@ -30,6 +30,7 @@ import {
   Ban,
   Upload,
   Info,
+  X,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -287,7 +288,7 @@ const formatWalletAddress = (address: string): string => {
 
   if (address.startsWith("0x") && address.length === 42) {
     // It's a wallet address
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    return `${address.slice(0, 4)}...${address.slice(-6)}`;
   }
 
   // If it's not a wallet address and doesn't start with @, assume it's a username
@@ -297,6 +298,28 @@ const formatWalletAddress = (address: string): string => {
   }
 
   return address;
+};
+
+// Add this helper function to specifically format usernames for display
+const formatUsernameForDisplay = (username: string): string => {
+  if (!username) return "Unknown";
+
+  // Check if it looks like a wallet address
+  if (username.startsWith("0x") && username.length === 42) {
+    return `${username.slice(0, 4)}...${username.slice(-6)}`;
+  }
+
+  // Check if it looks like a Telegram username (no spaces, alphanumeric + underscores)
+  const telegramPattern = /^[a-zA-Z0-9_]+$/;
+  if (
+    telegramPattern.test(username.replace(/^@/, "")) &&
+    username.length <= 30
+  ) {
+    return username.startsWith("@") ? username : `@${username}`;
+  }
+
+  // Default: return as-is
+  return username;
 };
 
 const getDisputeRaisedEvent = (timeline: any[] | undefined) => {
@@ -321,6 +344,53 @@ const getEventActorInfo = (event: any) => {
 const getEventNote = (event: any) => {
   if (!event) return null;
   return event.note || event.description;
+};
+
+// Add this helper function to get dispute information from timeline
+const getDisputeInfo = (
+  escrowData: any,
+): {
+  filedAt: string | null;
+  filedBy: string | null;
+  filedById: number | null;
+  filedByAvatarId: number | null;
+} => {
+  if (!escrowData?._raw?.timeline)
+    return {
+      filedAt: null,
+      filedBy: null,
+      filedById: null,
+      filedByAvatarId: null,
+    };
+
+  // Look for dispute events (type 17 or DELIVERY_REJECTED type 6 that leads to DISPUTED status)
+  const disputeEvent = escrowData._raw.timeline.find(
+    (event: any) =>
+      (event.eventType === 6 || // DELIVERY_REJECTED
+        event.type === 17) && // Type 17 is "raised a dispute"
+      event.toStatus === AgreementStatusEnum.DISPUTED,
+  );
+
+  if (!disputeEvent)
+    return {
+      filedAt: null,
+      filedBy: null,
+      filedById: null,
+      filedByAvatarId: null,
+    };
+
+  return {
+    filedAt: disputeEvent.createdAt || null,
+    filedBy: disputeEvent.actor?.username || null,
+    filedById: disputeEvent.actor?.id || null,
+    filedByAvatarId: disputeEvent.actor?.avatarId || null,
+  };
+};
+
+// Also add the normalizeUsername helper if not already there
+const normalizeUsername = (username: string): string => {
+  if (!username) return "";
+  return username.replace(/^@/, "").toLowerCase().trim();
 };
 
 interface EscrowDetailsData {
@@ -367,21 +437,6 @@ const StatusBadge = ({ value }: { value: boolean }) => (
   </div>
 );
 
-// const FeatureBadge = ({ value }: { value: boolean }) => (
-//   <div
-//     className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-//       value
-//         ? "border border-blue-400/30 bg-blue-500/20 text-blue-300"
-//         : "border border-gray-400/30 bg-gray-500/20 text-gray-400"
-//     }`}
-//   >
-//     <div
-//       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-blue-400" : "bg-gray-400"}`}
-//     ></div>
-//     {value ? "Enabled" : "Disabled"}
-//   </div>
-// );
-
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
     className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
@@ -396,6 +451,137 @@ const SafetyBadge = ({ value }: { value: boolean }) => (
     {value ? "Yes" : "No"}
   </div>
 );
+
+// Add this modal component (place it near the RejectDeliveryModal in AgreementDetails or create a new one)
+const RaiseDisputeModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  claim,
+  setClaim,
+  isSubmitting,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (claim: string) => Promise<void>;
+  claim: string;
+  setClaim: (claim: string) => void;
+  isSubmitting: boolean;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="relative max-h-[90vh] w-full max-w-[20rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:max-w-md sm:p-6">
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
+          disabled={isSubmitting}
+          aria-label="Close modal"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="mb-4 flex items-center gap-3 sm:mb-6">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20 sm:h-10 sm:w-10">
+            <AlertTriangle className="h-5 w-5 text-purple-400 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold text-white sm:text-xl">
+              Raise a Dispute
+            </h2>
+            <p className="text-xs text-purple-300 sm:text-sm">
+              This will open a dispute immediately
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 sm:mb-6 sm:p-4">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
+            <div className="min-w-0">
+              <p className="text-xs text-purple-200 sm:text-sm">
+                <span className="font-semibold">Important:</span> Raising a
+                dispute will:
+              </p>
+              <ul className="mt-1 space-y-1 text-xs text-purple-200/80 sm:mt-2">
+                <li>• Immediately create a dispute</li>
+                <li>• Freeze the escrow funds</li>
+                <li>• Require dispute resolution through voting</li>
+                <li>• You can add more evidence on the dispute page later</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-4 sm:mb-6">
+          <label className="mb-1 block text-sm font-medium text-purple-300 sm:mb-2">
+            <div className="flex items-center gap-2">
+              <span>Claim Description (Optional)</span>
+              <div className="group relative hidden sm:inline-block">
+                <Info className="h-4 w-4 text-gray-400 hover:text-purple-300" />
+                <div className="invisible absolute top-1/2 left-6 z-10 w-64 -translate-y-1/2 rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-200 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                  <p className="font-medium text-white">What is a Claim?</p>
+                  <p className="mt-1">
+                    A claim is your formal statement explaining why you're
+                    raising a dispute. This helps voters understand your
+                    position. You can leave this empty if you prefer to add
+                    details later on the dispute page.
+                  </p>
+                  <p className="mt-2 font-medium text-white">Examples:</p>
+                  <ul className="mt-1 list-inside list-disc space-y-1">
+                    <li>"Counterparty not fulfilling their obligations"</li>
+                    <li>"Quality of work does not meet agreed standards"</li>
+                    <li>"Delays beyond agreed timeframe"</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </label>
+          <textarea
+            value={claim}
+            onChange={(e) => setClaim(e.target.value)}
+            placeholder="Briefly describe why you're raising this dispute (optional)"
+            className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none sm:h-32"
+            disabled={isSubmitting}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            You can add more details and evidence on the dispute page.
+          </p>
+        </div>
+
+        <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="w-full border-gray-600 py-2 text-sm text-gray-300 hover:bg-gray-800 sm:w-auto sm:text-base"
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full border-purple-500/30 bg-purple-500/10 py-2 text-sm text-purple-300 hover:border-purple-400 hover:bg-purple-500/20 sm:w-auto sm:text-base"
+            onClick={() => onConfirm(claim)}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Clock className="mr-2 h-4 w-4 animate-spin" />
+                Creating Dispute...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Raise Dispute
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
@@ -488,6 +674,15 @@ export default function EscrowDetails() {
 
   const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
+
+  // Add these state variables near the other state declarations
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [disputeClaim, setDisputeClaim] = useState("");
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+
+  const disputeInfo = escrow
+    ? getDisputeInfo(escrow)
+    : { filedAt: null, filedBy: null, filedById: null, filedByAvatarId: null };
 
   // Status configuration
   const statusConfig = {
@@ -1422,9 +1617,12 @@ export default function EscrowDetails() {
     return 100000 + (array[0] % 900000);
   }, []);
 
-  const handleRaiseDispute = async () => {
+  // Replace the existing handleRaiseDispute function with this:
+  const handleRaiseDispute = async (claim: string = "") => {
     resetMessages();
     setLoading("raiseDispute", true);
+    setIsSubmittingDispute(true);
+
     try {
       if (!onChainAgreement?.id) return setUiError("Agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
@@ -1438,6 +1636,20 @@ export default function EscrowDetails() {
       if (onChainAgreement.disputed)
         return setUiError("The agreement is already in dispute");
 
+      // ADD THIS: If there's a claim, save it to the backend
+      if (claim.trim() && id) {
+        try {
+          // You might want to save the claim to your backend
+          // This would depend on your API structure
+          console.log("Saving dispute claim:", claim);
+          // Example API call if you have an endpoint for it:
+          // await agreementService.saveDisputeClaim(parseInt(id), claim.trim());
+        } catch (error) {
+          console.warn("Failed to save claim to backend:", error);
+          // Continue with dispute creation even if claim save fails
+        }
+      }
+
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
@@ -1446,8 +1658,13 @@ export default function EscrowDetails() {
       });
 
       setUiSuccess("Dispute raised successfully!");
+
+      // Close the modal
+      setIsDisputeModalOpen(false);
+      setDisputeClaim("");
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
+      setIsSubmittingDispute(false);
       setUiError(
         typeof error === "string"
           ? error
@@ -1456,7 +1673,16 @@ export default function EscrowDetails() {
             : "Error raising dispute",
       );
       console.error("Error raising dispute:", error);
+    } finally {
+      if (!isSuccess) {
+        setIsSubmittingDispute(false);
+      }
     }
+  };
+
+  // Add a function to open the dispute modal
+  const handleOpenDisputeModal = () => {
+    setIsDisputeModalOpen(true);
   };
 
   // helper to safely convert various on-chain shapes to bigint
@@ -1810,6 +2036,16 @@ export default function EscrowDetails() {
             >
               {isOverdue ? "Overdue" : `${daysRemaining} days left`}
             </span>
+
+            {escrow._raw?.disputes && escrow._raw.disputes.length > 0 && (
+              <Link
+                to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
+                className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                View Dispute
+              </Link>
+            )}
           </div>
 
           <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
@@ -2854,7 +3090,7 @@ export default function EscrowDetails() {
                         !onChainAgreement.frozen &&
                         !onChainAgreement.pendingCancellation && (
                           <Button
-                            onClick={handleRaiseDispute}
+                            onClick={handleOpenDisputeModal} // Changed from handleRaiseDispute
                             disabled={
                               !onChainAgreement?.id ||
                               isPending ||
@@ -2876,7 +3112,6 @@ export default function EscrowDetails() {
                             )}
                           </Button>
                         )}
-
                       {/* Milestones Section */}
                       {onChainAgreement &&
                         onChainAgreement.vesting &&
@@ -2952,6 +3187,96 @@ export default function EscrowDetails() {
                     </div>
                   </div>
                 ) : null}
+              </div>
+            )}
+
+            {/* Add this section after the Complete On-Chain Agreement Details section */}
+            {/* Dispute Information Section */}
+            {escrow._raw?.disputes && escrow._raw.disputes.length > 0 && (
+              <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
+                <h3 className="mb-4 text-lg font-semibold text-white">
+                  Active Dispute
+                </h3>
+
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        {/* DISPUTE FILING INFORMATION */}
+                        {disputeInfo.filedAt && (
+                          <div className="mt-2 space-y-3">
+                            <div className="flex items-center gap-2 text-xs text-purple-300/80">
+                              <Calendar className="h-3 w-3" />
+                              <span>
+                                Filed on{" "}
+                                {formatDateWithTime(disputeInfo.filedAt)}
+                              </span>
+                            </div>
+                            {disputeInfo.filedBy && (
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1 text-xs text-purple-300/80">
+                                  <Users className="h-3 w-3" />
+                                  <span>Filed by:</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {disputeInfo.filedById && (
+                                    <UserAvatar
+                                      userId={disputeInfo.filedById.toString()}
+                                      avatarId={disputeInfo.filedByAvatarId}
+                                      username={disputeInfo.filedBy}
+                                      size="sm"
+                                    />
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      const cleanUsername =
+                                        disputeInfo.filedBy?.replace(
+                                          /^@/,
+                                          "",
+                                        ) || "";
+                                      navigate(`/profile/${cleanUsername}`);
+                                    }}
+                                    className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
+                                  >
+                                    {formatUsernameForDisplay(
+                                      disputeInfo.filedBy,
+                                    )}
+                                  </button>
+                                  {user &&
+                                    disputeInfo.filedBy &&
+                                    normalizeUsername(user.username) ===
+                                      normalizeUsername(
+                                        disputeInfo.filedBy,
+                                      ) && (
+                                      <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+                                    )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <Link
+                        to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
+                        className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Go to Dispute
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <div>
+                      <p className="text-sm text-amber-300">
+                        This dispute was filed when the delivery was rejected.
+                        Please visit the dispute page to view evidence,
+                        participate in voting, or see the resolution process.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -3264,11 +3589,11 @@ export default function EscrowDetails() {
                                 Raised by{" "}
                                 {formatWalletAddress(actorInfo.username)}
                               </div>
-                              {eventNote && (
-                                <div className="mt-1 max-w-[10rem] text-purple-300/80">
+                              {/* {eventNote && (
+                                <div className="mt-1 max-w-[10rem] text-red-300/80">
                                   {eventNote}
                                 </div>
-                              )}
+                              )} */}
                             </div>
                           ) : eventNote ? (
                             <div className="max-w-[10rem]">{eventNote}</div>
@@ -3389,6 +3714,7 @@ export default function EscrowDetails() {
             </div>
 
             {/* Contract Information */}
+            {/* In the Contract Information sidebar section, add this after the deadline */}
             <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
               <h3 className="mb-4 text-lg font-semibold text-white">
                 Contract Info
@@ -3412,12 +3738,19 @@ export default function EscrowDetails() {
                     <span className="text-emerald-300">Recently</span>
                   </div>
                 )}
-                {escrow.status === "disputed" && (
-                  <div className="flex justify-between">
-                    <span className="text-purple-300">Dispute Filed</span>
-                    <span className="text-purple-300">Recently</span>
-                  </div>
-                )}
+                {/* ADD DISPUTE FILED DATE */}
+                {/* DISPUTE FILED INFORMATION */}
+                {(escrow.status === "disputed" || onChainAgreement?.disputed) &&
+                  disputeInfo.filedAt && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-purple-300">Dispute Filed</span>
+                        <span className="text-purple-300">
+                          {formatDateWithTime(disputeInfo.filedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
           </div>
@@ -3433,6 +3766,21 @@ export default function EscrowDetails() {
         }}
         selectedEvidence={selectedEvidence}
       />
+
+      {/* Add this at the end of your JSX, before the closing </div> */}
+      {isDisputeModalOpen && (
+        <RaiseDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => {
+            setIsDisputeModalOpen(false);
+            setDisputeClaim("");
+          }}
+          onConfirm={handleRaiseDispute}
+          claim={disputeClaim}
+          setClaim={setDisputeClaim}
+          isSubmitting={isSubmittingDispute}
+        />
+      )}
     </div>
   );
 }

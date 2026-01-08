@@ -66,7 +66,7 @@ const formatDisplayName = (username: string) => {
   // Check if it's a wallet address (starts with 0x and is 42 chars)
   if (cleaned.startsWith("0x") && cleaned.length === 42) {
     // Truncate wallet address and remove any @ prefix
-    return `${cleaned.slice(0, 6)}...${cleaned.slice(-4)}`;
+    return `${cleaned.slice(0, 4)}...${cleaned.slice(-6)}`;
   }
   // For Telegram usernames, use the existing formatter
   return formatTelegramUsernameForDisplay(username);
@@ -1391,7 +1391,7 @@ export default function DisputeDetails() {
                       className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
                     >
                       <FileText className="h-4 w-4" />
-                      View Source Agreementsss
+                      View Source Agreement
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>

@@ -196,7 +196,7 @@ const useDebounce = (value: string, delay: number) => {
 const formatPartyDisplay = (username: string) => {
   // Check if it's a wallet address (starts with 0x and is 42 chars)
   if (username.startsWith("0x") && username.length === 42) {
-    return `${username.slice(0, 6)}...${username.slice(-4)}`;
+    return `${username.slice(0, 4)}...${username.slice(-6)}`;
   }
   return formatTelegramUsernameForDisplay(username);
 };

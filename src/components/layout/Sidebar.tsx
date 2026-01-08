@@ -1,3 +1,4 @@
+// Sidebar.tsx - UPDATED WITH SAME LOGOUT FLOW AS TOPBAR
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   BadgeDollarSign,
@@ -5,7 +6,6 @@ import {
   Home,
   Scale,
   Star,
-  // User,
   Vote,
   ChevronLeft,
   ChevronRight,
@@ -22,7 +22,7 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
 import { useAdminAccess } from "../../hooks/useAdmin";
 
-import { useAccount } from "wagmi";
+import { useAccount, useDisconnect } from "wagmi"; // Add useDisconnect import
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import { FaTelegramPlane } from "react-icons/fa";
@@ -45,10 +45,19 @@ export function Sidebar({
   const { isAuthenticated, user, logout, loginMethod } = useAuth();
   const { isAdmin } = useAdminAccess();
   const { isConnected } = useAccount();
+  const { disconnect } = useDisconnect(); // Add disconnect hook
   const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
     useWalletLogin();
 
   const walletValidation = getWalletValidationStatus();
+
+  // ADD THIS FUNCTION - Same as in Topbar
+  const reloadAfterDisconnect = () => {
+    // Small delay allows wagmi + RainbowKit to fully reset
+    setTimeout(() => {
+      window.location.reload();
+    }, 150);
+  };
 
   const nav = [
     { to: "/", label: "Home", icon: <Home size={18} /> },
@@ -74,12 +83,18 @@ export function Sidebar({
       : []),
   ];
 
-  /* ---------------- TELEGRAM AUTH ---------------- */
+  /* ---------------- TELEGRAM AUTH - UPDATED TO MATCH TOPBAR ---------------- */
 
   const handleTelegramAuth = () => {
     if (isAuthenticated) {
+      // SAME FLOW AS TOPBAR
       logout();
+      disconnect(); // Add disconnect call
+
+      // Close mobile menu if open
       if (mobile && setMobileOpen) setMobileOpen(false);
+
+      reloadAfterDisconnect(); // ✅ force clean reconnect state - SAME AS TOPBAR
     } else {
       onLoginClick();
       if (mobile && setMobileOpen) setMobileOpen(false);
@@ -102,12 +117,7 @@ export function Sidebar({
     return user?.username || "unknown";
   };
 
-  /* ---------------- WALLET UI HELPERS ---------------- */
-
-  const shortAddress = (address?: string) => {
-    if (!address) return "";
-    return `${address.slice(0, 4)}…${address.slice(-3)}`;
-  };
+  /* ---------------- WALLET UI HELPERS - UPDATED TO MATCH TOPBAR ---------------- */
 
   const getWalletButtonText = (address?: string) => {
     if (isLoggingIn) return "Signing...";
@@ -126,11 +136,16 @@ export function Sidebar({
     }
 
     if (isAuthenticated && !walletValidation.isValid) {
-      return "Wrong Wallet";
+      return "Switch Wallet";
     }
 
     if (isConnected && !isAuthenticated) {
-      return `Sign in ${shortAddress(address)}`;
+      // Return truncated address with "sign in"
+      if (address) {
+        const truncated = `${address.slice(0, 6)}...${address.slice(-4)}`;
+        return `${truncated} • Sign in`;
+      }
+      return "Sign in with Wallet";
     }
 
     return "Connect Wallet";
@@ -171,6 +186,30 @@ export function Sidebar({
     }
 
     return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
+  };
+
+  /* ---------------- WALLET AUTH HANDLER - UPDATED TO MATCH TOPBAR ---------------- */
+
+  const handleWalletAuth = async () => {
+    if (isAuthenticated) {
+      console.log("Already authenticated — skipping wallet login");
+      return;
+    }
+
+    if (!isConnected) {
+      console.log("Wallet not connected - RainbowKit will handle connection");
+      return;
+    }
+
+    if (isAuthenticated && user?.walletAddress && !walletValidation.isValid) {
+      return;
+    }
+
+    try {
+      await loginWithConnectedWallet();
+    } catch (error) {
+      console.error("Wallet login failed:", error);
+    }
   };
 
   /* ---------------- PROFILE CLICK ---------------- */
@@ -257,7 +296,7 @@ export function Sidebar({
         {/* MOBILE AUTH */}
         {mobile && (
           <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
-            {/* Telegram */}
+            {/* Telegram - UPDATED WITH AVATAR AND LOGOUT ICON */}
             <button
               onClick={handleTelegramAuth}
               className={cn(
@@ -266,23 +305,30 @@ export function Sidebar({
               )}
             >
               {isAuthenticated ? (
-                <UserAvatar
-                  userId={user?.id || ""}
-                  avatarId={user?.avatarId || null}
-                  username={getUsernameForAvatar()}
-                  size="sm"
-                  className="border-emerald-400/40"
-                />
+                <>
+                  <UserAvatar
+                    userId={user?.id || ""}
+                    avatarId={user?.avatarId || null}
+                    username={getUsernameForAvatar()}
+                    size="sm"
+                    className="border-emerald-400/40"
+                  />
+                  <span className="flex-1 truncate text-left font-medium">
+                    {getTelegramButtonText()}
+                  </span>
+                  <LogOut className="h-4 w-4" />
+                </>
               ) : (
-                <FaTelegramPlane className="h-4 w-4" />
+                <>
+                  <FaTelegramPlane className="h-4 w-4" />
+                  <span className="flex-1 truncate text-left font-medium">
+                    {getTelegramButtonText()}
+                  </span>
+                </>
               )}
-              <span className="flex-1 truncate text-left font-medium">
-                {getTelegramButtonText()}
-              </span>
-              {isAuthenticated && <LogOut className="h-4 w-4" />}
             </button>
 
-            {/* WALLET — SAME AS TOPBAR */}
+            {/* WALLET — UPDATED TO MATCH TOPBAR LOGIC */}
             <ConnectButton.Custom>
               {({
                 account,
@@ -294,6 +340,7 @@ export function Sidebar({
                 const ready = mounted;
                 const connected = ready && account && chain;
 
+                // Case 1: Wallet connected AND authenticated with wallet
                 if (isAuthenticated && loginMethod === "wallet" && connected) {
                   return (
                     <button
@@ -309,6 +356,7 @@ export function Sidebar({
                   );
                 }
 
+                // Case 2: Telegram authenticated with correct wallet
                 if (
                   isAuthenticated &&
                   loginMethod === "telegram" &&
@@ -329,12 +377,13 @@ export function Sidebar({
                   );
                 }
 
+                // Connected wallet
                 if (connected) {
                   return (
                     <button
                       onClick={() => {
                         if (!isAuthenticated) {
-                          loginWithConnectedWallet();
+                          handleWalletAuth(); // Use the new handler
                         } else {
                           openAccountModal();
                         }
@@ -352,6 +401,7 @@ export function Sidebar({
                   );
                 }
 
+                // Not connected
                 return (
                   <button
                     onClick={openConnectModal}
@@ -361,9 +411,7 @@ export function Sidebar({
                     )}
                   >
                     <Wallet className="h-4 w-4" />
-                    <span className="truncate">
-                      {getWalletButtonText(account?.address)}
-                    </span>
+                    <span className="truncate">{getWalletButtonText()}</span>
                   </button>
                 );
               }}

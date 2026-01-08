@@ -718,8 +718,19 @@ const getDeliverySubmittedDate = (agreement: any): string | null => {
 };
 
 // Enhanced date formatting with time for all displays
-const formatDateWithTime = (dateString: string): string => {
+// Enhanced date formatting with time for all displays - with null handling
+const formatDateWithTime = (dateString: string | null | undefined): string => {
+  if (!dateString) {
+    return "Not set";
+  }
+
   const date = new Date(dateString);
+
+  // Check if date is valid (not January 1, 1970 which indicates null/undefined/unix epoch)
+  if (isNaN(date.getTime()) || date.getTime() === 0) {
+    return "Not set";
+  }
+
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -729,39 +740,181 @@ const formatDateWithTime = (dateString: string): string => {
   });
 };
 
-// Helper to check if this is the second rejection
-const isSecondRejection = (agreement: any): boolean => {
-  if (!agreement?._raw?.timeline) return false;
+const getDisputeInfo = (
+  agreement: any,
+): {
+  filedAt: string | null;
+  filedBy: string | null;
+  filedById: number | null;
+  filedByAvatarId: number | null;
+} => {
+  if (!agreement?._raw?.timeline)
+    return {
+      filedAt: null,
+      filedBy: null,
+      filedById: null,
+      filedByAvatarId: null,
+    };
 
-  const rejectionEvents = agreement._raw.timeline.filter(
-    (event: any) =>
-      event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
-      event.type === 6, // DELIVERY_REJECTED
-  );
-
-  console.log("🔍 Rejection events check:", {
-    timeline: agreement._raw.timeline,
-    rejectionEvents: rejectionEvents,
-    rejectionCount: rejectionEvents.length,
-    isSecondRejection: rejectionEvents.length >= 2,
-  });
-
-  return rejectionEvents.length >= 2;
-};
-
-// Add this helper function to get dispute filed date from timeline
-const getDisputeFiledDate = (agreement: any): string | null => {
-  if (!agreement?._raw?.timeline) return null;
-
-  // Look for DELIVERY_REJECTED events (type 6) that led to DISPUTED status (toStatus: 4)
+  // Look for dispute events (type 17 or DELIVERY_REJECTED type 6 that leads to DISPUTED status)
   const disputeEvent = agreement._raw.timeline.find(
     (event: any) =>
       (event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
-        event.type === 6) &&
+        event.type === 6 ||
+        event.type === 17) && // Type 17 is "raised a dispute"
       event.toStatus === AgreementStatusEnum.DISPUTED,
   );
 
-  return disputeEvent?.createdAt || null;
+  if (!disputeEvent)
+    return {
+      filedAt: null,
+      filedBy: null,
+      filedById: null,
+      filedByAvatarId: null,
+    };
+
+  return {
+    filedAt: disputeEvent.createdAt || null,
+    filedBy: disputeEvent.actor?.username || null,
+    filedById: disputeEvent.actor?.id || null,
+    filedByAvatarId: disputeEvent.actor?.avatarId || null,
+  };
+};
+
+// Reject Delivery Modal Component
+const RejectDeliveryModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  claim,
+  setClaim,
+  isSubmitting,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (claim: string) => Promise<void>;
+  claim: string;
+  setClaim: (claim: string) => void;
+  isSubmitting: boolean;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      {/* Make container responsive and scrollable */}
+      <div className="relative max-h-[90vh] w-full max-w-[20rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:max-w-md sm:p-6">
+        {/* Close button - make it more accessible on mobile */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
+          disabled={isSubmitting}
+          aria-label="Close modal"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {/* Header */}
+        <div className="mb-4 flex items-center gap-3 sm:mb-6">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20 sm:h-10 sm:w-10">
+            <AlertTriangle className="h-5 w-5 text-purple-400 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold text-white sm:text-xl">
+              Reject Delivery
+            </h2>
+            <p className="text-xs text-red-300 sm:text-sm">
+              This will open a dispute immediately
+            </p>
+          </div>
+        </div>
+
+        {/* Warning message */}
+        <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 sm:mb-6 sm:p-4">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
+            <div className="min-w-0">
+              <p className="text-xs text-red-200 sm:text-sm">
+                <span className="font-semibold">Important:</span> Rejecting the
+                delivery will:
+              </p>
+              <ul className="mt-1 space-y-1 text-xs text-red-200/80 sm:mt-2">
+                <li>• Immediately create a dispute</li>
+                <li>• Require dispute resolution through voting</li>
+                <li>• You can add more evidence on the dispute page later</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Claim input */}
+        <div className="mb-4 sm:mb-6">
+          <label className="mb-1 block text-sm font-medium text-purple-300 sm:mb-2">
+            <div className="flex items-center gap-2">
+              <span>Claim Description (Optional)</span>
+              <div className="group relative hidden sm:inline-block">
+                <Info className="h-4 w-4 text-gray-400 hover:text-purple-300" />
+                <div className="invisible absolute top-1/2 left-6 z-10 w-64 -translate-y-1/2 rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-200 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                  <p className="font-medium text-white">What is a Claim?</p>
+                  <p className="mt-1">
+                    A claim is your formal statement explaining why you're
+                    rejecting the delivery. This helps voters understand your
+                    position. You can leave this empty if you prefer to add
+                    details later on the dispute page.
+                  </p>
+                  <p className="mt-2 font-medium text-white">Examples:</p>
+                  <ul className="mt-1 list-inside list-disc space-y-1">
+                    <li>"Work does not meet quality standards"</li>
+                    <li>"Delivered after deadline"</li>
+                    <li>"Incomplete deliverables"</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </label>
+          <textarea
+            value={claim}
+            onChange={(e) => setClaim(e.target.value)}
+            placeholder="Briefly describe why you're rejecting this delivery (optional)"
+            className="h-24 w-full rounded-lg border border-red-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none sm:h-32"
+            disabled={isSubmitting}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            You can add more details and evidence on the dispute page.
+          </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="w-full border-gray-600 py-2 text-sm text-gray-300 hover:bg-gray-800 sm:w-auto sm:text-base"
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full border-red-500/30 bg-red-500/10 py-2 text-sm text-red-300 hover:border-red-400 hover:bg-red-500/20 sm:w-auto sm:text-base"
+            onClick={() => onConfirm(claim)}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Clock className="mr-2 h-4 w-4 animate-spin" />
+                Creating Dispute...
+              </>
+            ) : (
+              <>
+                <Ban className="mr-2 h-4 w-4" />
+                Reject Delivery & Open Dispute
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function AgreementDetails() {
@@ -775,16 +928,25 @@ export default function AgreementDetails() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isRejecting, setIsRejecting] = useState(false);
+  const [isRejecting] = useState(false);
   const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
   const [isOpeningDispute] = useState(false);
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
 
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectClaim, setRejectClaim] = useState("");
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+
   // ADD THESE NEW STATE VARIABLES FOR POLLING
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+
+  // Get dispute information
+  const disputeInfo = agreement
+    ? getDisputeInfo(agreement)
+    : { filedAt: null, filedBy: null, filedById: null };
 
   // Wrap fetchAgreementDetails in useCallback to prevent unnecessary re-renders
   const fetchAgreementDetails = useCallback(async () => {
@@ -1267,36 +1429,69 @@ export default function AgreementDetails() {
   };
 
   // Reject Delivery Handler - BIDIRECTIONAL with dispute logic
-  // Reject Delivery Handler - BIDIRECTIONAL with dispute on first rejection
-  const handleRejectDelivery = async () => {
+
+  // Open the reject modal instead of immediately rejecting
+  const handleRejectDelivery = () => {
+    if (!id || !agreement) return;
+    setIsRejectModalOpen(true);
+  };
+
+  // New function to actually reject with the claim
+  // New function to actually reject with the claim
+  const handleConfirmReject = async (claim: string) => {
     if (!id || !agreement) return;
 
-    if (
-      !confirm(
-        "Are you sure you want to reject this delivery? This will open a dispute.",
-      )
-    ) {
-      return;
-    }
-
-    setIsRejecting(true);
+    setIsSubmittingReject(true);
     try {
       const agreementId = parseInt(id);
-      await agreementService.rejectDelivery(agreementId);
 
-      toast.success(
-        "Delivery rejected! A dispute has been created. Please proceed to the dispute page to edit your dispute.",
-      );
+      // ADD DEBUG LOGGING
+      console.log("🚀 Calling rejectDelivery with:", {
+        agreementId,
+        claim: claim.trim(),
+        hasClaim: !!claim.trim(),
+        claimLength: claim.trim().length,
+      });
 
+      // Pass the claim to the rejectDelivery function
+      // The claim can be empty string - the backend should handle both cases
+      await agreementService.rejectDelivery(agreementId, claim.trim());
+
+      // Show appropriate success message
+      if (claim.trim()) {
+        toast.success(
+          `Delivery rejected with your claim! A dispute has been created.`,
+          {
+            description: "Your claim will be visible in the dispute details.",
+            duration: 5000,
+          },
+        );
+      } else {
+        toast.success("Delivery rejected! A dispute has been created.", {
+          description: "You can add your claim later on the dispute page.",
+          duration: 5000,
+        });
+      }
+
+      // Close modal and refresh
+      setIsRejectModalOpen(false);
+      setRejectClaim(""); // Reset claim
       await fetchAgreementDetailsBackground();
     } catch (error: any) {
-      console.error("Failed to reject delivery:", error);
+      console.error("❌ Failed to reject delivery:", error);
+
+      // Enhanced error handling
       const errorMessage =
         error.response?.data?.message ||
+        error.message ||
         "Failed to reject delivery. Please try again.";
-      toast.error(errorMessage);
+
+      toast.error("Failed to reject delivery", {
+        description: errorMessage,
+        duration: 5000,
+      });
     } finally {
-      setIsRejecting(false);
+      setIsSubmittingReject(false);
     }
   };
   // Open Dispute Handler
@@ -1581,12 +1776,7 @@ export default function AgreementDetails() {
   const isCurrentUserInitiatedCancellation = cancellationInitiatedBy === "user";
 
   // Dispute permissions
-  // Only show open dispute button for signed agreements OR when it's the second rejection
-  const canOpenDispute =
-    (agreement?.status === "signed" && isParticipant) ||
-    (agreement?.status === "pending_approval" &&
-      isSecondRejection(agreement._raw) &&
-      isParticipant);
+  const canOpenDispute = agreement?.status === "signed" && isParticipant;
   const canCancelDispute = agreement?.status === "disputed" && isParticipant;
 
   const completionDate = getCompletionDate(agreement?._raw);
@@ -1597,14 +1787,13 @@ export default function AgreementDetails() {
   // Check if cancellation is pending using enhanced detection
   const cancellationPending = isCancellationPending(agreement?._raw);
 
-  // FIXED: Get appropriate messages for both parties
   const getDeliveryStatusMessage = () => {
     if (!agreement || agreement.status !== "pending_approval") return null;
 
     const initiatedBy = getDeliveryInitiatedBy(agreement._raw, user);
 
     if (initiatedBy === "user") {
-      return "The other party has marked their work as delivered and is waiting for your review.";
+      return "The other party has marked their work as delivered and is waiting for your review. You can accept the delivery or reject it (which will open a dispute).";
     } else if (initiatedBy === "other") {
       return "You have marked your work as delivered and are waiting for the other party to review it.";
     } else {
@@ -1680,43 +1869,42 @@ export default function AgreementDetails() {
     <div className="min-h-screen">
       <div className="container mx-auto py-8 lg:px-4">
         {/* Header */}
-        <div className="mb-8 flex flex-col items-center justify-between space-y-4 sm:flex-row">
-          <div className="flex items-center space-x-4">
+        <div className="mb-8 flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col items-center space-y-4 space-x-4 sm:flex-row sm:space-y-0">
             <Button
               variant="outline"
               onClick={() => navigate("/agreements")}
-              className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+              className="w-fit self-start border-white/15 text-cyan-200 hover:bg-cyan-500/10"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Agreements
             </Button>
             <div className="flex items-center space-x-2">
-              {getStatusIcon(agreement.status)}
-              <span
-                className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
-              >
-                {agreement.status.charAt(0).toUpperCase() +
-                  agreement.status.slice(1).replace("_", " ")}
-              </span>
-            </div>
-
-            {/* ADD THIS: Dispute Link when agreement has disputes */}
-            {agreement._raw?.disputes && agreement._raw.disputes.length > 0 && (
-              <Link
-                to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
-                className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
-              >
-                <AlertTriangle className="h-4 w-4" />
-                View Dispute
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/30 text-xs">
-                  {agreement._raw.disputes.length}
+              <div className="flex items-center space-x-2">
+                {getStatusIcon(agreement.status)}
+                <span
+                  className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
+                >
+                  {agreement.status.charAt(0).toUpperCase() +
+                    agreement.status.slice(1).replace("_", " ")}
                 </span>
-              </Link>
-            )}
+              </div>
+              {/* ADD THIS: Dispute Link when agreement has disputes */}
+              {agreement._raw?.disputes &&
+                agreement._raw.disputes.length > 0 && (
+                  <Link
+                    to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
+                    className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    View Dispute
+                  </Link>
+                )}
+            </div>
           </div>
 
           {/* ADD THIS SUBTLE UPDATE INDICATOR */}
-          <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
+          <div className="flex space-x-2 self-center text-xs text-cyan-400/60 sm:self-end">
             {isRefreshing && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></div>
             )}
@@ -1811,7 +1999,7 @@ export default function AgreementDetails() {
                             className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
                             {agreement.createdBy.startsWith("@0x")
-                              ? `${agreement.createdBy.slice(1, 5)}..${agreement.createdBy.slice(-5)}`
+                              ? `${agreement.createdBy.slice(1, 5)}..${agreement.createdBy.slice(-6)}`
                               : agreement.createdBy}
                           </button>
                           {isFirstParty && (
@@ -1842,7 +2030,7 @@ export default function AgreementDetails() {
                             className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                           >
                             {agreement.counterparty.startsWith("@0x")
-                              ? `${agreement.counterparty.slice(1, 4)}..${agreement.counterparty.slice(-2)}`
+                              ? `${agreement.counterparty.slice(1, 5)}..${agreement.counterparty.slice(-6)}`
                               : agreement.counterparty}
                           </button>
                           {isCounterparty && (
@@ -1880,7 +2068,9 @@ export default function AgreementDetails() {
                     <div>
                       <div className="text-sm text-cyan-300">Deadline</div>
                       <div className="text-white">
-                        {formatDate(agreement.deadline)}
+                        {agreement.deadline
+                          ? formatDate(agreement.deadline)
+                          : "Not set"}
                       </div>
                     </div>
                   </div>
@@ -2145,6 +2335,8 @@ export default function AgreementDetails() {
 
               {/* Dispute Information Section */}
 
+              {/* Dispute Information Section */}
+              {/* Dispute Information Section */}
               {agreement._raw?.disputes &&
                 agreement._raw.disputes.length > 0 && (
                   <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
@@ -2154,22 +2346,58 @@ export default function AgreementDetails() {
 
                     <div className="space-y-4">
                       <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <h4 className="font-medium text-purple-300">
-                              Dispute #{agreement._raw.disputes[0].disputeId}
-                            </h4>
-
-                            {/* ADD DISPUTE FILING DATE */}
-                            {getDisputeFiledDate(agreement) && (
-                              <div className="mt-2 flex items-center gap-2 text-xs text-purple-300/80">
-                                <Calendar className="h-3 w-3" />
-                                <span>
-                                  Filed on{" "}
-                                  {formatDateWithTime(
-                                    getDisputeFiledDate(agreement)!,
-                                  )}
-                                </span>
+                            {/* DISPUTE FILING INFORMATION */}
+                            {/* DISPUTE FILING INFORMATION */}
+                            {disputeInfo.filedAt && (
+                              <div className="mt-2 space-y-3">
+                                <div className="flex items-center gap-2 text-xs text-purple-300/80">
+                                  <Calendar className="h-3 w-3" />
+                                  <span>
+                                    Filed on{" "}
+                                    {formatDateWithTime(disputeInfo.filedAt)}
+                                  </span>
+                                </div>
+                                {disputeInfo.filedBy && (
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1 text-xs text-purple-300/80">
+                                      <Users className="h-3 w-3" />
+                                      <span>Filed by:</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      {disputeInfo.filedById && (
+                                        <UserAvatar
+                                          userId={disputeInfo.filedById.toString()}
+                                          avatarId={disputeInfo.filedByAvatarId}
+                                          username={disputeInfo.filedBy}
+                                          size="sm"
+                                        />
+                                      )}
+                                      <button
+                                        onClick={() => {
+                                          const cleanUsername =
+                                            disputeInfo.filedBy?.replace(
+                                              /^@/,
+                                              "",
+                                            ) || "";
+                                          navigate(`/profile/${cleanUsername}`);
+                                        }}
+                                        className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
+                                      >
+                                        {disputeInfo.filedBy}
+                                      </button>
+                                      {user &&
+                                        disputeInfo.filedBy &&
+                                        normalizeUsername(user.username) ===
+                                          normalizeUsername(
+                                            disputeInfo.filedBy,
+                                          ) && (
+                                          <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+                                        )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2180,19 +2408,6 @@ export default function AgreementDetails() {
                             <AlertTriangle className="h-4 w-4" />
                             Go to Dispute
                           </Link>
-                        </div>
-
-                        {/* Additional dispute information */}
-                        <div className="mt-3 grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <span className="text-purple-300">Filed By:</span>
-                            <span className="ml-2 text-purple-200">
-                              {agreement._raw.timeline?.find(
-                                (event: any) =>
-                                  event.type === 6 && event.toStatus === 4,
-                              )?.actor?.username || "Unknown"}
-                            </span>
-                          </div>
                         </div>
                       </div>
 
@@ -2388,8 +2603,8 @@ export default function AgreementDetails() {
                         <Button
                           variant="outline"
                           className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                          onClick={handleRejectDelivery}
-                          disabled={isRejecting || isRefreshing}
+                          onClick={handleRejectDelivery} // Changed from handleRejectDelivery to just open modal
+                          disabled={isSubmittingReject || isRefreshing}
                         >
                           {isRejecting ? (
                             <>
@@ -2578,6 +2793,8 @@ export default function AgreementDetails() {
                 )}
                 {/* Disputed State */}
 
+                {/* Disputed State */}
+                {/* Disputed State */}
                 {agreement.status === "disputed" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-violet-400"></div>
@@ -2585,12 +2802,41 @@ export default function AgreementDetails() {
                       Dispute Filed
                     </div>
 
-                    {/* SHOW ACTUAL DISPUTE FILING DATE */}
+                    {/* DISPUTE FILING DETAILS */}
                     <div className="text-sm text-cyan-300">
-                      {getDisputeFiledDate(agreement)
-                        ? formatDateWithTime(getDisputeFiledDate(agreement)!)
+                      {disputeInfo.filedAt
+                        ? formatDateWithTime(disputeInfo.filedAt)
                         : "Recently"}
                     </div>
+
+                    {disputeInfo.filedBy && (
+                      <div className="mt-1 flex items-center gap-1">
+                        {disputeInfo.filedById && (
+                          <UserAvatar
+                            userId={disputeInfo.filedById.toString()}
+                            avatarId={disputeInfo.filedByAvatarId}
+                            username={disputeInfo.filedBy}
+                            size="sm"
+                          />
+                        )}
+                        <button
+                          onClick={() => {
+                            const cleanUsername =
+                              disputeInfo.filedBy?.replace(/^@/, "") || "";
+                            navigate(`/profile/${cleanUsername}`);
+                          }}
+                          className="text-xs text-violet-300/70 hover:text-violet-200 hover:underline"
+                        >
+                          by {disputeInfo.filedBy}
+                        </button>
+                        {user &&
+                          disputeInfo.filedBy &&
+                          normalizeUsername(user.username) ===
+                            normalizeUsername(disputeInfo.filedBy) && (
+                            <VscVerifiedFilled className="h-3 w-3 text-green-400" />
+                          )}
+                      </div>
+                    )}
 
                     {/* ADD DISPUTE LINK IN TIMELINE */}
                     {agreement._raw?.disputes &&
@@ -2752,15 +2998,17 @@ export default function AgreementDetails() {
                 )}
 
                 {/* ADD DISPUTE FILED DATE */}
-                {agreement.status === "disputed" &&
-                  getDisputeFiledDate(agreement) && (
+                {/* DISPUTE FILED INFORMATION */}
+                {agreement.status === "disputed" && disputeInfo.filedAt && (
+                  <div className="space-y-1">
                     <div className="flex justify-between">
                       <span className="text-purple-300">Dispute Filed</span>
                       <span className="text-purple-300">
-                        {formatDateWithTime(getDisputeFiledDate(agreement)!)}
+                        {formatDateWithTime(disputeInfo.filedAt)}
                       </span>
                     </div>
-                  )}
+                  </div>
+                )}
 
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Deadline</span>
@@ -2789,6 +3037,19 @@ export default function AgreementDetails() {
           setEvidenceViewerOpen(false);
         }}
         selectedEvidence={selectedEvidence}
+      />
+
+      {/* Reject Delivery Modal */}
+      <RejectDeliveryModal
+        isOpen={isRejectModalOpen}
+        onClose={() => {
+          setIsRejectModalOpen(false);
+          setRejectClaim("");
+        }}
+        onConfirm={handleConfirmReject}
+        claim={rejectClaim}
+        setClaim={setRejectClaim}
+        isSubmitting={isSubmittingReject}
       />
     </div>
   );
