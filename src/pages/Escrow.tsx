@@ -173,7 +173,7 @@ const formatWalletAddress = (address: string): string => {
 
   // If it's a wallet address (0x...), slice it
   if (address.startsWith("0x") && address.length === 42) {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    return `${address.slice(0, 4)}...${address.slice(-6)}`;
   }
 
   // Return original for any other case

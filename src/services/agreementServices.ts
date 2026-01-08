@@ -709,11 +709,27 @@ class AgreementService {
     return response.data;
   }
 
-  async rejectDelivery(agreementId: number): Promise<void> {
-    const response = await api.patch(
-      `/agreement/${agreementId}/delivery/reject`,
-    );
-    return response.data;
+  // Update the rejectDelivery function to accept a claim parameter
+  async rejectDelivery(agreementId: number, claim?: string): Promise<void> {
+    try {
+      const payload: any = {};
+
+      // Only include claim if it's provided and not empty
+      if (claim && claim.trim()) {
+        payload.claim = claim.trim();
+      }
+
+      console.log("📤 Rejecting delivery with payload:", payload);
+
+      const response = await api.patch(
+        `/agreement/${agreementId}/delivery/reject`,
+        payload,
+      );
+      console.log("✅ Delivery rejected successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Failed to reject delivery:", error);
+    }
   }
 
   async requestCancelation(agreementId: number): Promise<void> {
