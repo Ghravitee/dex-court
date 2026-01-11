@@ -14,6 +14,11 @@ import type {
   VoteOutcomeData,
 } from "../types";
 
+const generateVotingId = (): string => {
+  // Generate a random 6-digit number between 100000 and 999999
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 class DisputeService {
   private userCache: {
     users: any[];
@@ -118,9 +123,7 @@ class DisputeService {
     console.log("🔍 [DisputeService] User cache cleared");
   }
 
-  // Create a new dispute manually
-  // Create a new dispute manually - ENHANCED DEBUGGING VERSION
-  // Create a new dispute (POST /dispute)
+  // Create a new dispute manually - ENHANCED with votingId
   async createDispute(
     data: CreateDisputeRequest,
     files: File[],
@@ -135,6 +138,12 @@ class DisputeService {
     formData.append("requestKind", String(data.requestKind));
     formData.append("defendant", cleanTelegramUsername(data.defendant));
     formData.append("claim", data.claim);
+
+    // ✅ Generate and append votingId
+    const votingId = generateVotingId();
+    formData.append("votingId", votingId);
+
+    console.log("✅ Generated votingId for dispute:", votingId);
 
     // ✅ Append witnesses array as `witnesses[0]`, `witnesses[1]`, etc.
     if (data.witnesses && data.witnesses.length > 0) {
@@ -158,8 +167,8 @@ class DisputeService {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log("✅ Dispute created:", response.data);
-      return response.data;
+      console.log("✅ Dispute created with votingId:", votingId, response.data);
+      return { ...response.data, votingId };
     } catch (error: any) {
       this.handleError(error);
     }
@@ -167,6 +176,7 @@ class DisputeService {
 
   // Create dispute from agreement
   // Create dispute from agreement - fixed to match proper form-data structure
+  // Create dispute from agreement - with votingId
   async createDisputeFromAgreement(
     agreementId: number,
     data: CreateDisputeFromAgreementRequest,
@@ -184,6 +194,12 @@ class DisputeService {
     formData.append("requestKind", String(data.requestKind));
     formData.append("defendant", cleanTelegramUsername(data.defendant));
     formData.append("claim", data.claim);
+
+    // ✅ Generate and append votingId
+    const votingId = generateVotingId();
+    formData.append("votingId", votingId);
+
+    console.log("✅ Generated votingId for agreement dispute:", votingId);
 
     // ✅ Append witnesses as indexed keys
     if (data.witnesses && data.witnesses.length > 0) {
@@ -209,8 +225,12 @@ class DisputeService {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log("✅ Dispute created from agreement:", response.data);
-      return response.data;
+      console.log(
+        "✅ Dispute created from agreement with votingId:",
+        votingId,
+        response.data,
+      );
+      return { ...response.data, votingId };
     } catch (error: any) {
       this.handleError(error);
     }

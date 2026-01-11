@@ -36,7 +36,7 @@ import { UserAvatar } from "../components/UserAvatar";
 import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
-  isValidTelegramUsername,
+  // isValidTelegramUsername,
   formatTelegramUsernameForDisplay,
 } from "../lib/usernameUtils";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
@@ -96,6 +96,20 @@ const apiStatusToFrontend = (status: number): AgreementStatus => {
     default:
       return "pending";
   }
+};
+
+const isValidUserIdentity = (value?: string) => {
+  if (!value) return false;
+
+  const v = value.trim();
+
+  // Telegram username
+  if (/^@?[a-zA-Z0-9_]{2,}$/.test(v)) return true;
+
+  // Wallet address (EVM)
+  if (/^0x[a-fA-F0-9]{40}$/.test(v)) return true;
+
+  return false;
 };
 
 const UserSearchResult = ({
@@ -952,10 +966,11 @@ export default function Agreements() {
       // 🚨 CRITICAL FIX: Validate that we have valid Telegram usernames
       if (
         agreementType === "myself" &&
-        !isValidTelegramUsername(currentUserTelegram)
+        !currentUserTelegram &&
+        !user?.walletAddress
       ) {
         toast.error(
-          "Unable to identify your Telegram account. Please ensure your profile is properly connected.",
+          "Unable to identify your account. Please connect a wallet or Telegram.",
         );
         setIsSubmitting(false);
         return;
@@ -963,19 +978,18 @@ export default function Agreements() {
 
       if (
         agreementType === "myself" &&
-        !isValidTelegramUsername(form.counterparty)
+        !isValidUserIdentity(form.counterparty)
       ) {
-        toast.error("Please enter a valid counterparty Telegram username");
+        toast.error("Please enter a valid counterparty (Telegram or wallet)");
         setIsSubmitting(false);
         return;
       }
 
       if (
         agreementType === "others" &&
-        (!isValidTelegramUsername(form.partyA) ||
-          !isValidTelegramUsername(form.partyB))
+        (!isValidUserIdentity(form.partyA) || !isValidUserIdentity(form.partyB))
       ) {
-        toast.error("Please enter valid Telegram usernames for both parties");
+        toast.error("Please enter valid identities for both parties");
         setIsSubmitting(false);
         return;
       }
@@ -1005,7 +1019,10 @@ export default function Agreements() {
             : AgreementVisibilityEnum.PRIVATE,
         // 🚨 CRITICAL: Use consistently cleaned Telegram usernames
         firstParty:
-          agreementType === "myself" ? cleanUserTelegram : cleanPartyA,
+          agreementType === "myself"
+            ? cleanUserTelegram || user?.walletAddress || "" // ADD NULL CHECK
+            : cleanPartyA,
+
         counterParty:
           agreementType === "myself" ? cleanCounterparty : cleanPartyB,
       };

@@ -53,6 +53,8 @@ const isSecondRejection = (agreement: any): boolean => {
   return rejectionEvents.length >= 2;
 };
 
+const isWalletAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value);
+
 interface OpenDisputeModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -449,9 +451,12 @@ export default function OpenDisputeModal({
       return;
     }
 
-    // Validate Telegram usernames
-    if (!isValidTelegramUsername(form.defendant)) {
-      toast.error("Please enter a valid defendant Telegram username");
+    const defendant = form.defendant.trim();
+
+    if (!isValidTelegramUsername(defendant) && !isWalletAddress(defendant)) {
+      toast.error(
+        "Defendant must be a valid Telegram username or wallet address",
+      );
       return;
     }
 
@@ -504,7 +509,10 @@ export default function OpenDisputeModal({
     try {
       console.log("🚀 Creating dispute from agreement...");
 
-      const cleanedDefendant = cleanTelegramUsername(form.defendant);
+      const cleanedDefendant = isWalletAddress(form.defendant)
+        ? form.defendant
+        : cleanTelegramUsername(form.defendant);
+
       const cleanedWitnesses = form.witnesses
         .filter((w) => w.trim())
         .map((w) => cleanTelegramUsername(w));

@@ -39,6 +39,9 @@ interface UploadedFile {
   size: string;
 }
 
+const isValidWalletAddress = (value: string) =>
+  /^0x[a-fA-F0-9]{40}$/.test(value);
+
 // User Search Result Component
 const UserSearchResult = ({
   user,
@@ -55,13 +58,15 @@ const UserSearchResult = ({
     user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
 
-  // If no Telegram username exists, don't show this user
-  if (!telegramUsername) {
-    return null;
-  }
+  const wallet = user.walletAddress;
+
+  if (!telegramUsername && !wallet) return null;
 
   // PRESERVES ORIGINAL CASE: No .toLowerCase() here
-  const displayUsername = telegramUsername ? `@${telegramUsername}` : "Unknown";
+  const displayUsername = telegramUsername
+    ? `@${telegramUsername}`
+    : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
+
   const displayName = user.displayName || displayUsername;
   const isCurrentUser = user.id === currentUser?.id;
 
@@ -111,6 +116,7 @@ const useDisputes = (filters: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // In the useDisputes hook, remove search from API params:
   const fetchDisputes = useCallback(async () => {
     try {
       setLoading(true);
@@ -139,7 +145,8 @@ const useDisputes = (filters: {
                   : filters.status === "Dismissed"
                     ? DisputeStatusEnum.Dismissed
                     : undefined,
-        search: filters.search,
+        // REMOVE search from here
+        // search: filters.search,
         range: rangeValue,
         sort: filters.sort === "asc" ? ("asc" as const) : ("desc" as const),
         top: 50,
@@ -161,7 +168,7 @@ const useDisputes = (filters: {
     } finally {
       setLoading(false);
     }
-  }, [filters.status, filters.search, filters.range, filters.sort]);
+  }, [filters.status, filters.range, filters.sort]); // Remove filters.search from dependencies
 
   useEffect(() => {
     fetchDisputes();
@@ -244,7 +251,7 @@ export default function Disputes() {
   // Use the custom hook for data fetching
   const { data, loading, error, refetch } = useDisputes({
     status: status,
-    search: query,
+
     range: dateRange,
     sort: sortAsc ? "asc" : "desc",
   });
@@ -363,26 +370,47 @@ export default function Disputes() {
     handleUserSearch,
   ]);
 
-  const filtered = data
-    .filter((d) => (status === "All" ? true : d.status === status))
-    .filter((d) =>
-      query.trim()
-        ? d.title.toLowerCase().includes(query.toLowerCase()) ||
-          d.parties.toLowerCase().includes(query.toLowerCase()) ||
-          d.claim.toLowerCase().includes(query.toLowerCase())
-        : true,
-    )
-    .filter((d) => {
-      if (dateRange === "All") return true;
-      const days = dateRange === "7d" ? 7 : 30;
-      const dtime = new Date(d.createdAt).getTime();
-      return Date.now() - dtime <= days * 24 * 60 * 60 * 1000;
-    })
-    .sort((a, b) => {
-      // Parse dates safely
+  const filtered = useMemo(() => {
+    if (!data.length) return [];
+
+    let result = data.filter((d) => {
+      // Status filter
+      if (status !== "All" && d.status !== status) return false;
+
+      // Date range filter
+      if (dateRange !== "All") {
+        const days = dateRange === "7d" ? 7 : 30;
+        const dtime = new Date(d.createdAt).getTime();
+        if (Date.now() - dtime > days * 24 * 60 * 60 * 1000) return false;
+      }
+
+      // Search query filter - search across multiple fields
+      if (query.trim()) {
+        const searchTerm = query.toLowerCase().trim();
+
+        // Get all searchable fields
+        const searchableText = [
+          d.title || "",
+          d.plaintiff || "",
+          d.defendant || "",
+          d.claim || "",
+          d.parties || "",
+          // Add any other fields you want to search
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchableText.includes(searchTerm);
+      }
+
+      return true;
+    });
+
+    // Sort by date
+    result = result.sort((a, b) => {
       const parseDate = (dateStr: string): Date => {
         const date = new Date(dateStr);
-        return isNaN(date.getTime()) ? new Date(0) : date; // Fallback to epoch if invalid
+        return isNaN(date.getTime()) ? new Date(0) : date;
       };
 
       const aDate = parseDate(a.createdAt);
@@ -392,6 +420,9 @@ export default function Disputes() {
         ? aDate.getTime() - bDate.getTime()
         : bDate.getTime() - aDate.getTime();
     });
+
+    return result;
+  }, [data, status, dateRange, query, sortAsc]);
 
   // Add this computed value near your other filtered data
   const filteredRecentDisputes = useMemo(() => {
@@ -535,15 +566,17 @@ export default function Disputes() {
     }
 
     // Validate Telegram usernames
-    if (!isValidTelegramUsername(form.defendant)) {
-      toast.error("Please enter a valid defendant Telegram username");
+    if (
+      !isValidTelegramUsername(form.defendant) &&
+      !isValidWalletAddress(form.defendant)
+    ) {
+      toast.error("Enter a valid Telegram username or wallet address");
       return;
     }
 
-    // Validate witness Telegram usernames
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
-      .filter((w) => !isValidTelegramUsername(w));
+      .filter((w) => !isValidTelegramUsername(w) && !isValidWalletAddress(w));
 
     if (invalidWitnesses.length > 0) {
       toast.error("Please enter valid Telegram usernames for all witnesses");
@@ -555,10 +588,13 @@ export default function Disputes() {
     try {
       console.log("🚀 Preparing dispute submission...");
 
-      const cleanedDefendant = cleanTelegramUsername(form.defendant);
+      const cleanedDefendant = isValidWalletAddress(form.defendant)
+        ? form.defendant
+        : cleanTelegramUsername(form.defendant);
+
       const cleanedWitnesses = form.witnesses
         .filter((w) => w.trim())
-        .map((w) => cleanTelegramUsername(w));
+        .map((w) => (isValidWalletAddress(w) ? w : cleanTelegramUsername(w)));
 
       const requestKind =
         form.kind === "Pro Bono"
@@ -669,6 +705,13 @@ export default function Disputes() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  // Prevent Enter key from submitting forms
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
                 placeholder="Search by username, title, or claim"
                 className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm ring-0 outline-none focus:border-cyan-400/40"
               />
@@ -749,7 +792,10 @@ export default function Disputes() {
               <Button
                 variant="outline"
                 className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                onClick={() => setSortAsc((v) => !v)}
+                onClick={(e) => {
+                  e.preventDefault(); // Add this line
+                  setSortAsc((v) => !v);
+                }}
               >
                 {sortAsc ? (
                   <SortAsc className="mr-2 h-4 w-4" />
@@ -1152,7 +1198,7 @@ export default function Disputes() {
                       <div className="px-4 py-3 text-center text-sm text-cyan-300">
                         No users found for "{userSearchQuery}"
                         <div className="mt-1 text-xs text-cyan-400">
-                          Make sure the user exists and has a Telegram username
+                          You may also enter a wallet address directly
                         </div>
                       </div>
                     ) : null}

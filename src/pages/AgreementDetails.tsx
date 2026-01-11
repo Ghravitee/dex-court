@@ -121,6 +121,32 @@ const formatNumberWithCommas = (value: string | undefined): string => {
   return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
 };
 
+// Helper function to format creator username
+const formatCreatorUsername = (username: string | undefined): string => {
+  if (!username) return "Unknown";
+
+  // Remove @ symbol if present
+  const cleanUsername = username.startsWith("@") ? username.slice(1) : username;
+
+  // Check if it's a wallet address (starts with 0x and is hex)
+  if (cleanUsername.startsWith("0x") && cleanUsername.length === 42) {
+    // Slice the wallet address: first 5 chars + "..." + last 4 chars
+    return `${cleanUsername.slice(0, 5)}...${cleanUsername.slice(-4)}`;
+  }
+
+  // Return as-is without @ symbol
+  return cleanUsername;
+};
+
+// Add this function to generate a voting ID
+const generateVotingId = (): string => {
+  // Generate a random 6-digit number between 100000 and 999999
+  const min = 100000;
+  const max = 999999;
+  const votingId = Math.floor(Math.random() * (max - min + 1)) + min;
+  return votingId.toString();
+};
+
 // Add this helper function (similar to the one in DisputeDetails)
 const processAgreementFiles = (files: any[], agreementId: string): any[] => {
   return files.map((file) => {
@@ -875,7 +901,7 @@ const RejectDeliveryModal = ({
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
             placeholder="Briefly describe why you're rejecting this delivery (optional)"
-            className="h-24 w-full rounded-lg border border-red-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none sm:h-32"
+            className="purple-red-500/30 h-24 w-full rounded-lg border bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none sm:h-32"
             disabled={isSubmitting}
           />
           <p className="mt-1 text-xs text-gray-400">
@@ -895,7 +921,7 @@ const RejectDeliveryModal = ({
           </Button>
           <Button
             variant="outline"
-            className="w-full border-red-500/30 bg-red-500/10 py-2 text-sm text-red-300 hover:border-red-400 hover:bg-red-500/20 sm:w-auto sm:text-base"
+            className="w-full border-purple-500/30 bg-purple-500/10 py-2 text-sm text-purple-300 hover:border-purple-400 hover:bg-purple-500/20 sm:w-auto sm:text-base"
             onClick={() => onConfirm(claim)}
             disabled={isSubmitting}
           >
@@ -1444,34 +1470,28 @@ export default function AgreementDetails() {
     setIsSubmittingReject(true);
     try {
       const agreementId = parseInt(id);
+      const votingId = generateVotingId(); // Generate the voting ID
 
-      // ADD DEBUG LOGGING
       console.log("🚀 Calling rejectDelivery with:", {
         agreementId,
+        votingId, // Include votingId in the request
         claim: claim.trim(),
         hasClaim: !!claim.trim(),
         claimLength: claim.trim().length,
       });
 
-      // Pass the claim to the rejectDelivery function
-      // The claim can be empty string - the backend should handle both cases
-      await agreementService.rejectDelivery(agreementId, claim.trim());
+      // Pass the claim AND votingId to the rejectDelivery function
+      await agreementService.rejectDelivery(
+        agreementId,
+        claim.trim(),
+        votingId,
+      );
 
-      // Show appropriate success message
-      if (claim.trim()) {
-        toast.success(
-          `Delivery rejected with your claim! A dispute has been created.`,
-          {
-            description: "Your claim will be visible in the dispute details.",
-            duration: 5000,
-          },
-        );
-      } else {
-        toast.success("Delivery rejected! A dispute has been created.", {
-          description: "You can add your claim later on the dispute page.",
-          duration: 5000,
-        });
-      }
+      // Show success message with voting ID
+      toast.success("Delivery rejected! A dispute has been created.", {
+        description: `Voting ID: ${votingId}. Use this ID to track the dispute resolution.`,
+        duration: 5000,
+      });
 
       // Close modal and refresh
       setIsRejectModalOpen(false);
@@ -1950,7 +1970,6 @@ export default function AgreementDetails() {
                       username={agreement.creator || ""}
                       size="sm"
                     />
-
                     <button
                       onClick={() => {
                         const cleanUsername = (agreement.creator || "").replace(
@@ -1961,7 +1980,7 @@ export default function AgreementDetails() {
                       }}
                       className="text-[11px] text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                     >
-                      {agreement.creator}
+                      {formatCreatorUsername(agreement.creator)}
                     </button>
                     {isCreator && (
                       <VscVerifiedFilled className="size-5 text-green-400" />
@@ -2728,7 +2747,7 @@ export default function AgreementDetails() {
                         username={agreement.creator || ""}
                         size="sm"
                       />
-                      {agreement.creator}
+                      {formatCreatorUsername(agreement.creator)}
                       {isCreator && (
                         <VscVerifiedFilled className="size-5 text-green-400" />
                       )}
