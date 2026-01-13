@@ -293,10 +293,38 @@ export function Sidebar({
           </NavLink>
         ))}
 
-        {/* MOBILE AUTH */}
         {mobile && (
           <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
-            {/* Telegram - UPDATED WITH AVATAR AND LOGOUT ICON */}
+            {/* Profile Link - Only show if authenticated */}
+            {isAuthenticated && (
+              <NavLink
+                to="/profile"
+                onClick={() => setMobileOpen?.(false)}
+                className={({ isActive }) =>
+                  cn(
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
+                    "hover:bg-white/5",
+                    isActive
+                      ? "bg-white/5 text-purple-200 ring-1 ring-purple-400/30"
+                      : "text-foreground/80",
+                  )
+                }
+              >
+                <UserAvatar
+                  userId={user?.id || ""}
+                  avatarId={user?.avatarId || null}
+                  username={getUsernameForAvatar()}
+                  size="sm"
+                  className="border-purple-400/40"
+                />
+                <span className="flex-1 truncate text-left font-medium">
+                  My Profile
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </NavLink>
+            )}
+
+            {/* Telegram Authentication Button */}
             <button
               onClick={handleTelegramAuth}
               className={cn(
@@ -304,27 +332,14 @@ export function Sidebar({
                 getTelegramButtonVariant(),
               )}
             >
-              {isAuthenticated ? (
-                <>
-                  <UserAvatar
-                    userId={user?.id || ""}
-                    avatarId={user?.avatarId || null}
-                    username={getUsernameForAvatar()}
-                    size="sm"
-                    className="border-emerald-400/40"
-                  />
-                  <span className="flex-1 truncate text-left font-medium">
-                    {getTelegramButtonText()}
-                  </span>
-                  <LogOut className="h-4 w-4" />
-                </>
+              <FaTelegramPlane className="h-4 w-4" />
+              <span className="flex-1 truncate text-left font-medium">
+                {getTelegramButtonText()}
+              </span>
+              {isAuthenticated && loginMethod === "telegram" ? (
+                <LogOut className="h-4 w-4" />
               ) : (
-                <>
-                  <FaTelegramPlane className="h-4 w-4" />
-                  <span className="flex-1 truncate text-left font-medium">
-                    {getTelegramButtonText()}
-                  </span>
-                </>
+                <LogIn className="h-4 w-4" />
               )}
             </button>
 
@@ -418,7 +433,6 @@ export function Sidebar({
             </ConnectButton.Custom>
           </div>
         )}
-
         {/* Desktop profile button */}
         {!mobile && (
           <button

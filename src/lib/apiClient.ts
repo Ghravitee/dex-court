@@ -171,6 +171,7 @@ export async function loginTelegram(otp: string) {
     if (error.response?.status === 401) {
       throw new Error("Invalid OTP or authentication failed");
     }
+
     if (error.response?.status === 404) {
       throw new Error("Telegram authentication service unavailable");
     }

@@ -1,7 +1,7 @@
 // src/pages/Disputes.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../components/ui/button";
-import { ChevronDown, ChevronRight, Send } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Send } from "lucide-react";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 import {
@@ -105,7 +105,6 @@ const UserSearchResult = ({
 };
 
 // Custom hook for fetching disputes
-
 const useDisputes = (filters: {
   status?: string;
   search?: string;
@@ -116,7 +115,6 @@ const useDisputes = (filters: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // In the useDisputes hook, remove search from API params:
   const fetchDisputes = useCallback(async () => {
     try {
       setLoading(true);
@@ -149,7 +147,7 @@ const useDisputes = (filters: {
         // search: filters.search,
         range: rangeValue,
         sort: filters.sort === "asc" ? ("asc" as const) : ("desc" as const),
-        top: 50,
+        top: 100, // Increase to fetch more disputes for client-side pagination
         skip: 0,
       };
 
@@ -158,7 +156,7 @@ const useDisputes = (filters: {
         disputeService.transformDisputeListItemToRow(item),
       );
 
-      console.log("Fetched disputes:", transformedData);
+      console.log("Fetched disputes:", transformedData.length);
       console.log("response", response);
 
       setData(transformedData);
@@ -172,13 +170,7 @@ const useDisputes = (filters: {
 
   useEffect(() => {
     fetchDisputes();
-  }, [
-    filters.status,
-    filters.search,
-    filters.range,
-    filters.sort,
-    fetchDisputes,
-  ]);
+  }, [filters.status, filters.range, filters.sort, fetchDisputes]);
 
   return { data, loading, error, refetch: fetchDisputes };
 };
@@ -207,6 +199,30 @@ const formatPartyDisplay = (username: string) => {
   }
   return formatTelegramUsernameForDisplay(username);
 };
+
+// Skeleton loading component for disputes
+const DisputeSkeleton = () => (
+  <tr className="animate-pulse border-t border-white/10">
+    <td className="px-5 py-4">
+      <div className="h-4 w-20 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-40 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-32 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-24 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-4 w-16 rounded bg-white/10"></div>
+    </td>
+    <td className="px-5 py-4">
+      <div className="h-6 w-16 rounded bg-white/10"></div>
+    </td>
+  </tr>
+);
 
 export default function Disputes() {
   const navigate = useNavigate();
@@ -246,12 +262,17 @@ export default function Disputes() {
   const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(0);
   const userSearchRef = useRef<HTMLDivElement>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [allDisputes, setAllDisputes] = useState<DisputeRow[]>([]);
+  const [paginatedDisputes, setPaginatedDisputes] = useState<DisputeRow[]>([]);
+
   const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
 
   // Use the custom hook for data fetching
   const { data, loading, error, refetch } = useDisputes({
     status: status,
-
     range: dateRange,
     sort: sortAsc ? "asc" : "desc",
   });
@@ -370,7 +391,8 @@ export default function Disputes() {
     handleUserSearch,
   ]);
 
-  const filtered = useMemo(() => {
+  // Filter and sort disputes
+  const filteredDisputes = useMemo(() => {
     if (!data.length) return [];
 
     let result = data.filter((d) => {
@@ -395,7 +417,6 @@ export default function Disputes() {
           d.defendant || "",
           d.claim || "",
           d.parties || "",
-          // Add any other fields you want to search
         ]
           .join(" ")
           .toLowerCase();
@@ -423,6 +444,41 @@ export default function Disputes() {
 
     return result;
   }, [data, status, dateRange, query, sortAsc]);
+
+  // Store all filtered disputes
+  useEffect(() => {
+    setAllDisputes(filteredDisputes);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [filteredDisputes]);
+
+  // Apply pagination
+  const applyPagination = useCallback(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginated = allDisputes.slice(startIndex, endIndex);
+    setPaginatedDisputes(paginated);
+  }, [allDisputes, currentPage, pageSize]);
+
+  // Apply pagination when dependencies change
+  useEffect(() => {
+    applyPagination();
+  }, [applyPagination]);
+
+  // Calculate pagination info
+  const totalPages = Math.ceil(allDisputes.length / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, allDisputes.length);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  // Handle page size change
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   // Add this computed value near your other filtered data
   const filteredRecentDisputes = useMemo(() => {
@@ -812,10 +868,37 @@ export default function Disputes() {
             <div className="flex items-center justify-between border-b border-white/10 p-5">
               <h3 className="font-semibold text-white/90">Disputes</h3>
               <div className="text-sm text-cyan-300">
-                {filtered.length}{" "}
-                {filtered.length === 1 ? "dispute" : "disputes"}
+                {allDisputes.length}{" "}
+                {allDisputes.length === 1 ? "dispute" : "disputes"}
               </div>
             </div>
+
+            {/* Page Size Selector */}
+            <div className="px-5 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-cyan-300">Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
+                >
+                  <option className="text-black" value={5}>
+                    5
+                  </option>
+                  <option className="text-black" value={10}>
+                    10
+                  </option>
+                  <option className="text-black" value={20}>
+                    20
+                  </option>
+                  <option className="text-black" value={50}>
+                    50
+                  </option>
+                </select>
+                <span className="text-sm text-cyan-300">per page</span>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="min-w-full lg:text-sm">
                 <thead>
@@ -830,111 +913,130 @@ export default function Disputes() {
                 </thead>
 
                 <tbody>
-                  {filtered.map((d) => (
-                    <tr
-                      key={d.id}
-                      onClick={() => navigate(`/disputes/${d.id}`)}
-                      className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-cyan-500/10"
-                    >
-                      <td className="text-muted-foreground min-w-[120px] px-5 py-4">
-                        {new Date(d.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-5 py-4 font-medium text-white/90">
-                        <div className="max-w-[200px]">
-                          <div className="truncate font-medium">{d.title}</div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">{d.request}</td>
-                      <td className="px-5 py-4 text-white/90">
-                        <div className="flex items-center gap-2">
-                          {/* Plaintiff with Avatar */}
-                          <div className="flex items-center gap-1">
-                            <UserAvatar
-                              userId={
-                                d.plaintiffData?.userId ||
-                                cleanTelegramUsername(d.plaintiff)
-                              }
-                              avatarId={d.plaintiffData?.avatarId || null}
-                              username={cleanTelegramUsername(d.plaintiff)}
-                              size="sm"
-                            />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const cleanUsername = cleanTelegramUsername(
-                                  d.plaintiff,
-                                );
-                                const encodedUsername =
-                                  encodeURIComponent(cleanUsername);
-                                navigate(`/profile/${encodedUsername}`);
-                              }}
-                              className="text-cyan-300 hover:text-cyan-200 hover:underline"
-                            >
-                              {formatPartyDisplay(d.plaintiff)}{" "}
-                              {/* Updated here */}
-                            </button>
-                          </div>
-
-                          {/* VS Icon */}
-                          <span className="text-cyan-400">
-                            <FaArrowRightArrowLeft />
-                          </span>
-
-                          {/* Defendant with Avatar */}
-                          <div className="flex items-center gap-1">
-                            <UserAvatar
-                              userId={
-                                d.defendantData?.userId ||
-                                cleanTelegramUsername(d.defendant)
-                              }
-                              avatarId={d.defendantData?.avatarId || null}
-                              username={cleanTelegramUsername(d.defendant)}
-                              size="sm"
-                            />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const cleanUsername = cleanTelegramUsername(
-                                  d.defendant,
-                                );
-                                const encodedUsername =
-                                  encodeURIComponent(cleanUsername);
-                                navigate(`/profile/${encodedUsername}`);
-                              }}
-                              className="text-cyan-300 hover:text-cyan-200 hover:underline"
-                            >
-                              {formatPartyDisplay(d.defendant)}{" "}
-                              {/* Updated here */}
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="max-w-[250px]">
-                          <div className="text-muted-foreground line-clamp-2 text-xs">
-                            {d.claim}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="min-w-[200px] px-2 py-4">
-                        {d.status === "Settled" ? (
-                          <span className="badge badge-blue">Settled</span>
-                        ) : d.status === "Pending" ? (
-                          <span className="badge badge-orange">Pending</span>
-                        ) : d.status === "Dismissed" ? (
-                          <span className="badge badge-red">Dismissed</span>
-                        ) : (
-                          <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
-                            Vote in Progress
-                          </span>
-                        )}
+                  {loading ? (
+                    <>
+                      {Array.from({ length: pageSize }).map((_, index) => (
+                        <DisputeSkeleton key={index} />
+                      ))}
+                    </>
+                  ) : paginatedDisputes.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-5 py-8 text-center text-cyan-300"
+                      >
+                        No disputes found.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    paginatedDisputes.map((d) => (
+                      <tr
+                        key={d.id}
+                        onClick={() => navigate(`/disputes/${d.id}`)}
+                        className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-cyan-500/10"
+                      >
+                        <td className="text-muted-foreground min-w-[120px] px-5 py-4">
+                          {new Date(d.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-5 py-4 font-medium text-white/90">
+                          <div className="max-w-[200px]">
+                            <div className="truncate font-medium">
+                              {d.title}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">{d.request}</td>
+                        <td className="px-5 py-4 text-white/90">
+                          <div className="flex items-center gap-2">
+                            {/* Plaintiff with Avatar */}
+                            <div className="flex items-center gap-1">
+                              <UserAvatar
+                                userId={
+                                  d.plaintiffData?.userId ||
+                                  cleanTelegramUsername(d.plaintiff)
+                                }
+                                avatarId={d.plaintiffData?.avatarId || null}
+                                username={cleanTelegramUsername(d.plaintiff)}
+                                size="sm"
+                              />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cleanUsername = cleanTelegramUsername(
+                                    d.plaintiff,
+                                  );
+                                  const encodedUsername =
+                                    encodeURIComponent(cleanUsername);
+                                  navigate(`/profile/${encodedUsername}`);
+                                }}
+                                className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                              >
+                                {formatPartyDisplay(d.plaintiff)}{" "}
+                                {/* Updated here */}
+                              </button>
+                            </div>
+
+                            {/* VS Icon */}
+                            <span className="text-cyan-400">
+                              <FaArrowRightArrowLeft />
+                            </span>
+
+                            {/* Defendant with Avatar */}
+                            <div className="flex items-center gap-1">
+                              <UserAvatar
+                                userId={
+                                  d.defendantData?.userId ||
+                                  cleanTelegramUsername(d.defendant)
+                                }
+                                avatarId={d.defendantData?.avatarId || null}
+                                username={cleanTelegramUsername(d.defendant)}
+                                size="sm"
+                              />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cleanUsername = cleanTelegramUsername(
+                                    d.defendant,
+                                  );
+                                  const encodedUsername =
+                                    encodeURIComponent(cleanUsername);
+                                  navigate(`/profile/${encodedUsername}`);
+                                }}
+                                className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                              >
+                                {formatPartyDisplay(d.defendant)}{" "}
+                                {/* Updated here */}
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="max-w-[250px]">
+                            <div className="text-muted-foreground line-clamp-2 text-xs">
+                              {d.claim}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="min-w-[200px] px-2 py-4">
+                          {d.status === "Settled" ? (
+                            <span className="badge badge-blue">Settled</span>
+                          ) : d.status === "Pending" ? (
+                            <span className="badge badge-orange">Pending</span>
+                          ) : d.status === "Dismissed" ? (
+                            <span className="badge badge-red">Dismissed</span>
+                          ) : (
+                            <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
+                              Vote in Progress
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
 
-              {filtered.length === 0 && (
+              {paginatedDisputes.length === 0 && !loading && (
                 <div className="py-8 text-center">
                   <p className="text-muted-foreground">
                     No disputes found matching your criteria.
@@ -942,6 +1044,81 @@ export default function Disputes() {
                 </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && allDisputes.length > 0 && (
+              <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
+                <div className="text-sm whitespace-nowrap text-cyan-300">
+                  Showing {startItem} to {endItem} of {allDisputes.length}{" "}
+                  disputes
+                </div>
+
+                <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
+                  {/* Previous Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="sr-only sm:not-sr-only sm:ml-1">
+                      Previous
+                    </span>
+                  </Button>
+
+                  {/* Page Numbers - Hide on very small screens, show on sm+ */}
+                  <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "neon" : "outline"}
+                          size="sm"
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`${
+                            currentPage === pageNum
+                              ? "neon-hover"
+                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Current Page Indicator (for very small screens) */}
+                  <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
+                    Page {currentPage} of {totalPages}
+                  </div>
+
+                  {/* Next Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
+                  >
+                    <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
