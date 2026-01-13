@@ -13,7 +13,7 @@ import { Link } from "react-router-dom";
 
 // Import our separated modules
 import TrustMeter from "../components/TrustMeter";
-import { UserAvatar } from "../components/UserAvatar"; // Import the UserAvatar component
+import { UserAvatar } from "../components/UserAvatar";
 import {
   useLeaderboard,
   useGlobalUpdates,
@@ -25,6 +25,37 @@ import {
   getEventTypeText,
   calculate30DayChange,
 } from "../lib/reputationHelpers";
+
+// Helper function to format username
+const formatUsername = (username: string): string => {
+  if (!username) return "Anonymous";
+
+  // Check if it's a wallet address (starts with 0x and has length)
+  if (username.startsWith("0x") && username.length >= 42) {
+    // Truncate wallet address: first 6 chars + ... + last 4 chars
+    return `${username.slice(0, 6)}...${username.slice(-4)}`;
+  }
+
+  // For regular usernames, remove @ if present at the beginning
+  const cleanUsername = username.startsWith("@") ? username.slice(1) : username;
+
+  // Return without @ prefix as requested
+  return cleanUsername;
+};
+
+// Helper function to get display name with @ for non-wallet usernames
+const getDisplayName = (username: string): string => {
+  if (!username) return "@Anonymous";
+
+  // Check if it's a wallet address
+  if (username.startsWith("0x") && username.length >= 42) {
+    // Return truncated without @
+    return formatUsername(username);
+  }
+
+  // For regular usernames, add @ if not already present
+  return username.startsWith("@") ? username : `@${username}`;
+};
 
 // Helper function to calculate total disputes
 const getTotalDisputes = (disputes: DisputesStats | undefined): number => {
@@ -238,9 +269,8 @@ export default function Reputation() {
                       );
                       const isSelected = selectedProfile?.id === user.id;
 
-                      const formattedUsername = user.username.startsWith("@")
-                        ? user.username
-                        : `@${user.username}`;
+                      const displayName = getDisplayName(user.username);
+                      const formattedUsername = formatUsername(user.username);
 
                       return (
                         <tr
@@ -260,15 +290,20 @@ export default function Reputation() {
                             <UserAvatar
                               userId={user.id.toString()}
                               avatarId={user.avatarId || null}
-                              username={user.username}
+                              username={formattedUsername}
                               size="md"
                             />
                             <Link
-                              to={`/profile/${user.username.replace("@", "")}`}
+                              to={`/profile/${formattedUsername.replace("@", "")}`}
                               className="text-white transition hover:text-cyan-500 hover:underline"
                               onClick={(e) => e.stopPropagation()}
+                              title={
+                                user.username.startsWith("0x")
+                                  ? user.username
+                                  : undefined
+                              }
                             >
-                              {formattedUsername}
+                              {displayName}
                             </Link>
                           </td>
                           <td className="px-5 py-4">
@@ -308,10 +343,7 @@ export default function Reputation() {
               <div className="flex items-center justify-between border-b border-white/10 p-5">
                 <h3 className="text-sm font-semibold text-white/90">
                   Reputation History for{" "}
-                  {selectedProfile.username.startsWith("@")
-                    ? selectedProfile.username
-                    : `@${selectedProfile.username}`}{" "}
-                  {/* Format here too */}
+                  {getDisplayName(selectedProfile.username)}
                 </h3>
                 <div className="text-muted-foreground text-xs">
                   Base Score: {selectedUserHistory.baseScore} | Final Score:{" "}
@@ -412,28 +444,40 @@ export default function Reputation() {
                   No recent updates
                 </div>
               ) : (
-                globalUpdates.map((update) => (
-                  <div key={update.id} className="flex items-start gap-2">
-                    {update.value >= 0 ? (
-                      <Award className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-                    ) : (
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                    )}
-                    <p>
-                      <span className="text-cyan-300">
-                        @{update.account.username}
-                      </span>
-                      {update.value >= 0 ? " earned " : " lost "}
-                      <span
-                        className={`font-semibold ${update.value >= 0 ? "text-emerald-400" : "text-rose-400"}`}
-                      >
-                        {update.value >= 0 ? `+${update.value}` : update.value}
-                      </span>
-                      {" reputation for "}
-                      {getEventTypeText(update.eventType).toLowerCase()}.
-                    </p>
-                  </div>
-                ))
+                globalUpdates.map((update) => {
+                  const displayName = getDisplayName(update.account.username);
+                  return (
+                    <div key={update.id} className="flex items-start gap-2">
+                      {update.value >= 0 ? (
+                        <Award className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                      )}
+                      <p>
+                        <span
+                          className="text-cyan-300"
+                          title={
+                            update.account.username.startsWith("0x")
+                              ? update.account.username
+                              : undefined
+                          }
+                        >
+                          {displayName}
+                        </span>
+                        {update.value >= 0 ? " earned " : " lost "}
+                        <span
+                          className={`font-semibold ${update.value >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+                        >
+                          {update.value >= 0
+                            ? `+${update.value}`
+                            : update.value}
+                        </span>
+                        {" reputation for "}
+                        {getEventTypeText(update.eventType).toLowerCase()}.
+                      </p>
+                    </div>
+                  );
+                })
               )}
             </div>
           </section>
@@ -442,19 +486,23 @@ export default function Reputation() {
           {selectedProfile ? (
             <>
               <div className="glass card-cyan flex items-center gap-4 p-6 ring-1 ring-white/10">
-                {/* Replaced dummy avatar in profile section */}
                 <UserAvatar
                   userId={selectedProfile.id.toString()}
                   avatarId={selectedProfile.avatarId || null}
-                  username={selectedProfile.username}
+                  username={formatUsername(selectedProfile.username)}
                   size="lg"
                 />
                 <div>
                   <div className="text-muted-foreground text-sm">Profile</div>
-                  <div className="font-semibold text-white/90">
-                    {selectedProfile.username.startsWith("@")
-                      ? selectedProfile.username
-                      : `@${selectedProfile.username}`}
+                  <div
+                    className="font-semibold text-white/90"
+                    title={
+                      selectedProfile.username.startsWith("0x")
+                        ? selectedProfile.username
+                        : undefined
+                    }
+                  >
+                    {getDisplayName(selectedProfile.username)}
                   </div>
                 </div>
               </div>

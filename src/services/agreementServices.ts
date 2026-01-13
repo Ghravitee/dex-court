@@ -710,13 +710,23 @@ class AgreementService {
   }
 
   // Update the rejectDelivery function to accept a claim parameter
-  async rejectDelivery(agreementId: number, claim?: string): Promise<void> {
+  // In agreementServices.ts - update the rejectDelivery function
+  async rejectDelivery(
+    agreementId: number,
+    claim?: string,
+    votingId?: string,
+  ): Promise<void> {
     try {
       const payload: any = {};
 
       // Only include claim if it's provided and not empty
       if (claim && claim.trim()) {
         payload.claim = claim.trim();
+      }
+
+      // Include votingId if provided
+      if (votingId) {
+        payload.votingId = votingId;
       }
 
       console.log("📤 Rejecting delivery with payload:", payload);

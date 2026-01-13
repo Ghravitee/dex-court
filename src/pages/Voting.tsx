@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { disputeService } from "../services/disputeServices";
-// import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { UserAvatar } from "../components/UserAvatar";
 import React from "react";
@@ -26,7 +25,6 @@ import {
   calculateVoteResults,
   type VoteCalculationResult,
 } from "../lib/voteCalculations";
-import { useAuth } from "../hooks/useAuth";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -61,7 +59,6 @@ const formatDisplayName = (address: string): string => {
     return slicedAddress;
   } else {
     // Remove any existing @ and add it back if not present
-
     return `@${slicedAddress}`;
   }
 };
@@ -264,12 +261,10 @@ const LiveCaseCard = ({
   c,
   currentTime,
   refetchLiveDisputes,
-  isJudge = false,
 }: {
   c: LiveCase;
   currentTime: number;
   refetchLiveDisputes: () => void;
-  isJudge?: boolean;
 }) => {
   const [choice, setChoice] = useState<
     "plaintiff" | "defendant" | "dismissed" | null
@@ -528,33 +523,21 @@ const LiveCaseCard = ({
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground text-sm">
-                      Comment{" "}
-                      {isJudge && <span className="text-xs">(max 1200)</span>}
+                      Comment <span className="text-xs">(max 1200)</span>
                     </span>
-                    {!isJudge && (
-                      <span className="text-muted-foreground text-xs">
-                        Only judges can comment
-                      </span>
-                    )}
                   </div>
 
                   <textarea
-                    disabled={!isJudge || isVoting}
+                    disabled={isVoting}
                     value={comment}
                     onChange={handleCommentChange}
                     className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
-                    placeholder={
-                      isJudge
-                        ? "Add your reasoning as a judge..."
-                        : "Comments are restricted to judges only"
-                    }
+                    placeholder="Add your reasoning..."
                   />
 
-                  {isJudge && (
-                    <div className="text-muted-foreground mt-1 text-right text-xs">
-                      {1200 - comment.length} characters left
-                    </div>
-                  )}
+                  <div className="text-muted-foreground mt-1 text-right text-xs">
+                    {1200 - comment.length} characters left
+                  </div>
                 </div>
               )}
 
@@ -874,9 +857,7 @@ const VotingSection = ({
 
 const CommentsSection = ({ comments }: { comments: any[] }) => (
   <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
-    <div className="mb-2 text-sm font-medium text-white/90">
-      Judges' Comments
-    </div>
+    <div className="mb-2 text-sm font-medium text-white/90">Comments</div>
     <div className="space-y-2 text-sm">
       {comments.map((comment: any, index: number) => (
         <div
@@ -940,16 +921,6 @@ export default function Voting() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"live" | "done">("live");
   const [currentTime, setCurrentTime] = useState(now()); // Single time source for all cards
-  const { user } = useAuth();
-
-  // Add these helper functions inside the Voting component (before the return statement)
-  const getUserRoleNumber = useCallback((): number => {
-    return user?.role || 1; // Default to Community (1) if no role
-  }, [user?.role]);
-
-  const isUserJudge = useCallback((): boolean => {
-    return getUserRoleNumber() === 2; // 2 = Judge
-  }, [getUserRoleNumber]);
 
   // Single interval for all cards - better performance
   useEffect(() => {
@@ -1154,7 +1125,6 @@ export default function Voting() {
           c={c}
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
-          isJudge={isUserJudge()}
         />
       ));
     } else {
@@ -1198,7 +1168,6 @@ export default function Voting() {
     concludedCases,
     currentTime,
     fetchLiveDisputes,
-    isUserJudge,
   ]);
 
   return (
