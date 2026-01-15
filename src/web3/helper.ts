@@ -1,7 +1,10 @@
+// src/web3/helper.ts
+
 import { useState, useEffect } from "react";
-import { DISPUTE_STATS_FALLBACK, LEADERBOARD_FALLBACK, VOTER_STATS_FALLBACK, VOTER_TIER_FALLBACK, VOTING_STATS_WITH_AVG_FALLBACK, type Agreement, type DisputeStats, type Leaderboard, type VoterReveal, type VoterStats, type VoterTier, type VOTING_CONFIG, type VotingStatsWithAvg } from "./interfaces";
+import { DISPUTE_STATS_FALLBACK, LEADERBOARD_FALLBACK, VOTER_STATS_FALLBACK, VOTER_TIER_FALLBACK, VOTING_STATS_WITH_AVG_FALLBACK, type Agreement, type BatchCreatorsResult, type DisputeStats, type Leaderboard, type VoterReveal, type VoterStats, type VoterTier, type VOTING_CONFIG, type VotingStatsWithAvg } from "./interfaces";
 import type { RawAgreementArray, RawVotingConfigArray } from "./tuples";
 import { ZERO_ADDRESS } from "./config";
+import { getAgreementExistOnchain } from "./readContract";
 
 export function useCountdown(targetTimestamp: bigint) {
   const [timeLeft, setTimeLeft] = useState<string>("");
@@ -52,7 +55,6 @@ export const normalizeAddress = (address: `0x${string}`): string => {
   if (!isValidAddress(address)) return address.toLowerCase(); // Return as is if not valid
   return address.toLowerCase();
 };
-
 
 // Format amount for display
 export const formatAmount = (amount: bigint, decimals?: number) => {
@@ -175,6 +177,9 @@ export function normalizeAgreement(res: unknown): Agreement {
       vesting: toBool(tuple[24]),
       deliverySubmited: toBool(tuple[25]),
       votingId: toBigInt(tuple[26]),
+      voteStartedAt: toBigInt(tuple[27]),
+      plaintiff: toAddress(tuple[28]),
+      defendant: toAddress(tuple[29]),
     };
   }
 
@@ -213,6 +218,9 @@ export function normalizeAgreement(res: unknown): Agreement {
     vesting: toBool(get("vesting", 24)),
     deliverySubmited: toBool(get("deliverySubmited", 25)),
     votingId: toBigInt(get("votingId", 26)),
+    voteStartedAt: toBigInt(get("voteStartedAt", 27)),
+    plaintiff: toAddress(get("plaintiff", 28)),
+    defendant: toAddress(get("defendant", 29)),
   };
 }
 
@@ -311,3 +319,56 @@ export const normalizeVoterReveal = (raw: unknown): VoterReveal => {
     timestamp: BigInt(raw[4] ?? 0),
   };
 };
+
+// Format date with time
+export const formatDateWithTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+// Format number with commas
+export const formatNumberWithCommas = (value: string | undefined): string => {
+  if (!value) return "";
+  const numericValue = value.replace(/,/g, "");
+  const parts = numericValue.split(".");
+  let wholePart = parts[0];
+  const decimalPart = parts[1] || "";
+
+  if (wholePart) {
+    wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
+};
+
+export async function checkMultipleAgreementsExist(
+  chainId: number,
+  agreementIds: bigint[]
+): Promise<BatchCreatorsResult> {
+  try {
+    const creators = await getAgreementExistOnchain(chainId, agreementIds);
+
+    // Map IDs to their creators
+    const results = agreementIds.map((id, index) => ({
+      id,
+      creator: creators[index] || ZERO_ADDRESS as `0x${string}`,
+      exists: creators[index] !== undefined && creators[index] !== ZERO_ADDRESS
+    }));
+
+    return results;
+  } catch (error) {
+    console.error('Error checking multiple agreements:', error);
+    // Return fallback results with all false
+    return agreementIds.map(id => ({
+      id,
+      creator: ZERO_ADDRESS as `0x${string}`,
+      exists: false
+    }));
+  }
+}

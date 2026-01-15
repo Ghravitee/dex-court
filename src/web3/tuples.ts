@@ -1,3 +1,4 @@
+// src/web3/tuples.ts
 export type RawVotingConfigArray = [
     tier1ThresholdPercent?: bigint | number | string,
     tier2ThresholdPercent?: bigint | number | string,
@@ -47,5 +48,12 @@ export type RawAgreementArray = [
     vesting?: boolean | number,
     deliverySubmited?: boolean | number,
     votingId?: bigint | number | string,
+    voteStartedAt?: bigint | number | string,
+    plaintiff?: string,
+    defendant?: string,
+];
+
+export type RawCreatorsArray = [
+    creator?: string,
 ];
 

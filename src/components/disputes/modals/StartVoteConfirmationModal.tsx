@@ -45,7 +45,7 @@ const StartVoteConfirmationModal = ({
                     <div className="flex items-center justify-between border-b border-green-400/30 bg-green-500/10 p-6">
                         <div className="flex items-center gap-3">
                             <Scale className="h-6 w-6 text-green-300" />
-                            <h3 className="text-xl font-semibold text-green-300">Settle Dispute</h3>
+                            <h3 className="text-xl font-semibold text-green-300">Start Vote</h3>
                         </div>
                         <Button
                             variant="ghost"
