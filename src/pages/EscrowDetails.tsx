@@ -53,7 +53,7 @@ import {
   getTokenSymbol,
 } from "../web3/readContract";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
-import { formatAmount } from "../web3/helper";
+import { formatAmount, formatDateWithTime, formatNumberWithCommas } from "../web3/helper";
 import {
   useAccount,
   useContractReads,
@@ -249,32 +249,6 @@ const getAvatarIdFromParty = (party: any): number | null => {
   return avatarId ? Number(avatarId) : null;
 };
 
-// Format date with time
-const formatDateWithTime = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-// Format number with commas
-const formatNumberWithCommas = (value: string | undefined): string => {
-  if (!value) return "";
-  const numericValue = value.replace(/,/g, "");
-  const parts = numericValue.split(".");
-  let wholePart = parts[0];
-  const decimalPart = parts[1] || "";
-
-  if (wholePart) {
-    wholePart = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  }
-
-  return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
-};
 
 // Format wallet address for display
 // Format wallet address for display

@@ -2,7 +2,7 @@
 import type { PublicClient, Abi } from "viem";
 import { getTransactionCount as viemGetTransactionCount } from "viem/actions";
 import { getClientForChain } from "../config/publicConfig";
-import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, VOTING_ABI, VOTING_CA } from "./config";
+import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, VOTING_ABI, VOTING_CA, ZERO_ADDRESS } from "./config";
 import { AGREEMENT_FALLBACK, DISPUTE_STATS_FALLBACK, LEADERBOARD_FALLBACK, VOTER_STATS_FALLBACK, VOTER_TIER_FALLBACK, VOTING_CONFIG_FALLBACK, VOTING_STATS_WITH_AVG_FALLBACK, type Agreement, type DisputeStats, type Leaderboard, type VoterReveal, type VoterStats, type VoterTier, type VOTING_CONFIG, type VotingStatsWithAvg } from "./interfaces";
 import { isZeroAddress, normalizeAgreement, normalizeDisputeStats, normalizeLeaderboard, normalizeVoterReveal, normalizeVoterStats, normalizeVoterTier, normalizeVotingConfig, normalizeVotingStatsWithAvg } from "./helper";
 
@@ -66,6 +66,53 @@ export const getAgreement = async (
     console.error(`getAgreement failed (chain=${chainId}, id=${agreementId}):`, err);
     // choose whether to rethrow or return fallback; here we rethrow for visibility
     throw err;
+  }
+};
+
+export const getAgreementExistOnchain = async (
+  chainId: number,
+  agreementIds: bigint[],
+): Promise<`0x${string}`[]> => {  // Changed return type
+  const publicClient: PublicClient = getClientForChain(chainId);
+  const contractAddr = ESCROW_CA[chainId];
+
+  if (!publicClient) {
+    throw new Error(`No public client configured for chain ${chainId}`);
+  }
+
+  if (!contractAddr || isZeroAddress(contractAddr)) {
+    return [];  // Return empty array instead of CREATORS_FALLBACK
+  }
+
+  if (agreementIds.length === 0) return [];
+
+  // Filter out any zero IDs if needed
+  const validIds = agreementIds.filter(id => id !== 0n);
+  if (validIds.length === 0) return [];
+
+  try {
+    // avoid 'any' by coercing ESCROW_ABI into viem's Abi type
+    type AbiLike = { abi?: Abi } | Abi;
+    const maybe = ESCROW_ABI as AbiLike;
+    const abi = (("abi" in (maybe as object) ? (maybe as { abi?: Abi }).abi : (maybe as Abi))) ?? (ESCROW_ABI as unknown as Abi);
+
+    const raw = await publicClient.readContract({
+      address: contractAddr,
+      abi,
+      functionName: "getCreatorsBatch",
+      args: [validIds],
+    });
+
+    // The contract returns an array of addresses
+    if (Array.isArray(raw)) {
+      return raw.map(addr => (addr as `0x${string}`) || ZERO_ADDRESS as `0x${string}`);
+    }
+
+    return [];
+  } catch (err) {
+    console.error(`getAgreementExistOnchain failed (chain=${chainId}, ids=${agreementIds}):`, err);
+    // Return empty array on error
+    return [];
   }
 };
 

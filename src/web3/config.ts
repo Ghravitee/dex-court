@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xFbF5bb45e01029d63E3E356aaDF69b3426998F27", // Sepolia address
+  11155111: "0xd5a51fD4c76eb55934A5612799a2Fbc4b80f82c9", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xF29A308edd2BcF4fe3b4f29B8770f15f8F9d25b4", // Sepolia address
+  11155111: "0xA391BbD957fe8bE87F3408d769A447938194953F", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -390,6 +390,40 @@ export const ESCROW_ABI = {
           "name": "votingId",
           "type": "uint256",
           "internalType": "uint256"
+        },
+        {
+          "name": "voteStartedAt",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "plaintiff",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "defendant",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getCreatorsBatch",
+      "inputs": [
+        {
+          "name": "ids",
+          "type": "uint256[]",
+          "internalType": "uint256[]"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address[]",
+          "internalType": "address[]"
         }
       ],
       "stateMutability": "view"
@@ -2366,25 +2400,6 @@ export const VOTING_ABI = {
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "JudgeUpdated",
-      "inputs": [
-        {
-          "name": "judge",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "status",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
         }
       ],
       "anonymous": false

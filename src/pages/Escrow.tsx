@@ -511,6 +511,8 @@ export default function Escrow() {
         type: AgreementTypeEnum.ESCROW,
       });
 
+      console.log("📄 Fetched escrow agreements response:", escrowAgreementsResponse);
+
       const escrowAgreementsList = escrowAgreementsResponse.results || [];
 
       if (
@@ -1793,13 +1795,12 @@ Chain ID: ${networkInfo.chainId}
           <div>
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                  isError
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${isError
                     ? "bg-red-500/10"
                     : isSuccess
                       ? "bg-emerald-500/10"
                       : "bg-cyan-500/10"
-                }`}
+                  }`}
               >
                 {isError ? (
                   <AlertCircle className="h-5 w-5 text-red-400" />
@@ -1862,37 +1863,34 @@ Chain ID: ${networkInfo.chainId}
               return (
                 <div key={step.id} className="relative">
                   <div
-                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${
-                      isCompleted
+                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${isCompleted
                         ? "border-emerald-500/30 bg-emerald-500/5"
                         : isCurrent
                           ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
                           : isPending
                             ? "border-white/10 bg-white/5"
                             : "border-white/10 bg-white/5"
-                    }`}
+                      }`}
                   >
                     {/* Step Indicator */}
                     <div
-                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
-                        isCompleted
+                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${isCompleted
                           ? "border-emerald-500 bg-emerald-500/20"
                           : isCurrent
                             ? "border-cyan-500 bg-cyan-500/20"
                             : "border-white/20 bg-white/10"
-                      }`}
+                        }`}
                     >
                       {isCompleted ? (
                         <Check className="h-5 w-5 text-emerald-400" />
                       ) : (
                         <StepIcon
-                          className={`h-5 w-5 ${
-                            isCurrent
+                          className={`h-5 w-5 ${isCurrent
                               ? "text-cyan-400"
                               : isPending
                                 ? "text-gray-400"
                                 : "text-gray-500"
-                          }`}
+                            }`}
                         />
                       )}
                     </div>
@@ -1900,13 +1898,12 @@ Chain ID: ${networkInfo.chainId}
                     {/* Step Label */}
                     <div className="text-center">
                       <div
-                        className={`text-xs font-semibold ${
-                          isCompleted
+                        className={`text-xs font-semibold ${isCompleted
                             ? "text-emerald-300"
                             : isCurrent
                               ? "text-cyan-300"
                               : "text-gray-400"
-                        }`}
+                          }`}
                       >
                         {step.label}
                       </div>
@@ -1917,13 +1914,12 @@ Chain ID: ${networkInfo.chainId}
 
                     {/* Step Number */}
                     <div
-                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                        isCompleted
+                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isCompleted
                           ? "bg-emerald-500 text-white"
                           : isCurrent
                             ? "bg-cyan-500 text-white"
                             : "bg-white/10 text-gray-400"
-                      }`}
+                        }`}
                     >
                       {index + 1}
                     </div>
@@ -1938,13 +1934,12 @@ Chain ID: ${networkInfo.chainId}
         <div className="rounded-xl border border-white/10 bg-gradient-to-r from-white/5 to-transparent p-5">
           <div className="flex items-start gap-4">
             <div
-              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${
-                isError
+              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${isError
                   ? "bg-red-500/10"
                   : isSuccess
                     ? "bg-emerald-500/10"
                     : "bg-cyan-500/10"
-              }`}
+                }`}
             >
               {isError ? (
                 <AlertTriangle className="h-6 w-6 text-red-400" />
@@ -2260,11 +2255,10 @@ Chain ID: ${networkInfo.chainId}
                         <button
                           type="button"
                           onClick={() => setEscrowType("myself")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "myself"
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
                               ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
                               : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                            }`}
                         >
                           <User className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2277,11 +2271,10 @@ Chain ID: ${networkInfo.chainId}
                         <button
                           type="button"
                           onClick={() => setEscrowType("others")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "others"
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
                               ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
                               : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                            }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2370,13 +2363,12 @@ Chain ID: ${networkInfo.chainId}
                           <span>
                             {form.type
                               ? typeOptions.find((t) => t.value === form.type)
-                                  ?.label
+                                ?.label
                               : "Select Type"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTypeOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTypeOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTypeOpen && (
@@ -2424,11 +2416,10 @@ Chain ID: ${networkInfo.chainId}
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payer === p
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
                                     ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
                                     : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -2468,11 +2459,10 @@ Chain ID: ${networkInfo.chainId}
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payerOther === p
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
                                     ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
                                     : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -2579,13 +2569,12 @@ Chain ID: ${networkInfo.chainId}
                           <span>
                             {form.token
                               ? tokenOptions.find((t) => t.value === form.token)
-                                  ?.label
+                                ?.label
                               : "Select Token"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTokenOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTokenOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTokenOpen && (
@@ -2665,10 +2654,10 @@ Chain ID: ${networkInfo.chainId}
                         {(!form.amount.trim() ||
                           isNaN(Number(form.amount)) ||
                           Number(form.amount) <= 0) && (
-                          <div className="mt-1 text-xs text-red-400">
-                            Please enter a valid amount
-                          </div>
-                        )}
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter a valid amount
+                            </div>
+                          )}
                       </div>
                     </div>
 
@@ -2701,11 +2690,10 @@ Chain ID: ${networkInfo.chainId}
                       </label>
 
                       <div
-                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                          isDragOver
+                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
                             ? "border-cyan-400/60 bg-cyan-500/20"
                             : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                        }`}
+                          }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -2837,7 +2825,7 @@ Chain ID: ${networkInfo.chainId}
                         Deadline <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
-                        <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                        <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />   
                         <ReactDatePicker
                           selected={deadline}
                           onChange={(date) => setDeadline(date)}
@@ -3038,19 +3026,17 @@ Chain ID: ${networkInfo.chainId}
                 <button
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
-                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
-                    statusTab === tab.value
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
                       ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
                       : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                  } `}
+                    } `}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                      statusTab === tab.value
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
                         ? "bg-cyan-400/30 text-cyan-200"
                         : "bg-white/10 text-white/60"
-                    } `}
+                      } `}
                   >
                     {tab.count}
                   </span>
@@ -3159,8 +3145,7 @@ Chain ID: ${networkInfo.chainId}
                           <div className="flex flex-col gap-1">
                             <div>
                               <span
-                                className={`badge w-fit ${
-                                  e.status === "pending"
+                                className={`badge w-fit ${e.status === "pending"
                                     ? "badge-yellow"
                                     : e.status === "signed"
                                       ? "badge-blue"
@@ -3175,12 +3160,12 @@ Chain ID: ${networkInfo.chainId}
                                               : e.status === "expired"
                                                 ? "badge-gray"
                                                 : "badge-orange"
-                                }`}
+                                  }`}
                               >
                                 {e.status === "pending_approval"
                                   ? "Pending Approval"
                                   : e.status.charAt(0).toUpperCase() +
-                                    e.status.slice(1)}
+                                  e.status.slice(1)}
                               </span>
                             </div>
                           </div>
@@ -3263,11 +3248,10 @@ Chain ID: ${networkInfo.chainId}
                           variant={currentPage === pageNum ? "neon" : "outline"}
                           size="sm"
                           onClick={() => handlePageChange(pageNum)}
-                          className={`${
-                            currentPage === pageNum
+                          className={`${currentPage === pageNum
                               ? "neon-hover"
                               : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                            } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                         >
                           {pageNum}
                         </Button>

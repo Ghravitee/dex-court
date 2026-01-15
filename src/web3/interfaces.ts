@@ -1,3 +1,5 @@
+// src/web3/interfaces.ts
+
 import { ZERO_ADDRESS } from "./config";
 
 /**
@@ -31,6 +33,9 @@ export interface Agreement {
   vesting: boolean;
   deliverySubmited: boolean;
   votingId: bigint;
+  voteStartedAt: bigint;
+  plaintiff: `0x${string}`;
+  defendant: `0x${string}`;
 }
 
 export const AGREEMENT_FALLBACK: Agreement = {
@@ -61,7 +66,19 @@ export const AGREEMENT_FALLBACK: Agreement = {
   vesting: false,
   deliverySubmited: false,
   votingId: 0n,
+  voteStartedAt: 0n,
+  plaintiff: ZERO_ADDRESS as `0x${string}`,
+  defendant: ZERO_ADDRESS as `0x${string}`,
 };
+
+// Add a type for batch creators result
+export type BatchCreatorsResult = {
+  id: bigint;
+  creator: `0x${string}`;
+  exists: boolean;
+}[];
+
+export const BATCH_CREATORS_FALLBACK: BatchCreatorsResult = [];
 
 export interface MilestoneData {
   percentBP: bigint;
@@ -98,6 +115,7 @@ export interface VOTING_CONFIG {
   judgeWeight: bigint;
   votingDuration: bigint;
 }
+
 export const VOTING_CONFIG_FALLBACK: VOTING_CONFIG = {
   tier1ThresholdPercent: 0n,
   tier2ThresholdPercent: 0n,
@@ -161,6 +179,7 @@ export interface VoterReveal {
   weight: bigint;
   timestamp: bigint;
 }
+
 export const VOTING_STATS_WITH_AVG_FALLBACK: VotingStatsWithAvg = {
   disputesOpened: 0n,
   votesCast: 0n,
@@ -206,3 +225,4 @@ export const DISPUTE_STATS_FALLBACK: DisputeStats = {
   weightedDefendant: 0n,
   weightedDismiss: 0n,
 };
+
