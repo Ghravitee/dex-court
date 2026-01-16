@@ -59,7 +59,8 @@ import {
   useContractReads,
   useWaitForTransactionReceipt,
   useWriteContract,
-  useSwitchChain
+  useSwitchChain,
+  useChainId,
 } from "wagmi";
 import type { LoadingStates, MilestoneData } from "../web3/interfaces";
 import { MilestoneTableRow } from "../web3/MilestoneTableRow";
@@ -562,6 +563,7 @@ export default function EscrowDetails() {
   const { address } = useAccount();
   const { user } = useAuth();
   const { switchChain } = useSwitchChain();
+  const wagmiChainId = useChainId();
   const [escrow, setEscrow] = useState<EscrowDetailsData | null>(null);
   // const [loading, setLoading] = useState(true);
   // const [showEscrowAddress, setShowEscrowAddress] = useState(false);
@@ -1766,7 +1768,7 @@ export default function EscrowDetails() {
   }, [approvalError, resetApproval]);
 
   useEffect(() => {
-    if (user?.walletAddress) {
+    if (user?.walletAddress && wagmiChainId !== networkInfo.chainId) {
       toast.info(`Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`);
       switchToTokenChain();
     }

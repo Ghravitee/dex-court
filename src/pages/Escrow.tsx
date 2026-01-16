@@ -45,7 +45,8 @@ import {
   useReadContract,
   useWaitForTransactionReceipt,
   useContractReads,
-  useSwitchChain
+  useSwitchChain,
+  useChainId
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
@@ -429,6 +430,7 @@ export default function Escrow() {
   const { address, isConnected } = useAccount();
   const { user: currentUser } = useAuth();
   const { switchChain } = useSwitchChain();
+  const wagmiChainId = useChainId();
   const networkInfo = useNetworkEnvironment();
 
   // Add this state near the top of the component, with other state declarations
@@ -1727,7 +1729,7 @@ Chain ID: ${networkInfo.chainId}
   };
 
   useEffect(() => {
-    if (currentUser?.walletAddress && isConnected) {
+    if (currentUser?.walletAddress && isConnected && wagmiChainId !== networkInfo.chainId) {
       toast.info(`Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`);
       switchToTokenChain();
     }
