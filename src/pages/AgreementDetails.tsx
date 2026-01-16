@@ -138,6 +138,23 @@ const formatCreatorUsername = (username: string | undefined): string => {
   return cleanUsername;
 };
 
+// Helper function to format wallet addresses consistently
+const formatWalletAddress = (address: string | undefined): string => {
+  if (!address) return "Unknown";
+
+  // Remove @ symbol if present
+  const cleanAddress = address.startsWith("@") ? address.slice(1) : address;
+
+  // Check if it's a wallet address (starts with 0x and is hex)
+  if (cleanAddress.startsWith("0x") && cleanAddress.length === 42) {
+    // Slice the wallet address: first 5 chars + "..." + last 4 chars
+    return `${cleanAddress.slice(0, 6)}...${cleanAddress.slice(-4)}`;
+  }
+
+  // Return as-is
+  return cleanAddress;
+};
+
 // Add this function to generate a voting ID
 const generateVotingId = (): string => {
   // Generate a random 6-digit number between 100000 and 999999
@@ -865,7 +882,10 @@ const RejectDeliveryModal = ({
               </p>
               <ul className="mt-1 space-y-1 text-xs text-red-200/80 sm:mt-2">
                 <li>• Immediately create a dispute</li>
-                <li>• Require dispute resolution through voting</li>
+                <li>
+                  • Require dispute resolution through voting or manually
+                  settling the dispute by you.
+                </li>
                 <li>• You can add more evidence on the dispute page later</li>
               </ul>
             </div>
@@ -2404,7 +2424,12 @@ export default function AgreementDetails() {
                                         }}
                                         className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
                                       >
-                                        {disputeInfo.filedBy}
+                                        {/* APPLY THE SLICING HERE */}
+                                        {disputeInfo.filedBy.startsWith("0x")
+                                          ? formatWalletAddress(
+                                              disputeInfo.filedBy,
+                                            )
+                                          : disputeInfo.filedBy}
                                       </button>
                                       {user &&
                                         disputeInfo.filedBy &&
@@ -2846,7 +2871,11 @@ export default function AgreementDetails() {
                           }}
                           className="text-xs text-violet-300/70 hover:text-violet-200 hover:underline"
                         >
-                          by {disputeInfo.filedBy}
+                          {/* APPLY THE SLICING HERE */}
+                          by{" "}
+                          {disputeInfo.filedBy.startsWith("0x")
+                            ? formatWalletAddress(disputeInfo.filedBy)
+                            : disputeInfo.filedBy}
                         </button>
                         {user &&
                           disputeInfo.filedBy &&

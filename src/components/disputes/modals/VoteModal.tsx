@@ -1,9 +1,9 @@
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
-import {
-  cleanTelegramUsername,
-  formatTelegramUsernameForDisplay,
-} from "../../../lib/usernameUtils";
+// import {
+//   cleanTelegramUsername,
+//   formatTelegramUsernameForDisplay,
+// } from "../../../lib/usernameUtils";
 import { Info, Scale, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback } from "react";
@@ -22,13 +22,80 @@ interface VoteModalProps {
   ) => void;
   onCastVote: () => void;
   hasVoted: boolean;
-  isSubmitting: boolean; // Add this line
+  isSubmitting: boolean;
   dispute: DisputeRow | null;
   canUserVote: () => Promise<{ canVote: boolean; reason?: string }>;
   isCurrentUserPlaintiff: () => boolean;
   isCurrentUserDefendant: () => boolean;
   isJudge?: boolean;
 }
+
+// usernameUtils.ts
+const isWalletAddress = (username: string): boolean => {
+  if (!username) return false;
+
+  const clean = username.replace(/^@/, "");
+
+  // Ethereum addresses (0x + 40 hex chars)
+  if (/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+    return true;
+  }
+
+  // Solana addresses (32-44 base58 chars)
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean)) {
+    return true;
+  }
+
+  // Arbitrary long strings (could be other EVM chains)
+  if (clean.length >= 32 && clean.length <= 64) {
+    return true;
+  }
+
+  return false;
+};
+
+const formatWalletAddress = (address: string): string => {
+  if (!address) return "";
+
+  // Remove @ symbol if present
+  const cleanAddress = address.replace(/^@/, "");
+
+  // If it's short enough, return as is
+  if (cleanAddress.length <= 16) return cleanAddress;
+
+  // Show first 6 and last 4 characters for typical wallet addresses
+  const start = cleanAddress.slice(0, 6);
+  const end = cleanAddress.slice(-4);
+  return `${start}...${end}`;
+};
+
+const cleanTelegramUsername = (username: string): string => {
+  if (!username) return "";
+
+  // Remove @ symbol
+  const clean = username.replace(/^@/, "");
+
+  // If it's a wallet address, return the full address without @
+  if (isWalletAddress(clean)) {
+    return clean;
+  }
+
+  return clean;
+};
+
+const formatTelegramUsernameForDisplay = (username: string): string => {
+  if (!username) return "";
+
+  const clean = cleanTelegramUsername(username);
+
+  // If it's a wallet address, format it with ellipsis
+  if (isWalletAddress(clean)) {
+    return formatWalletAddress(clean);
+  }
+
+  // For Telegram usernames, keep as is
+  return clean;
+};
 
 // New VoteOption component matching the voting page style
 const VoteOption = ({
@@ -101,7 +168,7 @@ export const VoteModal = ({
   onVoteChange,
   onCastVote,
   hasVoted,
-  isSubmitting, // Add this parameter
+  isSubmitting,
   dispute,
   canUserVote,
   isCurrentUserPlaintiff,
@@ -137,7 +204,6 @@ export const VoteModal = ({
       await onCastVote();
     } catch (error) {
       console.error("Failed to cast vote:", error);
-      // Error handling is now done in the parent component
     }
   }, [voteData.choice, dispute, onCastVote]);
 
@@ -268,7 +334,7 @@ export const VoteModal = ({
                     </div>
                   </div>
                 </div>
-                {/* Voting Options - Updated to match voting page */}
+                {/* Voting Options */}
                 <div>
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     Who is your vote for?
@@ -389,7 +455,6 @@ export const VoteModal = ({
                   </div>
                 </div>
                 {/* Comment Section */}
-
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground text-sm">
