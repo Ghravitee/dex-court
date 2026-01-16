@@ -1,5 +1,5 @@
 // Updated useNetworkEnvironment hook
-import { useAccount, useChainId } from "wagmi";
+// import { useAccount, useChainId } from "wagmi";
 import { ALL_CHAINS } from "./config";
 import { useMemo } from "react";
 
@@ -8,13 +8,13 @@ const DEFAULT_MAINNET_CHAIN_ID = 1;
 const DEFAULT_TESTNET_CHAIN_ID = 11155111;
 
 export const useNetworkEnvironment = () => {
-  const { isConnected } = useAccount();
-  const wagmiChainId = useChainId();
+  // const { isConnected } = useAccount();
+  // const wagmiChainId = useChainId();
   const isClient = typeof window !== "undefined";
 
   // Determine effective chain ID
   const effectiveChainId = useMemo(() => {
-    if (isConnected) return wagmiChainId;
+    // if (isConnected) return wagmiChainId;
 
     if (!isClient) return DEFAULT_TESTNET_CHAIN_ID;
 
@@ -33,7 +33,8 @@ export const useNetworkEnvironment = () => {
 
     // Default to testnet for dev/localhost
     return DEFAULT_TESTNET_CHAIN_ID;
-  }, [isConnected, wagmiChainId, isClient]);
+    // }, [isConnected, wagmiChainId, isClient]);
+  }, [isClient]);
 
   return useMemo(() => {
     const chain =
