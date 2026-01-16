@@ -4,11 +4,18 @@ import { UserAvatar } from "../../../components/UserAvatar";
 //   cleanTelegramUsername,
 //   formatTelegramUsernameForDisplay,
 // } from "../../../lib/usernameUtils";
-import { Info, Scale, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import {
+  Info,
+  MinusCircle,
+  Scale,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback } from "react";
 import { VscVerifiedFilled } from "react-icons/vsc";
-import { useNavigate } from "react-router-dom";
+
 import type { VoteData, DisputeRow } from "../../../types";
 import { Loader2 } from "lucide-react";
 
@@ -88,16 +95,17 @@ const formatTelegramUsernameForDisplay = (username: string): string => {
 
   const clean = cleanTelegramUsername(username);
 
-  // If it's a wallet address, format it with ellipsis
+  // If it's a wallet address, format it with ellipsis (no @ symbol)
   if (isWalletAddress(clean)) {
     return formatWalletAddress(clean);
   }
 
-  // For Telegram usernames, keep as is
-  return clean;
+  // For Telegram usernames, add @ symbol
+  // Check if it already has @, if not add it
+  return clean.startsWith("@") ? clean : `@${clean}`;
 };
 
-// New VoteOption component matching the voting page style
+// Updated VoteOption component with clear role labels
 const VoteOption = ({
   label,
   active,
@@ -126,33 +134,54 @@ const VoteOption = ({
     choice !== "dismissed" &&
     optionType !== "dismissed";
 
+  // Get role-specific styling
+  const roleColor =
+    optionType === "plaintiff"
+      ? "text-cyan-300"
+      : optionType === "defendant"
+        ? "text-pink-300"
+        : "text-yellow-300";
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${
+      className={`flex items-center justify-start gap-3 rounded-lg border px-4 py-4 text-left transition-all ${
         disabled
           ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50"
           : active
-            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/40 active:scale-[0.98]"
-            : "border-white/10 bg-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/20 active:scale-[0.98]"
+            ? "border-cyan-400/40 bg-cyan-500/30"
+            : "border-white/10 bg-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/20"
       }`}
     >
-      {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
-      {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
+      <div className="flex items-center">
+        {showThumbsUp && <ThumbsUp className="mr-2 h-4 w-4" />}
+        {showThumbsDown && <ThumbsDown className="mr-2 h-4 w-4" />}
+      </div>
+
       {typeof label === "string" ? (
         username && avatarId && userId ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <UserAvatar
               userId={userId}
               avatarId={avatarId}
               username={username}
               size="sm"
             />
-            <span>{label}</span>
+            <div>
+              <div className={`text-sm font-semibold ${roleColor}`}>
+                {optionType === "dismissed" ? "Dismiss Case" : optionType}
+              </div>
+              <div className="text-xs text-white/80">{label}</div>
+            </div>
           </div>
         ) : (
-          label
+          <div>
+            <div className={`text-sm font-semibold ${roleColor}`}>
+              {optionType === "dismissed" ? "Dismiss Case" : optionType}
+            </div>
+            <div className="text-xs text-white/80">{label}</div>
+          </div>
         )
       ) : (
         label
@@ -175,8 +204,6 @@ export const VoteModal = ({
   isCurrentUserDefendant,
   isJudge = true,
 }: VoteModalProps) => {
-  const navigate = useNavigate();
-
   const handleModalClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
@@ -222,7 +249,7 @@ export const VoteModal = ({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="glass card-cyan relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl"
+          className="glass card-cyan relative max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl sm:max-h-[90vh]"
           onClick={handleModalClick}
         >
           {/* Header */}
@@ -335,11 +362,13 @@ export const VoteModal = ({
                   </div>
                 </div>
                 {/* Voting Options */}
+                {/* Voting Options */}
                 <div>
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     Who is your vote for?
                   </h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {/* Plaintiff Option */}
                     <VoteOption
                       label={
                         <div className="flex items-center gap-2">
@@ -354,25 +383,14 @@ export const VoteModal = ({
                             )}
                             size="sm"
                           />
-                          <div className="text-left">
-                            <div>Plaintiff</div>
-                            <div className="flex items-center gap-1">
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const cleanUsername = cleanTelegramUsername(
-                                    dispute?.plaintiff || "",
-                                  );
-                                  const encodedUsername =
-                                    encodeURIComponent(cleanUsername);
-                                  navigate(`/profile/${encodedUsername}`);
-                                }}
-                                className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline"
-                              >
-                                {formatTelegramUsernameForDisplay(
-                                  dispute?.plaintiff || "",
-                                )}
-                              </span>
+                          <div>
+                            <div className="text-xs text-cyan-300">
+                              {formatTelegramUsernameForDisplay(
+                                dispute?.plaintiff || "",
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-cyan-200/70">
+                              Plaintiff
                               {isCurrentUserPlaintiff() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
                               )}
@@ -392,6 +410,8 @@ export const VoteModal = ({
                         cleanTelegramUsername(dispute?.plaintiff || "")
                       }
                     />
+
+                    {/* Defendant Option */}
                     <VoteOption
                       label={
                         <div className="flex items-center gap-2">
@@ -406,25 +426,14 @@ export const VoteModal = ({
                             )}
                             size="sm"
                           />
-                          <div className="text-left">
-                            <div>Defendant</div>
-                            <div className="flex items-center gap-1">
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const cleanUsername = cleanTelegramUsername(
-                                    dispute?.defendant || "",
-                                  );
-                                  const encodedUsername =
-                                    encodeURIComponent(cleanUsername);
-                                  navigate(`/profile/${encodedUsername}`);
-                                }}
-                                className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline"
-                              >
-                                {formatTelegramUsernameForDisplay(
-                                  dispute?.defendant || "",
-                                )}
-                              </span>
+                          <div>
+                            <div className="text-xs text-pink-300">
+                              {formatTelegramUsernameForDisplay(
+                                dispute?.defendant || "",
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-pink-200/70">
+                              Defendant
                               {isCurrentUserDefendant() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
                               )}
@@ -444,8 +453,26 @@ export const VoteModal = ({
                         cleanTelegramUsername(dispute?.defendant || "")
                       }
                     />
+
+                    {/* Dismiss Option */}
                     <VoteOption
-                      label="Dismiss Case"
+                      label={
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500/20">
+                            <span className="text-xl">
+                              <MinusCircle className="text-orange-400" />
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-xs text-yellow-300">
+                              No Winner
+                            </div>
+                            <div className="text-xs text-yellow-200/70">
+                              Case dismissed
+                            </div>
+                          </div>
+                        </div>
+                      }
                       active={voteData.choice === "dismissed"}
                       onClick={() => handleVoteChoice("dismissed")}
                       choice={voteData.choice}

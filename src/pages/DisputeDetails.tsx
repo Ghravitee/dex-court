@@ -237,30 +237,61 @@ const VotingStatus = ({
     );
   }
 
+  // In the VotingStatus component, update the logic:
+
   // If vote hasn't been started yet, show waiting message
   if (!isVoteStarted) {
-    return (
-      <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-            <Clock className="h-6 w-6 text-amber-300" />
-          </div>
-          <div>
-            <h3 className="mb-1 text-lg font-bold text-amber-300">
-              Waiting for Voting to Begin
-            </h3>
-            <p className="text-sm text-amber-200">
-              The voting phase hasn't been initiated yet. Click "Start Vote" to
-              begin the voting process.
-            </p>
-            <p className="mt-2 text-xs text-amber-300/70">
-              Anyone can start the voting phase by clicking the Start Vote
-              button.
-            </p>
+    // Only show this for escrow disputes
+    if (dispute.agreement?.type === 2) {
+      return (
+        <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+              <Clock className="h-6 w-6 text-amber-300" />
+            </div>
+            <div>
+              <h3 className="mb-1 text-lg font-bold text-amber-300">
+                Waiting for Voting to Begin
+              </h3>
+              <p className="text-sm text-amber-200">
+                The voting phase hasn't been initiated yet. Click "Start Vote"
+                to begin the voting process.
+              </p>
+              <p className="mt-2 text-xs text-amber-300/70">
+                Anyone can start the voting phase by clicking the Start Vote
+                button.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    // For reputational disputes that are in "Vote in Progress" but isVoteStarted is false
+    // (this shouldn't happen, but just in case)
+    if (dispute.agreement?.type === 1) {
+      return (
+        <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+              <AlertTriangle className="h-6 w-6 text-amber-300" />
+            </div>
+            <div>
+              <h3 className="mb-1 text-lg font-bold text-amber-300">
+                Voting Status Issue
+              </h3>
+              <p className="text-sm text-amber-200">
+                This reputational dispute is marked as "Vote in Progress" but
+                voting hasn't been properly initiated.
+              </p>
+              <p className="mt-2 text-xs text-amber-300/70">
+                Please contact support if you believe this is an error.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
   }
 
   // User has voted - Consistent with Voting page
@@ -332,7 +363,7 @@ const VotingStatus = ({
 
   // User cannot vote (but not because they're a party)
   return (
-    <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
+    <div className="animate-fade-in card-amber mx-auto rounded-2xl p-6">
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
           <Shield className="h-6 w-6 text-amber-300" />
@@ -386,26 +417,25 @@ export default function DisputeDetails() {
   const [pendingTransactionType, setPendingTransactionType] = useState<
     "settle" | "startVote" | null
   >(null);
+  const [voteStarted, setVoteStarted] = useState(false);
 
   // Add this helper function to check if vote has been started
-  // Add this helper function to check if vote has been started
+
   const isVoteStarted = useCallback(() => {
     if (!dispute) return false;
 
-    // Check if voteStartedAt exists and is not null/empty
-    // Also check if it's a valid date string
-    return (
-      !!dispute.voteStartedAt &&
-      dispute.voteStartedAt !== null &&
-      dispute.voteStartedAt !== ""
-    );
-  }, [dispute]);
+    // For reputational disputes (type 1), check if voteStartedAt exists OR status is "Vote in Progress"
+    if (dispute.agreement?.type === 1) {
+      return dispute.status === "Vote in Progress";
+    }
 
-  // Also check if vote is pending (votePendingAt exists)
-  // const isVotePending = useCallback(() => {
-  //   if (!dispute) return false;
-  //   return dispute.votePendingAt && dispute.votePendingAt !== null;
-  // }, [dispute]);
+    // For escrow disputes (type 2), check voteStarted state
+    if (dispute.agreement?.type === 2) {
+      return voteStarted;
+    }
+
+    return false;
+  }, [dispute, voteStarted]);
 
   // Voting state
   const [voteData, setVoteData] = useState<VoteData>({
@@ -944,8 +974,8 @@ export default function DisputeDetails() {
 
         setStartVoteModalOpen(false);
 
-        // Don't set voteStarted state here - wait for transaction confirmation
-        // The transaction success handler will refresh the data
+        // Set vote as started immediately (UI feedback)
+        setVoteStarted(true);
       } catch (error: unknown) {
         console.error("Error starting vote:", error);
         toast.error("Failed to start vote", {
@@ -973,10 +1003,13 @@ export default function DisputeDetails() {
         // Close the start vote confirmation modal
         setStartVoteModalOpen(false);
 
+        // Set vote as started
+        setVoteStarted(true);
+
         // Show success toast
         toast.success("Voting can now begin! 🗳️", {
           description:
-            "The voting phase has been initiated. Community members can now cast their votes.",
+            "The voting phase has been initiated. Community members with the $LAW token can now cast their votes.",
         });
 
         // Refresh dispute data
@@ -1149,6 +1182,9 @@ export default function DisputeDetails() {
             "The voting phase has been initiated. Community members can now cast their votes.",
         });
 
+        // Set vote as started
+        setVoteStarted(true);
+
         // Refresh dispute data
         setTimeout(async () => {
           try {
@@ -1226,11 +1262,11 @@ export default function DisputeDetails() {
       <div className="flex flex-col justify-between gap-2 sm:flex-row">
         {/* Back Button */}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             onClick={() => navigate("/disputes")}
             variant="outline"
-            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+            className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           >
             <ArrowLeft className="h-4 w-4" />{" "}
             <p className="flex items-center gap-1">
@@ -1238,39 +1274,40 @@ export default function DisputeDetails() {
             </p>
           </Button>
 
-          {/* Role Badge */}
-          {isUserJudge() && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
-              <Gavel className="h-3 w-3" />
-              Judge
-            </span>
-          )}
-          {isUserCommunity() && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
-              <Users className="h-3 w-3" />
-              <p className="block">Community</p>
-            </span>
-          )}
-
-          {/* Status Badge */}
-          <div>
-            {dispute.status === "Settled" ? (
-              <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                Settled
-              </span>
-            ) : dispute.status === "Pending" ? (
-              <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                Pending
-              </span>
-            ) : dispute.status === "Dismissed" ? (
-              <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                Dismissed
-              </span>
-            ) : (
-              <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
-                Vote in Progress
+          <div className="flex flex-wrap gap-3">
+            {/* Role Badge */}
+            {isUserJudge() && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
+                <Gavel className="h-3 w-3" />
+                Judge
               </span>
             )}
+            {isUserCommunity() && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
+                <Users className="h-3 w-3" />
+                <p className="block">Community</p>
+              </span>
+            )}
+            {/* Status Badge */}
+            <div>
+              {dispute.status === "Settled" ? (
+                <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                  Settled
+                </span>
+              ) : dispute.status === "Pending" ? (
+                <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                  Pending
+                </span>
+              ) : dispute.status === "Dismissed" ? (
+                <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                  Dismissed
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
+                  Vote in Progress
+                </span>
+              )}
+            </div>
           </div>
         </div>
         {/* Right Side Actions */}
@@ -1304,22 +1341,66 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-          {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
-          {dispute.status === "Vote in Progress" &&
-            isVoteStarted() && // Use the helper function
-            canVote &&
-            !hasVoted &&
-            !isCurrentUserPlaintiff() &&
-            !isCurrentUserDefendant() && (
-              <Button
-                variant="neon"
-                className="neon-hover ml-auto"
-                onClick={handleOpenVoteModal}
-              >
-                <Vote className="mr-2 h-4 w-4" />
-                Cast {isUserJudge() ? "Judge" : "Community"} Vote
-              </Button>
-            )}
+          <div className="flex flex-wrap gap-3">
+            {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
+
+            {dispute.status === "Vote in Progress" &&
+              (dispute.agreement?.type === 1 || // Reputational: always show if status is Vote in Progress
+                (dispute.agreement?.type === 2 && isVoteStarted())) && // Escrow: only show if vote started
+              canVote &&
+              !hasVoted &&
+              !isCurrentUserPlaintiff() &&
+              !isCurrentUserDefendant() && (
+                <Button
+                  variant="neon"
+                  className="neon-hover ml-auto"
+                  onClick={handleOpenVoteModal}
+                >
+                  <Vote className="mr-2 h-4 w-4" />
+                  Cast {isUserJudge() ? "Judge" : "Community"} Vote
+                </Button>
+              )}
+            <div>
+              {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
+              {dispute.status === "Vote in Progress" &&
+                // Use the helper function
+                dispute.agreement?.type === 2 &&
+                onChainAgreement &&
+                !onChainLoading &&
+                now > Number(onChainAgreement.voteStartedAt) && (
+                  <Button
+                    variant="outline"
+                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                    onClick={() => setStartVoteModalOpen(true)}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scale className="mr-2 h-4 w-4" />
+                    )}
+                    {isPending ? "Starting..." : "Start Escrow Vote"}
+                  </Button>
+                )}
+              {/* {dispute.status === "Vote in Progress" &&
+                // Use the helper function
+                dispute.agreement?.type === 1 && (
+                  <Button
+                    variant="outline"
+                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                    onClick={() => setStartVoteModalOpen(true)}
+                    disabled={startingVote}
+                  >
+                    {startingVote ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scale className="mr-2 h-4 w-4" />
+                    )}
+                    {startingVote ? "Starting..." : "Start Reputational Vote"}
+                  </Button>
+                )} */}
+            </div>
+          </div>
 
           {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
           {dispute.status === "Vote in Progress" &&
@@ -1918,7 +1999,6 @@ export default function DisputeDetails() {
             Edit as Plaintiff
           </Button>
         )}
-
         {/* Settle Dispute Button - Only for plaintiff when dispute is pending */}
         {dispute.status === "Pending" &&
           isCurrentUserPlaintiff() &&
@@ -1954,14 +2034,14 @@ export default function DisputeDetails() {
               {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
             </Button>
           )}
-
         {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
+
+        {/* Start Vote Button - Only show for escrow disputes (type 2) */}
         {dispute.status === "Vote in Progress" &&
-          !isVoteStarted() && // Use the helper function
           dispute.agreement?.type === 2 &&
           onChainAgreement &&
           !onChainLoading &&
-          now > Number(onChainAgreement.voteStartedAt) && (
+          !isVoteStarted() && ( // Only show if vote hasn't started
             <Button
               variant="outline"
               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
@@ -1976,9 +2056,10 @@ export default function DisputeDetails() {
               {isPending ? "Starting..." : "Start Escrow Vote"}
             </Button>
           )}
-
-        {dispute.status === "Vote in Progress" &&
-          !isVoteStarted() && // Use the helper function
+        {/* For reputational disputes (type 1), we don't show a Start Vote button 
+    because voting starts automatically when status is "Vote in Progress" */}
+        {/* {dispute.status === "Vote in Progress" &&
+          // Use the helper function
           dispute.agreement?.type === 1 && (
             <Button
               variant="outline"
@@ -1993,8 +2074,7 @@ export default function DisputeDetails() {
               )}
               {startingVote ? "Starting..." : "Start Reputational Vote"}
             </Button>
-          )}
-
+          )} */}
         {/* Defendant Response Button - Only for defendant when no response exists and dispute is pending */}
         {dispute.status === "Pending" &&
           isCurrentUserDefendant() &&
@@ -2008,7 +2088,6 @@ export default function DisputeDetails() {
               Respond as Defendant
             </Button>
           )}
-
         {/* Defendant Edit Button - Show when defendant has responded AND dispute is still pending */}
         {dispute.status === "Pending" &&
           isCurrentUserDefendant() &&
@@ -2022,7 +2101,6 @@ export default function DisputeDetails() {
               Edit as Defendant
             </Button>
           )}
-
         {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
         {dispute.status === "Vote in Progress" &&
           isVoteStarted() && // Use the helper function
@@ -2039,7 +2117,6 @@ export default function DisputeDetails() {
               Cast Vote
             </Button>
           )}
-
         {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
         {dispute.status === "Vote in Progress" &&
           isVoteStarted() && // Use the helper function

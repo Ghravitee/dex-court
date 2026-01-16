@@ -104,8 +104,6 @@ export const useVotingStatus = (
         user.id || "current-user",
       );
 
-      console.log("🔍 Eligibility API response:", eligibility);
-
       const hasVotedFromAPI =
         !eligibility.canVote &&
         eligibility.reason?.toLowerCase().includes("already voted");
