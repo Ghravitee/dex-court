@@ -16,6 +16,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Vote,
+  MinusCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { disputeService } from "../services/disputeServices";
@@ -31,7 +32,7 @@ import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
 import { parseEther } from "ethers";
 import { getAgreement } from "../web3/readContract";
-// import { formatDateWithTime } from "../web3/helper";
+import { useAuth } from "../hooks/useAuth";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -208,6 +209,7 @@ const VoteOption = ({
   username,
   avatarId,
   userId,
+  roleLabel, // Add roleLabel prop
 }: {
   label: string;
   active: boolean;
@@ -218,6 +220,7 @@ const VoteOption = ({
   username?: string;
   avatarId?: number | null;
   userId?: string;
+  roleLabel?: string; // "Plaintiff" or "Defendant"
 }) => {
   // Format the display name for wallet addresses
   const displayLabel = useMemo(() => {
@@ -242,11 +245,15 @@ const VoteOption = ({
     optionType !== "dismissed" &&
     choice !== "dismissed";
 
+  // Get role label color
+  const roleColor =
+    optionType === "plaintiff" ? "text-cyan-300" : "text-pink-300";
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${
+      className={`flex flex-col items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${
         disabled
           ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50"
           : active
@@ -256,18 +263,43 @@ const VoteOption = ({
     >
       {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
       {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
+
+      {/* Role Label - Always show for plaintiff/defendant */}
+      {optionType !== "dismissed" && roleLabel && (
+        <div className={`text-xs font-semibold uppercase ${roleColor}`}>
+          {roleLabel}
+        </div>
+      )}
+
+      {/* For dismissed case */}
+      {optionType === "dismissed" && (
+        <div className="text-xs font-semibold text-yellow-300 uppercase">
+          Dismiss Case
+        </div>
+      )}
+
+      {/* Username and Avatar */}
       {username && avatarId && userId && optionType !== "dismissed" ? (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-center gap-2">
           <UserAvatar
             userId={userId}
             avatarId={avatarId}
             username={username.replace("@", "")}
             size="sm"
           />
-          <span>{displayLabel}</span>
+          <span className="text-xs">{displayLabel}</span>
+        </div>
+      ) : optionType === "dismissed" ? (
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20">
+            <span className="text-xl">
+              <MinusCircle className="text-orange-400" />
+            </span>
+          </div>
+          <span className="text-xs">No winner</span>
         </div>
       ) : (
-        displayLabel
+        <span>{displayLabel}</span>
       )}
     </button>
   );
@@ -283,7 +315,7 @@ const LiveCaseCard = ({
 
   startingVote,
   handleOnchainStartVote,
-  handleApiStartVote,
+  isJudge = false,
   isPending,
 }: {
   c: LiveCase;
@@ -298,6 +330,7 @@ const LiveCaseCard = ({
   ) => Promise<void>;
   handleApiStartVote: (dispute: LiveCase, probono: boolean) => Promise<void>;
   isPending: boolean;
+  isJudge?: boolean;
 }) => {
   const [choice, setChoice] = useState<
     "plaintiff" | "defendant" | "dismissed" | null
@@ -314,7 +347,20 @@ const LiveCaseCard = ({
   const formattedTime = fmtRemain(remain);
 
   // Check if vote has been started
-  const voteStarted = isVoteStarted(c.id) || !!c.voteStartedAt;
+  const voteStarted = useMemo(() => {
+    // For reputational disputes (type 1), voting is always started when in "Vote in Progress"
+    if (c.agreement?.type === 1) {
+      return true;
+    }
+
+    // For escrow disputes (type 2), check if vote has been manually started
+    if (c.agreement?.type === 2) {
+      return isVoteStarted(c.id) || !!c.voteStartedAt;
+    }
+
+    // Default fallback
+    return isVoteStarted(c.id) || !!c.voteStartedAt;
+  }, [c.agreement?.type, c.id, c.voteStartedAt, isVoteStarted]);
 
   // Fetch on-chain agreement data for escrow disputes
   useEffect(() => {
@@ -427,22 +473,24 @@ const LiveCaseCard = ({
     [],
   );
 
-  // Handle start vote for this specific dispute
+  // Update the handleStartVoteClick function in LiveCaseCard:
   const handleStartVoteClick = useCallback(async () => {
     try {
-      // Check if dispute is escrow type (type 2)
+      // Only handle escrow disputes (type 2)
       if (c.agreement?.type === 2) {
         // For escrow disputes, always start as paid (probono = false)
-        // You might want to add logic to determine if it should be probono
         await handleOnchainStartVote(c, false);
       } else {
-        // For reputational disputes, start as probono
-        await handleApiStartVote(c, true);
+        // For reputational disputes, show info message
+        toast.info("Reputational voting starts automatically", {
+          description:
+            "You can cast your vote now without starting it manually.",
+        });
       }
     } catch (error) {
       console.error("Failed to start vote:", error);
     }
-  }, [c, handleOnchainStartVote, handleApiStartVote]);
+  }, [c, handleOnchainStartVote]);
 
   return (
     <div
@@ -477,6 +525,7 @@ const LiveCaseCard = ({
                 </div>
               </div>
               {/* Vote Status Badge */}
+              {/* Vote Status Badge */}
               <div className="mt-1">
                 {localHasVoted ? (
                   <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
@@ -487,15 +536,26 @@ const LiveCaseCard = ({
                     <Vote className="mr-1 h-3 w-3" />
                     Voting in progress
                   </span>
+                ) : c.agreement?.type === 1 ? (
+                  <span className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-1 text-xs font-medium text-blue-300">
+                    <Clock className="mr-1 h-3 w-3" />
+                    Reputational - Vote Now
+                  </span>
                 ) : (
                   <span className="inline-flex items-center rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">
                     <Clock className="mr-1 h-3 w-3" />
-                    Vote not started
+                    Start Vote Required
                   </span>
                 )}
                 {/* Agreement Type Badge */}
                 {c.agreement?.type && (
-                  <span className="ml-2 inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-300">
+                  <span
+                    className={`ml-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${
+                      c.agreement.type === 2
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                        : "border-blue-400/30 bg-blue-500/10 text-blue-300"
+                    }`}
+                  >
                     {c.agreement.type === 2 ? "Escrow" : "Reputational"}
                   </span>
                 )}
@@ -544,7 +604,8 @@ const LiveCaseCard = ({
               </div>
 
               {/* Start Vote Section - Show only if vote hasn't started */}
-              {!voteStarted && !isExpired && (
+              {/* Start Vote Section - Show only for escrow disputes that haven't started voting */}
+              {!isExpired && c.agreement?.type === 2 && !voteStarted && (
                 <div className="rounded-lg border border-green-400/30 bg-green-500/10 p-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -552,11 +613,9 @@ const LiveCaseCard = ({
                         Start Voting Phase
                       </h4>
                       <p className="text-xs text-green-200">
-                        {c.agreement?.type === 2
-                          ? "Click to initiate escrow voting on-chain"
-                          : "Click to initiate reputational voting"}
+                        Click to initiate escrow voting on-chain
                       </p>
-                      {c.agreement?.type === 2 && onChainAgreement && (
+                      {onChainAgreement && (
                         <p className="mt-1 text-xs text-green-300/70">
                           On-chain ready: {canStartOnChainVote ? "Yes" : "No"}
                         </p>
@@ -569,7 +628,7 @@ const LiveCaseCard = ({
                       disabled={
                         startingVote === c.id ||
                         isPending ||
-                        (c.agreement?.type === 2 && !canStartOnChainVote)
+                        !canStartOnChainVote
                       }
                       size="sm"
                     >
@@ -582,6 +641,25 @@ const LiveCaseCard = ({
                         ? "Starting..."
                         : "Start Vote"}
                     </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* For reputational disputes, show info message instead of Start Vote button */}
+              {!isExpired && c.agreement?.type === 1 && !voteStarted && (
+                <div className="rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
+                      <Info className="h-4 w-4 text-blue-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-blue-300">
+                        Reputational Dispute
+                      </h4>
+                      <p className="text-xs text-blue-200">
+                        Voting starts automatically. You can cast your vote now.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -599,7 +677,7 @@ const LiveCaseCard = ({
               )}
 
               {/* Voting Section - Only show if vote has started */}
-              {voteStarted && (
+              {!isExpired && voteStarted && (
                 <div className="mt-2">
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     {localHasVoted
@@ -610,7 +688,7 @@ const LiveCaseCard = ({
                   </h4>
 
                   {!localHasVoted && !isExpired && (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <MemoizedVoteOption
                         label={`Plaintiff (${c.parties.plaintiff})`}
                         active={choice === "plaintiff"}
@@ -621,6 +699,7 @@ const LiveCaseCard = ({
                         username={c.parties.plaintiff}
                         avatarId={c.parties.plaintiffAvatar || null}
                         userId={c.parties.plaintiffId}
+                        roleLabel="Plaintiff" // Add this
                       />
                       <MemoizedVoteOption
                         label={`Defendant (${c.parties.defendant})`}
@@ -632,6 +711,7 @@ const LiveCaseCard = ({
                         username={c.parties.defendant}
                         avatarId={c.parties.defendantAvatar || null}
                         userId={c.parties.defendantId}
+                        roleLabel="Defendant" // Add this
                       />
                       <MemoizedVoteOption
                         label="Dismiss Case"
@@ -667,24 +747,53 @@ const LiveCaseCard = ({
               )}
 
               {/* Comment Section - Only show if vote has started and user hasn't voted */}
-              {!localHasVoted && !isExpired && voteStarted && (
+              {/* Comment Section - Only show if vote has started, user hasn't voted, AND user is a judge */}
+              {!localHasVoted && !isExpired && voteStarted && isJudge && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-muted-foreground text-sm">
-                      Comment <span className="text-xs">(max 1200)</span>
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-cyan-300">
+                        Add Comment
+                      </span>
+                      <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">
+                        Judges Only
+                      </span>
+                    </div>
+                    <span className="text-xs text-cyan-300/70">max 1200</span>
                   </div>
 
                   <textarea
                     disabled={isVoting}
                     value={comment}
                     onChange={handleCommentChange}
-                    className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
-                    placeholder="Add your reasoning..."
+                    className="min-h-28 w-full rounded-md border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm outline-none focus:border-cyan-400/40 disabled:opacity-60"
+                    placeholder="Share your judicial reasoning..."
                   />
 
-                  <div className="text-muted-foreground mt-1 text-right text-xs">
-                    {1200 - comment.length} characters left
+                  <div className="mt-1 flex justify-between text-xs">
+                    <div className="text-cyan-300/70">
+                      ⚖️ Judicial comments help explain the verdict
+                    </div>
+                    <div className="text-cyan-200">
+                      {1200 - comment.length} characters left
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Show message for non-judges */}
+              {!localHasVoted && !isExpired && voteStarted && !isJudge && (
+                <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-cyan-300" />
+                    <div>
+                      <div className="text-sm text-cyan-200">
+                        Comments are restricted to judges only
+                      </div>
+                      <div className="text-xs text-cyan-200/70">
+                        Only judges can add comments to their votes
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1093,6 +1202,13 @@ export default function Voting() {
   const { isSuccess } = useWaitForTransactionReceipt({
     hash,
   });
+  const { user } = useAuth(); // Get user from auth context
+  const userRole = user?.role || 1; // Default to community (1) if no role
+
+  // Helper function to check if user is a judge
+  const isUserJudge = useCallback(() => {
+    return userRole === 2 || userRole === 3; // 2 = judge, 3 = admin
+  }, [userRole]);
 
   const networkInfo = useNetworkEnvironment();
   const contractAddress = ESCROW_CA[networkInfo.chainId as number];
@@ -1116,8 +1232,23 @@ export default function Voting() {
   }, [writeError, resetWrite]);
 
   // Helper function to check if vote has been started
+
   const isVoteStarted = useCallback(
-    (disputeId: string): boolean => {
+    (disputeId: string, dispute?: LiveCase): boolean => {
+      // First check if we have a specific dispute object
+      if (dispute) {
+        // For reputational disputes (type 1), voting starts automatically
+        if (dispute.agreement?.type === 1) {
+          return true; // Always true for reputational disputes in "Vote in Progress"
+        }
+
+        // For escrow disputes (type 2), check local state
+        if (dispute.agreement?.type === 2) {
+          return voteStartedDisputes.has(disputeId);
+        }
+      }
+
+      // Fallback to local state check
       return voteStartedDisputes.has(disputeId);
     },
     [voteStartedDisputes],
@@ -1175,9 +1306,15 @@ export default function Voting() {
 
         setLiveCases(liveDisputes);
 
-        // Update voteStartedDisputes based on actual data
         const startedDisputeIds = liveDisputes
-          .filter((d) => d.voteStartedAt)
+          .filter((d) => {
+            // For reputational disputes (type 1), voting is always started
+            if (d.agreement?.type === 1) {
+              return true;
+            }
+            // For escrow disputes (type 2), check if voteStartedAt exists
+            return d.voteStartedAt;
+          })
           .map((d) => d.id);
         setVoteStartedDisputes(new Set(startedDisputeIds));
       }
@@ -1432,17 +1569,19 @@ export default function Voting() {
       }
 
       return liveCases.map((c) => (
+        // In the LiveCaseCard props, update the isVoteStarted usage:
         <MemoizedLiveCaseCard
           key={c.id}
           c={c}
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
-          isVoteStarted={isVoteStarted}
+          isVoteStarted={(disputeId) => isVoteStarted(disputeId, c)} // Pass the dispute object
           handleStartVoteForDispute={() => {}}
           startingVote={startingVote}
           handleOnchainStartVote={handleOnchainStartVote}
           handleApiStartVote={handleApiStartVote}
           isPending={isPending}
+          isJudge={isUserJudge()}
         />
       ));
     } else {
@@ -1491,6 +1630,7 @@ export default function Voting() {
     handleOnchainStartVote,
     handleApiStartVote,
     isPending,
+    isUserJudge,
   ]);
 
   return (

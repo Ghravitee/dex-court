@@ -305,10 +305,17 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
   };
 
   // 🟡 Handle typing detection
-  const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 🟡 Handle typing detection - UPDATED for textarea
+  const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!canSend) return;
 
     setContent(e.target.value);
+
+    // Auto-expand textarea
+    const textarea = e.target;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 128)}px`; // Max 128px (about 6 lines)
+
     if (!socketRef.current) return;
 
     socketRef.current.emit("typing:start", {
@@ -326,11 +333,24 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
     }, 2500);
   };
 
-  // Handle Enter key to send message
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Handle Enter key to send message - UPDATED for textarea
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && canSend) {
       e.preventDefault();
       sendMessage();
+
+      // Reset textarea height after sending
+      const textarea = e.currentTarget;
+      setTimeout(() => {
+        textarea.style.height = "auto";
+        textarea.style.height = "48px"; // Reset to initial height
+      }, 10);
+    }
+
+    // Allow Shift+Enter for new line
+    if (e.key === "Enter" && e.shiftKey) {
+      // Allow default behavior (new line)
+      return;
     }
   };
 
@@ -482,7 +502,7 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
             <div className="relative flex items-center gap-2">
               {/* Combined input with upload button inside */}
               <div className="relative flex-1">
-                <div className="absolute top-1/2 left-3 -translate-y-1/2">
+                <div className="absolute top-3 left-3 z-10">
                   <label
                     htmlFor="file-upload"
                     className="cursor-pointer text-cyan-400 transition-colors hover:text-cyan-300"
@@ -499,23 +519,30 @@ export default function DisputeChat({ disputeId, userRole }: DisputeChatProps) {
                   />
                 </div>
 
-                <input
+                {/* CHANGED: Replaced input with textarea */}
+                <textarea
                   value={content}
                   onChange={handleTyping}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyPress} // Changed from onKeyPress to onKeyDown
                   placeholder="Write a message..."
                   disabled={isSending}
-                  className="w-full rounded-xl border border-cyan-800/40 bg-[#141920] py-3 pr-20 pl-12 text-gray-100 transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-50"
+                  rows={1}
+                  className="max-h-32 min-h-[48px] w-full resize-none rounded-xl border border-cyan-800/40 bg-[#141920] py-3 pr-20 pl-12 text-gray-100 transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none disabled:opacity-50"
+                  style={{
+                    overflowY: "auto",
+                    scrollbarWidth: "thin",
+                    scrollbarColor: "rgba(6, 182, 212, 0.3) transparent",
+                  }}
                 />
 
-                {/* Send button positioned inside the input on the right */}
-                <div className="absolute top-1/2 right-2 -translate-y-1/2">
+                {/* Send button positioned inside the textarea on the right */}
+                <div className="absolute right-2 bottom-3 z-10">
                   <button
                     onClick={sendMessage}
                     disabled={
                       isSending || (!content.trim() && files.length === 0)
                     }
-                    className="flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-2 font-medium text-white shadow-md transition-all hover:bg-cyan-500 hover:shadow-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-[6px] font-medium text-white shadow-md transition-all hover:bg-cyan-500 hover:shadow-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isSending ? (
                       <Loader2 size={16} className="animate-spin" />
