@@ -192,10 +192,28 @@ const UserRoleBadge = ({ role }: { role: DisputeChatRole }) => {
 };
 
 // Helper function to format username with @ symbol
+// Helper function to format username - Alternative version
 const formatUsername = (username: string): string => {
-  // Remove existing @ symbols and add one at the beginning
+  if (!username || username === "Unknown") return "Unknown";
+
+  // Remove any existing @ symbols for processing
   const cleanUsername = username.replace(/^@+/, "");
-  return `@${cleanUsername}`;
+
+  // Check if it's a wallet address (starts with 0x and is 42 characters)
+  if (cleanUsername.startsWith("0x") && cleanUsername.length === 42) {
+    // Format wallet address: first 4 chars + "..." + last 4 chars
+    return `${cleanUsername.slice(0, 6)}...${cleanUsername.slice(-4)}`;
+  }
+
+  // Check if it looks like a Telegram username (alphanumeric with underscores)
+  const telegramPattern = /^[a-zA-Z0-9_]+$/;
+  if (telegramPattern.test(cleanUsername) && cleanUsername.length <= 30) {
+    // Add @ prefix for Telegram-style usernames
+    return `@${cleanUsername}`;
+  }
+
+  // For everything else, return as-is without @ symbol
+  return cleanUsername;
 };
 
 interface DisputeChatProps {

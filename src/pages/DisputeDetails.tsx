@@ -1382,6 +1382,42 @@ export default function DisputeDetails() {
                     {isPending ? "Starting..." : "Start Escrow Vote"}
                   </Button>
                 )}
+
+              {dispute.status === "Pending" &&
+                isCurrentUserPlaintiff() &&
+                dispute.agreement?.type === 2 && (
+                  <Button
+                    variant="outline"
+                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                    onClick={() => setSettleModalOpen(true)}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scale className="mr-2 h-4 w-4" />
+                    )}
+                    {isPending ? "Settling..." : "Settle Escrow Dispute"}
+                  </Button>
+                )}
+
+              {dispute.status === "Pending" &&
+                isCurrentUserPlaintiff() &&
+                dispute.agreement?.type === 1 && (
+                  <Button
+                    variant="outline"
+                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                    onClick={() => setSettleModalOpen(true)}
+                    disabled={settlingDispute}
+                  >
+                    {settlingDispute ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scale className="mr-2 h-4 w-4" />
+                    )}
+                    {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
+                  </Button>
+                )}
               {/* {dispute.status === "Vote in Progress" &&
                 // Use the helper function
                 dispute.agreement?.type === 1 && (
