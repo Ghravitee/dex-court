@@ -1,15 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // lib/usernameUtils.ts
 /**
  * Standardizes Telegram usernames for database lookup
  * Tries both formats: with @ and without @
  */
-// In usernameUtils.ts - make sure it's not returning empty strings
-// lib/usernameUtils.ts
 export const cleanTelegramUsername = (username: string): string => {
   if (!username) return "";
 
-  // REMOVED: .toLowerCase() to preserve original case
+  // Remove @ symbol for processing
   return username.replace(/^@/, "").trim();
 };
 
@@ -51,20 +48,35 @@ export const isValidTelegramUsername = (
 /**
  * Gets the current user's Telegram username with consistent formatting
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getCurrentUserTelegram = (user: any): string => {
   if (!user) return "";
 
-  // 🚨 FIXED: Look for telegramUsername field (from API response)
   return cleanTelegramUsername(
     user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
 };
 
 /**
- * Gets the database-compatible Telegram username
- * This preserves the original format that exists in the database
+ * Formats usernames for display - keeps @ for Telegram, slices wallet addresses
  */
-export const formatTelegramUsernameForDisplay = (username: string): string => {
-  const clean = cleanTelegramUsername(username);
-  return clean ? `@${clean}` : ""; // Preserves original case
+export const formatTelegramUsernameForDisplay = (
+  username: string | undefined,
+): string => {
+  if (!username) return "Unknown";
+
+  // Remove @ symbol temporarily for checking
+  const cleanUsername = username.startsWith("@") ? username.slice(1) : username;
+
+  // Check if it's a wallet address (starts with 0x and is hex, length 42)
+  if (cleanUsername.startsWith("0x") && cleanUsername.length === 42) {
+    // Slice the wallet address: first 5 chars + "..." + last 4 chars
+    const slicedWallet = `${cleanUsername.slice(0, 5)}...${cleanUsername.slice(-4)}`;
+
+    // Add back @ prefix if the original had it
+    return username.startsWith("@") ? `@${slicedWallet}` : slicedWallet;
+  }
+
+  // For Telegram usernames, ensure they have @ prefix for display
+  return username.startsWith("@") ? username : `@${username}`;
 };

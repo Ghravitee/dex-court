@@ -3,9 +3,9 @@ import { toast } from "sonner";
 import { useDebounce } from "../../../hooks/useDebounce";
 import {
   cleanTelegramUsername,
-  formatTelegramUsernameForDisplay,
   getCurrentUserTelegram,
   isValidTelegramUsername,
+  formatTelegramUsernameForDisplay,
 } from "../../../lib/usernameUtils";
 import { disputeService } from "../../../services/disputeServices";
 import type { DisputeRow, UploadedFile } from "../../../types";
@@ -28,6 +28,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import { UserSearchResult } from "../UserSearchResult";
 
 // Plaintiff Reply Modal Component
+
 const PlaintiffReplyModal = ({
   isOpen,
   onClose,
@@ -351,7 +352,7 @@ const PlaintiffReplyModal = ({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="glass card-cyan relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl"
+          className="glass card-cyan relative max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl"
           onClick={handleModalClick}
         >
           {/* Header */}
@@ -407,6 +408,7 @@ const PlaintiffReplyModal = ({
                       }}
                       className="font-medium hover:text-cyan-100 hover:underline"
                     >
+                      {/* This will show @username for Telegram, or sliced wallet for 0x addresses */}
                       {formatTelegramUsernameForDisplay(
                         dispute?.plaintiff || "",
                       )}
@@ -437,6 +439,7 @@ const PlaintiffReplyModal = ({
                       }}
                       className="font-medium hover:text-cyan-100 hover:underline"
                     >
+                      {/* This will show @username for Telegram, or sliced wallet for 0x addresses */}
                       {formatTelegramUsernameForDisplay(
                         dispute?.defendant || "",
                       )}
@@ -570,6 +573,8 @@ const PlaintiffReplyModal = ({
                 </p>
 
                 {/* Witness Tags */}
+                {/* Witness Tags */}
+                {/* Witness Tags */}
                 {witnesses.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap gap-2">
@@ -579,7 +584,8 @@ const PlaintiffReplyModal = ({
                           className={`flex items-center gap-1 rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300`}
                         >
                           <UserCheck className="h-3 w-3" />
-                          {witness}
+                          {/* Apply wallet address formatting to witness usernames too */}
+                          {formatTelegramUsernameForDisplay(witness)}
                           <button
                             type="button"
                             onClick={() => removeWitness(witness)}

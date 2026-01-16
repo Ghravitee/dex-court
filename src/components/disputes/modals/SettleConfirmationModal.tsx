@@ -1,3 +1,4 @@
+// SettleConfirmationModal.tsx
 import { Button } from "../../../components/ui/button";
 import { Scale, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -7,11 +8,13 @@ const SettleConfirmationModal = ({
   isOpen,
   onClose,
   onConfirm,
+  disable,
   disputeTitle,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  disable?: boolean;
   disputeTitle?: string;
 }) => {
   const handleModalClick = useCallback((e: React.MouseEvent) => {
@@ -75,6 +78,7 @@ const SettleConfirmationModal = ({
                   variant="outline"
                   className="flex-1 border-white/20 text-white hover:bg-white/10"
                   onClick={onClose}
+                  disabled={disable}
                 >
                   Cancel
                 </Button>
@@ -82,9 +86,10 @@ const SettleConfirmationModal = ({
                   variant="neon"
                   className="flex-1 border-green-400/30 bg-green-500/20 text-green-300 hover:bg-green-500/30"
                   onClick={onConfirm}
+                  disabled={disable}
                 >
                   <Scale className="mr-2 h-4 w-4" />
-                  Settle Dispute
+                  {disable ? "Settling..." : "Settle Dispute"}
                 </Button>
               </div>
             </div>

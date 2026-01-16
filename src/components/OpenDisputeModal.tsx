@@ -864,7 +864,7 @@ export default function OpenDisputeModal({
               {/* Evidence Upload Section */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-cyan-200">
-                  Supporting Evidence
+                  Supporting Evidence <span className="text-red-500">*</span>
                 </label>
 
                 <div

@@ -15,6 +15,7 @@ import {
   ExternalLink,
   ThumbsDown,
   ThumbsUp,
+  Vote,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { disputeService } from "../services/disputeServices";
@@ -25,9 +26,16 @@ import {
   calculateVoteResults,
   type VoteCalculationResult,
 } from "../lib/voteCalculations";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
+import { parseEther } from "ethers";
+import { getAgreement } from "../web3/readContract";
+// import { formatDateWithTime } from "../web3/helper";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
+const FEE_AMOUNT = "0.01";
 
 // Helper function to check if it's a wallet address
 const isWalletAddress = (address: string): boolean => {
@@ -120,6 +128,16 @@ interface LiveCase {
     role: "judge" | "community";
     voted: boolean;
   }[];
+  agreement?: {
+    type: number;
+    id?: number;
+  };
+  contractAgreementId?: number;
+  chainId?: number;
+  txnhash?: string;
+  type?: number;
+  voteStartedAt?: string;
+  rawDispute?: any; // Store the raw dispute data
 }
 
 interface DoneCase {
@@ -261,10 +279,25 @@ const LiveCaseCard = ({
   c,
   currentTime,
   refetchLiveDisputes,
+  isVoteStarted,
+
+  startingVote,
+  handleOnchainStartVote,
+  handleApiStartVote,
+  isPending,
 }: {
   c: LiveCase;
   currentTime: number;
   refetchLiveDisputes: () => void;
+  isVoteStarted: (disputeId: string) => boolean;
+  handleStartVoteForDispute: (dispute: LiveCase, probono: boolean) => void;
+  startingVote: string | null;
+  handleOnchainStartVote: (
+    dispute: LiveCase,
+    probono: boolean,
+  ) => Promise<void>;
+  handleApiStartVote: (dispute: LiveCase, probono: boolean) => Promise<void>;
+  isPending: boolean;
 }) => {
   const [choice, setChoice] = useState<
     "plaintiff" | "defendant" | "dismissed" | null
@@ -272,11 +305,49 @@ const LiveCaseCard = ({
   const [comment, setComment] = useState("");
   const [isVoting, setIsVoting] = useState(false);
   const [localHasVoted, setLocalHasVoted] = useState(c.hasVoted || false);
+  const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
+  const [onChainLoading, setOnChainLoading] = useState(false);
 
   // Calculate remaining time based on current time from parent
   const remain = Math.max(0, c.endsAt - currentTime);
   const isExpired = remain <= 0;
   const formattedTime = fmtRemain(remain);
+
+  // Check if vote has been started
+  const voteStarted = isVoteStarted(c.id) || !!c.voteStartedAt;
+
+  // Fetch on-chain agreement data for escrow disputes
+  useEffect(() => {
+    if (c.agreement?.type === 2 && c.contractAgreementId && c.chainId) {
+      const fetchOnChainData = async () => {
+        try {
+          setOnChainLoading(true);
+          const res = await getAgreement(
+            c.chainId!,
+            BigInt(c.contractAgreementId!),
+          );
+          setOnChainAgreement(res);
+        } catch (err) {
+          console.error("Failed to fetch on-chain agreement:", err);
+          setOnChainAgreement(null);
+        } finally {
+          setOnChainLoading(false);
+        }
+      };
+
+      fetchOnChainData();
+    }
+  }, [c.agreement?.type, c.contractAgreementId, c.chainId]);
+
+  // Check if on-chain vote can be started (for escrow disputes)
+  const canStartOnChainVote = useMemo(() => {
+    if (c.agreement?.type !== 2 || !onChainAgreement || onChainLoading) {
+      return false;
+    }
+
+    const currentTimeSeconds = Math.floor(Date.now() / 1000);
+    return currentTimeSeconds > Number(onChainAgreement.voteStartedAt);
+  }, [c.agreement?.type, onChainAgreement, onChainLoading]);
 
   // Enhanced voting function with proper data refresh
   const handleCastVote = useCallback(async () => {
@@ -356,6 +427,23 @@ const LiveCaseCard = ({
     [],
   );
 
+  // Handle start vote for this specific dispute
+  const handleStartVoteClick = useCallback(async () => {
+    try {
+      // Check if dispute is escrow type (type 2)
+      if (c.agreement?.type === 2) {
+        // For escrow disputes, always start as paid (probono = false)
+        // You might want to add logic to determine if it should be probono
+        await handleOnchainStartVote(c, false);
+      } else {
+        // For reputational disputes, start as probono
+        await handleApiStartVote(c, true);
+      }
+    } catch (error) {
+      console.error("Failed to start vote:", error);
+    }
+  }, [c, handleOnchainStartVote, handleApiStartVote]);
+
   return (
     <div
       className={`relative rounded-xl border p-0 ${
@@ -365,11 +453,11 @@ const LiveCaseCard = ({
       <Accordion type="single" collapsible>
         <AccordionItem value="item-1">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 pt-4">
+          <div className="flex flex-col justify-between px-4 pt-4 sm:flex-row sm:items-center">
             <div>
               <div className="font-semibold text-white/90">{c.title}</div>
 
-              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+              <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-cyan-300">Plaintiff: </span>{" "}
                   <UsernameWithAvatar
@@ -394,22 +482,35 @@ const LiveCaseCard = ({
                   <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
                     ✓ You have voted
                   </span>
-                ) : (
+                ) : voteStarted ? (
                   <span className="inline-flex items-center rounded-full bg-cyan-500/20 px-2 py-1 text-xs font-medium text-cyan-300">
-                    <ThumbsUp className="mr-1 h-3 w-3" />
+                    <Vote className="mr-1 h-3 w-3" />
                     Voting in progress
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">
+                    <Clock className="mr-1 h-3 w-3" />
+                    Vote not started
+                  </span>
+                )}
+                {/* Agreement Type Badge */}
+                {c.agreement?.type && (
+                  <span className="ml-2 inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-300">
+                    {c.agreement.type === 2 ? "Escrow" : "Reputational"}
                   </span>
                 )}
               </div>
             </div>
             <div className="text-right">
-              <div className="text-muted-foreground mb-1 flex justify-end gap-2 text-xl">
+              <div className="mb-1 flex items-center justify-end gap-2">
                 <Clock
-                  className={`mt-2 ml-10 h-5 w-5 ${
+                  className={`mt-1 ml-10 size-3 lg:size-5 ${
                     isExpired ? "text-yellow-400" : "text-cyan-300"
                   }`}
                 />
-                {isExpired ? "Voting ended" : "Voting ends"}
+                <p className="text-muted-foreground text-sm sm:text-base">
+                  {isExpired ? "Voting ended" : "Voting ends"}
+                </p>
               </div>
               <div
                 className={`font-mono text-lg ${
@@ -442,84 +543,131 @@ const LiveCaseCard = ({
                 <p className="text-sm text-white/80">{c.description}</p>
               </div>
 
-              {/* Vote Counts Not Available Message */}
-              <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-center">
-                <div className="text-sm text-cyan-300">
-                  Vote counts are hidden during voting to maintain fairness
+              {/* Start Vote Section - Show only if vote hasn't started */}
+              {!voteStarted && !isExpired && (
+                <div className="rounded-lg border border-green-400/30 bg-green-500/10 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-green-300">
+                        Start Voting Phase
+                      </h4>
+                      <p className="text-xs text-green-200">
+                        {c.agreement?.type === 2
+                          ? "Click to initiate escrow voting on-chain"
+                          : "Click to initiate reputational voting"}
+                      </p>
+                      {c.agreement?.type === 2 && onChainAgreement && (
+                        <p className="mt-1 text-xs text-green-300/70">
+                          On-chain ready: {canStartOnChainVote ? "Yes" : "No"}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                      onClick={handleStartVoteClick}
+                      disabled={
+                        startingVote === c.id ||
+                        isPending ||
+                        (c.agreement?.type === 2 && !canStartOnChainVote)
+                      }
+                      size="sm"
+                    >
+                      {startingVote === c.id || isPending ? (
+                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Vote className="mr-2 h-3 w-3" />
+                      )}
+                      {startingVote === c.id || isPending
+                        ? "Starting..."
+                        : "Start Vote"}
+                    </Button>
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-cyan-200">
-                  Results will be visible after voting ends
+              )}
+
+              {/* Vote Counts Not Available Message - Only show if vote has started */}
+              {voteStarted && (
+                <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-center">
+                  <div className="text-sm text-cyan-300">
+                    Vote counts are hidden during voting to maintain fairness
+                  </div>
+                  <div className="mt-1 text-xs text-cyan-200">
+                    Results will be visible after voting ends
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Voting Section */}
-              <div className="mt-2">
-                <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
-                  {localHasVoted
-                    ? "Your Vote Has Been Cast"
-                    : isExpired
-                      ? "Voting Completed"
-                      : "Who is your vote for?"}
-                </h4>
+              {/* Voting Section - Only show if vote has started */}
+              {voteStarted && (
+                <div className="mt-2">
+                  <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
+                    {localHasVoted
+                      ? "Your Vote Has Been Cast"
+                      : isExpired
+                        ? "Voting Completed"
+                        : "Who is your vote for?"}
+                  </h4>
 
-                {!localHasVoted && !isExpired && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <MemoizedVoteOption
-                      label={`Plaintiff (${c.parties.plaintiff})`}
-                      active={choice === "plaintiff"}
-                      onClick={() => setChoice("plaintiff")}
-                      choice={choice}
-                      optionType="plaintiff"
-                      disabled={isExpired}
-                      username={c.parties.plaintiff}
-                      avatarId={c.parties.plaintiffAvatar || null}
-                      userId={c.parties.plaintiffId}
-                    />
-                    <MemoizedVoteOption
-                      label={`Defendant (${c.parties.defendant})`}
-                      active={choice === "defendant"}
-                      onClick={() => setChoice("defendant")}
-                      choice={choice}
-                      optionType="defendant"
-                      disabled={isExpired}
-                      username={c.parties.defendant}
-                      avatarId={c.parties.defendantAvatar || null}
-                      userId={c.parties.defendantId}
-                    />
-                    <MemoizedVoteOption
-                      label="Dismiss Case"
-                      active={choice === "dismissed"}
-                      onClick={() => setChoice("dismissed")}
-                      choice={choice}
-                      optionType="dismissed"
-                      disabled={isExpired}
-                    />
-                  </div>
-                )}
-
-                {localHasVoted && (
-                  <div className="rounded-md border border-green-400/30 bg-green-500/10 p-4 text-center">
-                    <div className="mb-2 text-lg text-green-300">
-                      ✓ Vote Submitted
+                  {!localHasVoted && !isExpired && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <MemoizedVoteOption
+                        label={`Plaintiff (${c.parties.plaintiff})`}
+                        active={choice === "plaintiff"}
+                        onClick={() => setChoice("plaintiff")}
+                        choice={choice}
+                        optionType="plaintiff"
+                        disabled={isExpired}
+                        username={c.parties.plaintiff}
+                        avatarId={c.parties.plaintiffAvatar || null}
+                        userId={c.parties.plaintiffId}
+                      />
+                      <MemoizedVoteOption
+                        label={`Defendant (${c.parties.defendant})`}
+                        active={choice === "defendant"}
+                        onClick={() => setChoice("defendant")}
+                        choice={choice}
+                        optionType="defendant"
+                        disabled={isExpired}
+                        username={c.parties.defendant}
+                        avatarId={c.parties.defendantAvatar || null}
+                        userId={c.parties.defendantId}
+                      />
+                      <MemoizedVoteOption
+                        label="Dismiss Case"
+                        active={choice === "dismissed"}
+                        onClick={() => setChoice("dismissed")}
+                        choice={choice}
+                        optionType="dismissed"
+                        disabled={isExpired}
+                      />
                     </div>
-                    <div className="text-sm text-green-200">
-                      Thank you for participating! Your vote has been recorded
-                      and will be counted when voting ends.
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {isExpired && !localHasVoted && (
-                  <div className="mt-3 rounded-md border border-yellow-400/30 bg-yellow-500/10 p-3 text-center">
-                    <div className="text-sm text-yellow-300">
-                      Voting has ended. Results will be available soon.
+                  {localHasVoted && (
+                    <div className="rounded-md border border-green-400/30 bg-green-500/10 p-4 text-center">
+                      <div className="mb-2 text-lg text-green-300">
+                        ✓ Vote Submitted
+                      </div>
+                      <div className="text-sm text-green-200">
+                        Thank you for participating! Your vote has been recorded
+                        and will be counted when voting ends.
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
 
-              {/* Comment Section */}
-              {!localHasVoted && !isExpired && (
+                  {isExpired && !localHasVoted && (
+                    <div className="mt-3 rounded-md border border-yellow-400/30 bg-yellow-500/10 p-3 text-center">
+                      <div className="text-sm text-yellow-300">
+                        Voting has ended. Results will be available soon.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Comment Section - Only show if vote has started and user hasn't voted */}
+              {!localHasVoted && !isExpired && voteStarted && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground text-sm">
@@ -541,8 +689,8 @@ const LiveCaseCard = ({
                 </div>
               )}
 
-              {/* Vote Button */}
-              {!localHasVoted && !isExpired && (
+              {/* Vote Button - Only show if vote has started and user hasn't voted */}
+              {!localHasVoted && !isExpired && voteStarted && (
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <Button
                     variant="neon"
@@ -579,9 +727,15 @@ const LiveCaseCard = ({
                     <br />
                     Dispute ID: {c.id}
                     <br />
+                    Agreement Type: {c.agreement?.type || "Unknown"}
+                    <br />
+                    Contract Agreement ID: {c.contractAgreementId || "None"}
+                    <br />
                     Has Voted (API): {c.hasVoted?.toString() || "false"}
                     <br />
                     Has Voted (Local): {localHasVoted.toString()}
+                    <br />
+                    Vote Started: {voteStarted ? "Yes" : "No"}
                     <br />
                     Voting Ends: {new Date(c.endsAt).toLocaleString()}
                     <br />
@@ -622,7 +776,7 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
             <div>
               <div className="font-semibold text-white/90">{c.title}</div>
 
-              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+              <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-cyan-300">Plaintiff: </span>{" "}
                   <UsernameWithAvatar
@@ -885,7 +1039,9 @@ const CommentsSection = ({ comments }: { comments: any[] }) => (
 const CaseDescription = ({ c }: { c: DoneCase }) => (
   <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
     <div className="text-sm font-medium text-white/90">Case Description</div>
-    <p className="text-muted-foreground mt-1 text-sm">{c.description}</p>
+    <p className="text-muted-foreground mt-1 text-sm break-all">
+      {c.description}
+    </p>
     <Link
       to={`/disputes/${c.id}`}
       className="mt-3 inline-flex items-center text-xs text-cyan-300 hover:underline"
@@ -920,7 +1076,26 @@ export default function Voting() {
   const [concludedLoading, setConcludedLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"live" | "done">("live");
-  const [currentTime, setCurrentTime] = useState(now()); // Single time source for all cards
+  const [currentTime, setCurrentTime] = useState(now());
+  const [voteStartedDisputes, setVoteStartedDisputes] = useState<Set<string>>(
+    new Set(),
+  );
+  const [startingVote, setStartingVote] = useState<string | null>(null);
+
+  // Wagmi hooks for on-chain transactions
+  const {
+    data: hash,
+    writeContract,
+    isPending,
+    error: writeError,
+    reset: resetWrite,
+  } = useWriteContract();
+  const { isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const networkInfo = useNetworkEnvironment();
+  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
   // Single interval for all cards - better performance
   useEffect(() => {
@@ -929,6 +1104,24 @@ export default function Voting() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Handle write errors
+  useEffect(() => {
+    if (writeError) {
+      toast.error("Transaction failed", {
+        description: writeError.message || "Please try again",
+      });
+      resetWrite();
+    }
+  }, [writeError, resetWrite]);
+
+  // Helper function to check if vote has been started
+  const isVoteStarted = useCallback(
+    (disputeId: string): boolean => {
+      return voteStartedDisputes.has(disputeId);
+    },
+    [voteStartedDisputes],
+  );
 
   // Optimized data fetching with useCallback
   const fetchLiveDisputes = useCallback(async () => {
@@ -942,6 +1135,13 @@ export default function Voting() {
             ? parseAPIDate(dispute.voteStartedAt)
             : parseAPIDate(dispute.createdAt);
           const endsAt = voteStartedAt + VOTING_DURATION;
+
+          // Check if vote has been started (from dispute data)
+          const hasVoteStarted = !!dispute.voteStartedAt;
+          console.log(`Dispute ${dispute.id} vote started:`, hasVoteStarted);
+
+          // Store raw dispute data for reference
+          const rawDispute = dispute;
 
           return {
             id: dispute.id.toString(),
@@ -963,10 +1163,23 @@ export default function Voting() {
             dismissedVotes: 0,
             hasVoted: dispute.hasVoted || false,
             participants: [],
+            agreement: dispute.agreement || { type: 1 }, // Default to reputational if not specified
+            contractAgreementId: dispute.contractAgreementId,
+            chainId: dispute.chainId,
+            txnhash: dispute.txnhash,
+            type: dispute.type,
+            voteStartedAt: dispute.voteStartedAt,
+            rawDispute,
           };
         });
 
         setLiveCases(liveDisputes);
+
+        // Update voteStartedDisputes based on actual data
+        const startedDisputeIds = liveDisputes
+          .filter((d) => d.voteStartedAt)
+          .map((d) => d.id);
+        setVoteStartedDisputes(new Set(startedDisputeIds));
       }
     } catch (err) {
       console.error("Failed to fetch live disputes:", err);
@@ -1059,6 +1272,105 @@ export default function Voting() {
     }
   }, []);
 
+  // On-chain start vote function (for escrow agreements)
+  const handleOnchainStartVote = useCallback(
+    async (dispute: LiveCase, probono: boolean) => {
+      if (!dispute || !dispute.contractAgreementId) {
+        toast.error("Cannot start vote: Contract agreement ID is missing");
+        return;
+      }
+
+      setStartingVote(dispute.id);
+
+      try {
+        const fee = probono
+          ? BigInt(0)
+          : BigInt(parseEther(FEE_AMOUNT).toString());
+
+        console.log("Starting escrow vote with params:", {
+          contractAgreementId: dispute.contractAgreementId,
+          probono,
+          fee: fee.toString(),
+        });
+
+        writeContract({
+          address: contractAddress,
+          abi: ESCROW_ABI.abi,
+          functionName: "startVote",
+          args: [BigInt(dispute.contractAgreementId), probono, fee],
+        });
+
+        // Mark as vote started locally immediately for better UX
+        setVoteStartedDisputes((prev) => new Set([...prev, dispute.id]));
+
+        toast.success("Escrow vote initiated! 🗳️", {
+          description:
+            "Transaction submitted. Waiting for confirmation... The voting phase will begin shortly.",
+        });
+      } catch (error: any) {
+        console.error("Error starting escrow vote:", error);
+        toast.error("Failed to start escrow vote", {
+          description: error.message || "Please try again",
+        });
+      } finally {
+        setStartingVote(null);
+      }
+    },
+    [contractAddress, writeContract],
+  );
+
+  // API start vote function (for reputational agreements)
+  const handleApiStartVote = useCallback(
+    async (dispute: LiveCase, probono: boolean) => {
+      setStartingVote(dispute.id);
+
+      try {
+        console.log(
+          probono
+            ? "Starting pro bono reputational vote"
+            : "Starting paid reputational vote",
+        );
+
+        // Mark as vote started locally
+        setVoteStartedDisputes((prev) => new Set([...prev, dispute.id]));
+
+        toast.success("Reputational vote started! 🗳️", {
+          description:
+            "The voting phase has been initiated. Community members can now cast their votes.",
+        });
+
+        // Refresh data
+        if (tab === "live") {
+          fetchLiveDisputes();
+        }
+      } catch (error: any) {
+        console.error("Error starting reputational vote:", error);
+        toast.error("Failed to start reputational vote", {
+          description: error.message || "Please try again",
+        });
+      } finally {
+        setStartingVote(null);
+      }
+    },
+    [tab, fetchLiveDisputes],
+  );
+
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess && hash) {
+      toast.success("Transaction confirmed! 🎉", {
+        description: "Vote has been started successfully on-chain.",
+      });
+
+      // Refresh the data
+      if (tab === "live") {
+        fetchLiveDisputes();
+      }
+
+      resetWrite();
+    }
+  }, [isSuccess, hash, tab, resetWrite, fetchLiveDisputes]);
+
   // Optimized useEffect with dependency cleanup
   useEffect(() => {
     if (tab === "live") {
@@ -1125,6 +1437,12 @@ export default function Voting() {
           c={c}
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
+          isVoteStarted={isVoteStarted}
+          handleStartVoteForDispute={() => {}}
+          startingVote={startingVote}
+          handleOnchainStartVote={handleOnchainStartVote}
+          handleApiStartVote={handleApiStartVote}
+          isPending={isPending}
         />
       ));
     } else {
@@ -1168,6 +1486,11 @@ export default function Voting() {
     concludedCases,
     currentTime,
     fetchLiveDisputes,
+    isVoteStarted,
+    startingVote,
+    handleOnchainStartVote,
+    handleApiStartVote,
+    isPending,
   ]);
 
   return (
@@ -1177,6 +1500,11 @@ export default function Voting() {
       {/* Header */}
       <header className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-white/90">Voting Hub</h2>
+        <div className="text-sm text-cyan-300">
+          {tab === "live"
+            ? `${liveCases.length} active cases`
+            : `${concludedCases.length} concluded cases`}
+        </div>
       </header>
 
       {/* Custom Tabs */}

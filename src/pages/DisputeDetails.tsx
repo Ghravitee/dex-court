@@ -168,6 +168,190 @@ const getAgreementStatusBadgeColor = (status: number): string => {
   }
 };
 
+// Add this component inside your DisputeDetails component
+const VotingStatus = ({
+  dispute,
+  votingStatusLoading,
+  getUserRole,
+  isUserJudge,
+  isUserCommunity,
+  canVote,
+  reason,
+  hasVoted,
+  handleOpenVoteModal,
+  isVoteStarted, // Add this prop
+}: {
+  dispute: DisputeRow | null;
+  votingStatusLoading: boolean;
+  getUserRole: () => DisputeChatRole | undefined;
+  isUserJudge: () => boolean;
+  isUserCommunity: () => boolean;
+  canVote: boolean;
+  reason?: string;
+  hasVoted: boolean;
+  handleOpenVoteModal: () => void;
+  isVoteStarted: boolean; // Add this
+}) => {
+  if (!dispute || dispute?.status !== "Vote in Progress") return null;
+
+  // Show loading state
+  if (votingStatusLoading) {
+    return (
+      <div className="animate-fade-in card-cyan rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+          <p className="text-sm text-cyan-200">Checking voting status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const userRole = getUserRole();
+  const isJudge = isUserJudge();
+  const isCommunity = isUserCommunity();
+  const isParty = userRole === "plaintiff" || userRole === "defendant";
+
+  // User is plaintiff or defendant - they CANNOT vote
+  if (isParty) {
+    return (
+      <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+            <Shield className="h-6 w-6 text-amber-300" />
+          </div>
+          <div>
+            <h3 className="mb-1 text-lg font-bold text-amber-300">
+              Case Participant
+            </h3>
+            <p className="text-sm text-amber-200">
+              {userRole === "plaintiff"
+                ? "As the plaintiff, you cannot vote in your own dispute."
+                : "As the defendant, you cannot vote in your own dispute."}
+            </p>
+            <p className="mt-2 text-xs text-amber-300/70">
+              Voting is for community members and judges only.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If vote hasn't been started yet, show waiting message
+  if (!isVoteStarted) {
+    return (
+      <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+            <Clock className="h-6 w-6 text-amber-300" />
+          </div>
+          <div>
+            <h3 className="mb-1 text-lg font-bold text-amber-300">
+              Waiting for Voting to Begin
+            </h3>
+            <p className="text-sm text-amber-200">
+              The voting phase hasn't been initiated yet. Click "Start Vote" to
+              begin the voting process.
+            </p>
+            <p className="mt-2 text-xs text-amber-300/70">
+              Anyone can start the voting phase by clicking the Start Vote
+              button.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // User has voted - Consistent with Voting page
+  if (hasVoted) {
+    return (
+      <div className="animate-fade-in card-emerald mx-auto w-fit rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
+            <span className="text-2xl">✅</span>
+          </div>
+          <div>
+            <h3 className="mb-1 text-lg font-bold text-emerald-300">
+              Vote Submitted!
+            </h3>
+            <p className="text-sm text-emerald-200">
+              Thank you for participating in this dispute.
+              {isJudge && (
+                <span className="mt-1 block text-emerald-300">
+                  ⚖️ Your vote carries judge weight
+                </span>
+              )}
+            </p>
+            <p className="mt-2 text-xs text-emerald-300/70">
+              Results will be revealed when voting ends.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // User can vote (and voting has started)
+  if (canVote) {
+    return (
+      <div className="animate-fade-in card-cyan mx-auto w-fit rounded-2xl p-6">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
+            <Vote className="h-6 w-6 text-cyan-300" />
+          </div>
+          <div className="flex flex-col items-center justify-center">
+            <h3 className="mb-1 text-lg font-bold text-cyan-300">
+              Cast Your Vote
+            </h3>
+            <p className="text-center text-sm text-cyan-200">
+              Your vote will help resolve this dispute fairly.
+              {isJudge && (
+                <span className="mt-1 block font-semibold text-cyan-300">
+                  Judge Vote - Carries Higher Weight
+                </span>
+              )}
+              {isCommunity && (
+                <span className="mt-1 block text-cyan-300">Community Vote</span>
+              )}
+            </p>
+          </div>
+          <Button
+            variant="neon"
+            className="neon-hover mt-2"
+            onClick={handleOpenVoteModal}
+            size="lg"
+          >
+            <Vote className="mr-2 h-4 w-4" />
+            Cast {isJudge ? "Judge" : "Community"} Vote
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // User cannot vote (but not because they're a party)
+  return (
+    <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+          <Shield className="h-6 w-6 text-amber-300" />
+        </div>
+        <div>
+          <h3 className="mb-1 text-lg font-bold text-amber-300">
+            Voting in Progress
+          </h3>
+          <p className="text-sm text-amber-200">
+            This dispute is currently being voted on by eligible community
+            members.
+          </p>
+          {reason && <p className="mt-2 text-xs text-amber-300/70">{reason}</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main Component
 export default function DisputeDetails() {
   const { id } = useParams();
@@ -197,6 +381,31 @@ export default function DisputeDetails() {
   const [startVoteModalOpen, setStartVoteModalOpen] = useState(false);
 
   const [escalating, setEscalating] = useState(false);
+  const [startingVote, setStartingVote] = useState(false);
+  const [settlingDispute, setSettlingDispute] = useState(false);
+  const [pendingTransactionType, setPendingTransactionType] = useState<
+    "settle" | "startVote" | null
+  >(null);
+
+  // Add this helper function to check if vote has been started
+  // Add this helper function to check if vote has been started
+  const isVoteStarted = useCallback(() => {
+    if (!dispute) return false;
+
+    // Check if voteStartedAt exists and is not null/empty
+    // Also check if it's a valid date string
+    return (
+      !!dispute.voteStartedAt &&
+      dispute.voteStartedAt !== null &&
+      dispute.voteStartedAt !== ""
+    );
+  }, [dispute]);
+
+  // Also check if vote is pending (votePendingAt exists)
+  // const isVotePending = useCallback(() => {
+  //   if (!dispute) return false;
+  //   return dispute.votePendingAt && dispute.votePendingAt !== null;
+  // }, [dispute]);
 
   // Voting state
   const [voteData, setVoteData] = useState<VoteData>({
@@ -342,26 +551,23 @@ export default function DisputeDetails() {
     };
   }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
 
-  const fetchOnChainAgreement = useCallback(
-    async (agreementData: any) => {
-      if (!agreementData) return;
+  const fetchOnChainAgreement = useCallback(async (agreementData: any) => {
+    if (!agreementData) return;
 
-      try {
-        const res = await getAgreement(
-          agreementData.chainId,
-          BigInt(agreementData.contractAgreementId), // Use the contractAgreementId here
-        );
-        console.log("📦 On-chain agreement data:", res);
-        setOnChainAgreement(res);
-      } catch (err) {
-        console.error("Failed to fetch on-chain agreement:", err);
-        setOnChainAgreement(null);
-      } finally {
-        setOnChainLoading(false);
-      }
-    },
-    [],
-  );
+    try {
+      const res = await getAgreement(
+        agreementData.chainId,
+        BigInt(agreementData.contractAgreementId), // Use the contractAgreementId here
+      );
+      console.log("📦 On-chain agreement data:", res);
+      setOnChainAgreement(res);
+    } catch (err) {
+      console.error("Failed to fetch on-chain agreement:", err);
+      setOnChainAgreement(null);
+    } finally {
+      setOnChainLoading(false);
+    }
+  }, []);
 
   // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
   useEffect(() => {
@@ -407,7 +613,6 @@ export default function DisputeDetails() {
 
     fetchDisputeDetails();
   }, [fetchOnChainAgreement, id]);
-
 
   // In your component, update the processEvidence function
   const processEvidence = (
@@ -493,9 +698,9 @@ export default function DisputeDetails() {
 
   const defendantEvidence = dispute?.defendantResponse
     ? processEvidence(
-      dispute.defendantResponse.evidence || [],
-      dispute?.id || id || "",
-    )
+        dispute.defendantResponse.evidence || [],
+        dispute?.id || id || "",
+      )
     : [];
 
   // Function to handle evidence viewing
@@ -703,6 +908,7 @@ export default function DisputeDetails() {
     [id, dispute],
   );
 
+  // KEEP ORIGINAL: Handle starting vote for on-chain (escrow) disputes - using blockchain
   const handleOnchainStartVote = useCallback(
     async (probono: boolean) => {
       try {
@@ -737,6 +943,9 @@ export default function DisputeDetails() {
         });
 
         setStartVoteModalOpen(false);
+
+        // Don't set voteStarted state here - wait for transaction confirmation
+        // The transaction success handler will refresh the data
       } catch (error: unknown) {
         console.error("Error starting vote:", error);
         toast.error("Failed to start vote", {
@@ -748,26 +957,49 @@ export default function DisputeDetails() {
     [dispute, contractAddress, FEE_AMOUNT, writeContract],
   );
 
-  const handleStartVote = useCallback(async (probono: boolean) => {
-    try {
-      // Check if dispute exists
-      if (!dispute) {
-        toast.error("Cannot start vote: Dispute data not loaded");
-        return;
+  const handleStartVote = useCallback(
+    async (probono: boolean) => {
+      try {
+        // Check if dispute exists
+        if (!dispute) {
+          toast.error("Cannot start vote: Dispute data not loaded");
+          return;
+        }
+
+        setStartingVote(true);
+
+        console.log(probono ? "Starting pro bono vote" : "Starting paid vote");
+
+        // Close the start vote confirmation modal
+        setStartVoteModalOpen(false);
+
+        // Show success toast
+        toast.success("Voting can now begin! 🗳️", {
+          description:
+            "The voting phase has been initiated. Community members can now cast their votes.",
+        });
+
+        // Refresh dispute data
+        const disputeDetails = await disputeService.getDisputeDetails(
+          disputeId!,
+        );
+        const transformedDispute =
+          disputeService.transformDisputeDetailsToRow(disputeDetails);
+        setDispute(transformedDispute);
+      } catch (error: unknown) {
+        console.error("Error starting vote:", error);
+        toast.error("Failed to start vote", {
+          description:
+            error instanceof Error ? error.message : "Unknown error occurred",
+        });
+      } finally {
+        setStartingVote(false);
       }
+    },
+    [dispute, disputeId],
+  );
 
-      console.log(probono ? "Starting pro bono vote" : "Starting paid vote");
-
-      setStartVoteModalOpen(false);
-    } catch (error: unknown) {
-      console.error("Error starting vote:", error);
-      toast.error("Failed to start vote", {
-        description:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
-    }
-  }, [dispute]);
-
+  // KEEP ORIGINAL: Handle settling on-chain (escrow) disputes - using blockchain
   const handleOnchainSettleDispute = useCallback(async () => {
     try {
       // Check if dispute and contractAgreementId exist
@@ -779,6 +1011,9 @@ export default function DisputeDetails() {
         toast.error("Cannot settle dispute: Contract agreement ID is missing");
         return;
       }
+
+      // Set transaction type
+      setPendingTransactionType("settle");
 
       writeContract({
         address: contractAddress,
@@ -794,9 +1029,11 @@ export default function DisputeDetails() {
         description:
           error instanceof Error ? error.message : "Unknown error occurred",
       });
+      setPendingTransactionType(null);
     }
-  }, [dispute, contractAddress, writeContract]); // Add dependencies
+  }, [dispute, contractAddress, writeContract]);
 
+  // UPDATED: Handle settling reputational disputes - using API
   const handleSettleDispute = useCallback(async () => {
     if (!id) return;
 
@@ -806,20 +1043,65 @@ export default function DisputeDetails() {
       return;
     }
 
+    let loadingToast: string | number | undefined;
+
     try {
+      setSettlingDispute(true);
+
+      // ✅ Show loading toast
+      loadingToast = toast.loading(
+        "Settling dispute... This may take a moment.",
+        {
+          description: "Please wait while we process your request.",
+        },
+      );
+
+      // Use the existing settleDispute method
       await disputeService.settleDispute(disputeId);
-      toast.success("Dispute settled successfully!");
+
+      // ✅ Dismiss loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success("Dispute settled successfully! 🎉", {
+        description: "The dispute has been resolved and the page will refresh.",
+      });
+
       setSettleModalOpen(false);
 
-      // Refresh dispute details
-      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
-      const transformedDispute =
-        disputeService.transformDisputeDetailsToRow(disputeDetails);
-      setDispute(transformedDispute);
+      // ✅ Reload page after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (error: any) {
-      toast.error("Failed to settle dispute", {
-        description: error.message,
-      });
+      console.error("Settlement error details:", error);
+
+      // ✅ Dismiss loading toast
+      if (loadingToast) toast.dismiss(loadingToast);
+
+      // ✅ SPECIAL HANDLING FOR TIMEOUT ERRORS
+      if (
+        error.message?.includes("timeout") ||
+        error.message?.includes("Request timeout") ||
+        error.code === "ECONNABORTED"
+      ) {
+        toast.info("Settlement is processing...", {
+          description:
+            "This is taking longer than expected. The page will refresh to check status.",
+        });
+
+        setSettleModalOpen(false);
+
+        // Reload the page to check the new status
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      } else {
+        // For other errors, show the actual error message
+        toast.error("Failed to settle dispute", {
+          description: error.message || "Please try again later",
+        });
+      }
+    } finally {
+      setSettlingDispute(false);
     }
   }, [id]);
 
@@ -859,145 +1141,45 @@ export default function DisputeDetails() {
     }
   }, [disputeId, user]);
 
-  // Add this component inside your DisputeDetails component
-  const VotingStatus = () => {
-    if (dispute?.status !== "Vote in Progress") return null;
+  useEffect(() => {
+    if (isSuccess && hash && pendingTransactionType) {
+      if (pendingTransactionType === "startVote") {
+        toast.success("Voting can now begin! 🗳️", {
+          description:
+            "The voting phase has been initiated. Community members can now cast their votes.",
+        });
 
-    // Show loading state
-    if (votingStatusLoading) {
-      return (
-        <div className="animate-fade-in card-cyan rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
-            <p className="text-sm text-cyan-200">Checking voting status...</p>
-          </div>
-        </div>
-      );
+        // Refresh dispute data
+        setTimeout(async () => {
+          try {
+            const disputeDetails = await disputeService.getDisputeDetails(
+              disputeId!,
+            );
+            const transformedDispute =
+              disputeService.transformDisputeDetailsToRow(disputeDetails);
+            setDispute(transformedDispute);
+          } catch (error) {
+            console.error("Failed to refresh dispute:", error);
+          }
+        }, 3000);
+      }
+
+      if (pendingTransactionType === "settle") {
+        toast.success("Escrow dispute settled successfully! 🎉", {
+          description: "Transaction confirmed! The page will refresh.",
+        });
+
+        // Reload page after a short delay
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }
+
+      // Reset states
+      setPendingTransactionType(null);
+      resetWrite();
     }
-
-    const userRole = getUserRole();
-    const isJudge = isUserJudge();
-    const isCommunity = isUserCommunity();
-    const isParty = userRole === "plaintiff" || userRole === "defendant";
-
-    // User is plaintiff or defendant - they CANNOT vote
-    if (isParty) {
-      return (
-        <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-              <Shield className="h-6 w-6 text-amber-300" />
-            </div>
-            <div>
-              <h3 className="mb-1 text-lg font-bold text-amber-300">
-                Case Participant
-              </h3>
-              <p className="text-sm text-amber-200">
-                {userRole === "plaintiff"
-                  ? "As the plaintiff, you cannot vote in your own dispute."
-                  : "As the defendant, you cannot vote in your own dispute."}
-              </p>
-              <p className="mt-2 text-xs text-amber-300/70">
-                Voting is for community members and judges only.
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // User has voted - Consistent with Voting page
-    if (hasVoted) {
-      return (
-        <div className="animate-fade-in card-emerald glass mx-auto rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
-              <span className="text-2xl">✅</span>
-            </div>
-            <div>
-              <h3 className="mb-1 text-lg font-bold text-emerald-300">
-                Vote Submitted!
-              </h3>
-              <p className="text-sm text-emerald-200">
-                Thank you for participating in this dispute.
-                {isJudge && (
-                  <span className="mt-1 block text-emerald-300">
-                    ⚖️ Your vote carries judge weight
-                  </span>
-                )}
-              </p>
-              <p className="mt-2 text-xs text-emerald-300/70">
-                Results will be revealed when voting ends.
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // User can vote
-    if (canVote) {
-      return (
-        <div className="animate-fade-in card-cyan glass mx-auto rounded-2xl p-6">
-          <div className="flex flex-col items-center justify-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
-              <Vote className="h-6 w-6 text-cyan-300" />
-            </div>
-            <div className="flex flex-col items-center justify-center">
-              <h3 className="mb-1 text-lg font-bold text-cyan-300">
-                Cast Your Vote
-              </h3>
-              <p className="text-center text-sm text-cyan-200">
-                Your vote will help resolve this dispute fairly.
-                {isJudge && (
-                  <span className="mt-1 block font-semibold text-cyan-300">
-                    Judge Vote - Carries Higher Weight
-                  </span>
-                )}
-                {isCommunity && (
-                  <span className="mt-1 block text-cyan-300">
-                    Community Vote
-                  </span>
-                )}
-              </p>
-            </div>
-            <Button
-              variant="neon"
-              className="neon-hover mt-2"
-              onClick={handleOpenVoteModal}
-              size="lg"
-            >
-              <Vote className="mr-2 h-4 w-4" />
-              Cast {isJudge ? "Judge" : "Community"} Vote
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // User cannot vote (but not because they're a party)
-    return (
-      <div className="animate-fade-in card-amber glass mx-auto rounded-2xl p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-            <Shield className="h-6 w-6 text-amber-300" />
-          </div>
-          <div>
-            <h3 className="mb-1 text-lg font-bold text-amber-300">
-              Voting in Progress
-            </h3>
-            <p className="text-sm text-amber-200">
-              This dispute is currently being voted on by eligible community
-              members.
-            </p>
-            {reason && (
-              <p className="mt-2 text-xs text-amber-300/70">{reason}</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  }, [isSuccess, hash, pendingTransactionType, resetWrite, disputeId]);
 
   useEffect(() => {
     if (writeError) {
@@ -1012,7 +1194,6 @@ export default function DisputeDetails() {
 
     return () => clearInterval(interval);
   }, []);
-
 
   if (loading) {
     return (
@@ -1122,8 +1303,10 @@ export default function DisputeDetails() {
               {escalating ? "Escalating..." : "Test: Escalate to Vote"}
             </Button>
           )}
-          {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant */}
+
+          {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
           {dispute.status === "Vote in Progress" &&
+            isVoteStarted() && // Use the helper function
             canVote &&
             !hasVoted &&
             !isCurrentUserPlaintiff() &&
@@ -1138,8 +1321,9 @@ export default function DisputeDetails() {
               </Button>
             )}
 
-          {/* Show voted status ONLY if user is NOT plaintiff/defendant */}
+          {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
           {dispute.status === "Vote in Progress" &&
+            isVoteStarted() && // Use the helper function
             hasVoted &&
             !isCurrentUserPlaintiff() &&
             !isCurrentUserDefendant() && (
@@ -1165,149 +1349,151 @@ export default function DisputeDetails() {
         {(dispute.agreement?.type ||
           dispute.votingId ||
           dispute.contractAgreementId) && (
-            <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
-              <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
-                <FileText className="h-5 w-5" />
-                Agreement & Contract Details
-              </h3>
+          <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
+              <FileText className="h-5 w-5" />
+              Agreement & Contract Details
+            </h3>
 
-              <div className="flex flex-wrap gap-2">
-                {/* Agreement Type Card */}
-                {dispute.agreement?.type && (
-                  <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
-                        <FileText className="h-4 w-4 text-blue-300" />
-                      </div>
-                      <span className="text-sm font-medium text-blue-300">
-                        Agreement Type
-                      </span>
+            <div className="flex flex-wrap gap-2">
+              {/* Agreement Type Card */}
+              {dispute.agreement?.type && (
+                <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
+                      <FileText className="h-4 w-4 text-blue-300" />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold text-blue-200">
-                        {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
-                      </span>
-                    </div>
-                    {dispute.agreement.status && (
-                      <div className="mt-2 text-xs text-blue-300/70">
-                        Status: {dispute.agreement.status}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Voting ID Card */}
-                {dispute.votingId && (
-                  <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
-                        <Vote className="h-4 w-4 text-purple-300" />
-                      </div>
-                      <span className="text-sm font-medium text-purple-300">
-                        Voting ID
-                      </span>
-                    </div>
-                    <div className="font-mono text-lg font-bold text-purple-200">
-                      #{dispute.votingId}
-                    </div>
-                    <div className="mt-1 text-xs text-purple-300/70">
-                      Unique voting identifier
-                    </div>
-                  </div>
-                )}
-
-                {/* Contract Agreement ID Card */}
-                {dispute.contractAgreementId && (
-                  <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                        <span className="text-lg">📜</span>
-                      </div>
-                      <span className="text-sm font-medium text-green-300">
-                        Contract ID
-                      </span>
-                    </div>
-                    <div className="font-mono text-lg font-bold text-green-200">
-                      {dispute.contractAgreementId}
-                    </div>
-                    <div className="mt-1 text-xs text-green-300/70">
-                      On-chain contract reference
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Additional Information Row */}
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {/* Chain ID */}
-                {dispute.chainId && (
-                  <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
-                    <span className="text-sm text-cyan-300">Chain ID</span>
-                    <span className="font-mono text-sm font-bold text-cyan-200">
-                      {dispute.chainId}
+                    <span className="text-sm font-medium text-blue-300">
+                      Agreement Type
                     </span>
                   </div>
-                )}
-
-                {/* Transaction Hash */}
-                {dispute.txnhash && (
-                  <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
-                    <span className="text-sm text-amber-300">
-                      Transaction Hash
-                    </span>
-                    <span className="truncate font-mono text-xs text-amber-200">
-                      {dispute.txnhash}
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold text-blue-200">
+                      {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
                     </span>
                   </div>
-                )}
+                  {dispute.agreement.status && (
+                    <div className="mt-2 text-xs text-blue-300/70">
+                      Status: {dispute.agreement.status}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                {/* Dispute Type */}
-                {dispute.type !== undefined && (
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
-                    <span className="text-sm text-indigo-300">Dispute Type</span>
-                    <span className="text-sm font-bold text-indigo-200">
-                      {dispute.type === 1 ? "Pro Bono" : "Paid"}
+              {/* Voting ID Card */}
+              {dispute.votingId && (
+                <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+                      <Vote className="h-4 w-4 text-purple-300" />
+                    </div>
+                    <span className="text-sm font-medium text-purple-300">
+                      Voting ID
                     </span>
                   </div>
-                )}
+                  <div className="font-mono text-lg font-bold text-purple-200">
+                    #{dispute.votingId}
+                  </div>
+                  <div className="mt-1 text-xs text-purple-300/70">
+                    Unique voting identifier
+                  </div>
+                </div>
+              )}
 
-                {/* Vote Timings */}
-                {onChainAgreement && !onChainLoading && (
-                  <div className="flex items-center justify-between rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
-                    <span className="text-sm text-violet-300">Vote Started</span>
-                    <span className="text-xs text-violet-200">
-                      {formatDateWithTime(Number(onChainAgreement.voteStartedAt).toString())}
+              {/* Contract Agreement ID Card */}
+              {dispute.contractAgreementId && (
+                <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
+                      <span className="text-lg">📜</span>
+                    </div>
+                    <span className="text-sm font-medium text-green-300">
+                      Contract ID
                     </span>
                   </div>
-                )}
-              </div>
-
-              {/* Debug Info (remove in production) */}
-              {process.env.NODE_ENV === "development" && (
-                <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-gray-300">
-                      Debug Info
-                    </summary>
-                    <pre className="mt-2 overflow-auto text-gray-400">
-                      {JSON.stringify(
-                        {
-                          votingId: dispute.votingId,
-                          contractAgreementId: dispute.contractAgreementId,
-                          chainId: dispute.chainId,
-                          agreement: dispute.agreement,
-                          type: dispute.type,
-                          result: dispute.result,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </details>
+                  <div className="font-mono text-lg font-bold text-green-200">
+                    {dispute.contractAgreementId}
+                  </div>
+                  <div className="mt-1 text-xs text-green-300/70">
+                    On-chain contract reference
+                  </div>
                 </div>
               )}
             </div>
-          )}
+
+            {/* Additional Information Row */}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Chain ID */}
+              {dispute.chainId && (
+                <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
+                  <span className="text-sm text-cyan-300">Chain ID</span>
+                  <span className="font-mono text-sm font-bold text-cyan-200">
+                    {dispute.chainId}
+                  </span>
+                </div>
+              )}
+
+              {/* Transaction Hash */}
+              {dispute.txnhash && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
+                  <span className="text-sm text-amber-300">
+                    Transaction Hash
+                  </span>
+                  <span className="truncate font-mono text-xs text-amber-200">
+                    {dispute.txnhash}
+                  </span>
+                </div>
+              )}
+
+              {/* Dispute Type */}
+              {dispute.type !== undefined && (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
+                  <span className="text-sm text-indigo-300">Dispute Type</span>
+                  <span className="text-sm font-bold text-indigo-200">
+                    {dispute.type === 1 ? "Pro Bono" : "Paid"}
+                  </span>
+                </div>
+              )}
+
+              {/* Vote Timings */}
+              {onChainAgreement && !onChainLoading && (
+                <div className="flex items-center justify-between rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
+                  <span className="text-sm text-violet-300">Vote Started</span>
+                  <span className="text-xs text-violet-200">
+                    {formatDateWithTime(
+                      Number(onChainAgreement.voteStartedAt).toString(),
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Debug Info (remove in production) */}
+            {process.env.NODE_ENV === "development" && (
+              <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-gray-300">
+                    Debug Info
+                  </summary>
+                  <pre className="mt-2 overflow-auto text-gray-400">
+                    {JSON.stringify(
+                      {
+                        votingId: dispute.votingId,
+                        contractAgreementId: dispute.contractAgreementId,
+                        chainId: dispute.chainId,
+                        agreement: dispute.agreement,
+                        type: dispute.type,
+                        result: dispute.result,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </details>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
         <div className="card-cyan rounded-2xl p-6 shadow-lg">
@@ -1427,10 +1613,11 @@ export default function DisputeDetails() {
 
                       {/* Agreement Type Badge */}
                       <span
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${dispute.agreement.type === 2
-                          ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                          : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
-                          }`}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
+                          dispute.agreement.type === 2
+                            ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                            : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
+                        }`}
                       >
                         <FileText className="h-3.5 w-3.5" />
                         {dispute.agreement.type === 2
@@ -1464,7 +1651,20 @@ export default function DisputeDetails() {
         )}
       </div>
 
-      {dispute.status === "Vote in Progress" && <VotingStatus />}
+      {dispute.status === "Vote in Progress" && (
+        <VotingStatus
+          dispute={dispute}
+          votingStatusLoading={votingStatusLoading}
+          getUserRole={getUserRole}
+          isUserJudge={isUserJudge}
+          isUserCommunity={isUserCommunity}
+          canVote={canVote}
+          reason={reason}
+          hasVoted={hasVoted}
+          handleOpenVoteModal={handleOpenVoteModal}
+          isVoteStarted={isVoteStarted()}
+        />
+      )}
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Plaintiff Column */}
@@ -1705,6 +1905,7 @@ export default function DisputeDetails() {
       {/* Action Buttons */}
       {/* Action Buttons */}
       {/* Action Buttons */}
+      {/* Action Buttons */}
       <div className="flex flex-wrap gap-3 border-b border-white/10 py-6">
         {/* Plaintiff Edit Button - Only show when dispute is pending */}
         {dispute.status === "Pending" && isCurrentUserPlaintiff() && (
@@ -1726,9 +1927,14 @@ export default function DisputeDetails() {
               variant="outline"
               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
               onClick={() => setSettleModalOpen(true)}
+              disabled={isPending}
             >
-              <Scale className="mr-2 h-4 w-4" />
-              Settle Escrow Dispute
+              {isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Scale className="mr-2 h-4 w-4" />
+              )}
+              {isPending ? "Settling..." : "Settle Escrow Dispute"}
             </Button>
           )}
         {dispute.status === "Pending" &&
@@ -1738,40 +1944,56 @@ export default function DisputeDetails() {
               variant="outline"
               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
               onClick={() => setSettleModalOpen(true)}
+              disabled={settlingDispute}
             >
-              <Scale className="mr-2 h-4 w-4" />
-              Settle Rep Dispute
+              {settlingDispute ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Scale className="mr-2 h-4 w-4" />
+              )}
+              {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
             </Button>
           )}
 
-        {dispute.status === "Pending" && (isCurrentUserPlaintiff() || isCurrentUserDefendant()) && dispute.agreement?.type === 2  && ( onChainAgreement && !onChainLoading && now > Number(onChainAgreement.voteStartedAt)) && (
-          <Button
-            variant="outline"
-            className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-            onClick={() => setStartVoteModalOpen(true)}
-          >
-            <Scale className="mr-2 h-4 w-4" />
-            Start Escrow Vote
-          </Button>
-        )}
+        {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
+        {dispute.status === "Vote in Progress" &&
+          !isVoteStarted() && // Use the helper function
+          dispute.agreement?.type === 2 &&
+          onChainAgreement &&
+          !onChainLoading &&
+          now > Number(onChainAgreement.voteStartedAt) && (
+            <Button
+              variant="outline"
+              className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+              onClick={() => setStartVoteModalOpen(true)}
+              disabled={isPending}
+            >
+              {isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Scale className="mr-2 h-4 w-4" />
+              )}
+              {isPending ? "Starting..." : "Start Escrow Vote"}
+            </Button>
+          )}
 
-        {dispute.status === "Pending" && (isCurrentUserPlaintiff() || isCurrentUserDefendant()) && dispute.agreement?.type === 1 && (
-          <Button
-            variant="outline"
-            className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-            onClick={() => setStartVoteModalOpen(true)}
-          >
-            <Scale className="mr-2 h-4 w-4" />
-            Start Reputational Vote
-          </Button>
-        )}
-
-        {isSuccess && (
-          <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
-            <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
-            <p className="text-green-400">Transaction successful!</p>
-          </div>
-        )}
+        {dispute.status === "Vote in Progress" &&
+          !isVoteStarted() && // Use the helper function
+          dispute.agreement?.type === 1 && (
+            <Button
+              variant="outline"
+              className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+              onClick={() => setStartVoteModalOpen(true)}
+              disabled={startingVote}
+            >
+              {startingVote ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Scale className="mr-2 h-4 w-4" />
+              )}
+              {startingVote ? "Starting..." : "Start Reputational Vote"}
+            </Button>
+          )}
 
         {/* Defendant Response Button - Only for defendant when no response exists and dispute is pending */}
         {dispute.status === "Pending" &&
@@ -1801,8 +2023,9 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-        {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant */}
+        {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
         {dispute.status === "Vote in Progress" &&
+          isVoteStarted() && // Use the helper function
           canVote &&
           !hasVoted &&
           !isCurrentUserPlaintiff() &&
@@ -1817,8 +2040,9 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-        {/* Show voted status ONLY if user is NOT plaintiff/defendant */}
+        {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
         {dispute.status === "Vote in Progress" &&
+          isVoteStarted() && // Use the helper function
           hasVoted &&
           !isCurrentUserPlaintiff() &&
           !isCurrentUserDefendant() && (
@@ -1844,8 +2068,8 @@ export default function DisputeDetails() {
         isOpen={voteOutcomeModalOpen}
         onClose={() => setVoteOutcomeModalOpen(false)}
         disputeId={parseInt(id!)}
-      // Optional: You can also pass voteOutcome data directly if you already have it
-      // voteOutcome={yourVoteOutcomeData}
+        // Optional: You can also pass voteOutcome data directly if you already have it
+        // voteOutcome={yourVoteOutcomeData}
       />
       {/* Vote Modal */}
       <VoteModal
@@ -1878,18 +2102,16 @@ export default function DisputeDetails() {
         onSubmit={handleDefendantReply}
         navigate={navigate}
       />
-      {
-        dispute.agreement?.type === 1 &&
+      {dispute.agreement?.type === 1 && (
         <StartVoteConfirmationModal
           isOpen={startVoteModalOpen}
           onClose={() => setStartVoteModalOpen(false)}
           onConfirm={handleStartVote}
-          disable={isPending}
+          disable={startingVote}
           disputeTitle={dispute?.title}
         />
-      }
-      {
-        dispute.agreement?.type === 2 &&
+      )}
+      {dispute.agreement?.type === 2 && (
         <StartVoteConfirmationModal
           isOpen={startVoteModalOpen}
           onClose={() => setStartVoteModalOpen(false)}
@@ -1897,25 +2119,25 @@ export default function DisputeDetails() {
           disable={isPending}
           disputeTitle={dispute?.title}
         />
-      }
-      {
-        dispute.agreement?.type === 1 &&
+      )}
+      {dispute.agreement?.type === 1 && (
         <SettleConfirmationModal
           isOpen={settleModalOpen}
           onClose={() => setSettleModalOpen(false)}
           onConfirm={handleSettleDispute}
+          disable={settlingDispute}
           disputeTitle={dispute?.title}
         />
-      }
-      {
-        dispute.agreement?.type === 2 &&
+      )}
+      {dispute.agreement?.type === 2 && (
         <SettleConfirmationModal
           isOpen={settleModalOpen}
           onClose={() => setSettleModalOpen(false)}
           onConfirm={handleOnchainSettleDispute}
+          disable={isPending}
           disputeTitle={dispute?.title}
         />
-      }
+      )}
     </div>
   );
 }

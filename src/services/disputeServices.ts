@@ -444,15 +444,31 @@ class DisputeService {
     try {
       console.log(`🚀 Escalating disputes to vote (PATCH):`, disputeIds);
 
-      // Changed from POST to PATCH
-      const response = await api.patch("/testing/escalate-votes", {
-        disputeIds,
-      });
+      // ✅ INCREASE TIMEOUT TO 60 SECONDS
+      const response = await api.patch(
+        "/testing/escalate-votes",
+        {
+          disputeIds,
+        },
+        {
+          timeout: 60000, // 60 seconds timeout
+        },
+      );
 
       console.log("✅ Disputes escalated successfully:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Failed to escalate disputes:", error);
+
+      // ✅ CHECK IF THE REQUEST ACTUALLY SUCCEEDED ON THE SERVER
+      if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+        // Server might have processed it successfully even though client timed out
+        console.warn("⚠️ Request timed out, but may have succeeded on server");
+        throw new Error(
+          "Request timed out. Please refresh the page to check if it succeeded.",
+        );
+      }
+
       this.handleError(error);
     }
   }
