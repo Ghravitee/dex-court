@@ -45,12 +45,14 @@ import {
   useReadContract,
   useWaitForTransactionReceipt,
   useContractReads,
+  useSwitchChain
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { agreementService } from "../services/agreementServices";
 import { cleanTelegramUsername } from "../lib/usernameUtils";
 import { isValidAddress } from "../web3/helper";
+import { useAuth } from "../hooks/useAuth";
 
 // API Enum Mappings
 const AgreementTypeEnum = {
@@ -422,8 +424,11 @@ export default function Escrow() {
   const [lastSyncedTxHash, setLastSyncedTxHash] = useState<string | null>(null);
   const [chainConfigError, setChainConfigError] = useState<string | null>(null);
 
+
   // ---------- wagmi / on-chain state ----------
   const { address, isConnected } = useAccount();
+  const { user: currentUser } = useAuth();
+  const { switchChain } = useSwitchChain();
   const networkInfo = useNetworkEnvironment();
 
   // Add this state near the top of the component, with other state declarations
@@ -451,6 +456,18 @@ export default function Escrow() {
     return undefined;
   }, [networkInfo.chainId]);
 
+  const switchToTokenChain = useCallback(async () => {
+    if (!networkInfo.chainId || !switchChain) return;
+
+    try {
+      switchChain({ chainId: networkInfo.chainId });
+    } catch (error) {
+      console.error("Failed to switch network:", error);
+      // Fallback: show message asking user to switch manually
+    }
+  }, [networkInfo.chainId, switchChain]);
+
+
   // Separate write hooks: one for general writes, one for approvals
   const {
     data: txHash,
@@ -471,6 +488,7 @@ export default function Escrow() {
   const { isSuccess: txSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
   });
+
   const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
     hash: approvalHash,
   });
@@ -1180,6 +1198,12 @@ export default function Escrow() {
       updateStep("error", "Wallet not connected");
       return;
     }
+    if (!currentUser?.walletAddress) {
+      setUiError("Sign in to your account");
+      updateStep("error", "User not signed in");
+      return;
+    }
+
     if (!form.title) {
       setUiError("Title required");
       updateStep("error", "Missing title");
@@ -1703,6 +1727,13 @@ Chain ID: ${networkInfo.chainId}
   };
 
   useEffect(() => {
+    if (currentUser?.walletAddress && isConnected) {
+      toast.info(`Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`);
+      switchToTokenChain();
+    }
+  }, []);
+
+  useEffect(() => {
     if (isConnected) {
       console.log("🔗 Chain configuration:", {
         contractAddress,
@@ -1796,10 +1827,10 @@ Chain ID: ${networkInfo.chainId}
             <div className="flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full ${isError
-                    ? "bg-red-500/10"
-                    : isSuccess
-                      ? "bg-emerald-500/10"
-                      : "bg-cyan-500/10"
+                  ? "bg-red-500/10"
+                  : isSuccess
+                    ? "bg-emerald-500/10"
+                    : "bg-cyan-500/10"
                   }`}
               >
                 {isError ? (
@@ -1864,21 +1895,21 @@ Chain ID: ${networkInfo.chainId}
                 <div key={step.id} className="relative">
                   <div
                     className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${isCompleted
-                        ? "border-emerald-500/30 bg-emerald-500/5"
-                        : isCurrent
-                          ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
-                          : isPending
-                            ? "border-white/10 bg-white/5"
-                            : "border-white/10 bg-white/5"
+                      ? "border-emerald-500/30 bg-emerald-500/5"
+                      : isCurrent
+                        ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
+                        : isPending
+                          ? "border-white/10 bg-white/5"
+                          : "border-white/10 bg-white/5"
                       }`}
                   >
                     {/* Step Indicator */}
                     <div
                       className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${isCompleted
-                          ? "border-emerald-500 bg-emerald-500/20"
-                          : isCurrent
-                            ? "border-cyan-500 bg-cyan-500/20"
-                            : "border-white/20 bg-white/10"
+                        ? "border-emerald-500 bg-emerald-500/20"
+                        : isCurrent
+                          ? "border-cyan-500 bg-cyan-500/20"
+                          : "border-white/20 bg-white/10"
                         }`}
                     >
                       {isCompleted ? (
@@ -1886,10 +1917,10 @@ Chain ID: ${networkInfo.chainId}
                       ) : (
                         <StepIcon
                           className={`h-5 w-5 ${isCurrent
-                              ? "text-cyan-400"
-                              : isPending
-                                ? "text-gray-400"
-                                : "text-gray-500"
+                            ? "text-cyan-400"
+                            : isPending
+                              ? "text-gray-400"
+                              : "text-gray-500"
                             }`}
                         />
                       )}
@@ -1899,10 +1930,10 @@ Chain ID: ${networkInfo.chainId}
                     <div className="text-center">
                       <div
                         className={`text-xs font-semibold ${isCompleted
-                            ? "text-emerald-300"
-                            : isCurrent
-                              ? "text-cyan-300"
-                              : "text-gray-400"
+                          ? "text-emerald-300"
+                          : isCurrent
+                            ? "text-cyan-300"
+                            : "text-gray-400"
                           }`}
                       >
                         {step.label}
@@ -1915,10 +1946,10 @@ Chain ID: ${networkInfo.chainId}
                     {/* Step Number */}
                     <div
                       className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isCompleted
-                          ? "bg-emerald-500 text-white"
-                          : isCurrent
-                            ? "bg-cyan-500 text-white"
-                            : "bg-white/10 text-gray-400"
+                        ? "bg-emerald-500 text-white"
+                        : isCurrent
+                          ? "bg-cyan-500 text-white"
+                          : "bg-white/10 text-gray-400"
                         }`}
                     >
                       {index + 1}
@@ -1935,10 +1966,10 @@ Chain ID: ${networkInfo.chainId}
           <div className="flex items-start gap-4">
             <div
               className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${isError
-                  ? "bg-red-500/10"
-                  : isSuccess
-                    ? "bg-emerald-500/10"
-                    : "bg-cyan-500/10"
+                ? "bg-red-500/10"
+                : isSuccess
+                  ? "bg-emerald-500/10"
+                  : "bg-cyan-500/10"
                 }`}
             >
               {isError ? (
@@ -2256,8 +2287,8 @@ Chain ID: ${networkInfo.chainId}
                           type="button"
                           onClick={() => setEscrowType("myself")}
                           className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
                             }`}
                         >
                           <User className="mb-2 h-6 w-6" />
@@ -2272,8 +2303,8 @@ Chain ID: ${networkInfo.chainId}
                           type="button"
                           onClick={() => setEscrowType("others")}
                           className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
                             }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
@@ -2417,8 +2448,8 @@ Chain ID: ${networkInfo.chainId}
                               <label
                                 key={p}
                                 className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
                                   }`}
                               >
                                 <input
@@ -2460,8 +2491,8 @@ Chain ID: ${networkInfo.chainId}
                               <label
                                 key={p}
                                 className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
                                   }`}
                               >
                                 <input
@@ -2691,8 +2722,8 @@ Chain ID: ${networkInfo.chainId}
 
                       <div
                         className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                            ? "border-cyan-400/60 bg-cyan-500/20"
-                            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                          ? "border-cyan-400/60 bg-cyan-500/20"
+                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
                           }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
@@ -2825,7 +2856,7 @@ Chain ID: ${networkInfo.chainId}
                         Deadline <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
-                        <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />   
+                        <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                         <ReactDatePicker
                           selected={deadline}
                           onChange={(date) => setDeadline(date)}
@@ -3027,15 +3058,15 @@ Chain ID: ${networkInfo.chainId}
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
                   className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
-                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                     } `}
                 >
                   <span>{tab.label}</span>
                   <span
                     className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
-                        ? "bg-cyan-400/30 text-cyan-200"
-                        : "bg-white/10 text-white/60"
+                      ? "bg-cyan-400/30 text-cyan-200"
+                      : "bg-white/10 text-white/60"
                       } `}
                   >
                     {tab.count}
@@ -3146,20 +3177,20 @@ Chain ID: ${networkInfo.chainId}
                             <div>
                               <span
                                 className={`badge w-fit ${e.status === "pending"
-                                    ? "badge-yellow"
-                                    : e.status === "signed"
-                                      ? "badge-blue"
-                                      : e.status === "pending_approval"
-                                        ? "badge-orange"
-                                        : e.status === "completed"
-                                          ? "badge-green"
-                                          : e.status === "disputed"
-                                            ? "badge-purple"
-                                            : e.status === "cancelled"
-                                              ? "badge-red"
-                                              : e.status === "expired"
-                                                ? "badge-gray"
-                                                : "badge-orange"
+                                  ? "badge-yellow"
+                                  : e.status === "signed"
+                                    ? "badge-blue"
+                                    : e.status === "pending_approval"
+                                      ? "badge-orange"
+                                      : e.status === "completed"
+                                        ? "badge-green"
+                                        : e.status === "disputed"
+                                          ? "badge-purple"
+                                          : e.status === "cancelled"
+                                            ? "badge-red"
+                                            : e.status === "expired"
+                                              ? "badge-gray"
+                                              : "badge-orange"
                                   }`}
                               >
                                 {e.status === "pending_approval"
@@ -3249,8 +3280,8 @@ Chain ID: ${networkInfo.chainId}
                           size="sm"
                           onClick={() => handlePageChange(pageNum)}
                           className={`${currentPage === pageNum
-                              ? "neon-hover"
-                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                            ? "neon-hover"
+                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
                             } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                         >
                           {pageNum}
