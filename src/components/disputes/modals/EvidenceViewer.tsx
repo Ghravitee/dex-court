@@ -184,10 +184,10 @@ export const EvidenceViewer = ({
       >
         <motion.div
           onClick={(e) => e.stopPropagation()}
-          className="relative h-[90vh] w-full max-w-4xl rounded-2xl bg-gray-900 p-6"
+          className="relative h-[85vh] w-full max-w-4xl rounded-2xl bg-gray-900 p-6"
         >
           {/* Header */}
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mt-10 mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">
               {selectedEvidence.name}
             </h3>
