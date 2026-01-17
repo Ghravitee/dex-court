@@ -58,7 +58,7 @@ import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { parseEther } from "ethers";
 import { getAgreement } from "../web3/readContract";
-import { formatDateWithTime } from "../web3/helper";
+// import { formatDateWithTime } from "../web3/helper";
 
 // Add this helper function near your other imports
 const formatDisplayName = (username: string) => {
@@ -72,6 +72,27 @@ const formatDisplayName = (username: string) => {
   }
   // For Telegram usernames, use the existing formatter
   return formatTelegramUsernameForDisplay(username);
+};
+
+const formatBigIntTimestamp = (
+  bigIntTimestamp: bigint | string | number,
+): string => {
+  try {
+    const timestamp = Number(bigIntTimestamp.toString());
+    if (timestamp === 0) return "Not scheduled";
+
+    // Check if it's in seconds (Unix timestamp)
+    if (timestamp < 10000000000) {
+      // Multiply by 1000 to convert seconds to milliseconds
+      return new Date(timestamp * 1000).toLocaleString();
+    }
+
+    // Assume it's already in milliseconds
+    return new Date(timestamp).toLocaleString();
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return "Invalid date";
+  }
 };
 
 // Helper function to map agreement status codes to human-readable labels
@@ -1237,6 +1258,8 @@ export default function DisputeDetails() {
     return () => clearInterval(interval);
   }, []);
 
+
+
   if (loading) {
     return (
       <div className="mx-auto flex h-[80vh] items-center justify-center">
@@ -1368,12 +1391,10 @@ export default function DisputeDetails() {
               )}
             <div>
               {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
-              {dispute.status === "Vote in Progress" &&
-                // Use the helper function
-                dispute.agreement?.type === 2 &&
+              {dispute.agreement?.type === 2 &&
                 onChainAgreement &&
                 !onChainLoading &&
-                now > Number(onChainAgreement.voteStartedAt) && (
+                now > Number(onChainAgreement.voteStartedAt.toString()) && ( // Add .toString()
                   <Button
                     variant="outline"
                     className="border-green-400/30 text-green-300 hover:bg-green-500/10"
@@ -1580,12 +1601,12 @@ export default function DisputeDetails() {
 
               {/* Vote Timings */}
               {onChainAgreement && !onChainLoading && (
-                <div className="flex items-center justify-between rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
-                  <span className="text-sm text-violet-300">Vote Started</span>
-                  <span className="text-xs text-violet-200">
-                    {formatDateWithTime(
-                      Number(onChainAgreement.voteStartedAt).toString(),
-                    )}
+                <div className="flex flex-col gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
+                  <span className="text-sm text-violet-300">
+                    Vote Scheduled
+                  </span>
+                  <span className="text-sm font-bold text-violet-200">
+                    {formatBigIntTimestamp(onChainAgreement.voteStartedAt)}
                   </span>
                 </div>
               )}
@@ -2079,11 +2100,11 @@ export default function DisputeDetails() {
         {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
 
         {/* Start Vote Button - Only show for escrow disputes (type 2) */}
-        {dispute.status === "Vote in Progress" &&
+        {
           dispute.agreement?.type === 2 &&
           onChainAgreement &&
           !onChainLoading &&
-          !isVoteStarted() && ( // Only show if vote hasn't started
+          now > Number(onChainAgreement.voteStartedAt.toString()) && ( // Add .toString()
             <Button
               variant="outline"
               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
