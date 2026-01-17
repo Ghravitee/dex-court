@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xd5a51fD4c76eb55934A5612799a2Fbc4b80f82c9", // Sepolia address
+  11155111: "0xC8A44CF6AEae1edeFeE913cD7887Ed4e25e00a91", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xA391BbD957fe8bE87F3408d769A447938194953F", // Sepolia address
+  11155111: "0xfa33e21286B92CA85DA9e77D6bD2945a58062A0F", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -430,6 +430,41 @@ export const ESCROW_ABI = {
     },
     {
       "type": "function",
+      "name": "getEscrowConfigs",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct AgreementEscrow.EscrowConfigs",
+          "components": [
+            {
+              "name": "platformFeeBP",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "disputeDuration",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "grace1Duration",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "grace2Duration",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "getMilestone",
       "inputs": [
         {
@@ -518,21 +553,6 @@ export const ESCROW_ABI = {
         },
         {
           "name": "escrowedETH",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_platformFeeBP",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_grace1Duration",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_grace2Duration",
           "type": "uint256",
           "internalType": "uint256"
         },
@@ -627,12 +647,27 @@ export const ESCROW_ABI = {
     },
     {
       "type": "function",
-      "name": "setFeeRecipient",
+      "name": "setEscrowConfig",
       "inputs": [
         {
-          "name": "recipient",
-          "type": "address",
-          "internalType": "address"
+          "name": "_platformFeeBP",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_disputeDuration",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_grace1Duration",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_grace2Duration",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -640,17 +675,12 @@ export const ESCROW_ABI = {
     },
     {
       "type": "function",
-      "name": "setGracePeriods",
+      "name": "setFeeRecipient",
       "inputs": [
         {
-          "name": "g1",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "g2",
-          "type": "uint256",
-          "internalType": "uint256"
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
         }
       ],
       "outputs": [],
@@ -674,19 +704,6 @@ export const ESCROW_ABI = {
           "name": "hold",
           "type": "bool",
           "internalType": "bool"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "setPlatformFee",
-      "inputs": [
-        {
-          "name": "bp",
-          "type": "uint256",
-          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -1048,6 +1065,37 @@ export const ESCROW_ABI = {
         },
         {
           "name": "votingId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "EscrowConfigUpdated",
+      "inputs": [
+        {
+          "name": "platformFeeBP",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "disputeDuration",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "grace1Duration",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "grace2Duration",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
@@ -1527,11 +1575,6 @@ export const VOTING_ABI = {
           "name": "_feeRecipient",
           "type": "address",
           "internalType": "address"
-        },
-        {
-          "name": "_disputeAdmin",
-          "type": "address",
-          "internalType": "address"
         }
       ],
       "stateMutability": "nonpayable"
@@ -1548,52 +1591,6 @@ export const VOTING_ABI = {
       ],
       "outputs": [],
       "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "commitVote",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "commitHash",
-          "type": "bytes32",
-          "internalType": "bytes32"
-        },
-        {
-          "name": "merkleProof",
-          "type": "bytes32[]",
-          "internalType": "bytes32[]"
-        },
-        {
-          "name": "claimedTier",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "claimedWeight",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "disputeAdmin",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "stateMutability": "view"
     },
     {
       "type": "function",
@@ -1871,37 +1868,12 @@ export const VOTING_ABI = {
           "internalType": "struct Voting.VotingConfig",
           "components": [
             {
-              "name": "tier1ThresholdPercent",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "tier2ThresholdPercent",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "divisor",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "tier1Weight",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "tier2Weight",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "judgeWeight",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
               "name": "votingDuration",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "disputeDuration",
               "type": "uint256",
               "internalType": "uint256"
             }
@@ -2064,35 +2036,6 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "openVoteOffchain",
-      "inputs": [
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "proBono",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "owner",
       "inputs": [],
       "outputs": [
@@ -2106,69 +2049,8 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "raiseDispute",
-      "inputs": [
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "payable"
-    },
-    {
-      "type": "function",
-      "name": "raiseDisputeOffchain",
-      "inputs": [
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "renounceOwnership",
       "inputs": [],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "revealMyVote",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "vote",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "nonce",
-          "type": "bytes",
-          "internalType": "bytes"
-        }
-      ],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -2202,24 +2084,6 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "setDisputeMerkle",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "root",
-          "type": "bytes32",
-          "internalType": "bytes32"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "setFeeRecipient",
       "inputs": [
         {
@@ -2236,40 +2100,12 @@ export const VOTING_ABI = {
       "name": "setVotingConfig",
       "inputs": [
         {
-          "name": "_tier1Percent",
+          "name": "_votingDuration",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "_tier2Percent",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_tier1Weight",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_tier2Weight",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_judgeWeight",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "setVotingDuration",
-      "inputs": [
-        {
-          "name": "duration",
+          "name": "_disputeDuration",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2288,44 +2124,6 @@ export const VOTING_ABI = {
         }
       ],
       "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "settleDispute",
-      "inputs": [
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "payable"
-    },
-    {
-      "type": "function",
-      "name": "settleDisputeOffchain",
-      "inputs": [
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
       "stateMutability": "nonpayable"
     },
     {
@@ -2353,56 +2151,6 @@ export const VOTING_ABI = {
         }
       ],
       "stateMutability": "view"
-    },
-    {
-      "type": "event",
-      "name": "DisputeRaised",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "createdAt",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voteStartedAt",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "DisputeSettled",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "createdAt",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voteStartedAt",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
     },
     {
       "type": "event",
@@ -2512,31 +2260,6 @@ export const VOTING_ABI = {
     },
     {
       "type": "event",
-      "name": "VoteCommitted",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voter",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "tier",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
       "name": "VoteFinalized",
       "inputs": [
         {
@@ -2627,44 +2350,13 @@ export const VOTING_ABI = {
       "name": "VotingConfigUpdated",
       "inputs": [
         {
-          "name": "tier1ThresholdPercent",
+          "name": "votingDuration",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
         },
         {
-          "name": "tier2ThresholdPercent",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "tier1Weight",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "tier2Weight",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "judgeWeight",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VotingDurationUpdated",
-      "inputs": [
-        {
-          "name": "duration",
+          "name": "disputeDuration",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
