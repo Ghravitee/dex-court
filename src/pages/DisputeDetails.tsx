@@ -1149,7 +1149,13 @@ export default function DisputeDetails() {
   };
 
   const handleEscalateToVote = useCallback(async () => {
-    if (!disputeId || !user) return;
+    if (!disputeId || !user || !dispute) return;
+
+    // Optional: Double-check this is a reputational dispute
+    if (dispute.agreement?.type !== 1) {
+      toast.error("Only reputational disputes can be escalated to vote");
+      return;
+    }
 
     try {
       setEscalating(true);
@@ -1172,7 +1178,7 @@ export default function DisputeDetails() {
     } finally {
       setEscalating(false);
     }
-  }, [disputeId, user]);
+  }, [disputeId, user, dispute]); // Added dispute to dependencies
 
   useEffect(() => {
     if (isSuccess && hash && pendingTransactionType) {
@@ -1325,7 +1331,7 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-          {dispute?.status === "Pending" && (
+          {dispute?.status === "Pending" && dispute.agreement?.type === 1 && (
             <Button
               variant="outline"
               className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
@@ -1337,7 +1343,7 @@ export default function DisputeDetails() {
               ) : (
                 <Vote className="mr-2 h-4 w-4" />
               )}
-              {escalating ? "Escalating..." : "Test: Escalate to Vote"}
+              {escalating ? "Escalating..." : "Escalate to Vote"}
             </Button>
           )}
 

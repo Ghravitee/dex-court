@@ -435,6 +435,7 @@ export interface CreateDisputeFromAgreementRequest {
   claim: string;
   witnesses?: string[];
   defendant: string;
+  votingId?: string;
 }
 
 export interface DefendantClaimRequest {

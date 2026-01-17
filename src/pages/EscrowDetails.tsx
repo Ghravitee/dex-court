@@ -69,6 +69,11 @@ import {
 import type { LoadingStates, MilestoneData } from "../web3/interfaces";
 import { MilestoneTableRow } from "../web3/MilestoneTableRow";
 import { CountdownTimer } from "../web3/Timer";
+import { disputeService } from "../services/disputeServices";
+import {
+  DisputeTypeEnum,
+  type CreateDisputeFromAgreementRequest,
+} from "../types";
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -432,26 +437,164 @@ const SafetyBadge = ({ value }: { value: boolean }) => (
 );
 
 // Add this modal component (place it near the RejectDeliveryModal in AgreementDetails or create a new one)
+// Enhanced RaiseDisputeModal Component
 const RaiseDisputeModal = ({
   isOpen,
   onClose,
   onConfirm,
   claim,
   setClaim,
+  title = "",
+  description = "",
+  disputeType = DisputeTypeEnum.ProBono,
+  defendant = "",
+  witnesses = [],
+  files = [],
   isSubmitting,
+  agreement,
+  currentUser,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (claim: string) => Promise<void>;
+  onConfirm: (
+    data: CreateDisputeFromAgreementRequest,
+    files: File[],
+  ) => Promise<void>;
   claim: string;
   setClaim: (claim: string) => void;
+  title?: string;
+  description?: string;
+  disputeType?: DisputeTypeEnum;
+  defendant?: string;
+  witnesses?: string[];
+  files?: File[];
   isSubmitting: boolean;
+  agreement?: any;
+  currentUser?: any;
 }) => {
+  const [localTitle, setLocalTitle] = useState(title || agreement?.title || "");
+  const [localDescription, setLocalDescription] = useState(
+    description || agreement?.description || "",
+  );
+
+  const [localDisputeType, setLocalDisputeType] =
+    useState<DisputeTypeEnum>(disputeType);
+  const [localDefendant, setLocalDefendant] = useState(defendant);
+  const [localWitnesses, setLocalWitnesses] = useState<string[]>(witnesses);
+  const [localFiles, setLocalFiles] = useState<File[]>(files);
+  const [witnessInput, setWitnessInput] = useState("");
+
+  const defendantOptions = useMemo(() => {
+    if (!agreement) return [];
+
+    const options = [];
+    const currentUsername = currentUser?.username || "";
+
+    // Add both parties as potential defendants
+    if (
+      agreement.firstParty?.username &&
+      agreement.firstParty.username !== currentUsername
+    ) {
+      options.push(agreement.firstParty.username);
+    }
+
+    if (
+      agreement.counterParty?.username &&
+      agreement.counterParty.username !== currentUsername
+    ) {
+      options.push(agreement.counterParty.username);
+    }
+
+    return options;
+  }, [agreement, currentUser]);
+
+  useEffect(() => {
+    if (agreement && !localDefendant && defendantOptions.length > 0) {
+      // Auto-select the other party as defendant
+      const currentUsername = currentUser?.username || "";
+      const otherParty = defendantOptions.find(
+        (opt) => opt !== currentUsername,
+      );
+      if (otherParty) {
+        setLocalDefendant(otherParty);
+      }
+    }
+  }, [agreement, localDefendant, defendantOptions, currentUser]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (selectedFiles) {
+      const newFiles = Array.from(selectedFiles);
+      if (localFiles.length + newFiles.length > 10) {
+        toast.error("Maximum 10 files allowed");
+        return;
+      }
+      setLocalFiles([...localFiles, ...newFiles]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setLocalFiles(localFiles.filter((_, i) => i !== index));
+  };
+
+  const addWitness = () => {
+    const trimmed = witnessInput.trim();
+    if (trimmed && !localWitnesses.includes(trimmed)) {
+      setLocalWitnesses([...localWitnesses, trimmed]);
+      setWitnessInput("");
+    }
+  };
+
+  const removeWitness = (index: number) => {
+    setLocalWitnesses(localWitnesses.filter((_, i) => i !== index));
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addWitness();
+    }
+  };
+
+  const handleSubmit = async () => {
+    // Validate required fields
+    if (!localTitle.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    if (!localDescription.trim()) {
+      toast.error("Description is required");
+      return;
+    }
+
+    if (!localDefendant.trim()) {
+      toast.error("Defendant is required");
+      return;
+    }
+
+    if (localFiles.length === 0) {
+      toast.error("At least one evidence file is required");
+      return;
+    }
+
+    const disputeData: CreateDisputeFromAgreementRequest = {
+      title: localTitle,
+      description: localDescription,
+      requestKind: localDisputeType,
+      defendant: localDefendant,
+      claim: claim,
+      witnesses: localWitnesses,
+    };
+
+    await onConfirm(disputeData, localFiles);
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[90vh] w-full max-w-[20rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:max-w-md sm:p-6">
+      <div className="relative max-h-[90vh] w-full max-w-[32rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:p-6">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
@@ -467,69 +610,227 @@ const RaiseDisputeModal = ({
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-lg font-bold text-white sm:text-xl">
-              Raise a Dispute
+              Raise a Dispute from Agreement
             </h2>
             <p className="text-xs text-purple-300 sm:text-sm">
-              This will open a dispute immediately
+              Create a formal dispute linked to this agreement
             </p>
           </div>
         </div>
 
-        <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 sm:mb-6 sm:p-4">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
-            <div className="min-w-0">
-              <p className="text-xs text-purple-200 sm:text-sm">
-                <span className="font-semibold">Important:</span> Raising a
-                dispute will:
+        {/* Scrollable form content */}
+        <div className="max-h-[calc(90vh-12rem)] overflow-y-auto pr-2">
+          <div className="space-y-4">
+            {/* Title */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Title *
+              </label>
+              <input
+                type="text"
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                placeholder="Enter dispute title"
+                className="w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Description *
+              </label>
+              <textarea
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                placeholder="Describe the dispute in detail"
+                className="h-32 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Claim */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Formal Claim *
+              </label>
+              <textarea
+                value={claim}
+                onChange={(e) => setClaim(e.target.value)}
+                placeholder="State your formal claim against the defendant"
+                className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Dispute Type */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Dispute Type *
+              </label>
+              <div className="flex gap-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value={DisputeTypeEnum.ProBono}
+                    checked={localDisputeType === DisputeTypeEnum.ProBono}
+                    onChange={() =>
+                      setLocalDisputeType(DisputeTypeEnum.ProBono)
+                    }
+                    className="mr-2"
+                    disabled={isSubmitting}
+                  />
+                  <span className="text-white">Pro Bono</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value={DisputeTypeEnum.Paid}
+                    checked={localDisputeType === DisputeTypeEnum.Paid}
+                    onChange={() => setLocalDisputeType(DisputeTypeEnum.Paid)}
+                    className="mr-2"
+                    disabled={isSubmitting}
+                  />
+                  <span className="text-white">Paid</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Defendant */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Defendant *
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={localDefendant}
+                  onChange={(e) => setLocalDefendant(e.target.value)}
+                  className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Select defendant</option>
+                  {defendantOptions.map((username, index) => (
+                    <option key={index} value={username}>
+                      {username}
+                    </option>
+                  ))}
+                </select>
+                {defendantOptions.length === 0 && (
+                  <input
+                    type="text"
+                    value={localDefendant}
+                    onChange={(e) => setLocalDefendant(e.target.value)}
+                    placeholder="Enter defendant username"
+                    className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                    disabled={isSubmitting}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Witnesses */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Witnesses (Optional)
+              </label>
+              <div className="mb-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={witnessInput}
+                    onChange={(e) => setWitnessInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Enter witness username"
+                    className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                    disabled={isSubmitting}
+                  />
+                  <Button
+                    type="button"
+                    onClick={addWitness}
+                    disabled={isSubmitting || !witnessInput.trim()}
+                    className="border-purple-500/30 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+              {localWitnesses.length > 0 && (
+                <div className="space-y-2">
+                  {localWitnesses.map((witness, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
+                    >
+                      <span className="text-sm text-white">{witness}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeWitness(index)}
+                        className="text-red-400 hover:text-red-300"
+                        disabled={isSubmitting}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Evidence Files * (Max 10 files)
+              </label>
+              <div className="mb-2">
+                <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-purple-500/30 bg-purple-500/10 p-4 hover:border-purple-500/50">
+                  <Upload className="mr-2 h-5 w-5 text-purple-400" />
+                  <span className="text-purple-300">Click to upload files</span>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    disabled={isSubmitting}
+                  />
+                </label>
+              </div>
+              {localFiles.length > 0 && (
+                <div className="space-y-2">
+                  {localFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-purple-400" />
+                        <span className="text-sm text-white">{file.name}</span>
+                        <span className="text-xs text-purple-300">
+                          ({(file.size / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="text-red-400 hover:text-red-300"
+                        disabled={isSubmitting}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-gray-400">
+                Upload supporting documents, screenshots, or evidence (PDF,
+                images, etc.)
               </p>
-              <ul className="mt-1 space-y-1 text-xs text-purple-200/80 sm:mt-2">
-                <li>• Immediately create a dispute</li>
-                <li>• Freeze the escrow funds</li>
-                <li>• Require dispute resolution through voting</li>
-                <li>• You can add more evidence on the dispute page later</li>
-              </ul>
             </div>
           </div>
         </div>
 
-        <div className="mb-4 sm:mb-6">
-          <label className="mb-1 block text-sm font-medium text-purple-300 sm:mb-2">
-            <div className="flex items-center gap-2">
-              <span>Claim Description (Optional)</span>
-              <div className="group relative hidden sm:inline-block">
-                <Info className="h-4 w-4 text-gray-400 hover:text-purple-300" />
-                <div className="invisible absolute top-1/2 left-6 z-10 w-64 -translate-y-1/2 rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-200 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
-                  <p className="font-medium text-white">What is a Claim?</p>
-                  <p className="mt-1">
-                    A claim is your formal statement explaining why you're
-                    raising a dispute. This helps voters understand your
-                    position. You can leave this empty if you prefer to add
-                    details later on the dispute page.
-                  </p>
-                  <p className="mt-2 font-medium text-white">Examples:</p>
-                  <ul className="mt-1 list-inside list-disc space-y-1">
-                    <li>"Counterparty not fulfilling their obligations"</li>
-                    <li>"Quality of work does not meet agreed standards"</li>
-                    <li>"Delays beyond agreed timeframe"</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </label>
-          <textarea
-            value={claim}
-            onChange={(e) => setClaim(e.target.value)}
-            placeholder="Briefly describe why you're raising this dispute (optional)"
-            className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none sm:h-32"
-            disabled={isSubmitting}
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            You can add more details and evidence on the dispute page.
-          </p>
-        </div>
-
-        <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
+        {/* Action buttons */}
+        <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
           <Button
             variant="outline"
             onClick={onClose}
@@ -541,7 +842,7 @@ const RaiseDisputeModal = ({
           <Button
             variant="outline"
             className="w-full border-purple-500/30 bg-purple-500/10 py-2 text-sm text-purple-300 hover:border-purple-400 hover:bg-purple-500/20 sm:w-auto sm:text-base"
-            onClick={() => onConfirm(claim)}
+            onClick={handleSubmit}
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -1881,13 +2182,18 @@ export default function EscrowDetails() {
   };
 
   // Replace the existing handleRaiseDispute function with this:
-  const handleRaiseDispute = async (claim: string = "") => {
+  const handleRaiseDispute = async (
+    data: CreateDisputeFromAgreementRequest,
+    files: File[],
+  ) => {
     resetMessages();
     setLoading("raiseDispute", true);
     setIsSubmittingDispute(true);
 
     try {
-      if (!onChainAgreement?.id) return setUiError("Agreement ID required");
+      if (!id) return setUiError("Agreement ID required");
+      if (!onChainAgreement?.id)
+        return setUiError("On-chain agreement ID required");
       if (!isLoadedAgreement) return setUiError("Load the agreement first");
       if (!isServiceProvider && !isServiceRecipient)
         return setUiError("Only parties to the agreement can raise a dispute");
@@ -1899,43 +2205,66 @@ export default function EscrowDetails() {
       if (onChainAgreement.disputed)
         return setUiError("The agreement is already in dispute");
 
-      // ADD THIS: If there's a claim, save it to the backend
-      if (claim.trim() && id) {
-        try {
-          // You might want to save the claim to your backend
-          // This would depend on your API structure
-          console.log("Saving dispute claim:", claim);
-          // Example API call if you have an endpoint for it:
-          // await agreementService.saveDisputeClaim(parseInt(id), claim.trim());
-        } catch (error) {
-          console.warn("Failed to save claim to backend:", error);
-          // Continue with dispute creation even if claim save fails
-        }
+      // Validation for Paid disputes
+      if (data.requestKind === DisputeTypeEnum.Paid && !user?.walletAddress) {
+        return setUiError("Wallet address required for paid disputes");
       }
+
+      const agreementId = parseInt(id);
+
+      console.log("🚀 Creating dispute from agreement:", {
+        agreementId,
+        data,
+        files: files.map((f) => f.name),
+        onChainAgreementId: onChainAgreement.id,
+      });
+
+      // Call the API to create dispute
+      const disputeResponse = await disputeService.createDisputeFromAgreement(
+        agreementId,
+        data,
+        files,
+      );
+
+      console.log("✅ Dispute created via API:", disputeResponse);
+
+      // Now TypeScript knows disputeResponse.votingId exists (optional)
+      const votingIdToUse = disputeResponse.votingId || votingId;
 
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
-        args: [BigInt(onChainAgreement?.id), BigInt(votingId)],
+        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse)],
       });
 
-      setUiSuccess("Dispute raised successfully!");
+      setUiSuccess("Dispute raised successfully! Telegram notifications sent.");
 
       // Close the modal
       setIsDisputeModalOpen(false);
       setDisputeClaim("");
+
+      // Refresh data to show updated status
+      setTimeout(() => {
+        fetchEscrowDetailsBackground().catch(console.error);
+      }, 2000);
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
       setIsSubmittingDispute(false);
-      setUiError(
-        typeof error === "string"
-          ? error
-          : error instanceof Error
-            ? error.message
-            : "Error raising dispute",
-      );
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to create dispute. Please check all required fields and try again.";
+
+      setUiError(errorMessage);
       console.error("Error raising dispute:", error);
+
+      // Show error toast
+      toast.error("Failed to create dispute", {
+        description: errorMessage,
+        duration: 5000,
+      });
     } finally {
       if (!isSuccess) {
         setIsSubmittingDispute(false);
@@ -3367,7 +3696,7 @@ export default function EscrowDetails() {
                         !onChainAgreement.frozen &&
                         !onChainAgreement.pendingCancellation && (
                           <Button
-                            onClick={handleOpenDisputeModal} // Changed from handleRaiseDispute
+                            onClick={handleOpenDisputeModal}
                             disabled={
                               !onChainAgreement?.id ||
                               isPending ||
@@ -3575,86 +3904,6 @@ export default function EscrowDetails() {
                 <p className="text-green-400">Transaction successful!</p>
               </div>
             )}
-
-            {/* DANIEL's INDENT */}
-            {/* DANIEL's INDENT */}
-            {/* {(isParticipant || isCreator) &&
-              escrow?.status !== "completed" &&
-              escrow?.status !== "disputed" && (
-                <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
-                  <h3 className="mb-4 text-lg font-semibold text-white">
-                    Escrow Actions
-                  </h3>
-                  <div className="flex flex-wrap gap-3">
-                    {escrow.status === "pending" && (
-                      <>
-                        <Button variant="neon" className="neon-hover">
-                          <Send className="mr-2 h-4 w-4" />
-                          Sign Agreement
-                        </Button>
-                        {isCounterparty && (
-                          <Button
-                            variant="outline"
-                            className="border-emerald-400/30 text-emerald-200"
-                          >
-                            <DollarSign className="mr-2 h-4 w-4" />
-                            Deposit Funds
-                          </Button>
-                        )}
-                      </>
-                    )}
-                    {escrow.status === "active" && (
-                      <>
-                        <Button
-                          variant="outline"
-                          className="border-emerald-400/30 text-emerald-200"
-                        >
-                          <PackageCheck className="mr-2 h-4 w-4" />
-                          Release Funds
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-rose-400/30 text-rose-200"
-                        >
-                          <AlertTriangle className="mr-2 h-4 w-4" />
-                          Raise Dispute
-                        </Button>
-                      </>
-                    )}
-                    {escrow.status === "pending_approval" && (
-                      <>
-                        <Button
-                          variant="outline"
-                          className="border-emerald-400/30 text-emerald-200"
-                        >
-                          <ThumbsUp className="mr-2 h-4 w-4" />
-                          Accept Delivery
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-rose-400/30 text-rose-200"
-                        >
-                          <ThumbsDown className="mr-2 h-4 w-4" />
-                          Reject Delivery
-                        </Button>
-                      </>
-                    )}
-                    {(escrow.status === "cancelled" ||
-                      escrow.status === "disputed") && (
-                      <Button
-                        variant="outline"
-                        className="border-gray-400/30 text-gray-200"
-                        disabled
-                      >
-                        <Ban className="mr-2 h-4 w-4" />
-                        {escrow.status === "cancelled"
-                          ? "Cancelled"
-                          : "Under Dispute"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )} */}
 
             {/* Activity Timeline */}
             {/* Activity Timeline */}
@@ -4055,7 +4304,9 @@ export default function EscrowDetails() {
           onConfirm={handleRaiseDispute}
           claim={disputeClaim}
           setClaim={setDisputeClaim}
-          isSubmitting={isSubmittingDispute}
+          agreement={escrow?._raw}
+          currentUser={user}
+          isSubmitting={isSubmittingDispute || loadingStates.raiseDispute}
         />
       )}
 

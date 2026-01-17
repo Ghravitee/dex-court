@@ -23,10 +23,10 @@ interface AgreementItem {
 interface InfiniteMovingAgreementsProps {
   items: AgreementItem[];
   direction?: "left" | "right";
-  speed?: "fast" | "normal" | "slow" | "manual"; // Added "manual" speed
+  speed?: "fast" | "normal" | "slow" | "manual";
   pauseOnHover?: boolean;
   className?: string;
-  showControls?: boolean; // Added prop to show/hide controls
+  showControls?: boolean;
 }
 
 export const InfiniteMovingAgreements = ({
@@ -41,9 +41,6 @@ export const InfiniteMovingAgreements = ({
   const scrollerRef = React.useRef<HTMLUListElement>(null);
   const [start, setStart] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartX, setDragStartX] = useState(0);
-  const [scrollLeftStart, setScrollLeftStart] = useState(0);
   const [currentPosition, setCurrentPosition] = useState(0);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
@@ -119,7 +116,7 @@ export const InfiniteMovingAgreements = ({
 
   // Manual scroll animation
   useEffect(() => {
-    if (speed === "manual" && scrollerRef.current && !isPaused && !isDragging) {
+    if (speed === "manual" && scrollerRef.current && !isPaused) {
       const animate = (timestamp: number) => {
         if (!lastTimeRef.current) lastTimeRef.current = timestamp;
         const delta = timestamp - lastTimeRef.current;
@@ -144,64 +141,13 @@ export const InfiniteMovingAgreements = ({
         }
       };
     }
-  }, [speed, isPaused, isDragging, currentPosition, getSpeedValue, direction]);
-
-  // Mouse drag handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (scrollerRef.current) {
-      setIsDragging(true);
-      setDragStartX(e.clientX);
-      setScrollLeftStart(currentPosition);
-
-      // Pause animation while dragging
-      setIsPaused(true);
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging && scrollerRef.current) {
-      const delta = e.clientX - dragStartX;
-      const newPosition = scrollLeftStart + delta;
-      setCurrentPosition(newPosition);
-      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    // Resume animation after a short delay
-    setTimeout(() => setIsPaused(false), 100);
-  };
-
-  // Touch handlers for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (scrollerRef.current) {
-      setIsDragging(true);
-      setDragStartX(e.touches[0].clientX);
-      setScrollLeftStart(currentPosition);
-      setIsPaused(true);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (isDragging && scrollerRef.current) {
-      const delta = e.touches[0].clientX - dragStartX;
-      const newPosition = scrollLeftStart + delta;
-      setCurrentPosition(newPosition);
-      scrollerRef.current.style.transform = `translateX(${newPosition}px)`;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    setTimeout(() => setIsPaused(false), 100);
-  };
+  }, [speed, isPaused, currentPosition, getSpeedValue, direction]);
 
   // Control functions
   const togglePause = () => {
     setIsPaused(!isPaused);
 
-    if (scrollerRef.current) {
+    if (scrollerRef.current && speed !== "manual") {
       if (!isPaused) {
         scrollerRef.current.style.animationPlayState = "paused";
       } else {
@@ -231,17 +177,14 @@ export const InfiniteMovingAgreements = ({
   };
 
   // Click handler for cards to bring into focus
-  const handleCardClick = (index: number, e: React.MouseEvent) => {
-    if (!isDragging) {
-      e.stopPropagation();
-      if (scrollerRef.current) {
-        const cardWidth = 450;
-        const containerWidth = containerRef.current?.offsetWidth || 0;
-        const targetPosition =
-          -(index * cardWidth) + containerWidth / 2 - cardWidth / 2;
-        setCurrentPosition(targetPosition);
-        scrollerRef.current.style.transform = `translateX(${targetPosition}px)`;
-      }
+  const handleCardClick = (index: number) => {
+    if (scrollerRef.current) {
+      const cardWidth = 450;
+      const containerWidth = containerRef.current?.offsetWidth || 0;
+      const targetPosition =
+        -(index * cardWidth) + containerWidth / 2 - cardWidth / 2;
+      setCurrentPosition(targetPosition);
+      scrollerRef.current.style.transform = `translateX(${targetPosition}px)`;
     }
   };
 
@@ -278,30 +221,12 @@ export const InfiniteMovingAgreements = ({
         </div>
       )}
 
-      {/* Drag overlay indicator */}
-      {isDragging && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-          <div className="rounded-lg bg-cyan-500/20 px-4 py-2 text-cyan-300">
-            Dragging to scroll...
-          </div>
-        </div>
-      )}
-
       <div
         ref={containerRef}
         className={cn(
           "scroller relative z-10 max-w-7xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,white_20%,white_80%,transparent)]",
-          isDragging && "cursor-grabbing",
-          !isDragging && "cursor-grab",
           className,
         )}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         <ul
           ref={scrollerRef}
@@ -324,15 +249,15 @@ export const InfiniteMovingAgreements = ({
             <li
               className={cn(
                 "card-cyan relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 px-8 py-4 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px]",
-                isDragging ? "cursor-grabbing" : "cursor-pointer",
+                "cursor-pointer",
               )}
               key={`${item.id}-${idx}`}
-              onClick={(e) => handleCardClick(idx, e)}
+              onClick={() => handleCardClick(idx)}
             >
               <Link
                 to={`/agreements/${item.id}`}
                 className="block h-full w-full no-underline"
-                onClick={(e) => isDragging && e.preventDefault()}
+                onClick={(e) => e.stopPropagation()} // Prevent card click handler from firing
               >
                 <blockquote className="flex h-full flex-col">
                   <div

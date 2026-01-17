@@ -175,13 +175,13 @@ class DisputeService {
   }
 
   // Create dispute from agreement
-  // Create dispute from agreement - fixed to match proper form-data structure
-  // Create dispute from agreement - with votingId
+  // In your disputeServices.ts, update the return type of createDisputeFromAgreement
   async createDisputeFromAgreement(
     agreementId: number,
     data: CreateDisputeFromAgreementRequest,
     files: File[],
-  ): Promise<{ id: number }> {
+  ): Promise<{ id: number; votingId?: string }> {
+    // Add votingId as optional
     console.log(
       "🚀 Creating dispute from agreement with proper form-data format...",
     );
@@ -230,7 +230,12 @@ class DisputeService {
         votingId,
         response.data,
       );
-      return { ...response.data, votingId };
+
+      // Return the response data with votingId
+      return {
+        id: response.data.id,
+        votingId: votingId,
+      };
     } catch (error: any) {
       this.handleError(error);
     }

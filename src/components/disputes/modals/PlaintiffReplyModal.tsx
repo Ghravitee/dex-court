@@ -352,7 +352,7 @@ const PlaintiffReplyModal = ({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="glass card-cyan relative top-10 max-h-[80vh] min-h-0 w-full max-w-2xl overflow-hidden rounded-2xl"
+          className="glass card-cyan relative top-10 max-h-[90vh] min-h-0 w-full max-w-2xl overflow-hidden rounded-2xl"
           onClick={handleModalClick}
         >
           {/* Header */}

@@ -312,7 +312,6 @@ const LiveCaseCard = ({
   currentTime,
   refetchLiveDisputes,
   isVoteStarted,
-
   startingVote,
   handleOnchainStartVote,
   isJudge = false,
@@ -322,13 +321,11 @@ const LiveCaseCard = ({
   currentTime: number;
   refetchLiveDisputes: () => void;
   isVoteStarted: (disputeId: string) => boolean;
-  handleStartVoteForDispute: (dispute: LiveCase, probono: boolean) => void;
   startingVote: string | null;
   handleOnchainStartVote: (
     dispute: LiveCase,
     probono: boolean,
   ) => Promise<void>;
-  handleApiStartVote: (dispute: LiveCase, probono: boolean) => Promise<void>;
   isPending: boolean;
   isJudge?: boolean;
 }) => {
@@ -347,20 +344,7 @@ const LiveCaseCard = ({
   const formattedTime = fmtRemain(remain);
 
   // Check if vote has been started
-  const voteStarted = useMemo(() => {
-    // For reputational disputes (type 1), voting is always started when in "Vote in Progress"
-    if (c.agreement?.type === 1) {
-      return true;
-    }
-
-    // For escrow disputes (type 2), check if vote has been manually started
-    if (c.agreement?.type === 2) {
-      return isVoteStarted(c.id) || !!c.voteStartedAt;
-    }
-
-    // Default fallback
-    return isVoteStarted(c.id) || !!c.voteStartedAt;
-  }, [c.agreement?.type, c.id, c.voteStartedAt, isVoteStarted]);
+  const voteStarted = isVoteStarted(c.id);
 
   // Fetch on-chain agreement data for escrow disputes
   useEffect(() => {
@@ -391,8 +375,8 @@ const LiveCaseCard = ({
       return false;
     }
 
-    const currentTimeSeconds = Math.floor(Date.now() / 1000);
-    return currentTimeSeconds > Number(onChainAgreement.voteStartedAt);
+    // Check if vote hasn't been started yet (voteStartedAt === 0 means not started)
+    return Number(onChainAgreement.voteStartedAt) === 0;
   }, [c.agreement?.type, onChainAgreement, onChainLoading]);
 
   // Enhanced voting function with proper data refresh
@@ -473,20 +457,11 @@ const LiveCaseCard = ({
     [],
   );
 
-  // Update the handleStartVoteClick function in LiveCaseCard:
+  // Handle start vote click
   const handleStartVoteClick = useCallback(async () => {
     try {
-      // Only handle escrow disputes (type 2)
-      if (c.agreement?.type === 2) {
-        // For escrow disputes, always start as paid (probono = false)
-        await handleOnchainStartVote(c, false);
-      } else {
-        // For reputational disputes, show info message
-        toast.info("Reputational voting starts automatically", {
-          description:
-            "You can cast your vote now without starting it manually.",
-        });
-      }
+      // For escrow disputes, always start as paid (probono = false)
+      await handleOnchainStartVote(c, false);
     } catch (error) {
       console.error("Failed to start vote:", error);
     }
@@ -524,7 +499,6 @@ const LiveCaseCard = ({
                   />
                 </div>
               </div>
-              {/* Vote Status Badge */}
               {/* Vote Status Badge */}
               <div className="mt-1">
                 {localHasVoted ? (
@@ -603,7 +577,6 @@ const LiveCaseCard = ({
                 <p className="text-sm text-white/80">{c.description}</p>
               </div>
 
-              {/* Start Vote Section - Show only if vote hasn't started */}
               {/* Start Vote Section - Show only for escrow disputes that haven't started voting */}
               {!isExpired && c.agreement?.type === 2 && !voteStarted && (
                 <div className="rounded-lg border border-green-400/30 bg-green-500/10 p-3">
@@ -613,12 +586,23 @@ const LiveCaseCard = ({
                         Start Voting Phase
                       </h4>
                       <p className="text-xs text-green-200">
-                        Click to initiate escrow voting on-chain
+                        Click to initiate escrow voting on-chain. Once started,
+                        the 24-hour voting timer will begin.
                       </p>
                       {onChainAgreement && (
-                        <p className="mt-1 text-xs text-green-300/70">
-                          On-chain ready: {canStartOnChainVote ? "Yes" : "No"}
-                        </p>
+                        <div className="mt-1 text-xs">
+                          <div className="text-green-300">
+                            Status:{" "}
+                            {canStartOnChainVote
+                              ? "Ready to start"
+                              : "Cannot start yet"}
+                          </div>
+                          {c.contractAgreementId && (
+                            <div className="text-green-300/70">
+                              Agreement ID: {c.contractAgreementId}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                     <Button
@@ -628,18 +612,21 @@ const LiveCaseCard = ({
                       disabled={
                         startingVote === c.id ||
                         isPending ||
-                        !canStartOnChainVote
+                        !canStartOnChainVote ||
+                        onChainLoading
                       }
                       size="sm"
                     >
-                      {startingVote === c.id || isPending ? (
+                      {startingVote === c.id || isPending || onChainLoading ? (
                         <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                       ) : (
                         <Vote className="mr-2 h-3 w-3" />
                       )}
-                      {startingVote === c.id || isPending
-                        ? "Starting..."
-                        : "Start Vote"}
+                      {onChainLoading
+                        ? "Loading..."
+                        : startingVote === c.id || isPending
+                          ? "Starting..."
+                          : "Start Vote"}
                     </Button>
                   </div>
                 </div>
@@ -746,7 +733,6 @@ const LiveCaseCard = ({
                 </div>
               )}
 
-              {/* Comment Section - Only show if vote has started and user hasn't voted */}
               {/* Comment Section - Only show if vote has started, user hasn't voted, AND user is a judge */}
               {!localHasVoted && !isExpired && voteStarted && isJudge && (
                 <div>
@@ -845,6 +831,8 @@ const LiveCaseCard = ({
                     Has Voted (Local): {localHasVoted.toString()}
                     <br />
                     Vote Started: {voteStarted ? "Yes" : "No"}
+                    <br />
+                    Can Start On-Chain: {canStartOnChainVote ? "Yes" : "No"}
                     <br />
                     Voting Ends: {new Date(c.endsAt).toLocaleString()}
                     <br />
@@ -1186,9 +1174,9 @@ export default function Voting() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"live" | "done">("live");
   const [currentTime, setCurrentTime] = useState(now());
-  const [voteStartedDisputes, setVoteStartedDisputes] = useState<Set<string>>(
-    new Set(),
-  );
+  const [votingStartedDisputes, setVotingStartedDisputes] = useState<
+    Set<string>
+  >(new Set());
   const [startingVote, setStartingVote] = useState<string | null>(null);
 
   // Wagmi hooks for on-chain transactions
@@ -1205,13 +1193,13 @@ export default function Voting() {
   const { user } = useAuth(); // Get user from auth context
   const userRole = user?.role || 1; // Default to community (1) if no role
 
+  const networkInfo = useNetworkEnvironment();
+  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+
   // Helper function to check if user is a judge
   const isUserJudge = useCallback(() => {
     return userRole === 2 || userRole === 3; // 2 = judge, 3 = admin
   }, [userRole]);
-
-  const networkInfo = useNetworkEnvironment();
-  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
   // Single interval for all cards - better performance
   useEffect(() => {
@@ -1232,26 +1220,25 @@ export default function Voting() {
   }, [writeError, resetWrite]);
 
   // Helper function to check if vote has been started
-
   const isVoteStarted = useCallback(
-    (disputeId: string, dispute?: LiveCase): boolean => {
-      // First check if we have a specific dispute object
-      if (dispute) {
-        // For reputational disputes (type 1), voting starts automatically
-        if (dispute.agreement?.type === 1) {
-          return true; // Always true for reputational disputes in "Vote in Progress"
-        }
+    (disputeId: string): boolean => {
+      const dispute = liveCases.find((d) => d.id === disputeId);
+      if (!dispute) return false;
 
-        // For escrow disputes (type 2), check local state
-        if (dispute.agreement?.type === 2) {
-          return voteStartedDisputes.has(disputeId);
-        }
+      // For reputational disputes (type 1), voting starts automatically
+      if (dispute.agreement?.type === 1) {
+        return true; // Always true for reputational disputes in "Vote in Progress"
       }
 
-      // Fallback to local state check
-      return voteStartedDisputes.has(disputeId);
+      // For escrow disputes (type 2), check local state
+      if (dispute.agreement?.type === 2) {
+        return votingStartedDisputes.has(disputeId) || !!dispute.voteStartedAt;
+      }
+
+      // Default fallback
+      return votingStartedDisputes.has(disputeId) || !!dispute.voteStartedAt;
     },
-    [voteStartedDisputes],
+    [liveCases, votingStartedDisputes],
   );
 
   // Optimized data fetching with useCallback
@@ -1262,17 +1249,20 @@ export default function Voting() {
 
       if (response?.results) {
         const liveDisputes = response.results.map((dispute: any) => {
-          const voteStartedAt = dispute.voteStartedAt
-            ? parseAPIDate(dispute.voteStartedAt)
-            : parseAPIDate(dispute.createdAt);
-          const endsAt = voteStartedAt + VOTING_DURATION;
-
-          // Check if vote has been started (from dispute data)
-          const hasVoteStarted = !!dispute.voteStartedAt;
-          console.log(`Dispute ${dispute.id} vote started:`, hasVoteStarted);
-
-          // Store raw dispute data for reference
-          const rawDispute = dispute;
+          // For escrow disputes, check if vote has been started on-chain
+          let endsAt;
+          if (dispute.voteStartedAt) {
+            // If vote has been started, use the actual start time
+            const voteStartedAt = parseAPIDate(dispute.voteStartedAt);
+            endsAt = voteStartedAt + VOTING_DURATION;
+          } else if (dispute.agreement?.type === 2) {
+            // For escrow disputes that haven't started voting yet, use a future date
+            // that will be updated when voting starts
+            endsAt = parseAPIDate(dispute.createdAt) + VOTING_DURATION;
+          } else {
+            // For reputational disputes, use created date
+            endsAt = parseAPIDate(dispute.createdAt) + VOTING_DURATION;
+          }
 
           return {
             id: dispute.id.toString(),
@@ -1294,29 +1284,28 @@ export default function Voting() {
             dismissedVotes: 0,
             hasVoted: dispute.hasVoted || false,
             participants: [],
-            agreement: dispute.agreement || { type: 1 }, // Default to reputational if not specified
+            agreement: dispute.agreement || { type: 1 },
             contractAgreementId: dispute.contractAgreementId,
             chainId: dispute.chainId,
             txnhash: dispute.txnhash,
             type: dispute.type,
             voteStartedAt: dispute.voteStartedAt,
-            rawDispute,
+            rawDispute: dispute,
           };
         });
 
         setLiveCases(liveDisputes);
 
+        // Update votingStartedDisputes based on API data
         const startedDisputeIds = liveDisputes
-          .filter((d) => {
-            // For reputational disputes (type 1), voting is always started
-            if (d.agreement?.type === 1) {
-              return true;
-            }
-            // For escrow disputes (type 2), check if voteStartedAt exists
-            return d.voteStartedAt;
-          })
+          .filter((d) => d.voteStartedAt)
           .map((d) => d.id);
-        setVoteStartedDisputes(new Set(startedDisputeIds));
+
+        setVotingStartedDisputes((prev) => {
+          const newSet = new Set(prev);
+          startedDisputeIds.forEach((id) => newSet.add(id));
+          return newSet;
+        });
       }
     } catch (err) {
       console.error("Failed to fetch live disputes:", err);
@@ -1417,6 +1406,13 @@ export default function Voting() {
         return;
       }
 
+      if (!contractAddress) {
+        toast.error(
+          "Cannot start vote: Contract address not found for this network",
+        );
+        return;
+      }
+
       setStartingVote(dispute.id);
 
       try {
@@ -1425,79 +1421,53 @@ export default function Voting() {
           : BigInt(parseEther(FEE_AMOUNT).toString());
 
         console.log("Starting escrow vote with params:", {
+          contractAddress,
           contractAgreementId: dispute.contractAgreementId,
           probono,
           fee: fee.toString(),
         });
 
+        // Call the smart contract to start the vote
         writeContract({
-          address: contractAddress,
+          address: contractAddress as `0x${string}`,
           abi: ESCROW_ABI.abi,
           functionName: "startVote",
           args: [BigInt(dispute.contractAgreementId), probono, fee],
+          value: fee, // Send the fee with the transaction
         });
 
-        // Mark as vote started locally immediately for better UX
-        setVoteStartedDisputes((prev) => new Set([...prev, dispute.id]));
-
-        toast.success("Escrow vote initiated! 🗳️", {
+        toast.info("Transaction submitted! 🚀", {
           description:
-            "Transaction submitted. Waiting for confirmation... The voting phase will begin shortly.",
+            "Waiting for blockchain confirmation... The voting phase will begin shortly.",
         });
       } catch (error: any) {
         console.error("Error starting escrow vote:", error);
         toast.error("Failed to start escrow vote", {
-          description: error.message || "Please try again",
+          description:
+            error.message || "Please check your wallet and try again",
         });
-      } finally {
         setStartingVote(null);
       }
     },
     [contractAddress, writeContract],
   );
 
-  // API start vote function (for reputational agreements)
-  const handleApiStartVote = useCallback(
-    async (dispute: LiveCase, probono: boolean) => {
-      setStartingVote(dispute.id);
-
-      try {
-        console.log(
-          probono
-            ? "Starting pro bono reputational vote"
-            : "Starting paid reputational vote",
-        );
-
-        // Mark as vote started locally
-        setVoteStartedDisputes((prev) => new Set([...prev, dispute.id]));
-
-        toast.success("Reputational vote started! 🗳️", {
-          description:
-            "The voting phase has been initiated. Community members can now cast their votes.",
-        });
-
-        // Refresh data
-        if (tab === "live") {
-          fetchLiveDisputes();
-        }
-      } catch (error: any) {
-        console.error("Error starting reputational vote:", error);
-        toast.error("Failed to start reputational vote", {
-          description: error.message || "Please try again",
-        });
-      } finally {
-        setStartingVote(null);
-      }
-    },
-    [tab, fetchLiveDisputes],
-  );
-
   // Handle transaction success
   useEffect(() => {
     if (isSuccess && hash) {
-      toast.success("Transaction confirmed! 🎉", {
-        description: "Vote has been started successfully on-chain.",
+      toast.success("Vote started successfully! 🗳️", {
+        description:
+          "The 24-hour voting timer has begun. Users can now cast their votes.",
       });
+
+      // Update local state to indicate voting has started
+      if (startingVote) {
+        setVotingStartedDisputes((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(startingVote);
+          return newSet;
+        });
+      }
 
       // Refresh the data
       if (tab === "live") {
@@ -1505,8 +1475,9 @@ export default function Voting() {
       }
 
       resetWrite();
+      setStartingVote(null);
     }
-  }, [isSuccess, hash, tab, resetWrite, fetchLiveDisputes]);
+  }, [isSuccess, hash, startingVote, tab, resetWrite, fetchLiveDisputes]);
 
   // Optimized useEffect with dependency cleanup
   useEffect(() => {
@@ -1569,17 +1540,14 @@ export default function Voting() {
       }
 
       return liveCases.map((c) => (
-        // In the LiveCaseCard props, update the isVoteStarted usage:
         <MemoizedLiveCaseCard
           key={c.id}
           c={c}
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
-          isVoteStarted={(disputeId) => isVoteStarted(disputeId, c)} // Pass the dispute object
-          handleStartVoteForDispute={() => {}}
+          isVoteStarted={isVoteStarted}
           startingVote={startingVote}
           handleOnchainStartVote={handleOnchainStartVote}
-          handleApiStartVote={handleApiStartVote}
           isPending={isPending}
           isJudge={isUserJudge()}
         />
@@ -1628,7 +1596,6 @@ export default function Voting() {
     isVoteStarted,
     startingVote,
     handleOnchainStartVote,
-    handleApiStartVote,
     isPending,
     isUserJudge,
   ]);
