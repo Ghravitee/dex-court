@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xC8A44CF6AEae1edeFeE913cD7887Ed4e25e00a91", // Sepolia address
+  11155111: "0x41500754979eE6ADFBD03750Be356Dec1E7cAEca", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xfa33e21286B92CA85DA9e77D6bD2945a58062A0F", // Sepolia address
+  11155111: "0xd9190f1Ed5C7f59d3bc9bc3fa46cB831422d9Df5", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -1871,11 +1871,6 @@ export const VOTING_ABI = {
               "name": "votingDuration",
               "type": "uint256",
               "internalType": "uint256"
-            },
-            {
-              "name": "disputeDuration",
-              "type": "uint256",
-              "internalType": "uint256"
             }
           ]
         }
@@ -2101,11 +2096,6 @@ export const VOTING_ABI = {
       "inputs": [
         {
           "name": "_votingDuration",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "_disputeDuration",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2351,12 +2341,6 @@ export const VOTING_ABI = {
       "inputs": [
         {
           "name": "votingDuration",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "disputeDuration",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
