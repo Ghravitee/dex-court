@@ -20,7 +20,6 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-import Web3Vote from "../../h3copy";
 import { useEffect, useState } from "react";
 import { LoginModal } from "./components/LoginModal";
 import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
@@ -99,7 +98,6 @@ function AppContent() {
           <Route index element={<Index />} />
           <Route path="agreements" element={<Agreements />} />
           <Route path="agreements/:id" element={<AgreementDetails />} />
-          <Route path="web3vote" element={<Web3Vote />} />
           <Route path="disputes" element={<Disputes />} />
           <Route path="/disputes/:id" element={<DisputeDetails />} />
           <Route path="voting" element={<Voting />} />
