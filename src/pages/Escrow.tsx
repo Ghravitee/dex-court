@@ -1733,7 +1733,7 @@ Chain ID: ${networkInfo.chainId}
       toast.info(`Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`);
       switchToTokenChain();
     }
-  }, []);
+  }, [currentUser?.walletAddress, isConnected, networkInfo.chainId, switchToTokenChain, wagmiChainId]);
 
   useEffect(() => {
     if (isConnected) {

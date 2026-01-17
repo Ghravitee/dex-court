@@ -20,7 +20,7 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-import Web3Vote from "./pages/h3copy";
+import Web3Vote from "../../h3copy";
 import { useEffect, useState } from "react";
 import { LoginModal } from "./components/LoginModal";
 import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
