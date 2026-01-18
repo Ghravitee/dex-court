@@ -201,6 +201,8 @@ const VotingStatus = ({
   hasVoted,
   handleOpenVoteModal,
   isVoteStarted, // Add this prop
+  tier, // Add this prop
+  weight, // Add this prop
 }: {
   dispute: DisputeRow | null;
   votingStatusLoading: boolean;
@@ -212,6 +214,8 @@ const VotingStatus = ({
   hasVoted: boolean;
   handleOpenVoteModal: () => void;
   isVoteStarted: boolean; // Add this
+  tier?: number; // Add this
+  weight?: number; // Add this
 }) => {
   if (!dispute || dispute?.status !== "Vote in Progress") return null;
 
@@ -358,6 +362,16 @@ const VotingStatus = ({
             </h3>
             <p className="text-center text-sm text-cyan-200">
               Your vote will help resolve this dispute fairly.
+              {tier && (
+                <span className="mt-1 block text-cyan-300">
+                  Tier {tier} Voter
+                </span>
+              )}
+              {weight && weight > 1 && (
+                <span className="mt-1 block font-semibold text-cyan-300">
+                  Voting Weight: {weight}x
+                </span>
+              )}
               {isJudge && (
                 <span className="mt-1 block font-semibold text-cyan-300">
                   Judge Vote - Carries Higher Weight
@@ -472,6 +486,8 @@ export default function DisputeDetails() {
     reason,
     isLoading: votingStatusLoading,
     markAsVoted,
+    tier,
+    weight,
   } = useVotingStatus(disputeId, dispute);
 
   const [voteOutcomeModalOpen, setVoteOutcomeModalOpen] = useState(false);
@@ -986,6 +1002,8 @@ export default function DisputeDetails() {
           fee: fee.toString(),
         });
 
+        setPendingTransactionType("startVote");
+
         writeContract({
           address: contractAddress,
           abi: ESCROW_ABI.abi,
@@ -1003,6 +1021,7 @@ export default function DisputeDetails() {
           description:
             error instanceof Error ? error.message : "Unknown error occurred",
         });
+        setPendingTransactionType(null);
       }
     },
     [dispute, contractAddress, FEE_AMOUNT, writeContract],
@@ -1258,8 +1277,6 @@ export default function DisputeDetails() {
     return () => clearInterval(interval);
   }, []);
 
-
-
   if (loading) {
     return (
       <div className="mx-auto flex h-[80vh] items-center justify-center">
@@ -1389,7 +1406,8 @@ export default function DisputeDetails() {
                   Cast {isUserJudge() ? "Judge" : "Community"} Vote
                 </Button>
               )}
-            <div>
+
+            <div className="flex flex-wrap gap-2">
               {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
               {dispute.agreement?.type === 2 &&
                 onChainAgreement &&
@@ -1409,7 +1427,7 @@ export default function DisputeDetails() {
                     {isPending ? "Starting..." : "Start Escrow Vote"}
                   </Button>
                 )}
-
+              {/* Settle Escrow Dispute Button */}
               {dispute.status === "Pending" &&
                 isCurrentUserPlaintiff() &&
                 dispute.agreement?.type === 2 && (
@@ -1417,17 +1435,18 @@ export default function DisputeDetails() {
                     variant="outline"
                     className="border-green-400/30 text-green-300 hover:bg-green-500/10"
                     onClick={() => setSettleModalOpen(true)}
-                    disabled={isPending}
+                    disabled={pendingTransactionType === "settle" && isPending}
                   >
-                    {isPending ? (
+                    {pendingTransactionType === "settle" && isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Scale className="mr-2 h-4 w-4" />
                     )}
-                    {isPending ? "Settling..." : "Settle Escrow Dispute"}
+                    {pendingTransactionType === "settle" && isPending
+                      ? "Settling..."
+                      : "Settle Escrow Dispute"}
                   </Button>
                 )}
-
               {dispute.status === "Pending" &&
                 isCurrentUserPlaintiff() &&
                 dispute.agreement?.type === 1 && (
@@ -1445,7 +1464,8 @@ export default function DisputeDetails() {
                     {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
                   </Button>
                 )}
-              {/* {dispute.status === "Vote in Progress" &&
+            </div>
+            {/* {dispute.status === "Vote in Progress" &&
                 // Use the helper function
                 dispute.agreement?.type === 1 && (
                   <Button
@@ -1462,7 +1482,6 @@ export default function DisputeDetails() {
                     {startingVote ? "Starting..." : "Start Reputational Vote"}
                   </Button>
                 )} */}
-            </div>
           </div>
 
           {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
@@ -1807,6 +1826,8 @@ export default function DisputeDetails() {
           hasVoted={hasVoted}
           handleOpenVoteModal={handleOpenVoteModal}
           isVoteStarted={isVoteStarted()}
+          tier={tier}
+          weight={weight}
         />
       )}
       {/* Two Column Layout */}
@@ -2100,8 +2121,7 @@ export default function DisputeDetails() {
         {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
 
         {/* Start Vote Button - Only show for escrow disputes (type 2) */}
-        {
-          dispute.agreement?.type === 2 &&
+        {dispute.agreement?.type === 2 &&
           onChainAgreement &&
           !onChainLoading &&
           now > Number(onChainAgreement.voteStartedAt.toString()) && ( // Add .toString()

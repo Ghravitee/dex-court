@@ -572,3 +572,19 @@ export interface EvidenceItem {
   url: string;
   preview?: string;
 }
+
+// types/index.ts
+export interface EligibilityResponse {
+  isEligible: boolean;
+  reason: number;
+  tier?: number;
+  weight?: number;
+}
+
+// Update the DisputeService return type
+export interface CanUserVoteResponse {
+  canVote: boolean;
+  reason?: string;
+  tier?: number;
+  weight?: number;
+}

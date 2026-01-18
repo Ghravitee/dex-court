@@ -479,58 +479,66 @@ class DisputeService {
   }
 
   // Check if user can vote in a dispute
-  // Check if user can vote in a dispute
+
+  // Check if user can vote in a dispute - UPDATED to use new endpoint
+  // Check if user can vote in a dispute - UPDATED to use new endpoint
   async canUserVote(
     disputeId: number,
     userId: string,
-  ): Promise<{ canVote: boolean; reason?: string }> {
+  ): Promise<{
+    canVote: boolean;
+    reason?: string;
+    tier?: number;
+    weight?: number;
+  }> {
     try {
-      // Get dispute details to check parties
-      const disputeDetails = await this.getDisputeDetails(disputeId);
-
-      // Get current user data from your auth context instead of API call
-      // Since we don't have getUserById, we'll use the existing user data
-      const allUsers = await this.getAllUsers();
-      const currentUser = allUsers.find(
-        (user) => user.id?.toString() === userId || user.userId === userId,
+      console.log(
+        `🔍 [DisputeService] Checking eligibility for dispute ${disputeId}, user ${userId}`,
       );
 
-      if (!currentUser) {
-        return { canVote: false, reason: "User not found" };
-      }
-
-      const currentUsername = cleanTelegramUsername(
-        currentUser.username || currentUser.telegramUsername,
-      );
-      const plaintiffUsername = cleanTelegramUsername(
-        disputeDetails.plaintiff.username,
+      // Use the new endpoint to check eligibility
+      const response = await api.post(
+        `/dispute/${disputeId}/check-eligibility`,
       );
 
-      // Plaintiffs cannot vote in their own disputes
-      if (currentUsername === plaintiffUsername) {
-        return {
-          canVote: false,
-          reason: "Plaintiffs cannot vote in their own disputes",
-        };
+      console.log(`✅ [DisputeService] Eligibility response:`, response.data);
+
+      const { isEligible, reason, tier, weight } = response.data;
+
+      // Map backend response to our frontend format
+      return {
+        canVote: isEligible,
+        reason: !isEligible ? this.getReasonMessage(reason) : undefined,
+        tier: tier,
+        weight: weight,
+      };
+    } catch (error: any) {
+      console.error(`❌ [DisputeService] Eligibility check failed:`, error);
+
+      // Handle specific error codes from the backend
+      if (error.response?.data?.error) {
+        const apiError = error.response.data;
+
+        switch (apiError.error) {
+          case ErrorCodeEnum.InvalidData:
+            return { canVote: false, reason: "Invalid dispute data" };
+          case ErrorCodeEnum.InvalidStatus:
+            return { canVote: false, reason: "Dispute is not in voting phase" };
+          case ErrorCodeEnum.AccountNotFound:
+            return { canVote: false, reason: "User account not found" };
+          case ErrorCodeEnum.Forbidden:
+            return {
+              canVote: false,
+              reason: "User is not allowed to vote on this dispute",
+            };
+          default:
+            return {
+              canVote: false,
+              reason: apiError.message || "Not eligible to vote",
+            };
+        }
       }
 
-      // Defendants cannot vote in their own disputes
-      if (
-        disputeDetails.defendant &&
-        currentUsername ===
-          cleanTelegramUsername(disputeDetails.defendant.username)
-      ) {
-        return {
-          canVote: false,
-          reason: "Defendants cannot vote in their own disputes",
-        };
-      }
-
-      // For now, allow all other logged-in users to vote
-
-      return { canVote: true };
-    } catch (error) {
-      console.error("Error checking voting eligibility:", error);
       return { canVote: false, reason: "Error checking eligibility" };
     }
   }
@@ -912,6 +920,22 @@ class DisputeService {
       default:
         return "Pending";
     }
+  }
+
+  private getReasonMessage(reasonCode: number): string {
+    const reasonMessages: Record<number, string> = {
+      0: "Eligible to vote",
+      1: "Not in voting phase",
+      2: "User is plaintiff",
+      3: "User is defendant",
+      4: "User has already voted",
+      5: "User does not meet voting requirements",
+      6: "Dispute not found",
+      7: "User account not found",
+      // Add more mappings as needed
+    };
+
+    return reasonMessages[reasonCode] || "Not eligible to vote";
   }
 
   // Error handling

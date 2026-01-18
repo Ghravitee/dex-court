@@ -1,4 +1,4 @@
-// hooks/useVotingStatus.ts - UPDATED
+// hooks/useVotingStatus.ts - UPDATED to use new endpoint
 import { useCallback, useEffect, useState } from "react";
 import { disputeService } from "../services/disputeServices";
 import { useAuth } from "../hooks/useAuth";
@@ -14,31 +14,13 @@ export const useVotingStatus = (
     canVote: boolean;
     reason?: string;
     isLoading: boolean;
+    tier?: number;
+    weight?: number;
   }>({
     hasVoted: false,
     canVote: false,
     isLoading: true,
   });
-
-  // Helper function to check if user is plaintiff or defendant
-  const isUserPartyToDispute = useCallback(() => {
-    if (!user || !disputeData) return false;
-
-    const currentUsername = user.username || user.telegramUsername;
-    const normalizeUsername = (username: string | undefined): string => {
-      if (!username) return "";
-      return username.replace(/^@/, "").toLowerCase().trim();
-    };
-
-    const plaintiffUsername = normalizeUsername(disputeData.plaintiff);
-    const defendantUsername = normalizeUsername(disputeData.defendant);
-    const normalizedCurrent = normalizeUsername(currentUsername);
-
-    return (
-      normalizedCurrent === plaintiffUsername ||
-      normalizedCurrent === defendantUsername
-    );
-  }, [user, disputeData]);
 
   const checkVotingStatus = useCallback(async () => {
     if (!disputeId || !user) {
@@ -53,66 +35,33 @@ export const useVotingStatus = (
     try {
       setVotingStatus((prev) => ({ ...prev, isLoading: true }));
 
-      // FIRST: Check if user is plaintiff or defendant - they CANNOT vote
-      if (isUserPartyToDispute()) {
-        console.log("🎯 User is plaintiff or defendant - cannot vote");
-        setVotingStatus({
-          hasVoted: false,
-          canVote: false,
-          reason: "Parties cannot vote in their own dispute",
-          isLoading: false,
-        });
-        return;
-      }
-
-      // Check localStorage for quick response
-      const storageKey = `vote_${disputeId}_${user.id}`;
-      const savedVote = localStorage.getItem(storageKey);
-
-      if (savedVote) {
-        console.log("🎯 Found saved vote in localStorage");
-        setVotingStatus({
-          hasVoted: true,
-          canVote: false,
-          reason: "You have already voted in this dispute",
-          isLoading: false,
-        });
-        return;
-      }
-
-      // Use hasVoted from dispute data if available
-      if (disputeData && disputeData.hasVoted !== undefined) {
-        console.log(
-          "🎯 Using hasVoted from dispute data:",
-          disputeData.hasVoted,
-        );
-        setVotingStatus({
-          hasVoted: disputeData.hasVoted,
-          canVote: !disputeData.hasVoted,
-          reason: disputeData.hasVoted
-            ? "You have already voted in this dispute"
-            : "You can vote in this dispute",
-          isLoading: false,
-        });
-        return;
-      }
-
-      // Fallback: API check for definitive status
-      console.log("🔄 Falling back to API check for voting status");
+      // Use the new endpoint for eligibility check
       const eligibility = await disputeService.canUserVote(
         disputeId,
         user.id || "current-user",
       );
 
-      const hasVotedFromAPI =
-        !eligibility.canVote &&
-        eligibility.reason?.toLowerCase().includes("already voted");
+      console.log("🎯 Eligibility result:", eligibility);
+
+      // Check localStorage for quick response (for after voting)
+      const storageKey = `vote_${disputeId}_${user.id}`;
+      const savedVote = localStorage.getItem(storageKey);
+
+      // If we have a saved vote, user has voted
+      const hasVotedLocally = !!savedVote;
+
+      // Determine hasVoted status - either from local storage or eligibility check
+      const hasVoted =
+        hasVotedLocally ||
+        (eligibility.reason?.toLowerCase().includes("already voted") ?? false);
 
       setVotingStatus({
-        hasVoted: hasVotedFromAPI || false,
-        canVote: eligibility.canVote || false,
+        hasVoted,
+        canVote: eligibility.canVote && !hasVoted,
         reason: eligibility.reason,
         isLoading: false,
+        tier: eligibility.tier,
+        weight: eligibility.weight,
       });
     } catch (error) {
       console.error("Error checking voting status:", error);
@@ -123,7 +72,7 @@ export const useVotingStatus = (
         isLoading: false,
       });
     }
-  }, [disputeId, user, disputeData, isUserPartyToDispute]);
+  }, [disputeId, user]);
 
   const markAsVoted = useCallback(
     (choice: string) => {
@@ -148,9 +97,10 @@ export const useVotingStatus = (
     [disputeId, user],
   );
 
+  // Refresh voting status when dispute data changes
   useEffect(() => {
     checkVotingStatus();
-  }, [checkVotingStatus]);
+  }, [checkVotingStatus, disputeData?.status]);
 
   return {
     ...votingStatus,

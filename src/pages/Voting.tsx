@@ -17,6 +17,7 @@ import {
   ThumbsUp,
   Vote,
   MinusCircle,
+  Shield,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { disputeService } from "../services/disputeServices";
@@ -33,6 +34,7 @@ import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
 import { parseEther } from "ethers";
 import { getAgreement } from "../web3/readContract";
 import { useAuth } from "../hooks/useAuth";
+import { useVotingStatus } from "../hooks/useVotingStatus";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -334,7 +336,19 @@ const LiveCaseCard = ({
   >(null);
   const [comment, setComment] = useState("");
   const [isVoting, setIsVoting] = useState(false);
-  const [localHasVoted, setLocalHasVoted] = useState(c.hasVoted || false);
+
+  // Use the useVotingStatus hook instead of local state
+  const {
+    hasVoted,
+    canVote,
+    reason,
+
+    tier,
+    weight,
+    markAsVoted,
+    refetch: refetchVotingStatus,
+  } = useVotingStatus(parseInt(c.id), c.rawDispute);
+
   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
   const [onChainLoading, setOnChainLoading] = useState(false);
 
@@ -418,9 +432,12 @@ const LiveCaseCard = ({
       });
 
       // Update local state immediately for better UX
-      setLocalHasVoted(true);
+      markAsVoted(choice);
       setChoice(null);
       setComment("");
+
+      // Refresh voting status
+      refetchVotingStatus();
 
       // Use requestIdleCallback for non-urgent refresh
       if ("requestIdleCallback" in window) {
@@ -446,7 +463,14 @@ const LiveCaseCard = ({
     } finally {
       setIsVoting(false);
     }
-  }, [choice, comment, c.id, refetchLiveDisputes]);
+  }, [
+    choice,
+    comment,
+    c.id,
+    refetchLiveDisputes,
+    markAsVoted,
+    refetchVotingStatus,
+  ]);
 
   const handleCommentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -466,6 +490,17 @@ const LiveCaseCard = ({
       console.error("Failed to start vote:", error);
     }
   }, [c, handleOnchainStartVote]);
+
+  // Show tier and weight info in the UI
+  const votingInfo = useMemo(() => {
+    if (!canVote) return null;
+
+    const info = [];
+    if (tier) info.push(`Tier ${tier}`);
+    if (weight && weight > 1) info.push(`${weight}x weight`);
+
+    return info.length > 0 ? `(${info.join(", ")})` : "";
+  }, [canVote, tier, weight]);
 
   return (
     <div
@@ -501,14 +536,19 @@ const LiveCaseCard = ({
               </div>
               {/* Vote Status Badge */}
               <div className="mt-1">
-                {localHasVoted ? (
+                {hasVoted ? (
                   <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
                     ✓ You have voted
                   </span>
-                ) : voteStarted ? (
+                ) : canVote ? (
                   <span className="inline-flex items-center rounded-full bg-cyan-500/20 px-2 py-1 text-xs font-medium text-cyan-300">
                     <Vote className="mr-1 h-3 w-3" />
-                    Voting in progress
+                    Eligible to vote {votingInfo}
+                  </span>
+                ) : voteStarted ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-500/20 px-2 py-1 text-xs font-medium text-gray-300">
+                    <Shield className="mr-1 h-3 w-3" />
+                    Not eligible to vote
                   </span>
                 ) : c.agreement?.type === 1 ? (
                   <span className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-1 text-xs font-medium text-blue-300">
@@ -651,6 +691,23 @@ const LiveCaseCard = ({
                 </div>
               )}
 
+              {/* Eligibility Message */}
+              {voteStarted && !canVote && reason && (
+                <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20">
+                      <Info className="h-4 w-4 text-amber-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-amber-300">
+                        Not Eligible to Vote
+                      </h4>
+                      <p className="text-xs text-amber-200">{reason}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Vote Counts Not Available Message - Only show if vote has started */}
               {voteStarted && (
                 <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-center">
@@ -663,18 +720,18 @@ const LiveCaseCard = ({
                 </div>
               )}
 
-              {/* Voting Section - Only show if vote has started */}
-              {!isExpired && voteStarted && (
+              {/* Voting Section - Only show if vote has started AND user can vote */}
+              {!isExpired && voteStarted && canVote && (
                 <div className="mt-2">
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
-                    {localHasVoted
+                    {hasVoted
                       ? "Your Vote Has Been Cast"
                       : isExpired
                         ? "Voting Completed"
                         : "Who is your vote for?"}
                   </h4>
 
-                  {!localHasVoted && !isExpired && (
+                  {!hasVoted && !isExpired && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <MemoizedVoteOption
                         label={`Plaintiff (${c.parties.plaintiff})`}
@@ -686,7 +743,7 @@ const LiveCaseCard = ({
                         username={c.parties.plaintiff}
                         avatarId={c.parties.plaintiffAvatar || null}
                         userId={c.parties.plaintiffId}
-                        roleLabel="Plaintiff" // Add this
+                        roleLabel="Plaintiff"
                       />
                       <MemoizedVoteOption
                         label={`Defendant (${c.parties.defendant})`}
@@ -698,7 +755,7 @@ const LiveCaseCard = ({
                         username={c.parties.defendant}
                         avatarId={c.parties.defendantAvatar || null}
                         userId={c.parties.defendantId}
-                        roleLabel="Defendant" // Add this
+                        roleLabel="Defendant"
                       />
                       <MemoizedVoteOption
                         label="Dismiss Case"
@@ -711,7 +768,7 @@ const LiveCaseCard = ({
                     </div>
                   )}
 
-                  {localHasVoted && (
+                  {hasVoted && (
                     <div className="rounded-md border border-green-400/30 bg-green-500/10 p-4 text-center">
                       <div className="mb-2 text-lg text-green-300">
                         ✓ Vote Submitted
@@ -723,7 +780,7 @@ const LiveCaseCard = ({
                     </div>
                   )}
 
-                  {isExpired && !localHasVoted && (
+                  {isExpired && !hasVoted && (
                     <div className="mt-3 rounded-md border border-yellow-400/30 bg-yellow-500/10 p-3 text-center">
                       <div className="text-sm text-yellow-300">
                         Voting has ended. Results will be available soon.
@@ -733,8 +790,8 @@ const LiveCaseCard = ({
                 </div>
               )}
 
-              {/* Comment Section - Only show if vote has started, user hasn't voted, AND user is a judge */}
-              {!localHasVoted && !isExpired && voteStarted && isJudge && (
+              {/* Comment Section - Only show if vote has started, user can vote, hasn't voted, AND user is a judge */}
+              {!hasVoted && !isExpired && voteStarted && canVote && isJudge && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -768,24 +825,28 @@ const LiveCaseCard = ({
               )}
 
               {/* Show message for non-judges */}
-              {!localHasVoted && !isExpired && voteStarted && !isJudge && (
-                <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
-                  <div className="flex items-center gap-2">
-                    <Info className="h-4 w-4 text-cyan-300" />
-                    <div>
-                      <div className="text-sm text-cyan-200">
-                        Comments are restricted to judges only
-                      </div>
-                      <div className="text-xs text-cyan-200/70">
-                        Only judges can add comments to their votes
+              {!hasVoted &&
+                !isExpired &&
+                voteStarted &&
+                canVote &&
+                !isJudge && (
+                  <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-cyan-300" />
+                      <div>
+                        <div className="text-sm text-cyan-200">
+                          Comments are restricted to judges only
+                        </div>
+                        <div className="text-xs text-cyan-200/70">
+                          Only judges can add comments to their votes
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Vote Button - Only show if vote has started and user hasn't voted */}
-              {!localHasVoted && !isExpired && voteStarted && (
+              {/* Vote Button - Only show if vote has started, user can vote, and user hasn't voted */}
+              {!hasVoted && !isExpired && voteStarted && canVote && (
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <Button
                     variant="neon"
@@ -822,13 +883,19 @@ const LiveCaseCard = ({
                     <br />
                     Dispute ID: {c.id}
                     <br />
+                    Can Vote: {canVote ? "Yes" : "No"}
+                    <br />
+                    Has Voted: {hasVoted ? "Yes" : "No"}
+                    <br />
+                    Reason: {reason || "None"}
+                    <br />
+                    Tier: {tier || "None"}
+                    <br />
+                    Weight: {weight || "None"}
+                    <br />
                     Agreement Type: {c.agreement?.type || "Unknown"}
                     <br />
                     Contract Agreement ID: {c.contractAgreementId || "None"}
-                    <br />
-                    Has Voted (API): {c.hasVoted?.toString() || "false"}
-                    <br />
-                    Has Voted (Local): {localHasVoted.toString()}
                     <br />
                     Vote Started: {voteStarted ? "Yes" : "No"}
                     <br />
@@ -1290,7 +1357,7 @@ export default function Voting() {
             txnhash: dispute.txnhash,
             type: dispute.type,
             voteStartedAt: dispute.voteStartedAt,
-            rawDispute: dispute,
+            rawDispute: dispute, // Pass raw dispute data for eligibility check
           };
         });
 
