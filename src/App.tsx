@@ -25,6 +25,7 @@ import { LoginModal } from "./components/LoginModal";
 import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
 import AdminUsers from "./pages/AdminUsers"; // NEW
 import AdminAnalytics from "./pages/AdminAnalytics"; // NEW
+import Web3Escrow from "./pages/h2copy"; // NEW
 
 import { GlobalLoader } from "./components/GlobalLoader";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
@@ -102,6 +103,7 @@ function AppContent() {
           <Route path="/disputes/:id" element={<DisputeDetails />} />
           <Route path="voting" element={<Voting />} />
           <Route path="escrow" element={<Escrow />} />
+          <Route path="web3escrow" element={<Web3Escrow />} />
           <Route path="/escrow/:id" element={<EscrowDetails />} />
           <Route path="reputation" element={<Reputation />} />
           <Route path="profile" element={<Profile />} />
