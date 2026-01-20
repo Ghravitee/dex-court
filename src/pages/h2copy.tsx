@@ -95,7 +95,7 @@ function CountdownTimer({
 function Web3Escrow() {
   const { isConnected } = useAccount();
   const chainId = useChainId();
-  const [activeTab, setActiveTab] = useState("view");
+  // const [activeTab, setActiveTab] = useState("view");
   
   // View Agreement
   const [viewId, setViewId] = useState("");
@@ -274,7 +274,7 @@ function Web3Escrow() {
             </div> */}
 
             {/* View Agreement Tab - TRANSFORMED */}
-            {activeTab === "view" && (
+            {/* {activeTab === "view" && ( */}
               <div className="glass max-w-[1000px] rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                 <h2 className="mb-6 text-2xl font-bold text-white">
                   View Agreement Details
@@ -503,7 +503,7 @@ function Web3Escrow() {
                   </div>
                 )}
               </div>
-            )}
+            {/* )} */}
           </>
         )}
       </div>
