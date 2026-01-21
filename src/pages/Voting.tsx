@@ -18,6 +18,9 @@ import {
   Vote,
   MinusCircle,
   Shield,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { disputeService } from "../services/disputeServices";
@@ -342,7 +345,6 @@ const LiveCaseCard = ({
     hasVoted,
     canVote,
     reason,
-
     tier,
     weight,
     markAsVoted,
@@ -513,7 +515,13 @@ const LiveCaseCard = ({
           {/* Header */}
           <div className="flex flex-col justify-between px-4 pt-4 sm:flex-row sm:items-center">
             <div>
-              <div className="font-semibold text-white/90">{c.title}</div>
+              <Link
+                to={`/disputes/${c.id}`}
+                className="inline-flex items-center hover:underline"
+                prefetch="intent"
+              >
+                <h2 className="font-semibold text-white/90">{c.title}</h2>
+              </Link>
 
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
@@ -1232,6 +1240,23 @@ const DebugInfo = ({ c }: { c: DoneCase }) => (
 
 const MemoizedDoneCaseCard = React.memo(DoneCaseCard);
 
+// Custom hook for debounce
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 // Main component
 export default function Voting() {
   const [liveCases, setLiveCases] = useState<LiveCase[]>([]);
@@ -1245,6 +1270,19 @@ export default function Voting() {
     Set<string>
   >(new Set());
   const [startingVote, setStartingVote] = useState<string | null>(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [allLiveCases, setAllLiveCases] = useState<LiveCase[]>([]);
+  const [allConcludedCases, setAllConcludedCases] = useState<DoneCase[]>([]);
+  const [paginatedLiveCases, setPaginatedLiveCases] = useState<LiveCase[]>([]);
+  const [paginatedConcludedCases, setPaginatedConcludedCases] = useState<
+    DoneCase[]
+  >([]);
 
   // Wagmi hooks for on-chain transactions
   const {
@@ -1262,6 +1300,9 @@ export default function Voting() {
 
   const networkInfo = useNetworkEnvironment();
   const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+
+  // Debounced search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // Helper function to check if user is a judge
   const isUserJudge = useCallback(() => {
@@ -1386,7 +1427,7 @@ export default function Voting() {
     try {
       setConcludedLoading(true);
       const response = await disputeService.getSettledDisputes({
-        top: 10,
+        top: 1000,
         sort: "desc",
       });
 
@@ -1557,8 +1598,95 @@ export default function Voting() {
 
   const handleTabChange = useCallback((newTab: "live" | "done") => {
     setTab(newTab);
+    setCurrentPage(1); // Reset to first page when changing tabs
     setError(null);
   }, []);
+
+  // Filter cases based on search query
+  const filteredLiveCases = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) return liveCases;
+
+    const searchTerm = debouncedSearchQuery.toLowerCase().trim();
+
+    return liveCases.filter((c) => {
+      // Search across multiple fields
+      const searchableText = [
+        c.title || "",
+        c.parties.plaintiff || "",
+        c.parties.defendant || "",
+        c.description || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(searchTerm);
+    });
+  }, [liveCases, debouncedSearchQuery]);
+
+  const filteredConcludedCases = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) return concludedCases;
+
+    const searchTerm = debouncedSearchQuery.toLowerCase().trim();
+
+    return concludedCases.filter((c) => {
+      // Search across multiple fields
+      const searchableText = [
+        c.title || "",
+        c.parties.plaintiff || "",
+        c.parties.defendant || "",
+        c.description || "",
+        c.winner || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(searchTerm);
+    });
+  }, [concludedCases, debouncedSearchQuery]);
+
+  // Store all filtered cases
+  useEffect(() => {
+    setAllLiveCases(filteredLiveCases);
+    setAllConcludedCases(filteredConcludedCases);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [filteredLiveCases, filteredConcludedCases]);
+
+  // Apply pagination
+  const applyPagination = useCallback(() => {
+    if (tab === "live") {
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginated = allLiveCases.slice(startIndex, endIndex);
+      setPaginatedLiveCases(paginated);
+    } else {
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginated = allConcludedCases.slice(startIndex, endIndex);
+      setPaginatedConcludedCases(paginated);
+    }
+  }, [tab, allLiveCases, allConcludedCases, currentPage, pageSize]);
+
+  // Apply pagination when dependencies change
+  useEffect(() => {
+    applyPagination();
+  }, [applyPagination]);
+
+  // Calculate pagination info
+  const currentCases = tab === "live" ? allLiveCases : allConcludedCases;
+  const totalPages = Math.ceil(currentCases.length / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, currentCases.length);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  // Handle page size change
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   // Memoized tab content
   const tabContent = useMemo(() => {
@@ -1592,21 +1720,34 @@ export default function Voting() {
         );
       }
 
-      if (liveCases.length === 0) {
+      if (paginatedLiveCases.length === 0) {
         return (
           <div className="col-span-2 py-12 text-center">
             <div className="mb-4 text-4xl">🗳️</div>
             <h3 className="mb-2 text-lg font-semibold text-cyan-300">
-              No Active Votes
+              {debouncedSearchQuery.trim()
+                ? "No Matching Active Votes"
+                : "No Active Votes"}
             </h3>
             <p className="text-muted-foreground">
-              There are currently no disputes in the voting phase.
+              {debouncedSearchQuery.trim()
+                ? `No active votes found matching "${debouncedSearchQuery}"`
+                : "There are currently no disputes in the voting phase."}
             </p>
+            {debouncedSearchQuery.trim() && (
+              <Button
+                variant="outline"
+                className="mt-4 border-cyan-400 text-cyan-300"
+                onClick={() => setSearchQuery("")}
+              >
+                Clear Search
+              </Button>
+            )}
           </div>
         );
       }
 
-      return liveCases.map((c) => (
+      return paginatedLiveCases.map((c) => (
         <MemoizedLiveCaseCard
           key={c.id}
           c={c}
@@ -1633,21 +1774,34 @@ export default function Voting() {
         );
       }
 
-      if (concludedCases.length === 0) {
+      if (paginatedConcludedCases.length === 0) {
         return (
           <div className="col-span-2 py-12 text-center">
             <div className="mb-4 text-4xl">📊</div>
             <h3 className="mb-2 text-lg font-semibold text-cyan-300">
-              No Concluded Cases
+              {debouncedSearchQuery.trim()
+                ? "No Matching Cases"
+                : "No Concluded Cases"}
             </h3>
             <p className="text-muted-foreground">
-              No voting results available yet.
+              {debouncedSearchQuery.trim()
+                ? `No concluded cases found matching "${debouncedSearchQuery}"`
+                : "No voting results available yet."}
             </p>
+            {debouncedSearchQuery.trim() && (
+              <Button
+                variant="outline"
+                className="mt-4 border-cyan-400 text-cyan-300"
+                onClick={() => setSearchQuery("")}
+              >
+                Clear Search
+              </Button>
+            )}
           </div>
         );
       }
 
-      return concludedCases.map((c) => (
+      return paginatedConcludedCases.map((c) => (
         <MemoizedDoneCaseCard key={c.id} c={c} />
       ));
     }
@@ -1656,8 +1810,8 @@ export default function Voting() {
     error,
     liveLoading,
     concludedLoading,
-    liveCases,
-    concludedCases,
+    paginatedLiveCases,
+    paginatedConcludedCases,
     currentTime,
     fetchLiveDisputes,
     isVoteStarted,
@@ -1665,6 +1819,7 @@ export default function Voting() {
     handleOnchainStartVote,
     isPending,
     isUserJudge,
+    debouncedSearchQuery,
   ]);
 
   return (
@@ -1676,12 +1831,12 @@ export default function Voting() {
         <h2 className="text-xl font-semibold text-white/90">Voting Hub</h2>
         <div className="text-sm text-cyan-300">
           {tab === "live"
-            ? `${liveCases.length} active cases`
-            : `${concludedCases.length} concluded cases`}
+            ? `${allLiveCases.length} active case${allLiveCases.length !== 1 ? "s" : ""}`
+            : `${allConcludedCases.length} concluded case${allConcludedCases.length !== 1 ? "s" : ""}`}
         </div>
       </header>
 
-      {/* Custom Tabs */}
+      {/* Custom Tabs and Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex w-fit rounded-md bg-white/5 p-1">
           <button
@@ -1706,6 +1861,32 @@ export default function Voting() {
           </button>
         </div>
 
+        {/* Search Bar */}
+        <div className="relative grow sm:max-w-xs">
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Prevent Enter key from submitting forms
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            placeholder="Search by title, username, or description"
+            className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm ring-0 outline-none focus:border-cyan-400/40"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-cyan-300/70 hover:text-cyan-300"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         {/* Color Legend */}
         <div className="flex items-center gap-4 text-xs text-white/70">
           <div className="flex items-center gap-1">
@@ -1723,10 +1904,116 @@ export default function Voting() {
         </div>
       </div>
 
+      {/* Page Size Selector */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-cyan-300">Show:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
+          >
+            <option className="text-black" value={5}>
+              5
+            </option>
+            <option className="text-black" value={10}>
+              10
+            </option>
+            <option className="text-black" value={20}>
+              20
+            </option>
+            <option className="text-black" value={50}>
+              50
+            </option>
+          </select>
+          <span className="text-sm text-cyan-300">per page</span>
+        </div>
+
+        {/* Showing X to Y of Z cases */}
+        {currentCases.length > 0 && (
+          <div className="text-sm whitespace-nowrap text-cyan-300">
+            Showing {startItem} to {endItem} of {currentCases.length}{" "}
+            {tab === "live" ? "active" : "concluded"} cases
+          </div>
+        )}
+      </div>
+
       {/* Tab Content */}
       <div className="mx-auto mt-4 grid max-w-[1150px] grid-flow-row-dense grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {tabContent}
       </div>
+
+      {/* Pagination Controls - Only show if we have cases */}
+      {currentCases.length > 0 && totalPages > 1 && (
+        <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
+          <div className="text-sm whitespace-nowrap text-cyan-300">
+            Page {currentPage} of {totalPages}
+          </div>
+
+          <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
+            {/* Previous Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span className="sr-only sm:not-sr-only sm:ml-1">Previous</span>
+            </Button>
+
+            {/* Page Numbers - Hide on very small screens, show on sm+ */}
+            <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "neon" : "outline"}
+                    size="sm"
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`${
+                      currentPage === pageNum
+                        ? "neon-hover"
+                        : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                    } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {/* Current Page Indicator (for very small screens) */}
+            <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
+              Page {currentPage} of {totalPages}
+            </div>
+
+            {/* Next Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
+            >
+              <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

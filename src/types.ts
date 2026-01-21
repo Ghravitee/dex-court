@@ -417,6 +417,7 @@ export interface DisputeListResponse {
   totalDisputes: number;
   totalResults: number;
   results: DisputeListItem[];
+  totalCount?: number;
 }
 
 export interface CreateDisputeRequest {

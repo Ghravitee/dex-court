@@ -15,7 +15,6 @@ import type {
 } from "../types";
 
 const generateVotingId = (): string => {
-  // Generate a random 6-digit number between 100000 and 999999
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
@@ -24,12 +23,12 @@ class DisputeService {
     users: any[];
     timestamp: number;
   } | null = null;
-  private readonly CACHE_DURATION = 60000; // 1 minute cache
+  private readonly CACHE_DURATION = 60000;
 
-  // User search methods - same implementation as AgreementService
+  // User search methods remain the same...
+
   async searchUsers(query: string): Promise<any[]> {
     try {
-      // Only log in development
       if (process.env.NODE_ENV === "development") {
         console.log(`🔍 [DisputeService] Searching users with query: ${query}`);
       }
@@ -58,7 +57,6 @@ class DisputeService {
           user?.walletAddress?.toLowerCase().includes(query.toLowerCase()),
       );
 
-      // Only log in development
       if (process.env.NODE_ENV === "development") {
         console.log(
           `🔍 [DisputeService] Found ${filteredUsers.length} users matching "${query}"`,
@@ -73,7 +71,6 @@ class DisputeService {
   }
 
   async getAllUsers(): Promise<any[]> {
-    // Return cached users if available and not expired
     if (
       this.userCache &&
       Date.now() - this.userCache.timestamp < this.CACHE_DURATION
@@ -89,7 +86,6 @@ class DisputeService {
 
       let users: any[] = [];
 
-      // The response has { accounts: [...] } structure based on your logs
       if (response.data && Array.isArray(response.data.accounts)) {
         users = response.data.accounts;
       } else if (response.data && Array.isArray(response.data.results)) {
@@ -104,7 +100,6 @@ class DisputeService {
         users = [];
       }
 
-      // Cache the results
       this.userCache = {
         users,
         timestamp: Date.now(),
@@ -117,13 +112,12 @@ class DisputeService {
     }
   }
 
-  // Clear cache when needed
   clearUserCache() {
     this.userCache = null;
     console.log("🔍 [DisputeService] User cache cleared");
   }
 
-  // Create a new dispute manually - ENHANCED with votingId
+  // Create a new dispute manually
   async createDispute(
     data: CreateDisputeRequest,
     files: File[],
@@ -132,27 +126,23 @@ class DisputeService {
 
     const formData = new FormData();
 
-    // ✅ Append fields individually (NOT JSON)
     formData.append("title", data.title);
     formData.append("description", data.description);
     formData.append("requestKind", String(data.requestKind));
     formData.append("defendant", cleanTelegramUsername(data.defendant));
     formData.append("claim", data.claim);
 
-    // ✅ Generate and append votingId
     const votingId = generateVotingId();
     formData.append("votingId", votingId);
 
     console.log("✅ Generated votingId for dispute:", votingId);
 
-    // ✅ Append witnesses array as `witnesses[0]`, `witnesses[1]`, etc.
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((witness, index) => {
         formData.append(`witnesses[${index}]`, cleanTelegramUsername(witness));
       });
     }
 
-    // ✅ Append evidence files
     if (files && files.length > 0) {
       files.forEach((file) => formData.append("files", file));
     }
@@ -175,40 +165,34 @@ class DisputeService {
   }
 
   // Create dispute from agreement
-  // In your disputeServices.ts, update the return type of createDisputeFromAgreement
   async createDisputeFromAgreement(
     agreementId: number,
     data: CreateDisputeFromAgreementRequest,
     files: File[],
   ): Promise<{ id: number; votingId?: string }> {
-    // Add votingId as optional
     console.log(
       "🚀 Creating dispute from agreement with proper form-data format...",
     );
 
     const formData = new FormData();
 
-    // ✅ Append fields individually (NOT JSON)
     formData.append("title", data.title);
     formData.append("description", data.description);
     formData.append("requestKind", String(data.requestKind));
     formData.append("defendant", cleanTelegramUsername(data.defendant));
     formData.append("claim", data.claim);
 
-    // ✅ Generate and append votingId
     const votingId = generateVotingId();
     formData.append("votingId", votingId);
 
     console.log("✅ Generated votingId for agreement dispute:", votingId);
 
-    // ✅ Append witnesses as indexed keys
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((witness, index) => {
         formData.append(`witnesses[${index}]`, cleanTelegramUsername(witness));
       });
     }
 
-    // ✅ Append evidence files
     if (files && files.length > 0) {
       files.forEach((file) => formData.append("files", file));
     }
@@ -225,23 +209,38 @@ class DisputeService {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      if (!response.data || !response.data.id) {
+        console.error("❌ Invalid response from server - missing dispute ID");
+        throw new Error(
+          "Server returned invalid response. Dispute not created.",
+        );
+      }
+
       console.log(
         "✅ Dispute created from agreement with votingId:",
         votingId,
         response.data,
       );
 
-      // Return the response data with votingId
       return {
         id: response.data.id,
         votingId: votingId,
       };
     } catch (error: any) {
-      this.handleError(error);
+      console.error("❌ Error in createDisputeFromAgreement:", error);
+
+      if (error.response?.status === 500) {
+        console.error("❌ 500 Internal Server Error - Dispute creation failed");
+        throw new Error(
+          "SERVER_ERROR: Dispute creation failed due to server error. Please try again.",
+        );
+      }
+
+      throw error;
     }
   }
 
-  // Get disputes list with pagination and filters
+  // UPDATED: Get disputes list with pagination and filters - enhanced for Voting component
   async getDisputes(params?: {
     top?: number;
     skip?: number;
@@ -251,15 +250,26 @@ class DisputeService {
     range?: "all" | "last7d" | "last30d";
   }): Promise<DisputeListResponse> {
     try {
+      console.log("🔍 [DisputeService] Fetching disputes with params:", params);
+
       const response = await api.get("/dispute", { params });
+
+      console.log("✅ [DisputeService] Disputes response structure:", {
+        hasResults: !!response.data?.results,
+        resultsCount: response.data?.results?.length || 0,
+        totalCount: response.data?.totalCount,
+        hasPagination: response.data?.pagination !== undefined,
+        fullResponse: response.data,
+      });
+
       return response.data;
     } catch (error: any) {
+      console.error("❌ [DisputeService] Failed to fetch disputes:", error);
       this.handleError(error);
     }
   }
 
   // Get dispute details
-  // Get dispute details - UPDATED WITH DEBUGGING
   async getDisputeDetails(disputeId: number): Promise<DisputeDetails> {
     try {
       console.log("🔍 Fetching dispute details for ID:", disputeId);
@@ -283,17 +293,14 @@ class DisputeService {
   ): Promise<void> {
     const formData = new FormData();
 
-    // ✅ Required defense statement
     formData.append("defendantClaim", data.defendantClaim);
 
-    // ✅ Optional witnesses
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((w, i) => {
         formData.append(`witnesses[${i}]`, w.trim());
       });
     }
 
-    // ✅ Optional evidence files
     if (files && files.length > 0) {
       files.forEach((file) => formData.append("files", file));
     }
@@ -328,17 +335,14 @@ class DisputeService {
   ): Promise<void> {
     const formData = new FormData();
 
-    // ✅ Required defense statement
     formData.append("defendantClaim", data.defendantClaim);
 
-    // ✅ Optional witnesses
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((w, i) => {
         formData.append(`witnesses[${i}]`, cleanTelegramUsername(w));
       });
     }
 
-    // ✅ Optional evidence files
     if (files && files.length > 0) {
       files.forEach((file) => formData.append("files", file));
     }
@@ -362,7 +366,7 @@ class DisputeService {
     }
   }
 
-  // Edit plaintiff claim - FIXED to clean witness usernames
+  // Edit plaintiff claim
   async editPlaintiffClaim(
     disputeId: number,
     data: {
@@ -377,7 +381,6 @@ class DisputeService {
   ): Promise<void> {
     const formData = new FormData();
 
-    // ✅ Append individual fields exactly as backend expects
     if (data.title) formData.append("title", data.title);
     if (data.description) formData.append("description", data.description);
     if (data.claim) formData.append("claim", data.claim);
@@ -385,16 +388,13 @@ class DisputeService {
       formData.append("requestKind", String(data.requestKind));
     if (data.defendant) formData.append("defendant", data.defendant);
 
-    // ✅ Append witnesses individually as witnesses[0], witnesses[1], ... WITH CLEANED USERNAMES
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((w, i) => {
-        // Clean the username by removing @ prefix and trimming
         const cleanWitness = cleanTelegramUsername(w.trim());
         formData.append(`witnesses[${i}]`, cleanWitness);
       });
     }
 
-    // ✅ Append evidence files directly (no "data" JSON wrapper)
     if (files && files.length > 0) {
       files.forEach((file) => formData.append("files", file));
     }
@@ -428,7 +428,6 @@ class DisputeService {
   }
 
   // Cast vote
-  // In disputeServices.ts - check the castVote method
   async castVote(disputeId: number, data: VoteRequest): Promise<void> {
     try {
       console.log("🗳️ [DisputeService] Casting vote:", { disputeId, data });
@@ -437,7 +436,6 @@ class DisputeService {
 
       console.log("✅ [DisputeService] Vote response:", response.data);
 
-      // If the API returns data, return it
       return response.data;
     } catch (error: any) {
       console.error("❌ [DisputeService] Vote failed:", error);
@@ -449,14 +447,13 @@ class DisputeService {
     try {
       console.log(`🚀 Escalating disputes to vote (PATCH):`, disputeIds);
 
-      // ✅ INCREASE TIMEOUT TO 60 SECONDS
       const response = await api.patch(
         "/testing/escalate-votes",
         {
           disputeIds,
         },
         {
-          timeout: 60000, // 60 seconds timeout
+          timeout: 60000,
         },
       );
 
@@ -465,9 +462,7 @@ class DisputeService {
     } catch (error: any) {
       console.error("❌ Failed to escalate disputes:", error);
 
-      // ✅ CHECK IF THE REQUEST ACTUALLY SUCCEEDED ON THE SERVER
       if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-        // Server might have processed it successfully even though client timed out
         console.warn("⚠️ Request timed out, but may have succeeded on server");
         throw new Error(
           "Request timed out. Please refresh the page to check if it succeeded.",
@@ -479,9 +474,6 @@ class DisputeService {
   }
 
   // Check if user can vote in a dispute
-
-  // Check if user can vote in a dispute - UPDATED to use new endpoint
-  // Check if user can vote in a dispute - UPDATED to use new endpoint
   async canUserVote(
     disputeId: number,
     userId: string,
@@ -496,7 +488,6 @@ class DisputeService {
         `🔍 [DisputeService] Checking eligibility for dispute ${disputeId}, user ${userId}`,
       );
 
-      // Use the new endpoint to check eligibility
       const response = await api.post(
         `/dispute/${disputeId}/check-eligibility`,
       );
@@ -505,7 +496,6 @@ class DisputeService {
 
       const { isEligible, reason, tier, weight } = response.data;
 
-      // Map backend response to our frontend format
       return {
         canVote: isEligible,
         reason: !isEligible ? this.getReasonMessage(reason) : undefined,
@@ -515,7 +505,6 @@ class DisputeService {
     } catch (error: any) {
       console.error(`❌ [DisputeService] Eligibility check failed:`, error);
 
-      // Handle specific error codes from the backend
       if (error.response?.data?.error) {
         const apiError = error.response.data;
 
@@ -544,8 +533,6 @@ class DisputeService {
   }
 
   // Get vote outcome
-  // Update the getVoteOutcome method in disputeServices.ts
-  // Update the getVoteOutcome method to handle the complex object structure
   async getVoteOutcome(disputeId: number): Promise<VoteOutcomeData> {
     try {
       console.log(
@@ -561,11 +548,9 @@ class DisputeService {
 
       const apiData = response.data;
 
-      // Extract data from the complex object structure
       const totalVotes =
         typeof apiData.totalVotes === "number" ? apiData.totalVotes : 0;
 
-      // Extract judge votes - it's an object with plaintiff, defendant, dismiss properties
       const judgeVotesObj =
         apiData.votesPerGroup?.judges || apiData.judgeVotes || {};
       const judgeVotes =
@@ -573,7 +558,6 @@ class DisputeService {
         (judgeVotesObj.defendant || 0) +
         (judgeVotesObj.dismiss || 0);
 
-      // Extract community votes - sum across both tiers
       const communityTierOne = apiData.votesPerGroup?.communityTierOne || {};
       const communityTierTwo = apiData.votesPerGroup?.communityTierTwo || {};
       const communityVotes =
@@ -584,26 +568,21 @@ class DisputeService {
         (communityTierTwo.defendant || 0) +
         (communityTierTwo.dismiss || 0);
 
-      // Extract judge percentage - it's an object, we need plaintiff percentage
       const judgePctObj =
         apiData.percentagesPerGroup?.judges || apiData.judgePct || {};
       const judgePct = judgePctObj.plaintiff || 0;
 
-      // Extract community percentage - use communityTierOne as representative
       const communityPctObj =
         apiData.percentagesPerGroup?.communityTierOne ||
         apiData.communityPct ||
         {};
       const communityPct = communityPctObj.plaintiff || 0;
 
-      // Determine winner based on weighted result or result field
       let winner: "plaintiff" | "defendant" | "dismissed" = "dismissed";
 
-      // Option 1: Use result field (1 = plaintiff, 2 = defendant, 3 = dismissed)
       if (apiData.result === 1) winner = "plaintiff";
       else if (apiData.result === 2) winner = "defendant";
       else if (apiData.result === 3) winner = "dismissed";
-      // Option 2: Use weighted object to determine winner
       else if (apiData.weighted) {
         const { plaintiff = 0, defendant = 0, dismiss = 0 } = apiData.weighted;
         if (plaintiff > defendant && plaintiff > dismiss) winner = "plaintiff";
@@ -668,8 +647,7 @@ class DisputeService {
     }
   }
 
-  // Get settled disputes with voting results
-  // Get settled disputes with voting results - UPDATED for new endpoint
+  // UPDATED: Get settled disputes with voting results - enhanced for Voting component
   async getSettledDisputes(params?: {
     top?: number;
     skip?: number;
@@ -678,9 +656,27 @@ class DisputeService {
     range?: string;
   }): Promise<any> {
     try {
+      console.log(
+        "🔍 [DisputeService] Fetching settled disputes with params:",
+        params,
+      );
+
       const response = await api.get("/dispute/vote-settled", { params });
+
+      console.log("✅ [DisputeService] Settled disputes response structure:", {
+        hasResults: !!response.data?.results,
+        resultsCount: response.data?.results?.length || 0,
+        totalCount: response.data?.totalCount,
+        hasPagination: response.data?.pagination !== undefined,
+        fullResponseKeys: Object.keys(response.data || {}),
+      });
+
       return response.data;
     } catch (error: any) {
+      console.error(
+        "❌ [DisputeService] Failed to fetch settled disputes:",
+        error,
+      );
       this.handleError(error);
     }
   }
@@ -707,10 +703,7 @@ class DisputeService {
   }
 
   // Transform API data to frontend format
-  // In disputeServices.ts - update transformDisputeDetailsToRow function
-  // In disputeServices.ts - update transformDisputeDetailsToRow function
   transformDisputeDetailsToRow(dispute: DisputeDetails): DisputeRow {
-    // Helper function to extract user data with fallbacks
     const extractUserData = (user: any) => {
       if (!user) {
         return {
@@ -750,7 +743,6 @@ class DisputeService {
 
     console.log("🔍 Witnesses after transformation:", witnesses);
 
-    // Transform evidence files to match EvidenceFile interface
     const transformEvidenceFiles = (files: any[]): EvidenceFile[] => {
       return (
         files?.map((f: any) => ({
@@ -760,8 +752,8 @@ class DisputeService {
           side: f?.side || 0,
           mimeType: f?.mimeType || "application/octet-stream",
           uploadedAt: f?.uploadedAt || new Date().toISOString(),
-          fileId: f?.id, // For backward compatibility
-          url: f?.url, // If available
+          fileId: f?.id,
+          url: f?.url,
         })) || []
       );
     };
@@ -806,7 +798,6 @@ class DisputeService {
       agreementId: dispute.agreementId,
       agreementTitle: dispute.agreementTitle,
 
-      // NEW FIELDS: Add all the fields from the API response
       votingId: dispute.votingId,
       contractAgreementId: dispute.contractAgreementId,
       chainId: dispute.chainId,
@@ -817,7 +808,6 @@ class DisputeService {
       voteStartedAt: dispute.voteStartedAt,
       voteEndedAt: dispute.voteEndedAt,
 
-      // Agreement object
       agreement: dispute.agreement
         ? {
             id: dispute.agreement.id,
@@ -838,10 +828,7 @@ class DisputeService {
     return transformed;
   }
 
-  // Also update the transformDisputeListItemToRow function
-  // In your disputeServices.ts file - update this function
   transformDisputeListItemToRow(item: any): DisputeRow {
-    // Helper function to extract user data with avatars
     const extractUserData = (user: any) => ({
       username: user?.username || "Unknown",
       userId: user?.id?.toString() || "0",
@@ -853,7 +840,6 @@ class DisputeService {
     const plaintiffData = extractUserData(item.parties?.plaintiff);
     const defendantData = extractUserData(item.parties?.defendant);
 
-    // Handle witnesses structure properly
     let witnesses = { plaintiff: [], defendant: [] };
 
     if (item.witnesses) {
@@ -861,7 +847,6 @@ class DisputeService {
         typeof item.witnesses === "object" &&
         !Array.isArray(item.witnesses)
       ) {
-        // Handle object structure { plaintiff: [], defendant: [] }
         witnesses = {
           plaintiff: (item.witnesses.plaintiff || []).map((w: any) => ({
             id: w?.id || 0,
@@ -875,7 +860,6 @@ class DisputeService {
           })),
         };
       } else if (Array.isArray(item.witnesses)) {
-        // Handle array structure - assign to plaintiff witnesses by default
         witnesses = {
           plaintiff: item.witnesses.map((w: any) => ({
             id: w?.id || 0,
@@ -900,11 +884,12 @@ class DisputeService {
       defendant: defendantData.username,
       description: item.description || "No description provided",
       witnesses: witnesses,
-      evidence: [], // Add empty evidence array for list items
+      evidence: [],
       plaintiffData,
       defendantData,
     };
   }
+
   private mapStatusToFrontend(
     status: DisputeStatusEnum,
   ): "Pending" | "Vote in Progress" | "Settled" | "Dismissed" {
@@ -932,26 +917,46 @@ class DisputeService {
       5: "User does not meet voting requirements",
       6: "Dispute not found",
       7: "User account not found",
-      // Add more mappings as needed
     };
 
     return reasonMessages[reasonCode] || "Not eligible to vote";
   }
 
   // Error handling
-  // Enhanced error handling
   private handleError(error: any): never {
-    console.error("🎯 ===== ENHANCED ERROR HANDLING ===== 🚀");
+    console.error("🎯 ===== STRICT ERROR HANDLING ===== 🚀");
+
+    console.error("Full error object:", error);
+
+    if (error.response?.status === 500) {
+      console.error("❌ SERVER ERROR (500) - Dispute creation FAILED");
+      throw new Error(
+        "Dispute creation failed due to server error. Please try again.",
+      );
+    }
+
+    if (error.response?.status === 413) {
+      console.error("📁 REQUEST ENTITY TOO LARGE (413)");
+      throw new Error(
+        "File too large. The total request size exceeds server limits. Please reduce file sizes or upload fewer files.",
+      );
+    }
+
+    if (
+      error.code === "ERR_NETWORK" ||
+      error.message?.includes("CORS") ||
+      error.message?.includes("cross-origin") ||
+      (error.response === undefined && error.request !== undefined)
+    ) {
+      console.error("🌐 CORS/NETWORK ERROR DETECTED");
+      throw new Error(
+        "Unable to connect to server. Please check your connection and try again.",
+      );
+    }
 
     if (error.response?.data) {
       const apiError: ApiError = error.response.data;
 
-      // 🚨 ENHANCED: Log the request payload that caused the error
-      if (error.response.config?.data) {
-        console.error("  Request Payload:", error.response.config.data);
-      }
-
-      // Map error codes to user-friendly messages
       const errorMessages: Record<ErrorCodeEnum, string> = {
         [ErrorCodeEnum.MissingData]:
           "Missing required fields. Please check: Title, Description, Defendant, Claim, and Evidence files.",
@@ -964,7 +969,7 @@ class DisputeService {
         [ErrorCodeEnum.WitnessesNotFound]: "One or more witnesses not found.",
         [ErrorCodeEnum.InvalidData]: "Invalid data provided.",
         [ErrorCodeEnum.InternalServerError]:
-          "An unexpected error occurred. Please try again.",
+          "Dispute creation failed due to server error. Please try again.",
         [ErrorCodeEnum.Forbidden]:
           "You are not authorized to perform this action.",
         [ErrorCodeEnum.InvalidStatus]:
@@ -974,32 +979,22 @@ class DisputeService {
       const message =
         errorMessages[apiError.error] ||
         apiError.message ||
-        "An error occurred";
+        "Dispute creation failed. Please try again.";
 
-      console.error("🎯 THROWING USER-FRIENDLY ERROR:", message);
+      console.error("🎯 THROWING STRICT ERROR:", message);
       throw new Error(message);
     }
 
-    // Network errors
-    if (
-      error.code === "NETWORK_ERROR" ||
-      error.message?.includes("Network Error")
-    ) {
-      console.error("🌐 NETWORK ERROR DETECTED");
-      throw new Error(
-        "Network error. Please check your connection and try again.",
-      );
-    }
-
-    // Timeout errors
     if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
       console.error("⏰ TIMEOUT ERROR DETECTED");
-      throw new Error("Request timeout. Please try again.");
+      throw new Error(
+        "Request timeout. The server took too long to respond. Please try again.",
+      );
     }
 
     console.error("🎯 THROWING GENERIC ERROR");
     throw new Error(
-      "Network error. Please check your connection and try again.",
+      "Dispute creation failed. Please check your connection and try again.",
     );
   }
 }

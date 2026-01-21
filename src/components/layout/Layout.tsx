@@ -12,7 +12,7 @@ export default function Layout() {
   return (
     <main
       style={{ display: "block" }}
-      className="text-foreground flex min-h-screen w-full bg-gradient-to-br from-gray-900 via-gray-950 to-black"
+      className="text-foreground relative flex min-h-screen w-full bg-gradient-to-br from-gray-900 via-gray-950 to-black"
     >
       {/* Desktop Sidebar */}
       <Sidebar
@@ -27,7 +27,7 @@ export default function Layout() {
           {/* Backdrop */}
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden"
+            className="fixed inset-0 z-10 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden"
             onClick={() => setMobileOpen(false)}
           />
           {/* Sidebar Drawer */}

@@ -5,7 +5,6 @@ import {
   FileText,
   Home,
   Scale,
-  Star,
   Vote,
   ChevronLeft,
   ChevronRight,
@@ -70,8 +69,7 @@ export function Sidebar({
       label: "Theo's Escrow",
       icon: <BadgeDollarSign size={18} />,
     },
-    { to: "/web3vote", label: "Theo's Voting", icon: <Vote size={18} /> },
-    { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
+
     ...(isAdmin
       ? [
           {

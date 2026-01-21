@@ -1,4 +1,3 @@
-// src/pages/Disputes.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../components/ui/button";
 import { ChevronDown, ChevronRight, ChevronLeft, Send } from "lucide-react";
@@ -42,14 +41,21 @@ interface UploadedFile {
 const isValidWalletAddress = (value: string) =>
   /^0x[a-fA-F0-9]{40}$/.test(value);
 
-// User Search Result Component
+// User Search Result Component - FIXED
 const UserSearchResult = ({
   user,
   onSelect,
+  field,
+  index,
 }: {
   user: any;
-  onSelect: (username: string) => void;
+  onSelect: (
+    username: string,
+    field: "defendant" | "witness",
+    index?: number,
+  ) => void;
   field: "defendant" | "witness";
+  index?: number;
 }) => {
   const { user: currentUser } = useAuth();
 
@@ -72,7 +78,7 @@ const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(telegramUsername)}
+      onClick={() => onSelect(telegramUsername, field, index)}
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}
@@ -251,16 +257,25 @@ export default function Disputes() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const recentDisputesDropdownRef = useRef<HTMLDivElement>(null);
 
-  // User search state
-  const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
-  const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
-  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
-  const [activeSearchField, setActiveSearchField] = useState<
-    "defendant" | "witness"
-  >("defendant");
+  // User search state - SIMPLIFIED LIKE OpenDisputeModal
+  const [defendantSearchQuery, setDefendantSearchQuery] = useState("");
+  const [defendantSearchResults, setDefendantSearchResults] = useState<any[]>(
+    [],
+  );
+  const [isDefendantSearchLoading, setIsDefendantSearchLoading] =
+    useState(false);
+  const [showDefendantSuggestions, setShowDefendantSuggestions] =
+    useState(false);
+
+  const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
+  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
+  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
+  const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(0);
-  const userSearchRef = useRef<HTMLDivElement>(null);
+
+  // Refs for click outside detection
+  const defendantSearchRef = useRef<HTMLDivElement>(null);
+  const witnessSearchRef = useRef<HTMLDivElement>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -268,7 +283,8 @@ export default function Disputes() {
   const [allDisputes, setAllDisputes] = useState<DisputeRow[]>([]);
   const [paginatedDisputes, setPaginatedDisputes] = useState<DisputeRow[]>([]);
 
-  const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
+  const debouncedDefendantQuery = useDebounce(defendantSearchQuery, 300);
+  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
   // Use the custom hook for data fetching
   const { data, loading, error, refetch } = useDisputes({
@@ -301,95 +317,147 @@ export default function Disputes() {
         !dropdownRef.current.contains(event.target as Node) &&
         recentDisputesDropdownRef.current &&
         !recentDisputesDropdownRef.current.contains(event.target as Node) &&
-        userSearchRef.current &&
-        !userSearchRef.current.contains(event.target as Node)
+        defendantSearchRef.current &&
+        !defendantSearchRef.current.contains(event.target as Node) &&
+        witnessSearchRef.current &&
+        !witnessSearchRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
         setIsRecentDisputesFilterOpen(false);
-        setShowUserSuggestions(false);
+        setShowDefendantSuggestions(false);
+        setShowWitnessSuggestions(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // User search function
-  const handleUserSearch = useCallback(
-    async (
-      query: string,
-      field: "defendant" | "witness",
-      witnessIndex: number = 0,
-    ) => {
-      setUserSearchQuery(query);
-      setActiveSearchField(field);
-      if (field === "witness") {
-        setActiveWitnessIndex(witnessIndex);
-      }
+  // Defendant search function - SEPARATE from witnesses
+  const handleDefendantSearch = useCallback(
+    async (query: string) => {
+      // Remove @ symbol from query for searching
+      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
 
-      if (process.env.NODE_ENV === "development") {
-        console.log("🔍 Searching users for", field, "with query:", query);
-      }
-
-      if (query.length < 2) {
-        setUserSearchResults([]);
-        setShowUserSuggestions(false);
+      if (cleanQuery.length < 1) {
+        setDefendantSearchResults([]);
+        setShowDefendantSuggestions(false);
         return;
       }
 
-      setIsUserSearchLoading(true);
-      setShowUserSuggestions(true);
+      setIsDefendantSearchLoading(true);
+      setShowDefendantSuggestions(true);
 
       try {
-        const results = await disputeService.searchUsers(query);
+        // Search with the cleaned query (without @)
+        const results = await disputeService.searchUsers(cleanQuery);
 
-        if (process.env.NODE_ENV === "development") {
-          console.log("🔍 RAW SEARCH RESULTS:", results);
-        }
-
-        // Filter out current user AND users without Telegram usernames
         const currentUserTelegram = getCurrentUserTelegram(currentUser);
         const filteredResults = results.filter((resultUser) => {
-          // 🚨 FIXED: Look for telegramUsername field (from API response)
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
               resultUser.telegram?.username ||
               resultUser.telegramInfo,
           );
 
-          // Only include users with Telegram usernames AND not the current user
-          // Use case-insensitive comparison
           return (
             resultTelegram &&
             resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
           );
         });
 
-        setUserSearchResults(filteredResults);
+        setDefendantSearchResults(filteredResults);
       } catch (error) {
-        console.error("User search failed:", error);
-        setUserSearchResults([]);
+        console.error("Defendant search failed:", error);
+        setDefendantSearchResults([]);
       } finally {
-        setIsUserSearchLoading(false);
+        setIsDefendantSearchLoading(false);
       }
     },
     [currentUser],
   );
 
-  // Debounced search effect
+  // Witness search function - SEPARATE from defendant
+  const handleWitnessSearch = useCallback(
+    async (query: string) => {
+      // Remove @ symbol from query for searching
+      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
+
+      if (cleanQuery.length < 2) {
+        setWitnessSearchResults([]);
+        setShowWitnessSuggestions(false);
+        return;
+      }
+
+      setIsWitnessSearchLoading(true);
+      setShowWitnessSuggestions(true);
+
+      try {
+        // Search with the cleaned query (without @)
+        const results = await disputeService.searchUsers(cleanQuery);
+
+        const currentUserTelegram = getCurrentUserTelegram(currentUser);
+        const filteredResults = results.filter((resultUser) => {
+          const resultTelegram = cleanTelegramUsername(
+            resultUser.telegramUsername ||
+              resultUser.telegram?.username ||
+              resultUser.telegramInfo,
+          );
+
+          return (
+            resultTelegram &&
+            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
+          );
+        });
+
+        setWitnessSearchResults(filteredResults);
+      } catch (error) {
+        console.error("Witness search failed:", error);
+        setWitnessSearchResults([]);
+      } finally {
+        setIsWitnessSearchLoading(false);
+      }
+    },
+    [currentUser],
+  );
+
+  // Debounced search effects
   useEffect(() => {
-    if (debouncedSearchQuery.length >= 2) {
-      handleUserSearch(
-        debouncedSearchQuery,
-        activeSearchField,
-        activeWitnessIndex,
-      );
+    if (debouncedDefendantQuery.length >= 1) {
+      handleDefendantSearch(debouncedDefendantQuery);
+    } else {
+      setDefendantSearchResults([]);
+      setShowDefendantSuggestions(false);
     }
-  }, [
-    debouncedSearchQuery,
-    activeSearchField,
-    activeWitnessIndex,
-    handleUserSearch,
-  ]);
+  }, [debouncedDefendantQuery, handleDefendantSearch]);
+
+  useEffect(() => {
+    if (debouncedWitnessQuery.length >= 2) {
+      handleWitnessSearch(debouncedWitnessQuery);
+    } else {
+      setWitnessSearchResults([]);
+      setShowWitnessSuggestions(false);
+    }
+  }, [debouncedWitnessQuery, handleWitnessSearch]);
+
+  // Handle user selection
+  const handleUserSelect = (
+    username: string,
+    field: "defendant" | "witness",
+    index?: number,
+  ) => {
+    // Display with @ symbol, but store without it
+    const valueWithAt = `@${username}`;
+
+    if (field === "defendant") {
+      setForm((prev) => ({ ...prev, defendant: valueWithAt }));
+      setShowDefendantSuggestions(false);
+      setDefendantSearchQuery(""); // Clear search query
+    } else if (field === "witness" && index !== undefined) {
+      updateWitness(index, valueWithAt);
+      setShowWitnessSuggestions(false);
+      setWitnessSearchQuery(""); // Clear search query
+    }
+  };
 
   // Filter and sort disputes
   const filteredDisputes = useMemo(() => {
@@ -621,9 +689,10 @@ export default function Disputes() {
       return;
     }
 
-    // Validate Telegram usernames
+    // Validate Telegram usernames - FIXED to handle @ symbol
+    const cleanedDefendantInput = cleanTelegramUsername(form.defendant);
     if (
-      !isValidTelegramUsername(form.defendant) &&
+      !isValidTelegramUsername(cleanedDefendantInput) &&
       !isValidWalletAddress(form.defendant)
     ) {
       toast.error("Enter a valid Telegram username or wallet address");
@@ -632,6 +701,7 @@ export default function Disputes() {
 
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
+      .map((w) => cleanTelegramUsername(w)) // Clean witness inputs
       .filter((w) => !isValidTelegramUsername(w) && !isValidWalletAddress(w));
 
     if (invalidWitnesses.length > 0) {
@@ -1324,8 +1394,8 @@ export default function Disputes() {
                 </div>
               </div>
 
-              {/* Defendant Field with User Search */}
-              <div className="relative" ref={userSearchRef}>
+              {/* Defendant Field with User Search - SEPARATE LIKE OpenDisputeModal */}
+              <div className="relative" ref={defendantSearchRef}>
                 <label className="text-muted-foreground mb-2 block text-sm">
                   Defendant <span className="text-red-500">*</span>
                   <span className="ml-2 text-xs text-cyan-400">
@@ -1339,50 +1409,50 @@ export default function Disputes() {
                     onChange={(e) => {
                       const value = e.target.value;
                       setForm({ ...form, defendant: value });
-                      handleUserSearch(value, "defendant");
+                      setDefendantSearchQuery(value);
                     }}
                     onFocus={() => {
-                      if (form.defendant.length >= 2) {
-                        setShowUserSuggestions(true);
+                      // Show suggestions if there's already some text
+                      if (form.defendant.replace(/^@/, "").trim().length >= 1) {
+                        setShowDefendantSuggestions(true);
                       }
                     }}
                     className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                    placeholder="Type username (min 2 characters)..."
+                    placeholder="Type username (with or without @)..."
                     required
                   />
-                  {isUserSearchLoading && activeSearchField === "defendant" && (
+                  {isDefendantSearchLoading && (
                     <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
                   )}
                 </div>
 
-                {/* User Suggestions Dropdown */}
-                {showUserSuggestions && activeSearchField === "defendant" && (
+                {/* Defendant Suggestions Dropdown */}
+                {showDefendantSuggestions && (
                   <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                    {userSearchResults.length > 0 ? (
-                      userSearchResults.map((user) => (
+                    {defendantSearchResults.length > 0 ? (
+                      defendantSearchResults.map((user) => (
                         <UserSearchResult
                           key={user.id}
                           user={user}
-                          onSelect={(username) => {
-                            setForm({ ...form, defendant: username });
-                            setShowUserSuggestions(false);
-                            setUserSearchQuery(""); // Clear search query
-                          }}
+                          onSelect={handleUserSelect}
                           field="defendant"
                         />
                       ))
-                    ) : userSearchQuery.length >= 2 && !isUserSearchLoading ? (
+                    ) : defendantSearchQuery.replace(/^@/, "").trim().length >=
+                        1 && !isDefendantSearchLoading ? (
                       <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                        No users found for "{userSearchQuery}"
+                        No users found for "
+                        {defendantSearchQuery.replace(/^@/, "")}"
                         <div className="mt-1 text-xs text-cyan-400">
                           You may also enter a wallet address directly
                         </div>
                       </div>
                     ) : null}
 
-                    {userSearchQuery.length < 2 && (
+                    {defendantSearchQuery.replace(/^@/, "").trim().length <
+                      1 && (
                       <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                        Type at least 2 characters to search
+                        Type at least 1 character to search
                       </div>
                     )}
                   </div>
@@ -1510,8 +1580,8 @@ export default function Disputes() {
                 )}
               </div>
 
-              {/* Witnesses with User Search */}
-              <div>
+              {/* Witnesses with User Search - SEPARATE LIKE OpenDisputeModal */}
+              <div ref={witnessSearchRef}>
                 <div className="mb-2 flex items-center justify-between">
                   <label className="text-muted-foreground text-sm">
                     Witness list (max 5)
@@ -1539,22 +1609,23 @@ export default function Disputes() {
                           onChange={(e) => {
                             const value = e.target.value;
                             updateWitness(i, value);
-                            handleUserSearch(value, "witness", i);
+                            setWitnessSearchQuery(value);
                           }}
                           onFocus={() => {
-                            if (w.length >= 2) {
-                              setShowUserSuggestions(true);
-                              setActiveWitnessIndex(i);
+                            setActiveWitnessIndex(i);
+                            const searchValue = w.startsWith("@")
+                              ? w.substring(1)
+                              : w;
+                            if (searchValue.length >= 2) {
+                              setShowWitnessSuggestions(true);
                             }
                           }}
                           className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder={`Type username (min 2 characters)...`}
+                          placeholder={`Type username with or without @ (min 2 characters)...`}
                         />
-                        {isUserSearchLoading &&
-                          activeSearchField === "witness" &&
-                          activeWitnessIndex === i && (
-                            <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
-                          )}
+                        {isWitnessSearchLoading && activeWitnessIndex === i && (
+                          <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                        )}
                       </div>
                       {form.witnesses.length > 1 && (
                         <button
@@ -1567,41 +1638,36 @@ export default function Disputes() {
                       )}
 
                       {/* Witness User Suggestions Dropdown */}
-                      {showUserSuggestions &&
-                        activeSearchField === "witness" &&
-                        activeWitnessIndex === i && (
-                          <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                            {userSearchResults.length > 0 ? (
-                              userSearchResults.map((user) => (
-                                <UserSearchResult
-                                  key={user.id}
-                                  user={user}
-                                  onSelect={(username) => {
-                                    updateWitness(i, username);
-                                    setShowUserSuggestions(false);
-                                    setUserSearchQuery(""); // Clear search query
-                                  }}
-                                  field="witness"
-                                />
-                              ))
-                            ) : userSearchQuery.length >= 2 &&
-                              !isUserSearchLoading ? (
-                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                                No users found for "{userSearchQuery}"
-                                <div className="mt-1 text-xs text-cyan-400">
-                                  Make sure the user exists and has a Telegram
-                                  username
-                                </div>
+                      {showWitnessSuggestions && activeWitnessIndex === i && (
+                        <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                          {witnessSearchResults.length > 0 ? (
+                            witnessSearchResults.map((user) => (
+                              <UserSearchResult
+                                key={user.id}
+                                user={user}
+                                onSelect={handleUserSelect}
+                                field="witness"
+                                index={i}
+                              />
+                            ))
+                          ) : witnessSearchQuery.length >= 2 &&
+                            !isWitnessSearchLoading ? (
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                              No users found for "{witnessSearchQuery}"
+                              <div className="mt-1 text-xs text-cyan-400">
+                                Make sure the user exists and has a Telegram
+                                username
                               </div>
-                            ) : null}
+                            </div>
+                          ) : null}
 
-                            {userSearchQuery.length < 2 && (
-                              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                                Type at least 2 characters to search
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          {witnessSearchQuery.length < 2 && (
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                              Type at least 2 characters to search
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

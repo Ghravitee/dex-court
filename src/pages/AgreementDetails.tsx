@@ -18,7 +18,6 @@ import {
   Lock,
   Image,
   Paperclip,
-  Upload,
   UserCheck,
   X,
   ThumbsUp,
@@ -28,6 +27,7 @@ import {
   Ban,
   Info,
   Hourglass,
+  Download,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -2216,7 +2216,7 @@ export default function AgreementDetails() {
                             className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100"
                             onClick={() => handleDownloadFile(index)}
                           >
-                            <Upload className="mr-2 h-4 w-4" />
+                            <Download className="mr-2 h-4 w-4" />
                             Download
                           </Button>
                         </div>

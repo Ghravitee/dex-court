@@ -26,6 +26,12 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 
+const getTotalFileSize = (files: UploadedFile[]): string => {
+  const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
+  const mb = totalBytes / 1024 / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
+
 // Add debounce hook at the top
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -137,14 +143,6 @@ export default function OpenDisputeModal({
   });
 
   // SEPARATE search states for defendant and witnesses
-  const [defendantSearchQuery, setDefendantSearchQuery] = useState("");
-  const [defendantSearchResults, setDefendantSearchResults] = useState<any[]>(
-    [],
-  );
-  const [isDefendantSearchLoading, setIsDefendantSearchLoading] =
-    useState(false);
-  const [showDefendantSuggestions, setShowDefendantSuggestions] =
-    useState(false);
 
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
   const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
@@ -156,8 +154,6 @@ export default function OpenDisputeModal({
   const defendantSearchRef = useRef<HTMLDivElement>(null);
   const witnessSearchRef = useRef<HTMLDivElement>(null);
 
-  // Separate debounced queries
-  const debouncedDefendantQuery = useDebounce(defendantSearchQuery, 300);
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
   // File upload state
@@ -166,7 +162,6 @@ export default function OpenDisputeModal({
   // Add this ref to track if form has been initialized
   const hasInitialized = useRef(false);
 
-  // Initialize form with agreement data - BETTER SOLUTION
   useEffect(() => {
     if (isOpen && agreement && !hasInitialized.current) {
       // Determine who the defendant should be (the other party)
@@ -193,8 +188,7 @@ export default function OpenDisputeModal({
         kind: "Pro Bono",
         defendant: defendant || "",
         description,
-        claim:
-          "Please review the attached agreement and supporting evidence. The work delivered did not meet the agreed requirements.",
+        claim: "", // CHANGED: Empty claim field
         evidence: [],
         witnesses: [""],
       });
@@ -211,49 +205,12 @@ export default function OpenDisputeModal({
     }
   }, [isOpen]);
 
-  // Separate search functions for defendant and witnesses
-  const handleDefendantSearch = useCallback(
-    async (query: string) => {
-      if (query.length < 2) {
-        setDefendantSearchResults([]);
-        setShowDefendantSuggestions(false);
-        return;
-      }
-
-      setIsDefendantSearchLoading(true);
-      setShowDefendantSuggestions(true);
-
-      try {
-        const results = await disputeService.searchUsers(query);
-
-        const currentUserTelegram = getCurrentUserTelegram(currentUser);
-        const filteredResults = results.filter((resultUser) => {
-          const resultTelegram = cleanTelegramUsername(
-            resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
-          );
-
-          return (
-            resultTelegram &&
-            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
-          );
-        });
-
-        setDefendantSearchResults(filteredResults);
-      } catch (error) {
-        console.error("Defendant search failed:", error);
-        setDefendantSearchResults([]);
-      } finally {
-        setIsDefendantSearchLoading(false);
-      }
-    },
-    [currentUser],
-  );
-
   const handleWitnessSearch = useCallback(
     async (query: string) => {
-      if (query.length < 2) {
+      // Remove @ symbol from query for searching
+      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
+
+      if (cleanQuery.length < 2) {
         setWitnessSearchResults([]);
         setShowWitnessSuggestions(false);
         return;
@@ -263,7 +220,8 @@ export default function OpenDisputeModal({
       setShowWitnessSuggestions(true);
 
       try {
-        const results = await disputeService.searchUsers(query);
+        // Search with the cleaned query (without @)
+        const results = await disputeService.searchUsers(cleanQuery);
 
         const currentUserTelegram = getCurrentUserTelegram(currentUser);
         const filteredResults = results.filter((resultUser) => {
@@ -290,16 +248,6 @@ export default function OpenDisputeModal({
     [currentUser],
   );
 
-  // Separate debounced search effects
-  useEffect(() => {
-    if (debouncedDefendantQuery.length >= 2) {
-      handleDefendantSearch(debouncedDefendantQuery);
-    } else {
-      setDefendantSearchResults([]);
-      setShowDefendantSuggestions(false);
-    }
-  }, [debouncedDefendantQuery, handleDefendantSearch]);
-
   useEffect(() => {
     if (debouncedWitnessQuery.length >= 2) {
       handleWitnessSearch(debouncedWitnessQuery);
@@ -309,19 +257,18 @@ export default function OpenDisputeModal({
     }
   }, [debouncedWitnessQuery, handleWitnessSearch]);
 
-  // Handle defendant selection
-  const handleDefendantSelect = (username: string) => {
-    setForm({ ...form, defendant: username });
-    setShowDefendantSuggestions(false);
-    setDefendantSearchQuery("");
-  };
-
   // Handle witness selection
   const handleWitnessSelect = (username: string, index: number) => {
-    updateWitness(index, username);
+    // Display with @ symbol, but store without it
+    updateWitness(index, `@${username}`);
     setShowWitnessSuggestions(false);
+    setWitnessSearchQuery(""); // Clear search query
   };
 
+  const handleWitnessInputChange = (index: number, value: string) => {
+    updateWitness(index, value);
+    setWitnessSearchQuery(value);
+  };
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
@@ -430,6 +377,7 @@ export default function OpenDisputeModal({
   };
 
   // Form submission (keep as is)
+  // Form submission with enhanced error handling
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -439,7 +387,7 @@ export default function OpenDisputeModal({
       return;
     }
     if (!form.defendant.trim()) {
-      toast.error("Please enter defendant information");
+      toast.error("Defendant information is required");
       return;
     }
     if (!form.description.trim()) {
@@ -460,9 +408,10 @@ export default function OpenDisputeModal({
       return;
     }
 
-    // Validate witness Telegram usernames
+    // Validate witness Telegram usernames - strip @ symbol before validation
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
+      .map((w) => (w.startsWith("@") ? w.substring(1) : w)) // Remove @ for validation
       .filter((w) => !isValidTelegramUsername(w));
 
     if (invalidWitnesses.length > 0) {
@@ -485,6 +434,21 @@ export default function OpenDisputeModal({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "text/plain",
     ];
+
+    // Calculate total file size
+    const totalSize = form.evidence.reduce(
+      (total, file) => total + file.file.size,
+      0,
+    );
+    const maxTotalSize = 50 * 1024 * 1024; // 50MB total limit
+
+    if (totalSize > maxTotalSize) {
+      toast.error("Total file size too large", {
+        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB. Please upload fewer or smaller files.`,
+        duration: 8000,
+      });
+      return;
+    }
 
     for (const file of form.evidence) {
       if (file.file.size > maxFileSize) {
@@ -513,9 +477,14 @@ export default function OpenDisputeModal({
         ? form.defendant
         : cleanTelegramUsername(form.defendant);
 
+      // Clean witness usernames - remove @ symbol before sending
       const cleanedWitnesses = form.witnesses
         .filter((w) => w.trim())
-        .map((w) => cleanTelegramUsername(w));
+        .map((w) => {
+          // Remove @ symbol if present
+          const cleanW = w.startsWith("@") ? w.substring(1) : w;
+          return cleanTelegramUsername(cleanW);
+        });
 
       const requestKind =
         form.kind === "Pro Bono"
@@ -558,7 +527,46 @@ export default function OpenDisputeModal({
       onClose();
     } catch (error: any) {
       console.error("❌ Dispute creation failed:", error);
-      toast.error("Failed to submit dispute", { description: error.message });
+
+      // Enhanced error handling with specific messages
+      const errorMessage = error.message || "Failed to submit dispute";
+
+      // Check for specific error messages from the service
+      if (
+        errorMessage.includes("File too large") ||
+        errorMessage.includes("exceeds server limits")
+      ) {
+        toast.error("File Size Limit Exceeded", {
+          description:
+            "The total size of your files is too large for the server. Please:\n1. Upload fewer files\n2. Compress images before uploading\n3. Remove large documents\n4. Try with files under 5MB each",
+          duration: 10000,
+        });
+      } else if (errorMessage.includes("CORS_ERROR")) {
+        toast.error("Connection Security Issue", {
+          description:
+            "Unable to connect due to browser security restrictions.",
+          duration: 10000,
+        });
+      } else if (errorMessage.includes("Request timeout")) {
+        toast.error("Upload Timeout", {
+          description:
+            "The upload is taking too long. This may be due to:\n1. Large file sizes\n2. Slow internet connection\n3. Server is busy\n\nPlease try with smaller files or try again later.",
+          duration: 8000,
+        });
+      } else if (
+        errorMessage.includes("Missing required") ||
+        errorMessage.includes("invalid")
+      ) {
+        toast.error("Validation Error", {
+          description: errorMessage,
+          duration: 6000,
+        });
+      } else {
+        toast.error("Submission Failed", {
+          description: errorMessage,
+          duration: 6000,
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -567,12 +575,6 @@ export default function OpenDisputeModal({
   // Separate click outside handling
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        defendantSearchRef.current &&
-        !defendantSearchRef.current.contains(event.target as Node)
-      ) {
-        setShowDefendantSuggestions(false);
-      }
       if (
         witnessSearchRef.current &&
         !witnessSearchRef.current.contains(event.target as Node)
@@ -657,10 +659,34 @@ export default function OpenDisputeModal({
               </div>
 
               {/* Request Kind */}
+              {/* Request Kind */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-cyan-200">
-                  Request Kind <span className="text-red-500">*</span>
-                </label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-cyan-200">
+                    Request Kind <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="group relative cursor-pointer">
+                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                        Pro Bono
+                      </span>
+                      <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                        No payment required. Judges will handle your case pro
+                        bono when available.
+                      </div>
+                    </div>
+                    <div className="group relative cursor-pointer">
+                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                        Paid
+                      </span>
+                      <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                        A fee of 0.01 ETH is required to initiate your dispute.
+                        This fee helps prioritize your case and notifies all
+                        judges to begin reviewing it immediately.
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
@@ -696,45 +722,12 @@ export default function OpenDisputeModal({
                   <Users className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                   <input
                     value={form.defendant}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setForm({ ...form, defendant: value });
-                      setDefendantSearchQuery(value);
-                    }}
-                    onFocus={() => {
-                      if (form.defendant.length >= 2) {
-                        setShowDefendantSuggestions(true);
-                      }
-                    }}
-                    className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                    readOnly
+                    className="w-full cursor-not-allowed rounded-md border border-white/10 bg-white/20 py-2 pr-3 pl-9 text-white/70 outline-none" // Added cursor-not-allowed and bg-white/20
                     placeholder="Defendant username..."
                     required
                   />
-                  {isDefendantSearchLoading && (
-                    <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
-                  )}
                 </div>
-
-                {/* Defendant Suggestions Dropdown */}
-                {showDefendantSuggestions && (
-                  <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                    {defendantSearchResults.length > 0 ? (
-                      defendantSearchResults.map((user) => (
-                        <UserSearchResult
-                          key={user.id}
-                          user={user}
-                          onSelect={handleDefendantSelect}
-                          field="defendant"
-                        />
-                      ))
-                    ) : defendantSearchQuery.length >= 2 &&
-                      !isDefendantSearchLoading ? (
-                      <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                        No users found for "{defendantSearchQuery}"
-                      </div>
-                    ) : null}
-                  </div>
-                )}
               </div>
 
               {/* Description */}
@@ -758,14 +751,23 @@ export default function OpenDisputeModal({
 
               {/* Claim */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-cyan-200">
-                  Claim <span className="text-red-500">*</span>
-                </label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-cyan-200">
+                    Claim <span className="text-red-500">*</span>
+                  </label>
+                  <div className="group relative cursor-help">
+                    <Info className="h-4 w-4 text-cyan-300" />
+                    <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                      What resolution are you seeking? This field should be
+                      filled by you.
+                    </div>
+                  </div>
+                </div>
                 <textarea
                   value={form.claim}
                   onChange={(e) => setForm({ ...form, claim: e.target.value })}
                   className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-400/40"
-                  placeholder="What resolution are you seeking?"
+                  placeholder="What resolution are you seeking? (e.g., refund, completion of work, compensation)"
                   required
                 />
               </div>
@@ -776,7 +778,7 @@ export default function OpenDisputeModal({
                   <label className="text-sm font-medium text-cyan-200">
                     Witness list (max 5)
                     <span className="ml-2 text-xs text-cyan-400">
-                      (Start typing to search users)
+                      (Start typing username with or without @ symbol)
                     </span>
                   </label>
                   <Button
@@ -798,17 +800,19 @@ export default function OpenDisputeModal({
                           value={w}
                           onChange={(e) => {
                             const value = e.target.value;
-                            updateWitness(i, value);
-                            setWitnessSearchQuery(value);
+                            handleWitnessInputChange(i, value);
                           }}
                           onFocus={() => {
                             setActiveWitnessIndex(i);
-                            if (w.length >= 2) {
+                            const searchValue = w.startsWith("@")
+                              ? w.substring(1)
+                              : w;
+                            if (searchValue.length >= 2) {
                               setShowWitnessSuggestions(true);
                             }
                           }}
                           className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder="Type username (min 2 characters)..."
+                          placeholder="Type username with or without @ (min 2 characters)..."
                         />
                         {isWitnessSearchLoading && activeWitnessIndex === i && (
                           <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
@@ -865,6 +869,11 @@ export default function OpenDisputeModal({
               <div>
                 <label className="mb-2 block text-sm font-medium text-cyan-200">
                   Supporting Evidence <span className="text-red-500">*</span>
+                  {form.evidence.length > 0 && (
+                    <span className="ml-2 text-xs text-yellow-400">
+                      (Total: {getTotalFileSize(form.evidence)})
+                    </span>
+                  )}
                 </label>
 
                 <div
@@ -898,15 +907,23 @@ export default function OpenDisputeModal({
                     <div className="mt-1 text-xs text-cyan-200/70">
                       Add additional evidence beyond the agreement
                     </div>
+                    {/* <div className="mt-2 text-xs text-yellow-400">
+                      Max 10MB per file, 50MB total
+                    </div> */}
                   </label>
                 </div>
 
                 {/* File List */}
                 {form.evidence.length > 0 && (
                   <div className="mt-4 space-y-3">
-                    <h4 className="text-sm font-medium text-cyan-200">
-                      Selected Files ({form.evidence.length})
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-cyan-200">
+                        Selected Files ({form.evidence.length})
+                      </h4>
+                      <div className="text-xs text-yellow-400">
+                        Total: {getTotalFileSize(form.evidence)}
+                      </div>
+                    </div>
                     {form.evidence.map((file) => (
                       <div
                         key={file.id}
