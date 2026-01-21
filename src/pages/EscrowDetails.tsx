@@ -871,6 +871,7 @@ const RejectDeliveryModal = ({
   claim,
   setClaim,
   isSubmitting,
+  transactionHash,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -878,6 +879,7 @@ const RejectDeliveryModal = ({
   claim: string;
   setClaim: (claim: string) => void;
   isSubmitting: boolean;
+  transactionHash?: `0x${string}` | null;
 }) => {
   if (!isOpen) return null;
 
@@ -986,7 +988,9 @@ const RejectDeliveryModal = ({
             {isSubmitting ? (
               <>
                 <Clock className="mr-2 h-4 w-4 animate-spin" />
-                Creating Dispute...
+                {transactionHash
+                  ? "Confirming Transaction..."
+                  : "Creating Dispute..."}
               </>
             ) : (
               <>
@@ -1103,6 +1107,12 @@ export default function EscrowDetails() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectClaim, setRejectClaim] = useState("");
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+
+  const [pendingRejectClaim, setPendingRejectClaim] = useState<{
+    agreementId: number;
+    claim: string;
+    votingId: string;
+  } | null>(null);
 
   const disputeInfo = escrow
     ? getDisputeInfo(escrow)
@@ -2053,121 +2063,182 @@ export default function EscrowDetails() {
   }, []);
 
   // Updated function to handle rejecting delivery with claim
-  // Updated function to handle rejecting delivery with claim
   const handleConfirmRejectDelivery = async (claim: string) => {
     setIsSubmittingReject(true);
     setLoading("rejectDelivery", true);
+    resetMessages();
 
     try {
       if (!id || !onChainAgreement?.id) {
         setUiError("Agreement ID required");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!isLoadedAgreement) {
         setUiError("Load the agreement first");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!isServiceRecipient) {
         setUiError("Only serviceRecipient can reject delivery");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!onChainAgreement.funded) {
         setUiError("Agreement not funded");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!onChainAgreement.signed) {
         setUiError("Agreement not signed");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.grace1Ends === 0n) {
         setUiError("There are no pending delivery to reject");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.pendingCancellation) {
         setUiError("Cancellation requested");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.completed) {
         setUiError("The agreement is completed");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.frozen) {
         setUiError("The agreement is frozen");
+        setIsSubmittingReject(false);
+        setLoading("rejectDelivery", false);
         return;
       }
 
       const agreementId = parseInt(id);
-      const generatedVotingId = votingId; // Use the existing votingId from useMemo (renamed variable)
+      const generatedVotingId = votingId;
 
-      console.log("🚀 Rejecting delivery with:", {
+      console.log("🚀 Starting delivery rejection process:", {
         agreementId,
         contractAgreementId: onChainAgreement.id,
         votingId: generatedVotingId,
         claim: claim.trim(),
-        hasClaim: !!claim.trim(),
-        claimLength: claim.trim().length,
       });
 
-      // Step 1: Save the claim to the backend API
+      // Store the claim data temporarily to use after transaction success
+      const pendingClaimData = {
+        agreementId,
+        claim: claim.trim(),
+        votingId: generatedVotingId.toString(),
+      };
+
+      // Store in state for later use in transaction success handler
+      setPendingRejectClaim(pendingClaimData);
+
+      // STEP 1: First save the claim to backend
       try {
-        // Call your API service to save the rejection claim
-        // This should match the pattern from AgreementDetails
+        console.log("📤 Making API call to save claim...");
         await agreementService.rejectDelivery(
           agreementId,
           claim.trim(),
-          generatedVotingId.toString(), // Convert to string if needed
+          generatedVotingId.toString(),
         );
-        console.log("✅ Claim saved to backend");
+        console.log("✅ Claim saved to backend successfully");
       } catch (apiError: any) {
-        console.warn("⚠️ Failed to save claim to backend:", apiError);
-        // Continue with blockchain call even if claim save fails
-        // You might want to show a warning but not stop the process
-        toast.warning(
-          "Claim not saved, but proceeding with blockchain rejection",
-          {
-            description:
-              "The dispute will be created but your claim description may not be saved.",
-            duration: 3000,
-          },
-        );
+        console.error("❌ Failed to save claim to backend:", apiError);
+
+        // Check if it's a 400 error
+        if (apiError.response?.status === 400) {
+          console.error("📋 400 Error details:", {
+            status: apiError.response?.status,
+            data: apiError.response?.data,
+            message: apiError.response?.data?.message || apiError.message,
+          });
+
+          // Try alternative payload format (votingId as number)
+          try {
+            console.log(
+              "🔄 Trying alternative payload format with votingId as number...",
+            );
+            await api.patch(`/agreement/${agreementId}/delivery/reject`, {
+              claim: claim.trim(),
+              votingId: Number(generatedVotingId), // Try as number instead of string
+            });
+            console.log("✅ Alternative payload worked!");
+          } catch (altError: any) {
+            console.error("❌ Alternative payload also failed:", {
+              status: altError.response?.status,
+              data: altError.response?.data,
+              message: altError.message,
+            });
+
+            // Continue with blockchain call even if claim save fails
+            // Show warning but don't stop the process
+            toast.warning(
+              "Claim not saved, but proceeding with blockchain rejection",
+              {
+                description:
+                  "The dispute will be created but your claim description may not be saved.",
+                duration: 3000,
+              },
+            );
+          }
+        } else {
+          // For non-400 errors, show warning and continue
+          toast.warning(
+            "Claim not saved, but proceeding with blockchain rejection",
+            {
+              description:
+                "The dispute will be created but your claim description may not be saved.",
+              duration: 3000,
+            },
+          );
+        }
       }
 
-      // Step 2: Call the blockchain function to reject delivery
+      // STEP 2: Then do the blockchain transaction
+      console.log("🔗 Calling blockchain contract to reject delivery...");
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, false, BigInt(generatedVotingId)], // Use generatedVotingId
+        args: [onChainAgreement.id, false, BigInt(generatedVotingId)],
       });
 
-      // Show success message with voting ID
-      toast.success("Delivery rejected! A dispute has been created.", {
-        description: `Voting ID: ${generatedVotingId}. Use this ID to track the dispute resolution.`,
-        duration: 5000,
-      });
-
-      // Close modal and reset
-      setIsRejectModalOpen(false);
-      setRejectClaim("");
-
-      // Refresh data
-      fetchEscrowDetailsBackground().catch(console.error);
+      // Don't close modal yet - wait for transaction success
+      setUiSuccess(
+        "Claim saved and rejection transaction submitted. Waiting for confirmation...",
+      );
     } catch (error: any) {
-      console.error("❌ Failed to reject delivery:", error);
+      console.error("❌ Failed to initiate delivery rejection:", error);
 
-      // Enhanced error handling
+      setIsSubmittingReject(false);
+      setLoading("rejectDelivery", false);
+
+      // Clear pending claim on error
+      setPendingRejectClaim(null);
+
       const errorMessage =
         error.response?.data?.message ||
         error.message ||
-        "Failed to reject delivery. Please try again.";
+        "Failed to initiate delivery rejection. Please try again.";
 
       toast.error("Failed to reject delivery", {
         description: errorMessage,
@@ -2175,9 +2246,6 @@ export default function EscrowDetails() {
       });
 
       setUiError(errorMessage);
-    } finally {
-      setIsSubmittingReject(false);
-      setLoading("rejectDelivery", false);
     }
   };
 
@@ -2402,6 +2470,69 @@ export default function EscrowDetails() {
     onChainAgreement,
     depositDirectly,
   ]);
+
+  // Handle delivery rejection transaction success
+  // Handle delivery rejection transaction success
+  useEffect(() => {
+    if (isSuccess && hash && isSubmittingReject && pendingRejectClaim) {
+      const handleTransactionSuccess = async () => {
+        try {
+          console.log("✅ Blockchain transaction confirmed!");
+
+          // Show success message with voting ID
+          toast.success("Delivery rejected! A dispute has been created.", {
+            description: `Voting ID: ${pendingRejectClaim.votingId}. Transaction confirmed and dispute is now active.`,
+            duration: 5000,
+          });
+
+          // Close modal and reset
+          setIsRejectModalOpen(false);
+          setRejectClaim("");
+          setUiSuccess("Delivery rejected successfully! Dispute created.");
+
+          // Refresh data to show updated status
+          setTimeout(() => {
+            fetchEscrowDetailsBackground().catch(console.error);
+          }, 2000);
+        } catch (error: any) {
+          console.error("❌ Error in post-transaction processing:", error);
+          toast.error("Error in post-transaction processing", {
+            description:
+              error.message ||
+              "Please check the transaction and contact support if needed.",
+            duration: 5000,
+          });
+        } finally {
+          setIsSubmittingReject(false);
+          setLoading("rejectDelivery", false);
+          setPendingRejectClaim(null); // Clear pending data
+          resetWrite(); // Reset write state
+        }
+      };
+
+      handleTransactionSuccess();
+    }
+  }, [
+    isSuccess,
+    hash,
+    isSubmittingReject,
+    pendingRejectClaim,
+    resetWrite,
+    fetchEscrowDetailsBackground,
+  ]);
+
+  // Clean up modal state when closing
+  useEffect(() => {
+    if (!isRejectModalOpen) {
+      // Reset states when modal closes
+      setIsSubmittingReject(false);
+      setRejectClaim("");
+      setPendingRejectClaim(null);
+      setUiError(null);
+      setUiSuccess(null);
+      resetWrite();
+    }
+  }, [isRejectModalOpen, resetWrite]);
 
   useEffect(() => {
     fetchEscrowDetails();
@@ -4321,6 +4452,7 @@ export default function EscrowDetails() {
         claim={rejectClaim}
         setClaim={setRejectClaim}
         isSubmitting={isSubmittingReject || loadingStates.rejectDelivery}
+        transactionHash={hash}
       />
     </div>
   );

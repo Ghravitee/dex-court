@@ -41,6 +41,8 @@ export interface AgreementsRequest {
   chainId?: number;
   contractAgreementId?: string;
   txHash?: string;
+  payeeWalletAddress?: string;
+  payerWalletAddress?: string;
 }
 
 export interface AgreementSignRequest {
@@ -220,6 +222,19 @@ class AgreementService {
 
     if (data.contractAgreementId) {
       formData.append("contractAgreementId", data.contractAgreementId);
+    }
+
+    if (data.txHash) {
+      formData.append("txHash", data.txHash);
+    }
+
+    // 🆕 ADD THESE TWO LINES - THIS IS WHAT'S MISSING!
+    if (data.payeeWalletAddress) {
+      formData.append("payeeWalletAddress", data.payeeWalletAddress);
+    }
+
+    if (data.payerWalletAddress) {
+      formData.append("payerWalletAddress", data.payerWalletAddress);
     }
 
     files.forEach((file) => {

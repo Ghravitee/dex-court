@@ -1,4 +1,3 @@
-// src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
@@ -37,6 +36,7 @@ import type { Escrow, ExtendedEscrow } from "../types";
 import { Link } from "react-router-dom";
 import ReactDatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { UserAvatar } from "../components/UserAvatar"; // Add this import
 
 // wagmi + viem style hooks
 import {
@@ -46,7 +46,7 @@ import {
   useWaitForTransactionReceipt,
   useContractReads,
   useSwitchChain,
-  useChainId
+  useChainId,
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
@@ -91,11 +91,8 @@ const extractServiceProviderFromDescription = (
 ): string | undefined => {
   if (!description) return undefined;
 
-  // Try multiple patterns in order of priority
   const patterns = [
-    // Exact pattern from the new ON-CHAIN ESCROW DATA format
     /Service Provider: (0x[a-fA-F0-9]{40})/,
-    // Alternative formats (case-insensitive)
     /Service Provider:\s*(0x[a-fA-F0-9]{40})/i,
     /Provider:\s*(0x[a-fA-F0-9]{40})/i,
   ];
@@ -103,10 +100,9 @@ const extractServiceProviderFromDescription = (
   for (const pattern of patterns) {
     const match = description.match(pattern);
     if (match?.[1]) {
-      // Validate it's a proper Ethereum address
       const address = match[1];
       if (isValidAddress(address)) {
-        return address.toLowerCase(); // Normalize to lowercase
+        return address.toLowerCase();
       }
     }
   }
@@ -114,17 +110,13 @@ const extractServiceProviderFromDescription = (
   return undefined;
 };
 
-// Helper function to extract service recipient from description
 const extractServiceRecipientFromDescription = (
   description: string,
 ): string | undefined => {
   if (!description) return undefined;
 
-  // Try multiple patterns in order of priority
   const patterns = [
-    // Exact pattern from the new ON-CHAIN ESCROW DATA format
     /Service Recipient: (0x[a-fA-F0-9]{40})/,
-    // Alternative formats (case-insensitive)
     /Service Recipient:\s*(0x[a-fA-F0-9]{40})/i,
     /Recipient:\s*(0x[a-fA-F0-9]{40})/i,
   ];
@@ -132,10 +124,9 @@ const extractServiceRecipientFromDescription = (
   for (const pattern of patterns) {
     const match = description.match(pattern);
     if (match?.[1]) {
-      // Validate it's a proper Ethereum address
       const address = match[1];
       if (isValidAddress(address)) {
-        return address.toLowerCase(); // Normalize to lowercase
+        return address.toLowerCase();
       }
     }
   }
@@ -147,7 +138,6 @@ const extractServiceRecipientFromDescription = (
 const getPartyWalletAddress = (party: any): string => {
   if (!party) return "";
 
-  // Try multiple possible field names
   return (
     party.walletAddress ||
     party.wallet ||
@@ -164,22 +154,18 @@ const getPartyWalletAddress = (party: any): string => {
 const formatWalletAddress = (address: string): string => {
   if (!address || address === "@unknown") return "@unknown";
 
-  // Check if it's already a short format
   if (address.startsWith("@")) {
     return address;
   }
 
-  // Check if it's a Telegram handle (no @ symbol but not a wallet address)
   if (address.length <= 15 && !address.startsWith("0x")) {
     return `@${address}`;
   }
 
-  // If it's a wallet address (0x...), slice it
   if (address.startsWith("0x") && address.length === 42) {
     return `${address.slice(0, 4)}...${address.slice(-6)}`;
   }
 
-  // Return original for any other case
   return address;
 };
 
@@ -209,6 +195,7 @@ type EscrowStatus =
 type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
 
 // Extended Escrow type to include on-chain data
+// Update the ExtendedEscrowWithOnChain interface or create a new one
 interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   txHash?: string;
   onChainId?: string;
@@ -218,6 +205,18 @@ interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   escrowType?: EscrowType;
   status: EscrowStatus;
   source?: string;
+  payerDetails?: {
+    id?: string; // Add user ID
+    telegramUsername?: string | null;
+    username?: string;
+    avatarId?: number | null;
+  };
+  payeeDetails?: {
+    id?: string; // Add user ID
+    telegramUsername?: string | null;
+    username?: string;
+    avatarId?: number | null;
+  };
 }
 
 // Enhanced interface for on-chain escrow data
@@ -239,7 +238,7 @@ interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
   lastUpdated?: number;
 }
 
-// Smart contract error patterns (from your Solidity contract)
+// Smart contract error patterns
 const CONTRACT_ERRORS = {
   NOT_PARTY: "NotParty",
   NOT_ACTIVE: "NotActive",
@@ -270,19 +269,19 @@ const CONTRACT_ERRORS = {
 const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   switch (status) {
     case 1:
-      return "pending"; // PENDING_ACCEPTANCE
+      return "pending";
     case 2:
-      return "signed"; // SIGNED
+      return "signed";
     case 3:
-      return "completed"; // COMPLETED
+      return "completed";
     case 4:
-      return "disputed"; // DISPUTED
+      return "disputed";
     case 5:
-      return "cancelled"; // CANCELLED
+      return "cancelled";
     case 6:
-      return "expired"; // EXPIRED
+      return "expired";
     case 7:
-      return "pending_approval"; // PARTY_SUBMITTED_DELIVERY
+      return "pending_approval";
     default:
       return "pending";
   }
@@ -291,7 +290,6 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
-  // Debug: Log the raw data for inspection
   if (process.env.NODE_ENV === "development") {
     console.log("🔍 Processing agreement:", {
       id: apiAgreement.id,
@@ -300,17 +298,14 @@ const transformApiAgreementToEscrow = (
         "ON-CHAIN ESCROW DATA",
       ),
       descriptionPreview: apiAgreement.description?.substring(0, 150) + "...",
-      // Log the new fields
       payeeWalletAddress: apiAgreement.payeeWalletAddress,
       payerWalletAddress: apiAgreement.payerWalletAddress,
     });
   }
 
-  // FIRST: Try to use the new dedicated fields (most reliable)
-  let serviceProvider = apiAgreement.payeeWalletAddress; // Payee = Service Provider
-  let serviceRecipient = apiAgreement.payerWalletAddress; // Payer = Service Recipient
+  let serviceProvider = apiAgreement.payeeWalletAddress;
+  let serviceRecipient = apiAgreement.payerWalletAddress;
 
-  // SECOND: If new fields are null/empty, extract from description (current approach)
   if (!serviceProvider || !serviceRecipient) {
     console.log(
       `⚠️ Using description extraction as fallback for agreement ${apiAgreement.id}`,
@@ -327,7 +322,6 @@ const transformApiAgreementToEscrow = (
     serviceRecipient = serviceRecipientFromDesc;
   }
 
-  // THIRD: If description extraction also fails, fall back to party data (last resort)
   if (!serviceProvider || !serviceRecipient) {
     console.warn(
       `⚠️ Could not extract roles from new fields or description for agreement ${apiAgreement.id}, using party data fallback`,
@@ -340,11 +334,9 @@ const transformApiAgreementToEscrow = (
       apiAgreement.counterParty,
     );
 
-    // Normalize wallet addresses to lowercase for consistency
     serviceProvider = serviceProviderWallet?.toLowerCase() || "";
     serviceRecipient = serviceRecipientWallet?.toLowerCase() || "";
 
-    // Fallback to telegram username if wallet not found
     const fallbackServiceProvider =
       serviceProvider ||
       cleanTelegramUsername(apiAgreement.firstParty?.telegramUsername) ||
@@ -359,7 +351,6 @@ const transformApiAgreementToEscrow = (
     serviceRecipient = serviceRecipient || fallbackServiceRecipient;
   }
 
-  // Normalize addresses (lowercase for consistency)
   if (serviceProvider && serviceProvider.startsWith("0x")) {
     serviceProvider = serviceProvider.toLowerCase();
   }
@@ -367,7 +358,41 @@ const transformApiAgreementToEscrow = (
     serviceRecipient = serviceRecipient.toLowerCase();
   }
 
-  // Log source for debugging
+  let payerDetails, payeeDetails;
+
+  if (
+    serviceRecipient?.toLowerCase() ===
+    apiAgreement.firstParty.wallet?.toLowerCase()
+  ) {
+    // If serviceRecipient is firstParty
+    payerDetails = {
+      id: apiAgreement.firstParty.id, // Add user ID
+      telegramUsername: apiAgreement.firstParty.telegramUsername,
+      username: apiAgreement.firstParty.username,
+      avatarId: apiAgreement.firstParty.avatarId,
+    };
+    payeeDetails = {
+      id: apiAgreement.counterParty.id, // Add user ID
+      telegramUsername: apiAgreement.counterParty.telegramUsername,
+      username: apiAgreement.counterParty.username,
+      avatarId: apiAgreement.counterParty.avatarId,
+    };
+  } else {
+    // If serviceRecipient is counterParty
+    payerDetails = {
+      id: apiAgreement.counterParty.id, // Add user ID
+      telegramUsername: apiAgreement.counterParty.telegramUsername,
+      username: apiAgreement.counterParty.username,
+      avatarId: apiAgreement.counterParty.avatarId,
+    };
+    payeeDetails = {
+      id: apiAgreement.firstParty.id, // Add user ID
+      telegramUsername: apiAgreement.firstParty.telegramUsername,
+      username: apiAgreement.firstParty.username,
+      avatarId: apiAgreement.firstParty.avatarId,
+    };
+  }
+
   const source = apiAgreement.payeeWalletAddress
     ? "new fields (payeeWalletAddress/payerWalletAddress)"
     : "description extraction (fallback)";
@@ -381,10 +406,13 @@ const transformApiAgreementToEscrow = (
         from: `Service Recipient (Payer) = ${serviceRecipient}`,
         to: `Service Provider (Payee) = ${serviceProvider}`,
       },
+      userDetails: {
+        payer: payerDetails,
+        payee: payeeDetails,
+      },
     });
   }
 
-  // Extract other fields...
   const includeFunds = apiAgreement.includesFunds ? "yes" : "no";
   const useEscrow = apiAgreement.hasSecuredFunds;
   const onChainId = apiAgreement.contractAgreementId;
@@ -392,9 +420,8 @@ const transformApiAgreementToEscrow = (
   return {
     id: `${apiAgreement.id}`,
     title: apiAgreement.title,
-    // Use the determined values
-    from: serviceRecipient, // Service Recipient (Payer)
-    to: serviceProvider, // Service Provider (Payee)
+    from: serviceRecipient,
+    to: serviceProvider,
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
     status: mapAgreementStatusToEscrow(apiAgreement.status),
@@ -411,10 +438,44 @@ const transformApiAgreementToEscrow = (
     includeFunds: includeFunds,
     useEscrow: useEscrow,
     escrowAddress: apiAgreement.escrowContractAddress,
-    // Store the source for debugging
     source: source,
+    payerDetails,
+    payeeDetails,
   };
 };
+
+// Interface for pending agreement data
+interface PendingAgreementData {
+  form: {
+    title: string;
+    type: "public" | "private" | "";
+    counterparty: string;
+    payer: "me" | "counterparty" | "";
+    partyA: string;
+    partyB: string;
+    payerOther: "partyA" | "partyB" | "";
+    token: string;
+    customTokenAddress: string;
+    amount: string;
+    description: string;
+    evidence: UploadedFile[];
+    milestones: string[];
+    tokenDecimals: number;
+  };
+  deadline: Date | null;
+  serviceProviderAddr: string;
+  serviceRecipientAddr: string;
+  firstPartyAddr: string;
+  counterPartyAddr: string;
+  contractAgreementId: string;
+  filesToUpload: File[];
+  tokenAddr: string;
+  amountBN: bigint;
+  vestingMode: boolean;
+  milestonePercs: number[];
+  milestoneOffsets: number[];
+  deadlineDuration: number;
+}
 
 export default function Escrow() {
   const [statusTab, setStatusTab] = useState("all");
@@ -425,7 +486,6 @@ export default function Escrow() {
   const [lastSyncedTxHash, setLastSyncedTxHash] = useState<string | null>(null);
   const [chainConfigError, setChainConfigError] = useState<string | null>(null);
 
-
   // ---------- wagmi / on-chain state ----------
   const { address, isConnected } = useAccount();
   const { user: currentUser } = useAuth();
@@ -433,9 +493,11 @@ export default function Escrow() {
   const wagmiChainId = useChainId();
   const networkInfo = useNetworkEnvironment();
 
-  // Add this state near the top of the component, with other state declarations
+  // Add this state near the top of the component
   const [creationStep, setCreationStep] = useState<CreationStep>("idle");
   const [currentStepMessage, setCurrentStepMessage] = useState<string>("");
+  const [pendingAgreementData, setPendingAgreementData] =
+    useState<PendingAgreementData | null>(null);
 
   const contractAddress = useMemo(() => {
     if (!networkInfo.chainId) return undefined;
@@ -465,12 +527,10 @@ export default function Escrow() {
       switchChain({ chainId: networkInfo.chainId });
     } catch (error) {
       console.error("Failed to switch network:", error);
-      // Fallback: show message asking user to switch manually
     }
   }, [networkInfo.chainId, switchChain]);
 
-
-  // Separate write hooks: one for general writes, one for approvals
+  // Separate write hooks
   const {
     data: txHash,
     writeContract,
@@ -495,7 +555,7 @@ export default function Escrow() {
     hash: approvalHash,
   });
 
-  // Enhanced error handling for contract errors
+  // Enhanced error handling
   const [uiError, setUiError] = useState<string | null>(null);
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
 
@@ -513,17 +573,15 @@ export default function Escrow() {
     console.log(`🔄 ${step}: ${message}`);
   };
 
-  // Load escrow agreements directly with type=2 (ESCROW)
+  // Load escrow agreements
   const loadEscrowAgreements = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Only log in development
       if (process.env.NODE_ENV === "development") {
         console.log("📥 Loading escrow agreements (type=2)...");
       }
 
-      // Fetch only escrow agreements (type=2)
       const escrowAgreementsResponse = await agreementService.getAgreements({
         top: 100,
         skip: 0,
@@ -531,7 +589,10 @@ export default function Escrow() {
         type: AgreementTypeEnum.ESCROW,
       });
 
-      console.log("📄 Fetched escrow agreements response:", escrowAgreementsResponse);
+      console.log(
+        "📄 Fetched escrow agreements response:",
+        escrowAgreementsResponse,
+      );
 
       const escrowAgreementsList = escrowAgreementsResponse.results || [];
 
@@ -543,30 +604,15 @@ export default function Escrow() {
           "📋 First agreement description:",
           escrowAgreementsList[0].description,
         );
-        console.log(
-          "📋 Extracted provider:",
-          extractServiceProviderFromDescription(
-            escrowAgreementsList[0].description,
-          ),
-        );
-        console.log(
-          "📋 Extracted recipient:",
-          extractServiceRecipientFromDescription(
-            escrowAgreementsList[0].description,
-          ),
-        );
       }
 
-      // Transform ALL escrow agreements (type=2)
       const transformedEscrows = escrowAgreementsList.map(
         transformApiAgreementToEscrow,
       );
 
-      // Store ALL escrows for filtering/sorting
       setAllEscrows(transformedEscrows);
       setTotalEscrows(transformedEscrows.length);
 
-      // Only log in development
       if (process.env.NODE_ENV === "development") {
         console.log("✅ Loaded escrow agreements:", transformedEscrows.length);
       }
@@ -580,7 +626,7 @@ export default function Escrow() {
     }
   }, []);
 
-  // Load agreements on mount - with cleanup
+  // Load agreements on mount
   useEffect(() => {
     let isMounted = true;
 
@@ -597,32 +643,18 @@ export default function Escrow() {
     };
   }, [loadEscrowAgreements]);
 
-  // Refetch after successful creation - debounced
+  // Refetch after successful creation
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (txSuccess) {
+      if (txSuccess && !pendingAgreementData) {
         loadEscrowAgreements();
       }
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [txSuccess, loadEscrowAgreements]);
+  }, [txSuccess, loadEscrowAgreements, pendingAgreementData]);
 
-  // Load agreements on mount
-  useEffect(() => {
-    loadEscrowAgreements();
-  }, [loadEscrowAgreements]);
-
-  // Refetch after successful creation
-  useEffect(() => {
-    if (txSuccess) {
-      setTimeout(() => {
-        loadEscrowAgreements();
-      }, 3000);
-    }
-  }, [txSuccess, loadEscrowAgreements]);
-
-  // Effect to handle write errors from smart contract
+  // Effect to handle write errors
   useEffect(() => {
     if (writeError) {
       const errorMessage = extractContractErrorMessage(writeError);
@@ -640,82 +672,12 @@ export default function Escrow() {
     }
   }, [approvalError]);
 
-  // Effect to handle transaction success
-  useEffect(() => {
-    if (txSuccess) {
-      setUiSuccess("Transaction confirmed successfully!");
-      toast.success("Transaction confirmed!");
-      resetWrite();
-    }
-  }, [txSuccess, resetWrite]);
-
-  // Effect to handle approval success
-  useEffect(() => {
-    if (approvalSuccess) {
-      setUiSuccess("Token approval confirmed!");
-      toast.success("Token approval confirmed!");
-      resetApproval();
-    }
-  }, [approvalSuccess, resetApproval]);
-
-  // Effect to handle transaction success - NO PATCH CALL!
-  useEffect(() => {
-    const handleTransactionSuccess = async () => {
-      if (!txSuccess || !txHash || txHash === lastSyncedTxHash || isSyncing) {
-        return;
-      }
-
-      setIsSyncing(true);
-      setLastSyncedTxHash(txHash);
-      updateStep("success", "Escrow created successfully!");
-
-      try {
-        console.log("✅ Transaction confirmed on-chain:", txHash);
-
-        // SUCCESS MESSAGE ONLY - NO BACKEND UPDATE
-        setUiSuccess("✅ Escrow created successfully!");
-        toast.success("Escrow Created Successfully!", {
-          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
-        });
-
-        // Close modal and reset
-        setTimeout(() => {
-          setOpen(false);
-          resetForm();
-          setCreationStep("idle");
-          setCurrentStepMessage("");
-          loadEscrowAgreements();
-        }, 2000);
-      } catch (err: any) {
-        console.error("❌ Error handling success:", err);
-        updateStep("error", "Error finalizing escrow creation");
-        toast.error("Transaction Success", {
-          description:
-            "Escrow created on-chain but there was an issue updating UI.",
-        });
-      } finally {
-        setIsSyncing(false);
-        resetWrite();
-      }
-    };
-
-    handleTransactionSuccess();
-  }, [
-    txSuccess,
-    txHash,
-    lastSyncedTxHash,
-    isSyncing,
-    resetWrite,
-    loadEscrowAgreements,
-  ]);
-
-  // Function to extract meaningful error messages from contract errors
+  // Function to extract meaningful error messages
   const extractContractErrorMessage = (error: any): string => {
     if (!error) return "Unknown error occurred";
 
     const errorMessage = error.message || error.toString();
 
-    // Check for common contract errors
     if (errorMessage.includes(CONTRACT_ERRORS.NOT_PARTY)) {
       return "You are not a party in this agreement";
     }
@@ -730,24 +692,6 @@ export default function Escrow() {
     }
     if (errorMessage.includes(CONTRACT_ERRORS.ZERO_ADDRESS)) {
       return "Zero address is not allowed";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.NOT_YET_FUNDED)) {
-      return "Agreement has not been funded yet";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.ALREADY_SIGNED)) {
-      return "Agreement is already signed";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.ALREADY_FUNDED)) {
-      return "Agreement is already funded";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.NOT_SIGNED)) {
-      return "Agreement is not signed yet";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.INVALID_MILESTONE_CONFIG)) {
-      return "Invalid milestone configuration - check percentages and offsets";
-    }
-    if (errorMessage.includes(CONTRACT_ERRORS.OFFSET_EXCEEDS_DEADLINE)) {
-      return "Milestone offset exceeds agreement deadline";
     }
     if (
       errorMessage.includes("user rejected") ||
@@ -798,10 +742,8 @@ export default function Escrow() {
     if (allEscrows.length === 0) return [];
 
     let result = allEscrows.filter((e) => {
-      // Status filter
       if (statusTab !== "all" && e.status !== statusTab) return false;
 
-      // Search filter
       if (query.trim()) {
         const searchQuery = query.toLowerCase();
         return (
@@ -814,7 +756,6 @@ export default function Escrow() {
       return true;
     });
 
-    // Sort the results
     result = result.sort((a, b) =>
       sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt,
     );
@@ -999,7 +940,7 @@ export default function Escrow() {
     return Math.round(n * 100);
   };
 
-  // parse amount into bigint per token decimals (ETH uses parseEther)
+  // parse amount into bigint per token decimals
   const parseAmount = (
     amount: string,
     tokenAddr: string,
@@ -1116,6 +1057,7 @@ export default function Escrow() {
     needsApproval: false,
   });
 
+  // Handle approval success and auto-continue to create agreement
   useEffect(() => {
     if (
       approvalSuccess &&
@@ -1151,10 +1093,63 @@ export default function Escrow() {
     writeContract,
   ]);
 
-  // Simplified transaction data ref
-  const transactionDataRef = useRef<{
-    contractAgreementId: string;
-  } | null>(null);
+  useEffect(() => {
+    if (approvalSuccess) {
+      setUiSuccess("Token approval confirmed!");
+      toast.success("Token approval confirmed!");
+      resetApproval();
+    }
+  }, [approvalSuccess, resetApproval]);
+
+  useEffect(() => {
+    const handleTransactionSuccess = async () => {
+      if (!txSuccess || !txHash || txHash === lastSyncedTxHash || isSyncing) {
+        return;
+      }
+
+      setIsSyncing(true);
+      setLastSyncedTxHash(txHash);
+      updateStep("success", "Escrow created successfully!");
+
+      try {
+        console.log("✅ Transaction confirmed on-chain:", txHash);
+
+        // SUCCESS MESSAGE ONLY - NO BACKEND UPDATE
+        setUiSuccess("✅ Escrow created successfully!");
+        toast.success("Escrow Created Successfully!", {
+          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
+        });
+
+        // Close modal and reset
+        setTimeout(() => {
+          setOpen(false);
+          resetForm();
+          setCreationStep("idle");
+          setCurrentStepMessage("");
+          loadEscrowAgreements();
+        }, 2000);
+      } catch (err: any) {
+        console.error("❌ Error handling success:", err);
+        updateStep("error", "Error finalizing escrow creation");
+        toast.error("Transaction Success", {
+          description:
+            "Escrow created on-chain but there was an issue updating UI.",
+        });
+      } finally {
+        setIsSyncing(false);
+        resetWrite();
+      }
+    };
+
+    handleTransactionSuccess();
+  }, [
+    txSuccess,
+    txHash,
+    lastSyncedTxHash,
+    isSyncing,
+    resetWrite,
+    loadEscrowAgreements,
+  ]);
 
   // Add resetForm function
   const resetForm = () => {
@@ -1176,15 +1171,18 @@ export default function Escrow() {
     });
     setDeadline(null);
     setEscrowType("myself");
+    setPendingAgreementData(null);
   };
 
-  // ---------------- Create agreement handler with new flow ----------------
-  // Update the handleCreateAgreementOnChain function to include step tracking
+  // ================================================
+  // MAIN FUNCTION: Create agreement ONLY AFTER on-chain success
+  // ================================================
   const handleCreateAgreementOnChain = async () => {
     resetMessages();
     setCreationStep("idle");
     setCurrentStepMessage("");
 
+    // Validation checks
     if (!contractAddress || !isValidAddress(contractAddress)) {
       const errorMsg =
         chainConfigError || "Escrow contract not configured for this network";
@@ -1205,7 +1203,6 @@ export default function Escrow() {
       updateStep("error", "User not signed in");
       return;
     }
-
     if (!form.title) {
       setUiError("Title required");
       updateStep("error", "Missing title");
@@ -1372,98 +1369,44 @@ export default function Escrow() {
       contractAgreementId,
     );
 
+    // Prepare files for upload
+    let filesToUpload: File[] = [];
+    if (form.evidence.length > 0) {
+      filesToUpload = form.evidence.map((f) => f.file);
+    }
+
     // ================================================
-    // STEP 1: Create agreement in backend (off-chain)
+    // STEP 1: Store agreement data for backend creation AFTER on-chain success
     // ================================================
     setIsSubmitting(true);
-    updateStep("creating_backend", "Creating agreement in database...");
+    updateStep("creating_onchain", "Preparing on-chain transaction...");
 
     try {
-      // Prepare files for upload
-      let filesToUpload: File[] = [];
-      if (form.evidence.length > 0) {
-        filesToUpload = form.evidence.map((f) => f.file);
-      }
-
-      console.log("📝 Creating agreement in backend...");
-
-      // Prepare description with on-chain metadata
-      const onChainMetadata = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 ON-CHAIN ESCROW DATA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Contract Agreement ID: ${contractAgreementId}
-Service Provider: ${serviceProviderAddr}
-Service Recipient: ${serviceRecipientAddr}
-Token Address: ${tokenAddr}
-Amount: ${form.amount}
-Vesting Enabled: ${vestingMode}
-Chain ID: ${networkInfo.chainId}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-
-      const fullDescription = form.description + onChainMetadata;
-
-      let backendAgreementId = contractAgreementId;
-
-      try {
-        updateStep("creating_backend", "Sending data to backend server...");
-        const agreementResponse = await agreementService.createAgreement(
-          {
-            title: form.title,
-            description: fullDescription,
-            type: AgreementTypeEnum.ESCROW,
-            visibility:
-              form.type === "private"
-                ? AgreementVisibilityEnum.PRIVATE
-                : AgreementVisibilityEnum.PUBLIC,
-            firstParty: firstPartyAddr,
-            counterParty: counterPartyAddr,
-            deadline: deadline.toISOString(),
-            amount: parseFloat(form.amount),
-            tokenSymbol: form.token === "custom" ? "custom" : form.token,
-            contractAddress:
-              form.token === "custom" ? form.customTokenAddress : undefined,
-            includesFunds: true,
-            secureTheFunds: true,
-            chainId: networkInfo.chainId,
-            contractAgreementId: contractAgreementId,
-          },
-          filesToUpload,
-        );
-
-        console.log("✅ Backend response:", agreementResponse);
-
-        if (agreementResponse && agreementResponse.id) {
-          backendAgreementId = String(agreementResponse.id);
-        }
-
-        updateStep(
-          "creating_backend",
-          "Backend agreement created successfully",
-        );
-      } catch (backendErr) {
-        console.warn(
-          "⚠️ Backend creation had minor issues, continuing anyway:",
-          backendErr,
-        );
-        updateStep("creating_backend", "Backend completed (with warnings)");
-      }
-
-      console.log("🔗 Agreement references:", {
-        backendAgreementId,
+      // Store all data needed for backend creation
+      const agreementData: PendingAgreementData = {
+        form: { ...form },
+        deadline,
+        serviceProviderAddr,
+        serviceRecipientAddr,
+        firstPartyAddr,
+        counterPartyAddr,
         contractAgreementId,
-      });
-
-      // Store minimal data
-      transactionDataRef.current = {
-        contractAgreementId,
+        filesToUpload,
+        tokenAddr,
+        amountBN,
+        vestingMode,
+        milestonePercs,
+        milestoneOffsets,
+        deadlineDuration,
       };
 
+      setPendingAgreementData(agreementData);
+      console.log("📦 Stored agreement data for backend creation");
+
       // ================================================
-      // STEP 2: Call smart contract
+      // STEP 2: Create on-chain escrow FIRST
       // ================================================
       const agreementIdNumber = BigInt(contractAgreementId);
-
       const callerIsDepositor =
         serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
       const tokenIsETH = tokenAddr === ZERO_ADDRESS;
@@ -1547,32 +1490,130 @@ Chain ID: ${networkInfo.chainId}
       );
       setUiSuccess("CreateAgreement transaction submitted — check wallet");
       setIsSubmitting(false);
-    } catch (backendErr: any) {
-      console.error("❌ Failed:", backendErr);
+    } catch (err: any) {
+      console.error("❌ Failed to prepare transaction:", err);
       setIsSubmitting(false);
-      updateStep("error", "Failed to create agreement");
-
-      const errorCode = backendErr.response?.data?.error;
-      let userMessage = "Failed to create agreement";
-
-      switch (errorCode) {
-        case 1:
-          userMessage = "Missing required information";
-          break;
-        case 7:
-          userMessage = "One or both parties need to register first";
-          break;
-        case 11:
-          userMessage = "Parties cannot be the same account";
-          break;
-      }
-
-      setUiError(userMessage);
-      toast.error("Error", {
-        description: userMessage,
-      });
+      updateStep("error", "Failed to prepare transaction");
+      setUiError(err.message || "Failed to prepare transaction");
+      toast.error("Transaction Error", { description: err.message });
     }
   };
+
+  // ================================================
+  // EFFECT: Handle on-chain success and create backend agreement
+  // ================================================
+  useEffect(() => {
+    const createBackendAgreement = async () => {
+      if (!txSuccess || !txHash || !pendingAgreementData || isSyncing) {
+        return;
+      }
+
+      setIsSyncing(true);
+      setLastSyncedTxHash(txHash);
+
+      try {
+        console.log("✅ Transaction confirmed on-chain:", txHash);
+
+        // ================================================
+        // STEP 3: Create backend agreement AFTER on-chain success
+        // ================================================
+        updateStep("creating_backend", "Creating agreement in database...");
+
+        const {
+          form: storedForm,
+          deadline: storedDeadline,
+          serviceProviderAddr,
+          serviceRecipientAddr,
+          firstPartyAddr,
+          counterPartyAddr,
+          contractAgreementId,
+          filesToUpload,
+        } = pendingAgreementData;
+
+        const fullDescription = storedForm.description;
+
+        // Create agreement in backend
+        const agreementResponse = await agreementService.createAgreement(
+          {
+            title: storedForm.title,
+            description: fullDescription,
+            type: AgreementTypeEnum.ESCROW,
+            visibility:
+              storedForm.type === "private"
+                ? AgreementVisibilityEnum.PRIVATE
+                : AgreementVisibilityEnum.PUBLIC,
+            firstParty: firstPartyAddr,
+            counterParty: counterPartyAddr,
+            deadline: storedDeadline!.toISOString(),
+            amount: parseFloat(storedForm.amount),
+            tokenSymbol:
+              storedForm.token === "custom" ? "custom" : storedForm.token,
+            contractAddress:
+              storedForm.token === "custom"
+                ? storedForm.customTokenAddress
+                : undefined,
+            includesFunds: true,
+            secureTheFunds: true,
+            chainId: networkInfo.chainId,
+            contractAgreementId: contractAgreementId,
+            payeeWalletAddress: serviceProviderAddr,
+            payerWalletAddress: serviceRecipientAddr,
+          },
+          filesToUpload,
+        );
+
+        console.log("✅ Backend agreement created:", agreementResponse);
+
+        updateStep("success", "Escrow created successfully!");
+        setUiSuccess("✅ Escrow created successfully!");
+
+        toast.success("Escrow Created Successfully!", {
+          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
+        });
+
+        // Close modal and reset
+        setTimeout(() => {
+          setOpen(false);
+          resetForm();
+          setCreationStep("idle");
+          setCurrentStepMessage("");
+          loadEscrowAgreements();
+        }, 2000);
+      } catch (backendErr: any) {
+        console.error("❌ Error creating backend agreement:", backendErr);
+        updateStep("error", "On-chain success but backend creation failed");
+
+        // Show appropriate message
+        setUiSuccess("On-chain escrow created but backend sync failed");
+        toast.warning("Partial Success", {
+          description:
+            "Escrow created on-chain but there was an issue with backend sync. Please contact support.",
+        });
+
+        // Still close modal but keep data for retry
+        setTimeout(() => {
+          setOpen(false);
+          setCreationStep("idle");
+          setCurrentStepMessage("");
+          loadEscrowAgreements();
+        }, 2000);
+      } finally {
+        setIsSyncing(false);
+        setPendingAgreementData(null);
+        resetWrite();
+      }
+    };
+
+    createBackendAgreement();
+  }, [
+    txSuccess,
+    txHash,
+    pendingAgreementData,
+    isSyncing,
+    resetWrite,
+    loadEscrowAgreements,
+    networkInfo.chainId,
+  ]);
 
   // Wrapper for modal submit
   const createEscrowSubmit = async (e: React.FormEvent) => {
@@ -1642,11 +1683,7 @@ Chain ID: ${networkInfo.chainId}
         return;
       }
 
-      // fallback mock
-      if (form.evidence.length > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-
+      // fallback mock for demo/testing
       const id = `E-${Math.floor(Math.random() * 900 + 100)}`;
 
       let from: string;
@@ -1729,11 +1766,23 @@ Chain ID: ${networkInfo.chainId}
   };
 
   useEffect(() => {
-    if (currentUser?.walletAddress && isConnected && wagmiChainId !== networkInfo.chainId) {
-      toast.info(`Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`);
+    if (
+      currentUser?.walletAddress &&
+      isConnected &&
+      wagmiChainId !== networkInfo.chainId
+    ) {
+      toast.info(
+        `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
+      );
       switchToTokenChain();
     }
-  }, [currentUser?.walletAddress, isConnected, networkInfo.chainId, switchToTokenChain, wagmiChainId]);
+  }, [
+    currentUser?.walletAddress,
+    isConnected,
+    networkInfo.chainId,
+    switchToTokenChain,
+    wagmiChainId,
+  ]);
 
   useEffect(() => {
     if (isConnected) {
@@ -1828,12 +1877,13 @@ Chain ID: ${networkInfo.chainId}
           <div>
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full ${isError
-                  ? "bg-red-500/10"
-                  : isSuccess
-                    ? "bg-emerald-500/10"
-                    : "bg-cyan-500/10"
-                  }`}
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                  isError
+                    ? "bg-red-500/10"
+                    : isSuccess
+                      ? "bg-emerald-500/10"
+                      : "bg-cyan-500/10"
+                }`}
               >
                 {isError ? (
                   <AlertCircle className="h-5 w-5 text-red-400" />
@@ -1871,21 +1921,6 @@ Chain ID: ${networkInfo.chainId}
 
         {/* Progress Steps */}
         <div className="relative mb-8">
-          {/* Connection Line */}
-          {/* <div className="absolute top-6 right-0 left-0 h-0.5 -translate-y-1/2 bg-white/10">
-            <div
-              className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-500"
-              style={{
-                width: `${
-                  isError
-                    ? 100
-                    : ((currentStepIndex + 1) / (steps.length - 1)) * 100
-                }%`,
-              }}
-            />
-          </div> */}
-
-          {/* Steps */}
           <div className="relative z-10 grid grid-cols-3 gap-4 md:grid-cols-6">
             {steps.slice(0, -1).map((step, index) => {
               const StepIcon = step.icon;
@@ -1896,47 +1931,49 @@ Chain ID: ${networkInfo.chainId}
               return (
                 <div key={step.id} className="relative">
                   <div
-                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${isCompleted
-                      ? "border-emerald-500/30 bg-emerald-500/5"
-                      : isCurrent
-                        ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
-                        : isPending
-                          ? "border-white/10 bg-white/5"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                  >
-                    {/* Step Indicator */}
-                    <div
-                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${isCompleted
-                        ? "border-emerald-500 bg-emerald-500/20"
+                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${
+                      isCompleted
+                        ? "border-emerald-500/30 bg-emerald-500/5"
                         : isCurrent
-                          ? "border-cyan-500 bg-cyan-500/20"
-                          : "border-white/20 bg-white/10"
-                        }`}
+                          ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
+                          : isPending
+                            ? "border-white/10 bg-white/5"
+                            : "border-white/10 bg-white/5"
+                    }`}
+                  >
+                    <div
+                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                        isCompleted
+                          ? "border-emerald-500 bg-emerald-500/20"
+                          : isCurrent
+                            ? "border-cyan-500 bg-cyan-500/20"
+                            : "border-white/20 bg-white/10"
+                      }`}
                     >
                       {isCompleted ? (
                         <Check className="h-5 w-5 text-emerald-400" />
                       ) : (
                         <StepIcon
-                          className={`h-5 w-5 ${isCurrent
-                            ? "text-cyan-400"
-                            : isPending
-                              ? "text-gray-400"
-                              : "text-gray-500"
-                            }`}
+                          className={`h-5 w-5 ${
+                            isCurrent
+                              ? "text-cyan-400"
+                              : isPending
+                                ? "text-gray-400"
+                                : "text-gray-500"
+                          }`}
                         />
                       )}
                     </div>
 
-                    {/* Step Label */}
                     <div className="text-center">
                       <div
-                        className={`text-xs font-semibold ${isCompleted
-                          ? "text-emerald-300"
-                          : isCurrent
-                            ? "text-cyan-300"
-                            : "text-gray-400"
-                          }`}
+                        className={`text-xs font-semibold ${
+                          isCompleted
+                            ? "text-emerald-300"
+                            : isCurrent
+                              ? "text-cyan-300"
+                              : "text-gray-400"
+                        }`}
                       >
                         {step.label}
                       </div>
@@ -1945,14 +1982,14 @@ Chain ID: ${networkInfo.chainId}
                       </div>
                     </div>
 
-                    {/* Step Number */}
                     <div
-                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isCompleted
-                        ? "bg-emerald-500 text-white"
-                        : isCurrent
-                          ? "bg-cyan-500 text-white"
-                          : "bg-white/10 text-gray-400"
-                        }`}
+                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                        isCompleted
+                          ? "bg-emerald-500 text-white"
+                          : isCurrent
+                            ? "bg-cyan-500 text-white"
+                            : "bg-white/10 text-gray-400"
+                      }`}
                     >
                       {index + 1}
                     </div>
@@ -1967,12 +2004,13 @@ Chain ID: ${networkInfo.chainId}
         <div className="rounded-xl border border-white/10 bg-gradient-to-r from-white/5 to-transparent p-5">
           <div className="flex items-start gap-4">
             <div
-              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${isError
-                ? "bg-red-500/10"
-                : isSuccess
-                  ? "bg-emerald-500/10"
-                  : "bg-cyan-500/10"
-                }`}
+              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${
+                isError
+                  ? "bg-red-500/10"
+                  : isSuccess
+                    ? "bg-emerald-500/10"
+                    : "bg-cyan-500/10"
+              }`}
             >
               {isError ? (
                 <AlertTriangle className="h-6 w-6 text-red-400" />
@@ -2001,7 +2039,6 @@ Chain ID: ${networkInfo.chainId}
               </div>
               <p className="mt-2 text-sm text-gray-300">{currentStepMessage}</p>
 
-              {/* Additional Instructions */}
               {creationStep === "creating_onchain" && (
                 <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
                   <div className="flex items-start gap-2">
@@ -2063,7 +2100,6 @@ Chain ID: ${networkInfo.chainId}
                   </button>
                   <button
                     onClick={() => {
-                      // Open in block explorer (you'll need to implement this based on chain)
                       window.open(
                         `https://etherscan.io/tx/${txHash}`,
                         "_blank",
@@ -2118,7 +2154,6 @@ Chain ID: ${networkInfo.chainId}
     setCreationStep("idle");
     setCurrentStepMessage("Starting preview...");
 
-    // Simulate each step with delays
     const steps = [
       {
         step: "creating_backend",
@@ -2144,7 +2179,6 @@ Chain ID: ${networkInfo.chainId}
       }, index * 2500);
     });
 
-    // Auto-reset after preview
     setTimeout(
       () => {
         setCreationStep("idle");
@@ -2154,7 +2188,6 @@ Chain ID: ${networkInfo.chainId}
     );
   };
 
-  // Update the StatusMessages component to include CreationProgress
   const StatusMessages = () => (
     <div className="space-y-2">
       {uiError && (
@@ -2173,7 +2206,6 @@ Chain ID: ${networkInfo.chainId}
           Transaction pending...
         </div>
       )}
-      {/* Add the creation progress here */}
       <CreationProgress />
     </div>
   );
@@ -2288,10 +2320,11 @@ Chain ID: ${networkInfo.chainId}
                         <button
                           type="button"
                           onClick={() => setEscrowType("myself")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
-                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                            }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                            escrowType === "myself"
+                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                          }`}
                         >
                           <User className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2304,10 +2337,11 @@ Chain ID: ${networkInfo.chainId}
                         <button
                           type="button"
                           onClick={() => setEscrowType("others")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
-                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                            }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                            escrowType === "others"
+                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                          }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2396,12 +2430,13 @@ Chain ID: ${networkInfo.chainId}
                           <span>
                             {form.type
                               ? typeOptions.find((t) => t.value === form.type)
-                                ?.label
+                                  ?.label
                               : "Select Type"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${isTypeOpen ? "rotate-180" : ""
-                              }`}
+                            className={`transition-transform ${
+                              isTypeOpen ? "rotate-180" : ""
+                            }`}
                           />
                         </div>
                         {isTypeOpen && (
@@ -2449,10 +2484,11 @@ Chain ID: ${networkInfo.chainId}
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
-                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                  : "border-white/10 bg-white/5 text-white/70"
-                                  }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                                  form.payer === p
+                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                    : "border-white/10 bg-white/5 text-white/70"
+                                }`}
                               >
                                 <input
                                   type="radio"
@@ -2492,10 +2528,11 @@ Chain ID: ${networkInfo.chainId}
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
-                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                  : "border-white/10 bg-white/5 text-white/70"
-                                  }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                                  form.payerOther === p
+                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                    : "border-white/10 bg-white/5 text-white/70"
+                                }`}
                               >
                                 <input
                                   type="radio"
@@ -2602,12 +2639,13 @@ Chain ID: ${networkInfo.chainId}
                           <span>
                             {form.token
                               ? tokenOptions.find((t) => t.value === form.token)
-                                ?.label
+                                  ?.label
                               : "Select Token"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${isTokenOpen ? "rotate-180" : ""
-                              }`}
+                            className={`transition-transform ${
+                              isTokenOpen ? "rotate-180" : ""
+                            }`}
                           />
                         </div>
                         {isTokenOpen && (
@@ -2687,10 +2725,10 @@ Chain ID: ${networkInfo.chainId}
                         {(!form.amount.trim() ||
                           isNaN(Number(form.amount)) ||
                           Number(form.amount) <= 0) && (
-                            <div className="mt-1 text-xs text-red-400">
-                              Please enter a valid amount
-                            </div>
-                          )}
+                          <div className="mt-1 text-xs text-red-400">
+                            Please enter a valid amount
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2723,10 +2761,11 @@ Chain ID: ${networkInfo.chainId}
                       </label>
 
                       <div
-                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                          ? "border-cyan-400/60 bg-cyan-500/20"
-                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                          }`}
+                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                          isDragOver
+                            ? "border-cyan-400/60 bg-cyan-500/20"
+                            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                        }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -3059,17 +3098,19 @@ Chain ID: ${networkInfo.chainId}
                 <button
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
-                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
-                    ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                    } `}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                    statusTab === tab.value
+                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                  } `}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
-                      ? "bg-cyan-400/30 text-cyan-200"
-                      : "bg-white/10 text-white/60"
-                      } `}
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
+                      statusTab === tab.value
+                        ? "bg-cyan-400/30 text-cyan-200"
+                        : "bg-white/10 text-white/60"
+                    } `}
                   >
                     {tab.count}
                   </span>
@@ -3084,27 +3125,104 @@ Chain ID: ${networkInfo.chainId}
         </div>
 
         {/* Page Size Selector */}
-        <div className="flex items-center gap-2 px-4 py-2">
-          <span className="text-sm text-cyan-300">Show:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
-          >
-            <option className="text-black" value={10}>
-              10
-            </option>
-            <option className="text-black" value={20}>
-              20
-            </option>
-            <option className="text-black" value={30}>
-              30
-            </option>
-            <option className="text-black" value={40}>
-              40
-            </option>
-          </select>
-          <span className="text-sm text-cyan-300">per page</span>
+        <div className="flex flex-wrap items-center justify-between">
+          <div className="flex items-center gap-2 px-4 py-2">
+            <span className="text-sm text-cyan-300">Show:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-cyan-400/40"
+            >
+              <option className="text-black" value={10}>
+                10
+              </option>
+              <option className="text-black" value={20}>
+                20
+              </option>
+              <option className="text-black" value={30}>
+                30
+              </option>
+              <option className="text-black" value={40}>
+                40
+              </option>
+            </select>
+            <span className="text-sm text-cyan-300">per page</span>
+          </div>
+
+          {/* Pagination Controls */}
+          {!loading && totalEscrows > 0 && (
+            <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
+              <div className="text-sm whitespace-nowrap text-cyan-300">
+                Showing {startItem} to {endItem} of {filteredEscrows.length}{" "}
+                escrows
+              </div>
+
+              <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
+                {/* Previous Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only sm:not-sr-only sm:ml-1">
+                    Previous
+                  </span>
+                </Button>
+
+                {/* Page Numbers - Hide on very small screens, show on sm+ */}
+                <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "neon" : "outline"}
+                        size="sm"
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`${
+                          currentPage === pageNum
+                            ? "neon-hover"
+                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                        } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {/* Current Page Indicator (for very small screens) */}
+                <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
+                  Page {currentPage} of {totalPages}
+                </div>
+
+                {/* Next Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
+                >
+                  <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -3153,19 +3271,80 @@ Chain ID: ${networkInfo.chainId}
                         </h3>
                       </div>
 
-                      <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                        {/* Payer Section */}
                         <div>
-                          <div className="text-muted-foreground">Payer</div>
-                          <div className="text-cyan-300/90">
-                            {formatWalletAddress(e.from)}
+                          <div className="text-muted-foreground mb-2">
+                            Payer
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <UserAvatar
+                              userId={e.payerDetails?.id?.toString() || e.from} // Use user ID or fallback to wallet address
+                              avatarId={e.payerDetails?.avatarId || null}
+                              username={e.payerDetails?.username || e.from}
+                              size="md"
+                              className="border border-cyan-500/20"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-cyan-300/90">
+                                {formatWalletAddress(e.from)}
+                              </div>
+                              {e.payerDetails?.telegramUsername && (
+                                <div className="flex items-center gap-[1px] text-xs text-white">
+                                  <span className="opacity-70">@</span>
+                                  {e.payerDetails.telegramUsername}
+                                </div>
+                              )}
+                              {!e.payerDetails?.telegramUsername &&
+                                e.payerDetails?.username && (
+                                  <div className="truncate text-xs text-gray-400">
+                                    {e.payerDetails.username.startsWith("0x") &&
+                                    e.payerDetails.username.length === 42
+                                      ? `${e.payerDetails.username.slice(0, 6)}...${e.payerDetails.username.slice(-4)}`
+                                      : e.payerDetails.username}
+                                  </div>
+                                )}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Payee Section */}
                         <div>
-                          <div className="text-muted-foreground">Payee</div>
-                          <div className="text-pink-300/90">
-                            {formatWalletAddress(e.to)}
+                          <div className="text-muted-foreground mb-2">
+                            Payee
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <UserAvatar
+                              userId={e.payeeDetails?.id?.toString() || e.to} // Use user ID or fallback to wallet address
+                              avatarId={e.payeeDetails?.avatarId || null}
+                              username={e.payeeDetails?.username || e.to}
+                              size="md"
+                              className="border border-pink-500/20"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-pink-300/90">
+                                {formatWalletAddress(e.to)}
+                              </div>
+                              {e.payeeDetails?.telegramUsername && (
+                                <div className="flex items-center gap-[1px] text-xs text-white">
+                                  <span className="opacity-70">@</span>
+                                  {e.payeeDetails.telegramUsername}
+                                </div>
+                              )}
+                              {!e.payeeDetails?.telegramUsername &&
+                                e.payeeDetails?.username && (
+                                  <div className="truncate text-xs text-gray-400">
+                                    {e.payeeDetails.username.startsWith("0x") &&
+                                    e.payeeDetails.username.length === 42
+                                      ? `${e.payeeDetails.username.slice(0, 6)}...${e.payeeDetails.username.slice(-4)}`
+                                      : e.payeeDetails.username}
+                                  </div>
+                                )}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Amount Section */}
                         <div>
                           <div className="text-muted-foreground">Amount</div>
                           <div className="font-bold text-green-500/90">
@@ -3173,32 +3352,34 @@ Chain ID: ${networkInfo.chainId}
                           </div>
                         </div>
 
+                        {/* Status Section */}
                         <div className="flex flex-col gap-2">
                           <div className="text-muted-foreground">Status</div>
                           <div className="flex flex-col gap-1">
                             <div>
                               <span
-                                className={`badge w-fit ${e.status === "pending"
-                                  ? "badge-yellow"
-                                  : e.status === "signed"
-                                    ? "badge-blue"
-                                    : e.status === "pending_approval"
-                                      ? "badge-orange"
-                                      : e.status === "completed"
-                                        ? "badge-green"
-                                        : e.status === "disputed"
-                                          ? "badge-purple"
-                                          : e.status === "cancelled"
-                                            ? "badge-red"
-                                            : e.status === "expired"
-                                              ? "badge-gray"
-                                              : "badge-orange"
-                                  }`}
+                                className={`badge w-fit ${
+                                  e.status === "pending"
+                                    ? "badge-yellow"
+                                    : e.status === "signed"
+                                      ? "badge-blue"
+                                      : e.status === "pending_approval"
+                                        ? "badge-orange"
+                                        : e.status === "completed"
+                                          ? "badge-green"
+                                          : e.status === "disputed"
+                                            ? "badge-purple"
+                                            : e.status === "cancelled"
+                                              ? "badge-red"
+                                              : e.status === "expired"
+                                                ? "badge-gray"
+                                                : "badge-orange"
+                                }`}
                               >
                                 {e.status === "pending_approval"
                                   ? "Pending Approval"
                                   : e.status.charAt(0).toUpperCase() +
-                                  e.status.slice(1)}
+                                    e.status.slice(1)}
                               </span>
                             </div>
                           </div>
@@ -3206,6 +3387,7 @@ Chain ID: ${networkInfo.chainId}
                       </div>
                     </div>
 
+                    {/* Rest of the card remains the same */}
                     <div className="mt-3 min-h-[2.5rem]">
                       <p className="line-clamp-2 text-sm text-gray-300/70">
                         {e.description}
@@ -3237,80 +3419,6 @@ Chain ID: ${networkInfo.chainId}
                 </Link>
               ))}
             </div>
-
-            {/* Pagination Controls */}
-            {!loading && totalEscrows > 0 && (
-              <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
-                <div className="text-sm whitespace-nowrap text-cyan-300">
-                  Showing {startItem} to {endItem} of {filteredEscrows.length}{" "}
-                  escrows
-                </div>
-
-                <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
-                  {/* Previous Button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="order-1 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-1"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    <span className="sr-only sm:not-sr-only sm:ml-1">
-                      Previous
-                    </span>
-                  </Button>
-
-                  {/* Page Numbers - Hide on very small screens, show on sm+ */}
-                  <div className="xs:flex order-3 hidden items-center gap-1 sm:order-2">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      let pageNum;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? "neon" : "outline"}
-                          size="sm"
-                          onClick={() => handlePageChange(pageNum)}
-                          className={`${currentPage === pageNum
-                            ? "neon-hover"
-                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                            } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Current Page Indicator (for very small screens) */}
-                  <div className="xs:hidden order-2 text-sm text-cyan-300 sm:order-3">
-                    Page {currentPage} of {totalPages}
-                  </div>
-
-                  {/* Next Button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="order-4 border-white/15 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50 sm:order-4"
-                  >
-                    <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>

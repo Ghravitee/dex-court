@@ -2,9 +2,9 @@ import { cn } from "../../lib/utils";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { UserAvatar } from "../UserAvatar";
 import { Link } from "react-router-dom";
-import { FaArrowRightArrowLeft, FaPause, FaPlay } from "react-icons/fa6";
+import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import { AvatarErrorBoundary } from "../AvatarErrorBoundary";
-import { FaStepBackward, FaStepForward } from "react-icons/fa";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AgreementItem {
   quote: string;
@@ -95,7 +95,7 @@ export const InfiniteMovingCardsWithAvatars = ({
   const containerRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLUListElement>(null);
   const [start, setStart] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
@@ -175,13 +175,13 @@ export const InfiniteMovingCardsWithAvatars = ({
 
   // Manual scroll animation (for manual mode)
   useEffect(() => {
-    if (speed === "manual" && scrollerRef.current && !isPaused) {
+    if (speed === "manual" && scrollerRef.current) {
       const animate = (timestamp: number) => {
         if (!lastTimeRef.current) lastTimeRef.current = timestamp;
         const delta = timestamp - lastTimeRef.current;
         lastTimeRef.current = timestamp;
 
-        if (scrollerRef.current) {
+        if (scrollerRef.current && !isHovering) {
           const newPosition =
             currentPosition +
             getSpeedValue() * delta * (direction === "left" ? -1 : 1);
@@ -200,21 +200,9 @@ export const InfiniteMovingCardsWithAvatars = ({
         }
       };
     }
-  }, [speed, isPaused, currentPosition, getSpeedValue, direction]);
+  }, [speed, isHovering, currentPosition, getSpeedValue, direction]);
 
   // Control functions
-  const togglePause = () => {
-    setIsPaused(!isPaused);
-
-    if (scrollerRef.current && speed !== "manual") {
-      if (!isPaused) {
-        scrollerRef.current.style.animationPlayState = "paused";
-      } else {
-        scrollerRef.current.style.animationPlayState = "running";
-      }
-    }
-  };
-
   const scrollToPrevious = () => {
     if (scrollerRef.current) {
       const cardWidth = 450; // Approximate card width with gap
@@ -244,6 +232,25 @@ export const InfiniteMovingCardsWithAvatars = ({
         -(index * cardWidth) + containerWidth / 2 - cardWidth / 2;
       setCurrentPosition(targetPosition);
       scrollerRef.current.style.transform = `translateX(${targetPosition}px)`;
+    }
+  };
+
+  // Handle hover for pausing animation
+  const handleMouseEnter = () => {
+    if (pauseOnHover) {
+      setIsHovering(true);
+      if (scrollerRef.current && speed !== "manual") {
+        scrollerRef.current.style.animationPlayState = "paused";
+      }
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (pauseOnHover) {
+      setIsHovering(false);
+      if (scrollerRef.current && speed !== "manual") {
+        scrollerRef.current.style.animationPlayState = "running";
+      }
     }
   };
 
@@ -519,35 +526,33 @@ export const InfiniteMovingCardsWithAvatars = ({
 
   return (
     <div className="relative">
-      {/* Controls */}
+      {/* Controls - Moved to sides */}
       {showControls && (
-        <div className="absolute top-4 right-4 z-30 flex items-center gap-2 rounded-lg bg-black/50 p-2 backdrop-blur-sm">
-          <button
-            onClick={scrollToPrevious}
-            className="rounded-full p-2 hover:bg-cyan-500/20"
-            title="Previous card"
-          >
-            <FaStepBackward className="h-4 w-4 text-cyan-300" />
-          </button>
-          <button
-            onClick={togglePause}
-            className="rounded-full p-2 hover:bg-cyan-500/20"
-            title={isPaused ? "Play animation" : "Pause animation"}
-          >
-            {isPaused ? (
-              <FaPlay className="h-4 w-4 text-cyan-300" />
-            ) : (
-              <FaPause className="h-4 w-4 text-cyan-300" />
-            )}
-          </button>
-          <button
-            onClick={scrollToNext}
-            className="rounded-full p-2 hover:bg-cyan-500/20"
-            title="Next card"
-          >
-            <FaStepForward className="h-4 w-4 text-cyan-300" />
-          </button>
-        </div>
+        <>
+          {/* Left control */}
+          <div className="absolute top-1/2 left-0 z-30 -translate-y-1/2">
+            <button
+              onClick={scrollToPrevious}
+              className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
+              title="Previous card"
+            >
+              {/* <FaStepBackward className="h-5 w-5 text-cyan-300" /> */}
+              <ChevronLeft className="h-5 w-5 text-cyan-300" />
+            </button>
+          </div>
+
+          {/* Right control */}
+          <div className="absolute top-1/2 right-0 z-30 -translate-y-1/2">
+            <button
+              onClick={scrollToNext}
+              className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
+              title="Next card"
+            >
+              {/* <FaStepForward className="h-5 w-5 text-cyan-300" /> */}
+              <ChevronRight className="h-5 w-5 text-cyan-300" />
+            </button>
+          </div>
+        </>
       )}
 
       <div
@@ -556,17 +561,15 @@ export const InfiniteMovingCardsWithAvatars = ({
           "scroller relative z-10 max-w-7xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,white_20%,white_80%,transparent)]",
           className,
         )}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <ul
           ref={scrollerRef}
           className={cn(
             "flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4",
             start && speed !== "manual" && "animate-scroll",
-            pauseOnHover &&
-              speed !== "manual" &&
-              "hover:[animation-play-state:paused]",
             speed === "manual" && "transition-transform duration-300 ease-out",
-            isPaused && speed !== "manual" && "[animation-play-state:paused]",
           )}
           style={
             speed === "manual"
@@ -587,7 +590,9 @@ export const InfiniteMovingCardsWithAvatars = ({
               "id" in item ? (
                 <Link
                   to={
-                    type === "live-voting" ? `/voting` : `/disputes/${item.id}`
+                    type === "live-voting"
+                      ? `/disputes/${item.id}` // Changed from `/voting` to `/disputes/${item.id}`
+                      : `/disputes/${item.id}`
                   }
                   className="block h-full w-full"
                   onClick={(e) => e.stopPropagation()} // Prevent card click handler from firing

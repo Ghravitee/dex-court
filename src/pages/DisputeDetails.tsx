@@ -976,101 +976,89 @@ export default function DisputeDetails() {
   );
 
   // KEEP ORIGINAL: Handle starting vote for on-chain (escrow) disputes - using blockchain
-  const handleOnchainStartVote = useCallback(
-    async (probono: boolean) => {
-      try {
-        // Check if dispute exists
-        if (!dispute) {
-          toast.error("Cannot start vote: Dispute data not loaded");
-          return;
-        }
-
-        // Check if contractAgreementId exists
-        if (!dispute.contractAgreementId) {
-          console.error("Missing contract agreement ID");
-          toast.error("Cannot start vote: Contract agreement ID is missing");
-          return;
-        }
-
-        const fee = probono
-          ? BigInt(0)
-          : BigInt(parseEther(FEE_AMOUNT).toString());
-
-        console.log("Starting vote with params:", {
-          contractAgreementId: dispute.contractAgreementId,
-          probono,
-          fee: fee.toString(),
-        });
-
-        setPendingTransactionType("startVote");
-
-        writeContract({
-          address: contractAddress,
-          abi: ESCROW_ABI.abi,
-          functionName: "startVote",
-          args: [BigInt(dispute.contractAgreementId), probono, fee],
-        });
-
-        setStartVoteModalOpen(false);
-
-        // Set vote as started immediately (UI feedback)
-        setVoteStarted(true);
-      } catch (error: unknown) {
-        console.error("Error starting vote:", error);
-        toast.error("Failed to start vote", {
-          description:
-            error instanceof Error ? error.message : "Unknown error occurred",
-        });
-        setPendingTransactionType(null);
+  const handleOnchainStartVote = useCallback(async () => {
+    try {
+      // Check if dispute exists
+      if (!dispute) {
+        toast.error("Cannot start vote: Dispute data not loaded");
+        return;
       }
-    },
-    [dispute, contractAddress, FEE_AMOUNT, writeContract],
-  );
 
-  const handleStartVote = useCallback(
-    async (probono: boolean) => {
-      try {
-        // Check if dispute exists
-        if (!dispute) {
-          toast.error("Cannot start vote: Dispute data not loaded");
-          return;
-        }
-
-        setStartingVote(true);
-
-        console.log(probono ? "Starting pro bono vote" : "Starting paid vote");
-
-        // Close the start vote confirmation modal
-        setStartVoteModalOpen(false);
-
-        // Set vote as started
-        setVoteStarted(true);
-
-        // Show success toast
-        toast.success("Voting can now begin! 🗳️", {
-          description:
-            "The voting phase has been initiated. Community members with the $LAW token can now cast their votes.",
-        });
-
-        // Refresh dispute data
-        const disputeDetails = await disputeService.getDisputeDetails(
-          disputeId!,
-        );
-        const transformedDispute =
-          disputeService.transformDisputeDetailsToRow(disputeDetails);
-        setDispute(transformedDispute);
-      } catch (error: unknown) {
-        console.error("Error starting vote:", error);
-        toast.error("Failed to start vote", {
-          description:
-            error instanceof Error ? error.message : "Unknown error occurred",
-        });
-      } finally {
-        setStartingVote(false);
+      // Check if contractAgreementId exists
+      if (!dispute.contractAgreementId) {
+        console.error("Missing contract agreement ID");
+        toast.error("Cannot start vote: Contract agreement ID is missing");
+        return;
       }
-    },
-    [dispute, disputeId],
-  );
+
+      // Since we removed pro bono option, always use a fee
+      const fee = BigInt(parseEther(FEE_AMOUNT).toString());
+
+      console.log("Starting vote with params:", {
+        contractAgreementId: dispute.contractAgreementId,
+        fee: fee.toString(),
+      });
+
+      setPendingTransactionType("startVote");
+
+      writeContract({
+        address: contractAddress,
+        abi: ESCROW_ABI.abi,
+        functionName: "startVote",
+        args: [BigInt(dispute.contractAgreementId), false, fee], // probono is always false now
+      });
+
+      setStartVoteModalOpen(false);
+
+      // Set vote as started immediately (UI feedback)
+      setVoteStarted(true);
+    } catch (error: unknown) {
+      console.error("Error starting vote:", error);
+      toast.error("Failed to start vote", {
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      });
+      setPendingTransactionType(null);
+    }
+  }, [dispute, contractAddress, FEE_AMOUNT, writeContract]);
+
+  const handleStartVote = useCallback(async () => {
+    try {
+      // Check if dispute exists
+      if (!dispute) {
+        toast.error("Cannot start vote: Dispute data not loaded");
+        return;
+      }
+
+      setStartingVote(true);
+
+      // Close the start vote confirmation modal
+      setStartVoteModalOpen(false);
+
+      // Set vote as started
+      setVoteStarted(true);
+
+      // Show success toast
+      toast.success("Voting can now begin! 🗳️", {
+        description:
+          "The voting phase has been initiated. Community members with the $LAW token can now cast their votes.",
+      });
+
+      // Refresh dispute data
+      const disputeDetails = await disputeService.getDisputeDetails(disputeId!);
+      const transformedDispute =
+        disputeService.transformDisputeDetailsToRow(disputeDetails);
+      setDispute(transformedDispute);
+    } catch (error: unknown) {
+      console.error("Error starting vote:", error);
+      toast.error("Failed to start vote", {
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      });
+    } finally {
+      setStartingVote(false);
+    }
+  }, [dispute, disputeId]);
 
   // KEEP ORIGINAL: Handle settling on-chain (escrow) disputes - using blockchain
   const handleOnchainSettleDispute = useCallback(async () => {
