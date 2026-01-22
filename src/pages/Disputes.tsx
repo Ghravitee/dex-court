@@ -124,6 +124,7 @@ const useDisputes = (filters: {
   const fetchDisputes = useCallback(async () => {
     try {
       setLoading(true);
+      
       setError(null);
 
       // Properly type the range parameter

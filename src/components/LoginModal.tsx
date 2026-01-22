@@ -343,7 +343,7 @@ export function LoginModal({
                 {!isConnected ? (
                   <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
                     <p className="text-center text-sm text-cyan-300">
-                      <strong>Step 1:</strong> Click "Connect Wallet LoginModal" to link
+                      <strong>Step 1:</strong> Click "Connect Wallet" to link
                       your wallet
                     </p>
                   </div>

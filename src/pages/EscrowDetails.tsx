@@ -74,6 +74,7 @@ import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
 } from "../types";
+import { parseEther } from "ethers";
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -408,11 +409,10 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -423,11 +423,10 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -459,6 +458,7 @@ const RaiseDisputeModal = ({
   onConfirm: (
     data: CreateDisputeFromAgreementRequest,
     files: File[],
+    probono: boolean,
   ) => Promise<void>;
   claim: string;
   setClaim: (claim: string) => void;
@@ -472,6 +472,7 @@ const RaiseDisputeModal = ({
   agreement?: any;
   currentUser?: any;
 }) => {
+  const [proBono, setProBono] = useState(false);
   const [localTitle, setLocalTitle] = useState(title || agreement?.title || "");
   const [localDescription, setLocalDescription] = useState(
     description || agreement?.description || "",
@@ -587,7 +588,7 @@ const RaiseDisputeModal = ({
       witnesses: localWitnesses,
     };
 
-    await onConfirm(disputeData, localFiles);
+    await onConfirm(disputeData, localFiles, proBono);
   };
 
   if (!isOpen) return null;
@@ -695,6 +696,28 @@ const RaiseDisputeModal = ({
                   <span className="text-white">Paid</span>
                 </label>
               </div>
+            </div>
+
+            {/* Pro Bono Checkbox */}
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Fee Options
+              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-green-200/90 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={proBono}
+                    onChange={(e) => setProBono(e.target.checked)}
+                    className="h-4 w-4 rounded border-green-300/40 bg-transparent"
+                    disabled={isSubmitting}
+                  />
+                  <span>Pro Bono (no fee)</span>
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">
+                Pro Bono disputes don't require a fee. If unchecked, a small fee will be required.
+              </p>
             </div>
 
             {/* Defendant */}
@@ -875,12 +898,13 @@ const RejectDeliveryModal = ({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (claim: string) => Promise<void>;
+  onConfirm: (claim: string, proBono: boolean) => Promise<void>;
   claim: string;
   setClaim: (claim: string) => void;
   isSubmitting: boolean;
   transactionHash?: `0x${string}` | null;
 }) => {
+  const [proBono, setProBono] = useState(false);
   if (!isOpen) return null;
 
   return (
@@ -969,6 +993,26 @@ const RejectDeliveryModal = ({
           </p>
         </div>
 
+        <div className="mb-4 sm:mb-6">
+          <label className="mb-1 block text-sm font-medium text-purple-300">
+            Dispute Type
+          </label>
+          <div className="flex items-center justify-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-green-200/90 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={proBono}
+                onChange={(e) => setProBono(e.target.checked)}
+                className="h-4 w-4 rounded border-green-300/40 bg-transparent"
+              />
+              <span>Pro Bono (no fee)</span>
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            Pro Bono disputes don't require a fee. If unchecked, a small fee will be required.
+          </p>
+        </div>
+
         {/* Action buttons */}
         <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
           <Button
@@ -982,7 +1026,7 @@ const RejectDeliveryModal = ({
           <Button
             variant="outline"
             className="w-full border-purple-500/30 bg-purple-500/10 py-2 text-sm text-purple-300 hover:border-purple-400 hover:bg-purple-500/20 sm:w-auto sm:text-base"
-            onClick={() => onConfirm(claim)}
+            onClick={() => onConfirm(claim, proBono)}
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -1107,6 +1151,8 @@ export default function EscrowDetails() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectClaim, setRejectClaim] = useState("");
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+
+  const FEE_AMOUNT = "0.01";
 
   const [pendingRejectClaim, setPendingRejectClaim] = useState<{
     agreementId: number;
@@ -1493,13 +1539,13 @@ export default function EscrowDetails() {
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceProvider.toString().toLowerCase();
+    onChainAgreement.serviceProvider.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceRecipient.toString().toLowerCase();
+    onChainAgreement.serviceRecipient.toString().toLowerCase();
   const now = currentTime;
 
   const switchToTokenChain = useCallback(async () => {
@@ -1762,7 +1808,7 @@ export default function EscrowDetails() {
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, final, BigInt(votingId)],
+        args: [onChainAgreement.id, final, BigInt(votingId), true, BigInt(0)],
       });
       setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
     } catch (error) {
@@ -2063,7 +2109,7 @@ export default function EscrowDetails() {
   }, []);
 
   // Updated function to handle rejecting delivery with claim
-  const handleConfirmRejectDelivery = async (claim: string) => {
+  const handleConfirmRejectDelivery = async (claim: string, probono: boolean) => {
     setIsSubmittingReject(true);
     setLoading("rejectDelivery", true);
     resetMessages();
@@ -2213,13 +2259,17 @@ export default function EscrowDetails() {
         }
       }
 
+      const fee = probono
+        ? BigInt(0)
+        : BigInt(parseEther(FEE_AMOUNT).toString());
+
       // STEP 2: Then do the blockchain transaction
       console.log("🔗 Calling blockchain contract to reject delivery...");
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, false, BigInt(generatedVotingId)],
+        args: [onChainAgreement.id, false, BigInt(generatedVotingId), probono, fee],
       });
 
       // Don't close modal yet - wait for transaction success
@@ -2253,6 +2303,7 @@ export default function EscrowDetails() {
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,
     files: File[],
+    probono: boolean
   ) => {
     resetMessages();
     setLoading("raiseDispute", true);
@@ -2299,11 +2350,15 @@ export default function EscrowDetails() {
       // Now TypeScript knows disputeResponse.votingId exists (optional)
       const votingIdToUse = disputeResponse.votingId || votingId;
 
+      const fee = probono
+        ? BigInt(0)
+        : BigInt(parseEther(FEE_AMOUNT).toString());
+
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
-        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse)],
+        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse), probono, fee],
       });
 
       setUiSuccess("Dispute raised successfully! Telegram notifications sent.");
@@ -2561,8 +2616,8 @@ export default function EscrowDetails() {
 
   const tokenAddress =
     onChainAgreement &&
-    onChainAgreement.token &&
-    onChainAgreement.token !== ZERO_ADDRESS
+      onChainAgreement.token &&
+      onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
@@ -2667,9 +2722,9 @@ export default function EscrowDetails() {
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-        (new Date(escrow.deadline).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24),
-      )
+      (new Date(escrow.deadline).getTime() - Date.now()) /
+      (1000 * 60 * 60 * 24),
+    )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -2763,13 +2818,12 @@ export default function EscrowDetails() {
               {statusInfo.label}
             </span>
             <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${
-                isOverdue
-                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                  : isUrgent
-                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-              }`}
+              className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
+                ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                : isUrgent
+                  ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                  : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                }`}
             >
               {isOverdue ? "Overdue" : `${daysRemaining} days left`}
             </span>
@@ -3146,11 +3200,10 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                              onChainAgreement.funded
-                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                            }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
+                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                              }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -3320,7 +3373,7 @@ export default function EscrowDetails() {
                           Pending Order Cancellation:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                            // onComplete={refetchAgreement}
+                          // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -3381,7 +3434,7 @@ export default function EscrowDetails() {
                           Pending Delivery [Grace period 1]:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                            // onComplete={refetchAgreement}
+                          // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -3417,56 +3470,56 @@ export default function EscrowDetails() {
 
                 {/* Check if any action buttons are available */}
                 {(isServiceProvider || isServiceRecipient) &&
-                ((((isServiceProvider &&
-                  !onChainAgreement.acceptedByServiceProvider) ||
-                  (isServiceRecipient &&
-                    !onChainAgreement.acceptedByServiceRecipient)) &&
-                  onChainAgreement.funded) ||
-                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    isServiceProvider &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    isServiceRecipient &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.deliverySubmited) ||
-                  (now < onChainAgreement.grace1Ends &&
-                    onChainAgreement.signed &&
-                    onChainAgreement.pendingCancellation &&
-                    address &&
-                    address.toLowerCase() !==
+                  ((((isServiceProvider &&
+                    !onChainAgreement.acceptedByServiceProvider) ||
+                    (isServiceRecipient &&
+                      !onChainAgreement.acceptedByServiceRecipient)) &&
+                    onChainAgreement.funded) ||
+                    (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                    (onChainAgreement.signed &&
+                      isServiceProvider &&
+                      !onChainAgreement.frozen &&
+                      !onChainAgreement.pendingCancellation &&
+                      !onChainAgreement.deliverySubmited) ||
+                    (onChainAgreement.signed &&
+                      isServiceRecipient &&
+                      !onChainAgreement.pendingCancellation &&
+                      onChainAgreement.deliverySubmited) ||
+                    (now < onChainAgreement.grace1Ends &&
+                      onChainAgreement.signed &&
+                      onChainAgreement.pendingCancellation &&
+                      address &&
+                      address.toLowerCase() !==
                       String(
                         onChainAgreement.grace1EndsCalledBy,
                       ).toLowerCase() &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.frozen) ||
-                  (onChainAgreement.grace1Ends !== BigInt(0) &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.funded &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace2Ends &&
-                    onChainAgreement.grace2Ends !== BigInt(0) &&
-                    onChainAgreement.funded &&
-                    onChainAgreement.pendingCancellation) ||
-                  (onChainAgreement.signed &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.pendingCancellation &&
-                    onChainAgreement.grace1Ends !== BigInt(0)) ||
-                  (onChainAgreement.funded &&
-                    onChainAgreement.signed &&
-                    !onChainAgreement.disputed &&
-                    !onChainAgreement.completed &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation)) ? (
+                      !onChainAgreement.deliverySubmited) ||
+                    (onChainAgreement.signed &&
+                      !onChainAgreement.pendingCancellation &&
+                      !onChainAgreement.deliverySubmited &&
+                      !onChainAgreement.frozen) ||
+                    (onChainAgreement.grace1Ends !== BigInt(0) &&
+                      !onChainAgreement.vesting &&
+                      now > onChainAgreement.grace1Ends &&
+                      onChainAgreement.funded &&
+                      !onChainAgreement.pendingCancellation &&
+                      onChainAgreement.signed) ||
+                    (onChainAgreement.signed &&
+                      !onChainAgreement.vesting &&
+                      now > onChainAgreement.grace2Ends &&
+                      onChainAgreement.grace2Ends !== BigInt(0) &&
+                      onChainAgreement.funded &&
+                      onChainAgreement.pendingCancellation) ||
+                    (onChainAgreement.signed &&
+                      now > onChainAgreement.grace1Ends &&
+                      onChainAgreement.pendingCancellation &&
+                      onChainAgreement.grace1Ends !== BigInt(0)) ||
+                    (onChainAgreement.funded &&
+                      onChainAgreement.signed &&
+                      !onChainAgreement.disputed &&
+                      !onChainAgreement.completed &&
+                      !onChainAgreement.frozen &&
+                      !onChainAgreement.pendingCancellation)) ? (
                   <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
@@ -3635,9 +3688,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                          String(
-                            onChainAgreement.grace1EndsCalledBy,
-                          ).toLowerCase() &&
+                        String(
+                          onChainAgreement.grace1EndsCalledBy,
+                        ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(true)}
@@ -3669,9 +3722,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                          String(
-                            onChainAgreement.grace1EndsCalledBy,
-                          ).toLowerCase() &&
+                        String(
+                          onChainAgreement.grace1EndsCalledBy,
+                        ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(false)}
@@ -3982,9 +4035,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                      normalizeUsername(
-                                        disputeInfo.filedBy,
-                                      ) && (
+                                    normalizeUsername(
+                                      disputeInfo.filedBy,
+                                    ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -4083,7 +4136,7 @@ export default function EscrowDetails() {
                     </div>
                     <div className="text-sm text-cyan-300">
                       {onChainAgreement?.acceptedByServiceProvider &&
-                      onChainAgreement?.acceptedByServiceRecipient
+                        onChainAgreement?.acceptedByServiceRecipient
                         ? "Fully Executed"
                         : "Partially Signed"}
                     </div>

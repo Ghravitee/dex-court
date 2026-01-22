@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x41500754979eE6ADFBD03750Be356Dec1E7cAEca", // Sepolia address
+  11155111: "0xD04c1203B5dd2f08484E9882E1b1Ad0Ff17eB906", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xd9190f1Ed5C7f59d3bc9bc3fa46cB831422d9Df5", // Sepolia address
+  11155111: "0x78aF978387ae3F0273B85b2A55b7a3955bC58513", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -30,11 +30,6 @@ export const ESCROW_ABI = {
     {
       "type": "constructor",
       "inputs": [
-        {
-          "name": "_voting",
-          "type": "address",
-          "internalType": "address"
-        },
         {
           "name": "initialOwner",
           "type": "address",
@@ -88,10 +83,20 @@ export const ESCROW_ABI = {
           "name": "votingId",
           "type": "uint256",
           "internalType": "uint256"
+        },
+        {
+          "name": "proBono",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "feeAmount",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
-      "stateMutability": "nonpayable"
+      "stateMutability": "payable"
     },
     {
       "type": "function",
@@ -392,7 +397,7 @@ export const ESCROW_ABI = {
           "internalType": "uint256"
         },
         {
-          "name": "voteStartedAt",
+          "name": "disputeEndAt",
           "type": "uint256",
           "internalType": "uint256"
         },
@@ -557,11 +562,6 @@ export const ESCROW_ABI = {
           "internalType": "uint256"
         },
         {
-          "name": "_votingContract",
-          "type": "address",
-          "internalType": "address"
-        },
-        {
           "name": "_feeRecipient",
           "type": "address",
           "internalType": "address"
@@ -606,6 +606,16 @@ export const ESCROW_ABI = {
         },
         {
           "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "proBono",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "feeAmount",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -711,19 +721,6 @@ export const ESCROW_ABI = {
     },
     {
       "type": "function",
-      "name": "setVotingContract",
-      "inputs": [
-        {
-          "name": "_voting",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "settleDispute",
       "inputs": [
         {
@@ -747,29 +744,6 @@ export const ESCROW_ABI = {
       ],
       "outputs": [],
       "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "startVote",
-      "inputs": [
-        {
-          "name": "id",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "proBono",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "payable"
     },
     {
       "type": "function",
@@ -1019,6 +993,12 @@ export const ESCROW_ABI = {
           "type": "uint256",
           "indexed": true,
           "internalType": "uint256"
+        },
+        {
+          "name": "probono",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
         },
         {
           "name": "plaintiff",
@@ -1343,44 +1323,6 @@ export const ESCROW_ABI = {
       "anonymous": false
     },
     {
-      "type": "event",
-      "name": "VoteStarted",
-      "inputs": [
-        {
-          "name": "id",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "proBono",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
-        },
-        {
-          "name": "votingId",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VotingContractUpdated",
-      "inputs": [
-        {
-          "name": "_v",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        }
-      ],
-      "anonymous": false
-    },
-    {
       "type": "error",
       "name": "AlreadyAccepted",
       "inputs": []
@@ -1487,6 +1429,11 @@ export const ESCROW_ABI = {
     },
     {
       "type": "error",
+      "name": "NotFrozen",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "NotParty",
       "inputs": []
     },
@@ -1550,7 +1497,7 @@ export const ESCROW_ABI = {
     },
     {
       "type": "error",
-      "name": "VoteCannotBeStartedYet",
+      "name": "VoteStarted",
       "inputs": []
     },
     {
@@ -1575,60 +1522,13 @@ export const VOTING_ABI = {
           "name": "_feeRecipient",
           "type": "address",
           "internalType": "address"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "batchFinalize",
-      "inputs": [
+        },
         {
-          "name": "disputeIds",
-          "type": "uint256[]",
-          "internalType": "uint256[]"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "feeRecipient",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
+          "name": "_voteToken",
           "type": "address",
           "internalType": "address"
         }
       ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "finalizeExpiredDisputes",
-      "inputs": [
-        {
-          "name": "disputeIds",
-          "type": "uint256[]",
-          "internalType": "uint256[]"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "finalizeVote",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
       "stateMutability": "nonpayable"
     },
     {
@@ -1648,52 +1548,12 @@ export const VOTING_ABI = {
           "internalType": "uint256"
         },
         {
-          "name": "active",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
           "name": "createdAt",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "endTime",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "finalized",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
-          "name": "result",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "totalVotes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "weightedPlaintiff",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "weightedDefendant",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "weightedDismiss",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "voteStartedAt",
+          "name": "disputeEndAt",
           "type": "uint256",
           "internalType": "uint256"
         },
@@ -1708,149 +1568,20 @@ export const VOTING_ABI = {
           "internalType": "uint256"
         },
         {
-          "name": "voteEnabled",
+          "name": "finalized",
           "type": "bool",
           "internalType": "bool"
-        },
-        {
-          "name": "merkleRoot",
-          "type": "bytes32",
-          "internalType": "bytes32"
         }
       ],
       "stateMutability": "view"
     },
     {
       "type": "function",
-      "name": "getLeaderboard",
+      "name": "getStats",
       "inputs": [],
       "outputs": [
         {
-          "name": "",
-          "type": "tuple",
-          "internalType": "struct Voting.Leaderboard",
-          "components": [
-            {
-              "name": "mostActiveJudge",
-              "type": "address",
-              "internalType": "address"
-            },
-            {
-              "name": "mostActiveTier1",
-              "type": "address",
-              "internalType": "address"
-            },
-            {
-              "name": "mostActiveTier2",
-              "type": "address",
-              "internalType": "address"
-            },
-            {
-              "name": "mostActiveOverall",
-              "type": "address",
-              "internalType": "address"
-            }
-          ]
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "getRevealedVoters",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "address[]",
-          "internalType": "address[]"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "getVoterReveal",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "voter",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "isRevealed",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
-          "name": "vote",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "tier",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "weight",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "timestamp",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "getVoterStats",
-      "inputs": [
-        {
-          "name": "user",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "tier",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "totalVotes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "votesForPlaintiff",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "votesForDefendant",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "votesForDismiss",
+          "name": "totalDisputes_",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -1868,9 +1599,19 @@ export const VOTING_ABI = {
           "internalType": "struct Voting.VotingConfig",
           "components": [
             {
-              "name": "votingDuration",
+              "name": "disputeDuration",
               "type": "uint256",
               "internalType": "uint256"
+            },
+            {
+              "name": "vToken",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "feeRec",
+              "type": "address",
+              "internalType": "address"
             }
           ]
         }
@@ -1879,130 +1620,20 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "getVotingStats",
+      "name": "owner",
       "inputs": [],
       "outputs": [
         {
           "name": "",
-          "type": "tuple",
-          "internalType": "struct Voting.VotingStats",
-          "components": [
-            {
-              "name": "totalDisputesOpened",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalVotesCast",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalJudgeVotes",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalTier1Votes",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalTier2Votes",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalFinalizedVotes",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalPlaintiffWins",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalDefendantWins",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "totalDismissedCases",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "cumulativeResolutionTime",
-              "type": "uint256",
-              "internalType": "uint256"
-            }
-          ]
+          "type": "address",
+          "internalType": "address"
         }
       ],
       "stateMutability": "view"
     },
     {
       "type": "function",
-      "name": "getVotingStatsWithAvg",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "disputesOpened",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "votesCast",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "finalized",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "plaintiffWins",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "defendantWins",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "dismissed",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "tier1Votes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "tier2Votes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "judgeVotes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "avgResolutionTime",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "openVote",
+      "name": "raiseDispute",
       "inputs": [
         {
           "name": "votingId",
@@ -2031,16 +1662,34 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "owner",
-      "inputs": [],
-      "outputs": [
+      "name": "recoverStuckETH",
+      "inputs": [
         {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
+          "name": "_amount",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
-      "stateMutability": "view"
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "recoverStuckToken",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_amount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
@@ -2051,53 +1700,22 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "revealVotesInBatch",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "voters",
-          "type": "address[]",
-          "internalType": "address[]"
-        },
-        {
-          "name": "votes",
-          "type": "uint8[]",
-          "internalType": "uint8[]"
-        },
-        {
-          "name": "nonces",
-          "type": "bytes[]",
-          "internalType": "bytes[]"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "setFeeRecipient",
-      "inputs": [
-        {
-          "name": "_recipient",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
       "name": "setVotingConfig",
       "inputs": [
         {
-          "name": "_votingDuration",
+          "name": "_disputeDuration",
           "type": "uint256",
           "internalType": "uint256"
+        },
+        {
+          "name": "_vToken",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_feeRec",
+          "type": "address",
+          "internalType": "address"
         }
       ],
       "outputs": [],
@@ -2105,16 +1723,22 @@ export const VOTING_ABI = {
     },
     {
       "type": "function",
-      "name": "setVotingToken",
+      "name": "settleDispute",
       "inputs": [
         {
-          "name": "_token",
-          "type": "address",
-          "internalType": "address"
+          "name": "votingId",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "payable"
     },
     {
       "type": "function",
@@ -2130,45 +1754,51 @@ export const VOTING_ABI = {
       "stateMutability": "nonpayable"
     },
     {
-      "type": "function",
-      "name": "votingToken",
-      "inputs": [],
-      "outputs": [
+      "type": "event",
+      "name": "DisputeRaised",
+      "inputs": [
         {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
+          "name": "votingId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "probono",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
+        },
+        {
+          "name": "createdAt",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "disputeEndAt",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         }
       ],
-      "stateMutability": "view"
+      "anonymous": false
     },
     {
       "type": "event",
-      "name": "MostActiveUpdated",
+      "name": "DisputeSettled",
       "inputs": [
         {
-          "name": "topJudge",
-          "type": "address",
+          "name": "votingId",
+          "type": "uint256",
           "indexed": false,
-          "internalType": "address"
+          "internalType": "uint256"
         },
         {
-          "name": "topTier1",
-          "type": "address",
+          "name": "settledAt",
+          "type": "uint256",
           "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "topTier2",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "topOverall",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
+          "internalType": "uint256"
         }
       ],
       "anonymous": false
@@ -2213,194 +1843,42 @@ export const VOTING_ABI = {
     },
     {
       "type": "event",
-      "name": "VoteCasted",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voter",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "tier",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        },
-        {
-          "name": "option",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        },
-        {
-          "name": "weight",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VoteFinalized",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "result",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        },
-        {
-          "name": "plaintiffPoints",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "defendantPoints",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "dismissPoints",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VoteOpened",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "proBono",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VoteRevealed",
-      "inputs": [
-        {
-          "name": "disputeId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voter",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "vote",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
       "name": "VotingConfigUpdated",
       "inputs": [
         {
-          "name": "votingDuration",
+          "name": "disputeDuration",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
+        },
+        {
+          "name": "voteToken",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "feeRecipient",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
         }
       ],
       "anonymous": false
     },
     {
       "type": "error",
-      "name": "AlreadyRevealed",
+      "name": "DisputeAlreadyRaised",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "AlreadyVoted",
+      "name": "InvalidAmount",
       "inputs": []
     },
     {
       "type": "error",
       "name": "InvalidDispute",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidFee",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidHash",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidLenght",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidOption",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidParties",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidReveal",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidSupply",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NoCommitmentFound",
       "inputs": []
     },
     {
@@ -2427,28 +1905,19 @@ export const VOTING_ABI = {
     },
     {
       "type": "error",
-      "name": "PlntfSameWithDfndnt",
-      "inputs": []
-    },
-    {
-      "type": "error",
       "name": "ReentrancyGuardReentrantCall",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "Tier1ExceedsMax",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "Tier1LessThanTier2",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "Tier2ExceedsMax",
-      "inputs": []
+      "name": "SafeERC20FailedOperation",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
     },
     {
       "type": "error",
@@ -2457,22 +1926,7 @@ export const VOTING_ABI = {
     },
     {
       "type": "error",
-      "name": "VoteCannotBeStartedYet",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "VotingEnded",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "VotingOngoing",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "WeightLessThanZero",
+      "name": "VoteStarted",
       "inputs": []
     }
   ],

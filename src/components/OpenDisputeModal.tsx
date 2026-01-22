@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "../components/ui/button";
 import {
   Search,
@@ -25,6 +25,10 @@ import {
 } from "../lib/usernameUtils";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
+import { VOTING_ABI, VOTING_CA } from "../web3/config";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { parseEther } from "ethers";
+import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
@@ -94,9 +98,8 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
-        isCurrentUser ? "opacity-80" : ""
-      }`}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-80" : ""
+        }`}
     >
       <UserAvatar
         userId={user.id}
@@ -132,6 +135,7 @@ export default function OpenDisputeModal({
 }: OpenDisputeModalProps) {
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const networkInfo = useNetworkEnvironment();
   const [form, setForm] = useState({
     title: "",
     kind: "Pro Bono" as "Pro Bono" | "Paid",
@@ -227,8 +231,8 @@ export default function OpenDisputeModal({
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
+            resultUser.telegram?.username ||
+            resultUser.telegramInfo,
           );
 
           return (
@@ -374,6 +378,38 @@ export default function OpenDisputeModal({
       ...prev,
       witnesses: prev.witnesses.filter((_, i) => i !== index),
     }));
+  };
+
+  const {
+    data: hash,
+    writeContract,
+    isPending,
+    error: writeError,
+    reset: resetWrite,
+  } = useWriteContract();
+  const { isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const votingIdToUse = useMemo(() => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    // Generate a 6-digit number (100000 - 999999)
+    return 100000 + (array[0] % 900000);
+  }, []);
+
+  const createDisputeOnchain = async (): Promise<void> => {
+    const contractAddress = VOTING_CA[networkInfo.chainId as number];
+    const FEE_AMOUNT = "0.01";
+
+    const fee = BigInt(parseEther(FEE_AMOUNT).toString());
+
+    writeContract({
+      address: contractAddress,
+      abi: VOTING_ABI.abi,
+      functionName: "raiseDispute",
+      args: [BigInt(votingIdToUse), false, fee],
+    });
   };
 
   // Form submission (keep as is)
@@ -691,11 +727,10 @@ export default function OpenDisputeModal({
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
                       key={kind}
-                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                        form.kind === kind
-                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 bg-white/5"
-                      }`}
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
+                        ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                        : "border-white/10 bg-white/5"
+                        }`}
                     >
                       <input
                         type="radio"
@@ -877,11 +912,10 @@ export default function OpenDisputeModal({
                 </label>
 
                 <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                    isDragOver
-                      ? "border-cyan-400/60 bg-cyan-500/20"
-                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                  }`}
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                    ? "border-cyan-400/60 bg-cyan-500/20"
+                    : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                    }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}

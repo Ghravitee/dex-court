@@ -50,13 +50,11 @@ import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
 import { VoteModal } from "../components/disputes/modals/VoteModal";
 import VoteOutcomeModal from "../components/disputes/modals/VoteOutcomeModal";
 import SettleConfirmationModal from "../components/disputes/modals/SettleConfirmationModal";
-import StartVoteConfirmationModal from "../components/disputes/modals/StartVoteConfirmationModal";
 import DisputeChat from "./DisputeChat";
 import type { DisputeChatRole } from "./DisputeChat/types/dto";
 import { useVotingStatus } from "../hooks/useVotingStatus";
 import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { parseEther } from "ethers";
 import { getAgreement } from "../web3/readContract";
 // import { formatDateWithTime } from "../web3/helper";
 
@@ -444,10 +442,8 @@ export default function DisputeDetails() {
   });
 
   const [settleModalOpen, setSettleModalOpen] = useState(false);
-  const [startVoteModalOpen, setStartVoteModalOpen] = useState(false);
 
   const [escalating, setEscalating] = useState(false);
-  const [startingVote, setStartingVote] = useState(false);
   const [settlingDispute, setSettlingDispute] = useState(false);
   const [pendingTransactionType, setPendingTransactionType] = useState<
     "settle" | "startVote" | null
@@ -492,9 +488,6 @@ export default function DisputeDetails() {
 
   const [voteOutcomeModalOpen, setVoteOutcomeModalOpen] = useState(false);
   const [voteModalOpen, setVoteModalOpen] = useState(false);
-  const [currentTime, setCurrentTime] = useState(
-    BigInt(Math.floor(Date.now() / 1000)),
-  );
 
   // Reply modals state
   const [defendantReplyModalOpen, setDefendantReplyModalOpen] = useState(false);
@@ -761,7 +754,6 @@ export default function DisputeDetails() {
   const networkInfo = useNetworkEnvironment();
 
   const contractAddress = ESCROW_CA[networkInfo.chainId as number];
-  const FEE_AMOUNT = "0.01";
 
   const defendantEvidence = dispute?.defendantResponse
     ? processEvidence(
@@ -975,91 +967,6 @@ export default function DisputeDetails() {
     [id, dispute],
   );
 
-  // KEEP ORIGINAL: Handle starting vote for on-chain (escrow) disputes - using blockchain
-  const handleOnchainStartVote = useCallback(async () => {
-    try {
-      // Check if dispute exists
-      if (!dispute) {
-        toast.error("Cannot start vote: Dispute data not loaded");
-        return;
-      }
-
-      // Check if contractAgreementId exists
-      if (!dispute.contractAgreementId) {
-        console.error("Missing contract agreement ID");
-        toast.error("Cannot start vote: Contract agreement ID is missing");
-        return;
-      }
-
-      // Since we removed pro bono option, always use a fee
-      const fee = BigInt(parseEther(FEE_AMOUNT).toString());
-
-      console.log("Starting vote with params:", {
-        contractAgreementId: dispute.contractAgreementId,
-        fee: fee.toString(),
-      });
-
-      setPendingTransactionType("startVote");
-
-      writeContract({
-        address: contractAddress,
-        abi: ESCROW_ABI.abi,
-        functionName: "startVote",
-        args: [BigInt(dispute.contractAgreementId), false, fee], // probono is always false now
-      });
-
-      setStartVoteModalOpen(false);
-
-      // Set vote as started immediately (UI feedback)
-      setVoteStarted(true);
-    } catch (error: unknown) {
-      console.error("Error starting vote:", error);
-      toast.error("Failed to start vote", {
-        description:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
-      setPendingTransactionType(null);
-    }
-  }, [dispute, contractAddress, FEE_AMOUNT, writeContract]);
-
-  const handleStartVote = useCallback(async () => {
-    try {
-      // Check if dispute exists
-      if (!dispute) {
-        toast.error("Cannot start vote: Dispute data not loaded");
-        return;
-      }
-
-      setStartingVote(true);
-
-      // Close the start vote confirmation modal
-      setStartVoteModalOpen(false);
-
-      // Set vote as started
-      setVoteStarted(true);
-
-      // Show success toast
-      toast.success("Voting can now begin! 🗳️", {
-        description:
-          "The voting phase has been initiated. Community members with the $LAW token can now cast their votes.",
-      });
-
-      // Refresh dispute data
-      const disputeDetails = await disputeService.getDisputeDetails(disputeId!);
-      const transformedDispute =
-        disputeService.transformDisputeDetailsToRow(disputeDetails);
-      setDispute(transformedDispute);
-    } catch (error: unknown) {
-      console.error("Error starting vote:", error);
-      toast.error("Failed to start vote", {
-        description:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
-    } finally {
-      setStartingVote(false);
-    }
-  }, [dispute, disputeId]);
-
   // KEEP ORIGINAL: Handle settling on-chain (escrow) disputes - using blockchain
   const handleOnchainSettleDispute = useCallback(async () => {
     try {
@@ -1166,8 +1073,6 @@ export default function DisputeDetails() {
     }
   }, [id]);
 
-  const now = currentTime;
-
   const hasValidDefendantResponse = (defendantResponse: any) => {
     if (!defendantResponse) return false;
     if (!defendantResponse.description) return false;
@@ -1256,14 +1161,6 @@ export default function DisputeDetails() {
       resetWrite();
     }
   }, [writeError, resetWrite]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(BigInt(Math.floor(Date.now() / 1000)));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   if (loading) {
     return (
@@ -1395,64 +1292,6 @@ export default function DisputeDetails() {
                 </Button>
               )}
 
-            <div className="flex flex-wrap gap-2">
-              {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
-              {dispute.agreement?.type === 2 &&
-                onChainAgreement &&
-                !onChainLoading &&
-                now > Number(onChainAgreement.voteStartedAt.toString()) && ( // Add .toString()
-                  <Button
-                    variant="outline"
-                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-                    onClick={() => setStartVoteModalOpen(true)}
-                    disabled={isPending}
-                  >
-                    {isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="mr-2 h-4 w-4" />
-                    )}
-                    {isPending ? "Starting..." : "Start Escrow Vote"}
-                  </Button>
-                )}
-              {/* Settle Escrow Dispute Button */}
-              {dispute.status === "Pending" &&
-                isCurrentUserPlaintiff() &&
-                dispute.agreement?.type === 2 && (
-                  <Button
-                    variant="outline"
-                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-                    onClick={() => setSettleModalOpen(true)}
-                    disabled={pendingTransactionType === "settle" && isPending}
-                  >
-                    {pendingTransactionType === "settle" && isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="mr-2 h-4 w-4" />
-                    )}
-                    {pendingTransactionType === "settle" && isPending
-                      ? "Settling..."
-                      : "Settle Escrow Dispute"}
-                  </Button>
-                )}
-              {dispute.status === "Pending" &&
-                isCurrentUserPlaintiff() &&
-                dispute.agreement?.type === 1 && (
-                  <Button
-                    variant="outline"
-                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-                    onClick={() => setSettleModalOpen(true)}
-                    disabled={settlingDispute}
-                  >
-                    {settlingDispute ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="mr-2 h-4 w-4" />
-                    )}
-                    {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
-                  </Button>
-                )}
-            </div>
             {/* {dispute.status === "Vote in Progress" &&
                 // Use the helper function
                 dispute.agreement?.type === 1 && (
@@ -2108,25 +1947,6 @@ export default function DisputeDetails() {
           )}
         {/* Start Vote Button - Shows for EVERYONE when dispute is in Vote in Progress and vote hasn't started */}
 
-        {/* Start Vote Button - Only show for escrow disputes (type 2) */}
-        {dispute.agreement?.type === 2 &&
-          onChainAgreement &&
-          !onChainLoading &&
-          now > Number(onChainAgreement.voteStartedAt.toString()) && ( // Add .toString()
-            <Button
-              variant="outline"
-              className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-              onClick={() => setStartVoteModalOpen(true)}
-              disabled={isPending}
-            >
-              {isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Scale className="mr-2 h-4 w-4" />
-              )}
-              {isPending ? "Starting..." : "Start Escrow Vote"}
-            </Button>
-          )}
         {/* For reputational disputes (type 1), we don't show a Start Vote button 
     because voting starts automatically when status is "Vote in Progress" */}
         {/* {dispute.status === "Vote in Progress" &&
@@ -2250,24 +2070,6 @@ export default function DisputeDetails() {
         onSubmit={handleDefendantReply}
         navigate={navigate}
       />
-      {dispute.agreement?.type === 1 && (
-        <StartVoteConfirmationModal
-          isOpen={startVoteModalOpen}
-          onClose={() => setStartVoteModalOpen(false)}
-          onConfirm={handleStartVote}
-          disable={startingVote}
-          disputeTitle={dispute?.title}
-        />
-      )}
-      {dispute.agreement?.type === 2 && (
-        <StartVoteConfirmationModal
-          isOpen={startVoteModalOpen}
-          onClose={() => setStartVoteModalOpen(false)}
-          onConfirm={handleOnchainStartVote}
-          disable={isPending}
-          disputeTitle={dispute?.title}
-        />
-      )}
       {dispute.agreement?.type === 1 && (
         <SettleConfirmationModal
           isOpen={settleModalOpen}

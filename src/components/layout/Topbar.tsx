@@ -413,8 +413,6 @@ export function Topbar({
               );
             }}
           </ConnectButton.Custom>
-          {/* 
-          <ConnectButton /> */}
         </div>
 
         {/* Right: Mobile Hamburger Menu */}
