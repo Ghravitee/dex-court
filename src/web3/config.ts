@@ -1,12 +1,12 @@
 // src/web3/config.ts
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0xD04c1203B5dd2f08484E9882E1b1Ad0Ff17eB906", // Sepolia address
+  11155111: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", // Sepolia address
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
-  11155111: "0x78aF978387ae3F0273B85b2A55b7a3955bC58513", // Sepolia address
+  11155111: "0xF0FFF4d2A7d60A2Ac695Bd6f03f6B2160B79427e", // Sepolia address
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -88,11 +88,6 @@ export const ESCROW_ABI = {
           "name": "proBono",
           "type": "bool",
           "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -449,6 +444,11 @@ export const ESCROW_ABI = {
               "internalType": "uint256"
             },
             {
+              "name": "feeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
               "name": "disputeDuration",
               "type": "uint256",
               "internalType": "uint256"
@@ -613,11 +613,6 @@ export const ESCROW_ABI = {
           "name": "proBono",
           "type": "bool",
           "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -661,6 +656,11 @@ export const ESCROW_ABI = {
       "inputs": [
         {
           "name": "_platformFeeBP",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_feeAmount",
           "type": "uint256",
           "internalType": "uint256"
         },
@@ -1001,6 +1001,12 @@ export const ESCROW_ABI = {
           "internalType": "bool"
         },
         {
+          "name": "feeAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
           "name": "plaintiff",
           "type": "address",
           "indexed": false,
@@ -1058,6 +1064,12 @@ export const ESCROW_ABI = {
       "inputs": [
         {
           "name": "platformFeeBP",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "feeAmount",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
@@ -1558,7 +1570,7 @@ export const VOTING_ABI = {
           "internalType": "uint256"
         },
         {
-          "name": "raisedBy",
+          "name": "plaintiff",
           "type": "address",
           "internalType": "address"
         },
@@ -1612,6 +1624,11 @@ export const VOTING_ABI = {
               "name": "feeRec",
               "type": "address",
               "internalType": "address"
+            },
+            {
+              "name": "feeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
             }
           ]
         }
@@ -1644,11 +1661,6 @@ export const VOTING_ABI = {
           "name": "proBono",
           "type": "bool",
           "internalType": "bool"
-        },
-        {
-          "name": "feeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
         }
       ],
       "outputs": [
@@ -1716,6 +1728,11 @@ export const VOTING_ABI = {
           "name": "_feeRec",
           "type": "address",
           "internalType": "address"
+        },
+        {
+          "name": "_feeAmount",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -1764,10 +1781,22 @@ export const VOTING_ABI = {
           "internalType": "uint256"
         },
         {
+          "name": "plaintiff",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
           "name": "probono",
           "type": "bool",
           "indexed": false,
           "internalType": "bool"
+        },
+        {
+          "name": "feeAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         },
         {
           "name": "createdAt",
@@ -1793,6 +1822,12 @@ export const VOTING_ABI = {
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
+        },
+        {
+          "name": "plaintiff",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
         },
         {
           "name": "settledAt",
@@ -1862,6 +1897,12 @@ export const VOTING_ABI = {
           "type": "address",
           "indexed": false,
           "internalType": "address"
+        },
+        {
+          "name": "feeAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         }
       ],
       "anonymous": false

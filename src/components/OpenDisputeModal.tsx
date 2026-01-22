@@ -400,15 +400,12 @@ export default function OpenDisputeModal({
 
   const createDisputeOnchain = async (): Promise<void> => {
     const contractAddress = VOTING_CA[networkInfo.chainId as number];
-    const FEE_AMOUNT = "0.01";
-
-    const fee = BigInt(parseEther(FEE_AMOUNT).toString());
 
     writeContract({
       address: contractAddress,
       abi: VOTING_ABI.abi,
       functionName: "raiseDispute",
-      args: [BigInt(votingIdToUse), false, fee],
+      args: [BigInt(votingIdToUse), false],
     });
   };
 

@@ -31,17 +31,12 @@ import {
   calculateVoteResults,
   type VoteCalculationResult,
 } from "../lib/voteCalculations";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
-import { parseEther } from "ethers";
 import { getAgreement } from "../web3/readContract";
 import { useAuth } from "../hooks/useAuth";
 import { useVotingStatus } from "../hooks/useVotingStatus";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
-const FEE_AMOUNT = "0.01";
 
 // Helper function to check if it's a wallet address
 const isWalletAddress = (address: string): boolean => {
@@ -317,21 +312,12 @@ const LiveCaseCard = ({
   currentTime,
   refetchLiveDisputes,
   isVoteStarted,
-  startingVote,
-  handleOnchainStartVote,
   isJudge = false,
-  isPending,
 }: {
   c: LiveCase;
   currentTime: number;
   refetchLiveDisputes: () => void;
   isVoteStarted: (disputeId: string) => boolean;
-  startingVote: string | null;
-  handleOnchainStartVote: (
-    dispute: LiveCase,
-    probono: boolean,
-  ) => Promise<void>;
-  isPending: boolean;
   isJudge?: boolean;
 }) => {
   const [choice, setChoice] = useState<
@@ -482,16 +468,6 @@ const LiveCaseCard = ({
     },
     [],
   );
-
-  // Handle start vote click
-  const handleStartVoteClick = useCallback(async () => {
-    try {
-      // For escrow disputes, always start as paid (probono = false)
-      await handleOnchainStartVote(c, false);
-    } catch (error) {
-      console.error("Failed to start vote:", error);
-    }
-  }, [c, handleOnchainStartVote]);
 
   // Show tier and weight info in the UI
   const votingInfo = useMemo(() => {
@@ -653,29 +629,6 @@ const LiveCaseCard = ({
                         </div>
                       )}
                     </div>
-                    <Button
-                      variant="outline"
-                      className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-                      onClick={handleStartVoteClick}
-                      disabled={
-                        startingVote === c.id ||
-                        isPending ||
-                        !canStartOnChainVote ||
-                        onChainLoading
-                      }
-                      size="sm"
-                    >
-                      {startingVote === c.id || isPending || onChainLoading ? (
-                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Vote className="mr-2 h-3 w-3" />
-                      )}
-                      {onChainLoading
-                        ? "Loading..."
-                        : startingVote === c.id || isPending
-                          ? "Starting..."
-                          : "Start Vote"}
-                    </Button>
                   </div>
                 </div>
               )}
@@ -1269,7 +1222,6 @@ export default function Voting() {
   const [votingStartedDisputes, setVotingStartedDisputes] = useState<
     Set<string>
   >(new Set());
-  const [startingVote, setStartingVote] = useState<string | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -1284,22 +1236,8 @@ export default function Voting() {
     DoneCase[]
   >([]);
 
-  // Wagmi hooks for on-chain transactions
-  const {
-    data: hash,
-    writeContract,
-    isPending,
-    error: writeError,
-    reset: resetWrite,
-  } = useWriteContract();
-  const { isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
   const { user } = useAuth(); // Get user from auth context
   const userRole = user?.role || 1; // Default to community (1) if no role
-
-  const networkInfo = useNetworkEnvironment();
-  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -1316,16 +1254,6 @@ export default function Voting() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Handle write errors
-  useEffect(() => {
-    if (writeError) {
-      toast.error("Transaction failed", {
-        description: writeError.message || "Please try again",
-      });
-      resetWrite();
-    }
-  }, [writeError, resetWrite]);
 
   // Helper function to check if vote has been started
   const isVoteStarted = useCallback(
@@ -1506,87 +1434,6 @@ export default function Voting() {
     }
   }, []);
 
-  // On-chain start vote function (for escrow agreements)
-  const handleOnchainStartVote = useCallback(
-    async (dispute: LiveCase, probono: boolean) => {
-      if (!dispute || !dispute.contractAgreementId) {
-        toast.error("Cannot start vote: Contract agreement ID is missing");
-        return;
-      }
-
-      if (!contractAddress) {
-        toast.error(
-          "Cannot start vote: Contract address not found for this network",
-        );
-        return;
-      }
-
-      setStartingVote(dispute.id);
-
-      try {
-        const fee = probono
-          ? BigInt(0)
-          : BigInt(parseEther(FEE_AMOUNT).toString());
-
-        console.log("Starting escrow vote with params:", {
-          contractAddress,
-          contractAgreementId: dispute.contractAgreementId,
-          probono,
-          fee: fee.toString(),
-        });
-
-        // Call the smart contract to start the vote
-        writeContract({
-          address: contractAddress as `0x${string}`,
-          abi: ESCROW_ABI.abi,
-          functionName: "startVote",
-          args: [BigInt(dispute.contractAgreementId), probono, fee],
-          value: fee, // Send the fee with the transaction
-        });
-
-        toast.info("Transaction submitted! 🚀", {
-          description:
-            "Waiting for blockchain confirmation... The voting phase will begin shortly.",
-        });
-      } catch (error: any) {
-        console.error("Error starting escrow vote:", error);
-        toast.error("Failed to start escrow vote", {
-          description:
-            error.message || "Please check your wallet and try again",
-        });
-        setStartingVote(null);
-      }
-    },
-    [contractAddress, writeContract],
-  );
-
-  // Handle transaction success
-  useEffect(() => {
-    if (isSuccess && hash) {
-      toast.success("Vote started successfully! 🗳️", {
-        description:
-          "The 24-hour voting timer has begun. Users can now cast their votes.",
-      });
-
-      // Update local state to indicate voting has started
-      if (startingVote) {
-        setVotingStartedDisputes((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(startingVote);
-          return newSet;
-        });
-      }
-
-      // Refresh the data
-      if (tab === "live") {
-        fetchLiveDisputes();
-      }
-
-      resetWrite();
-      setStartingVote(null);
-    }
-  }, [isSuccess, hash, startingVote, tab, resetWrite, fetchLiveDisputes]);
-
   // Optimized useEffect with dependency cleanup
   useEffect(() => {
     if (tab === "live") {
@@ -1754,9 +1601,6 @@ export default function Voting() {
           currentTime={currentTime}
           refetchLiveDisputes={fetchLiveDisputes}
           isVoteStarted={isVoteStarted}
-          startingVote={startingVote}
-          handleOnchainStartVote={handleOnchainStartVote}
-          isPending={isPending}
           isJudge={isUserJudge()}
         />
       ));
@@ -1815,9 +1659,6 @@ export default function Voting() {
     currentTime,
     fetchLiveDisputes,
     isVoteStarted,
-    startingVote,
-    handleOnchainStartVote,
-    isPending,
     isUserJudge,
     debouncedSearchQuery,
   ]);

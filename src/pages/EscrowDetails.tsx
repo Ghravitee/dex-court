@@ -74,7 +74,6 @@ import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
 } from "../types";
-import { parseEther } from "ethers";
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -1152,8 +1151,6 @@ export default function EscrowDetails() {
   const [rejectClaim, setRejectClaim] = useState("");
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
 
-  const FEE_AMOUNT = "0.01";
-
   const [pendingRejectClaim, setPendingRejectClaim] = useState<{
     agreementId: number;
     claim: string;
@@ -1808,7 +1805,7 @@ export default function EscrowDetails() {
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, final, BigInt(votingId), true, BigInt(0)],
+        args: [onChainAgreement.id, final, BigInt(votingId), true],
       });
       setUiSuccess(final ? "Approval submitted" : "Rejection submitted");
     } catch (error) {
@@ -2259,17 +2256,13 @@ export default function EscrowDetails() {
         }
       }
 
-      const fee = probono
-        ? BigInt(0)
-        : BigInt(parseEther(FEE_AMOUNT).toString());
-
       // STEP 2: Then do the blockchain transaction
       console.log("🔗 Calling blockchain contract to reject delivery...");
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, false, BigInt(generatedVotingId), probono, fee],
+        args: [onChainAgreement.id, false, BigInt(generatedVotingId), probono],
       });
 
       // Don't close modal yet - wait for transaction success
@@ -2350,15 +2343,11 @@ export default function EscrowDetails() {
       // Now TypeScript knows disputeResponse.votingId exists (optional)
       const votingIdToUse = disputeResponse.votingId || votingId;
 
-      const fee = probono
-        ? BigInt(0)
-        : BigInt(parseEther(FEE_AMOUNT).toString());
-
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
-        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse), probono, fee],
+        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse), probono],
       });
 
       setUiSuccess("Dispute raised successfully! Telegram notifications sent.");
