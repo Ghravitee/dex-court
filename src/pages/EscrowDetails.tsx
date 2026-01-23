@@ -48,10 +48,10 @@ import { agreementService } from "../services/agreementServices";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import {
   getAgreement,
+  getEscrowConfigs,
   getMilestoneCount,
   getTokenDecimals,
-  getTokenSymbol,
-  getVoteConfigs,
+  getTokenSymbol
 } from "../web3/readContract";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
 import {
@@ -2335,13 +2335,13 @@ export default function EscrowDetails() {
 
       console.log("Fetching on-chain vote configs for agreement:", agreement);
       try {
-        const res = await getVoteConfigs(
+        const res = await getEscrowConfigs(
           agreement.chainId || networkInfo.chainId,
         );
-        console.log("getVoteConfigs data:", res);
+        console.log("getEscrowConfigs data:", res);
         setOnChainVotingConfigs(res);
       } catch (err) {
-        console.error("Failed to fetch getVoteConfig agreement:", err);
+        console.error("Failed to fetch getEscrowConfigs agreement:", err);
         setOnChainVotingConfigs(null);
       } finally {
         setOnChainLoading(false);
