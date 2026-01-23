@@ -812,8 +812,26 @@ export default function Agreements() {
     if (!selectedFiles) return;
 
     Array.from(selectedFiles).forEach((file) => {
+      // 🆕 ADD FILE SIZE VALIDATION
+      const fileSizeMB = file.size / 1024 / 1024; // Convert to MB
       const fileType = file.type.startsWith("image/") ? "image" : "document";
-      const fileSize = (file.size / 1024 / 1024).toFixed(2) + " MB";
+
+      // Apply file size limits based on file type
+      if (fileType === "image" && fileSizeMB > 2) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && fileSizeMB > 3) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
@@ -2225,8 +2243,12 @@ export default function Agreements() {
                         ? "Drop files here"
                         : "Click to upload or drag and drop"}
                     </div>
+
                     <div className="text-muted-foreground mt-1 text-xs">
-                      Supports images, PDFs, and documents
+                      Supports images{" "}
+                      <span className="text-yellow-300">(max 2MB) </span>,
+                      documents{" "}
+                      <span className="text-yellow-300">(max 3MB)</span>
                     </div>
                   </label>
                 </div>

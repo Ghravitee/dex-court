@@ -825,6 +825,7 @@ const getDisputeInfo = (
 };
 
 // Reject Delivery Modal Component
+// Reject Delivery Modal Component - Updated with dispute type info
 const RejectDeliveryModal = ({
   isOpen,
   onClose,
@@ -871,7 +872,7 @@ const RejectDeliveryModal = ({
           </div>
         </div>
 
-        {/* Warning message */}
+        {/* Warning message with dispute type info */}
         <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 sm:mb-6 sm:p-4">
           <div className="flex items-start gap-3">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
@@ -885,6 +886,14 @@ const RejectDeliveryModal = ({
                 <li>
                   • Require dispute resolution through voting or manually
                   settling the dispute by you.
+                </li>
+                <li>
+                  •{" "}
+                  <span className="font-medium text-yellow-300">
+                    Important:
+                  </span>{" "}
+                  You'll need to choose the dispute type (Pro Bono or Paid) on
+                  the Dispute Details page by editing plaintiff information.
                 </li>
                 <li>• You can add more evidence on the dispute page later</li>
               </ul>
@@ -927,6 +936,27 @@ const RejectDeliveryModal = ({
           <p className="mt-1 text-xs text-gray-400">
             You can add more details and evidence on the dispute page.
           </p>
+        </div>
+
+        {/* Additional information about dispute setup */}
+        <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 sm:mb-6">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-yellow-300 sm:text-sm">
+                Next Steps After Creating Dispute:
+              </p>
+              <ul className="mt-1 space-y-1 text-xs text-yellow-200/80 sm:mt-2">
+                <li>1. Visit the Dispute Details page</li>
+                <li>2. Click "Edit Plaintiff Info"</li>
+                <li>3. Choose between Pro Bono or Paid dispute type</li>
+                <li>
+                  4. For Paid disputes, ensure you have sufficient funds (0.01
+                  ETH)
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Action buttons */}

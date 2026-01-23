@@ -1,4 +1,4 @@
-// Sidebar.tsx - UPDATED WITH SAME LOGOUT FLOW AS TOPBAR
+// Sidebar.tsx - UPDATED WITH AUTO SIGN-IN
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   BadgeDollarSign,
@@ -20,12 +20,13 @@ import {
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
 import { useAdminAccess } from "../../hooks/useAdmin";
-
-import { useAccount, useDisconnect } from "wagmi"; // Add useDisconnect import
+import { useAccount, useDisconnect } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../../components/UserAvatar";
+import { useEffect, useRef } from "react";
+import logo from "../../assets/DexCourt-logo.webp";
 
 export function Sidebar({
   expanded,
@@ -43,56 +44,96 @@ export function Sidebar({
   const navigate = useNavigate();
   const { isAuthenticated, user, logout, loginMethod } = useAuth();
   const { isAdmin } = useAdminAccess();
-  const { isConnected } = useAccount();
-  const { disconnect } = useDisconnect(); // Add disconnect hook
-  const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
-    useWalletLogin();
+  const { isConnected, address } = useAccount();
+  const { disconnect } = useDisconnect();
+  const {
+    autoSignIn,
+    manualSignIn,
+    isLoggingIn,
+    getWalletValidationStatus,
+    // resetLoginAttempt,
+  } = useWalletLogin();
 
   const walletValidation = getWalletValidationStatus();
 
-  // ADD THIS FUNCTION - Same as in Topbar
+  // Refs to track auto sign-in in Sidebar (to prevent duplicate with Topbar)
+  const sidebarAutoSignInAttemptedRef = useRef(false);
+  const sidebarLastAddressRef = useRef<string | null>(null);
+
+  // Auto sign-in in Sidebar (only for mobile, or when Topbar might not be mounted)
+  useEffect(() => {
+    const handleSidebarAutoSignIn = async () => {
+      // Only proceed in mobile mode or if sidebar is expanded on desktop
+      if (!mobile && !expanded) return;
+
+      // Only proceed if wallet is connected and we have an address
+      if (!isConnected || !address) return;
+
+      // Prevent duplicate attempts
+      if (
+        sidebarAutoSignInAttemptedRef.current &&
+        sidebarLastAddressRef.current === address
+      ) {
+        return;
+      }
+
+      // Don't auto sign-in if already authenticated via wallet
+      if (isAuthenticated && loginMethod === "wallet") return;
+
+      // Don't auto sign-in if Telegram authenticated with wrong wallet
+      if (
+        isAuthenticated &&
+        loginMethod === "telegram" &&
+        !walletValidation.isValid
+      )
+        return;
+
+      console.log("🔐 [Sidebar] Attempting auto sign-in...");
+      sidebarAutoSignInAttemptedRef.current = true;
+      sidebarLastAddressRef.current = address;
+
+      // Small delay to ensure wallet is ready
+      setTimeout(async () => {
+        try {
+          await autoSignIn();
+        } catch (error) {
+          console.error("Sidebar auto sign-in error:", error);
+        }
+      }, 400); // Slightly longer delay than Topbar
+    };
+
+    handleSidebarAutoSignIn();
+  }, [
+    mobile,
+    expanded,
+    isConnected,
+    address,
+    isAuthenticated,
+    loginMethod,
+    walletValidation,
+    autoSignIn,
+  ]);
+
+  // Reset on disconnect
+  useEffect(() => {
+    if (!isConnected) {
+      sidebarAutoSignInAttemptedRef.current = false;
+      sidebarLastAddressRef.current = null;
+    }
+  }, [isConnected]);
+
   const reloadAfterDisconnect = () => {
-    // Small delay allows wagmi + RainbowKit to fully reset
     setTimeout(() => {
       window.location.reload();
     }, 150);
   };
 
-  const nav = [
-    { to: "/", label: "Home", icon: <Home size={18} /> },
-    { to: "/agreements", label: "Agreements", icon: <FileText size={18} /> },
-    { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
-    { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
-    { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
-    {
-      to: "/web3escrow",
-      label: "Theo's Escrow",
-      icon: <BadgeDollarSign size={18} />,
-    },
-
-    ...(isAdmin
-      ? [
-          {
-            to: "/admin",
-            label: "Admin",
-            icon: <Shield size={18} className="text-purple-300" />,
-          },
-        ]
-      : []),
-  ];
-
-  /* ---------------- TELEGRAM AUTH - UPDATED TO MATCH TOPBAR ---------------- */
-
   const handleTelegramAuth = () => {
     if (isAuthenticated) {
-      // SAME FLOW AS TOPBAR
       logout();
-      disconnect(); // Add disconnect call
-
-      // Close mobile menu if open
+      disconnect();
       if (mobile && setMobileOpen) setMobileOpen(false);
-
-      reloadAfterDisconnect(); // ✅ force clean reconnect state - SAME AS TOPBAR
+      reloadAfterDisconnect();
     } else {
       onLoginClick();
       if (mobile && setMobileOpen) setMobileOpen(false);
@@ -115,8 +156,6 @@ export function Sidebar({
     return user?.username || "unknown";
   };
 
-  /* ---------------- WALLET UI HELPERS - UPDATED TO MATCH TOPBAR ---------------- */
-
   const getWalletButtonText = (address?: string) => {
     if (isLoggingIn) return "Signing...";
 
@@ -138,7 +177,6 @@ export function Sidebar({
     }
 
     if (isConnected && !isAuthenticated) {
-      // Return truncated address with "sign in"
       if (address) {
         const truncated = `${address.slice(0, 6)}...${address.slice(-4)}`;
         return `${truncated} • Sign in`;
@@ -186,31 +224,34 @@ export function Sidebar({
     return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
   };
 
-  /* ---------------- WALLET AUTH HANDLER - UPDATED TO MATCH TOPBAR ---------------- */
-
-  const handleWalletAuth = async () => {
-    if (isAuthenticated) {
-      console.log("Already authenticated — skipping wallet login");
-      return;
-    }
-
-    if (!isConnected) {
-      console.log("Wallet not connected - RainbowKit will handle connection");
-      return;
-    }
-
-    if (isAuthenticated && user?.walletAddress && !walletValidation.isValid) {
-      return;
-    }
+  // Manual sign-in handler for Sidebar
+  const handleSidebarManualSignIn = async () => {
+    if (!isConnected) return;
 
     try {
-      await loginWithConnectedWallet();
+      await manualSignIn();
+      if (mobile && setMobileOpen) setMobileOpen(false);
     } catch (error) {
-      console.error("Wallet login failed:", error);
+      console.error("Sidebar manual sign-in error:", error);
     }
   };
 
-  /* ---------------- PROFILE CLICK ---------------- */
+  const nav = [
+    { to: "/", label: "Home", icon: <Home size={18} /> },
+    { to: "/agreements", label: "Agreements", icon: <FileText size={18} /> },
+    { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
+    { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
+    { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
+    ...(isAdmin
+      ? [
+          {
+            to: "/admin",
+            label: "Admin",
+            icon: <Shield size={18} className="text-purple-300" />,
+          },
+        ]
+      : []),
+  ];
 
   const handleProfileClick = () => {
     if (isAuthenticated) {
@@ -236,9 +277,11 @@ export function Sidebar({
       {/* Header */}
       <div className="relative flex h-16 items-center justify-between gap-3 px-4">
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="neon flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
-            <Scale size={18} />
-          </div>
+          <img
+            src={logo}
+            alt="DexCourt Logo"
+            className="size-10 object-cover"
+          />
           {expanded && (
             <span className="glow-text font-semibold text-cyan-300">
               DexCourt
@@ -341,7 +384,7 @@ export function Sidebar({
               )}
             </button>
 
-            {/* WALLET — UPDATED TO MATCH TOPBAR LOGIC */}
+            {/* WALLET — UPDATED WITH AUTO SIGN-IN LOGIC */}
             <ConnectButton.Custom>
               {({
                 account,
@@ -390,13 +433,13 @@ export function Sidebar({
                   );
                 }
 
-                // Connected wallet
+                // Connected wallet but not authenticated
                 if (connected) {
                   return (
                     <button
                       onClick={() => {
                         if (!isAuthenticated) {
-                          handleWalletAuth(); // Use the new handler
+                          handleSidebarManualSignIn();
                         } else {
                           openAccountModal();
                         }
@@ -431,6 +474,7 @@ export function Sidebar({
             </ConnectButton.Custom>
           </div>
         )}
+
         {/* Desktop profile button */}
         {!mobile && (
           <button

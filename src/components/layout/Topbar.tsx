@@ -1,10 +1,9 @@
-// Topbar.tsx - UPDATED WITH AVATAR IN USERNAME DISPLAY
+// Topbar.tsx - SINGLE AUTO SIGN-IN VERSION
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAccount, useAccountEffect, useDisconnect } from "wagmi";
 import { toast } from "sonner";
-
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import {
   Menu,
@@ -12,13 +11,13 @@ import {
   Loader2,
   ArrowRight,
   AlertTriangle,
-  Scale,
   LogOut,
   ChevronDown,
 } from "lucide-react";
 import { LoginModal } from "../LoginModal";
 import { FaTelegramPlane } from "react-icons/fa";
-import { UserAvatar } from "../UserAvatar"; // Add this import
+import { UserAvatar } from "../UserAvatar";
+import logo from "../../assets/DexCourt-logo.webp";
 
 export function Topbar({
   onMenuClick,
@@ -27,62 +26,115 @@ export function Topbar({
   onMenuClick?: () => void;
   showLogo?: boolean;
 }) {
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const { isAuthenticated, user, loginMethod, logout } = useAuth();
-
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { disconnect } = useDisconnect();
-  const [isConnecting, setIsConnecting] = useState(false);
-  const { loginWithConnectedWallet, isLoggingIn, getWalletValidationStatus } =
-    useWalletLogin();
+
+  const {
+    autoSignIn,
+    manualSignIn,
+    isLoggingIn,
+    getWalletValidationStatus,
+    resetLoginAttempt,
+  } = useWalletLogin();
+
+  // Refs to track state without causing re-renders
+  const autoLoginInProgressRef = useRef(false);
+  const walletConnectionHandledRef = useRef(false);
 
   // Get wallet validation status
   const walletValidation = getWalletValidationStatus();
 
+  // SINGLE AUTO SIGN-IN TRIGGER: Only in Topbar, not in LoginModal
+  useEffect(() => {
+    const handleAutoSignIn = async () => {
+      // Only proceed if wallet is connected and we have an address
+      if (!isConnected || !address) {
+        return;
+      }
+
+      // Prevent multiple triggers
+      if (
+        autoLoginInProgressRef.current ||
+        walletConnectionHandledRef.current
+      ) {
+        return;
+      }
+
+      // Don't auto sign-in if already authenticated via wallet
+      if (isAuthenticated && loginMethod === "wallet") {
+        walletConnectionHandledRef.current = true;
+        return;
+      }
+
+      // Don't auto sign-in if Telegram authenticated with wrong wallet
+      if (
+        isAuthenticated &&
+        loginMethod === "telegram" &&
+        !walletValidation.isValid
+      ) {
+        walletConnectionHandledRef.current = true;
+        return;
+      }
+
+      console.log("🔐 [Topbar] Attempting auto sign-in...");
+      autoLoginInProgressRef.current = true;
+      walletConnectionHandledRef.current = true;
+
+      // Small delay to ensure wallet is fully connected
+      setTimeout(async () => {
+        try {
+          await autoSignIn();
+        } catch (error) {
+          console.error("Auto sign-in error:", error);
+        } finally {
+          autoLoginInProgressRef.current = false;
+        }
+      }, 300); // Reduced delay
+    };
+
+    handleAutoSignIn();
+  }, [
+    isConnected,
+    address,
+    isAuthenticated,
+    loginMethod,
+    autoSignIn,
+    walletValidation,
+  ]);
+
   useAccountEffect({
     onConnect: (data) => {
       console.log("🔗 Wallet connected:", data.address);
-      setIsConnecting(false);
+      // Reset handling flags on new connection
+      walletConnectionHandledRef.current = false;
     },
     onDisconnect: () => {
       console.log("🔗 Wallet disconnected");
-      setIsConnecting(false);
+      // Reset all flags on disconnect
+      autoLoginInProgressRef.current = false;
+      walletConnectionHandledRef.current = false;
+      resetLoginAttempt();
 
-      reloadAfterDisconnect(); // ✅ fixes MetaMask reconnect bug
+      reloadAfterDisconnect();
     },
   });
 
-  // Handler for wallet authentication
-  // In Topbar.tsx - Update handleWalletAuth
-  const handleWalletAuth = async () => {
-    if (isAuthenticated) {
-      console.log("Already authenticated — skipping wallet login");
-      return;
-    }
-    // This should ONLY be called AFTER wallet is connected
+  // Manual sign-in handler (when user explicitly wants to sign)
+  const handleManualSignIn = async () => {
     if (!isConnected) {
-      // DO NOT TRY TO CONNECT HERE - RainbowKit handles this
-      console.log("Wallet not connected - RainbowKit will handle connection");
       return;
     }
 
-    // If authenticated via Telegram and wallet is wrong, don't proceed
-    if (isAuthenticated && user?.walletAddress && !walletValidation.isValid) {
-      return;
-    }
-
-    // Wallet login flow (for first-time login or Telegram users linking wallet)
-    setIsAuthenticating(true);
     try {
-      await loginWithConnectedWallet();
-    } finally {
-      setIsAuthenticating(false);
+      await manualSignIn();
+    } catch (error) {
+      console.error("Manual sign-in error:", error);
     }
   };
 
   const reloadAfterDisconnect = () => {
-    // Small delay allows wagmi + RainbowKit to fully reset
     setTimeout(() => {
       window.location.reload();
     }, 150);
@@ -93,8 +145,7 @@ export function Topbar({
     if (isAuthenticated) {
       logout();
       disconnect();
-
-      reloadAfterDisconnect(); // ✅ force clean reconnect state
+      reloadAfterDisconnect();
     } else {
       setShowLoginModal(true);
     }
@@ -102,10 +153,7 @@ export function Topbar({
 
   // Get wallet button text based on state
   const getWalletButtonText = () => {
-    if (isConnecting) {
-      return "Connecting...";
-    }
-    if (isAuthenticating || isLoggingIn) {
+    if (isLoggingIn) {
       return "Signing...";
     }
 
@@ -131,7 +179,7 @@ export function Topbar({
 
     // If connected but not authenticated
     if (isConnected && !isAuthenticated) {
-      return "Login via Wallet";
+      return "Sign In";
     }
 
     // Default: Connect wallet
@@ -140,10 +188,7 @@ export function Topbar({
 
   // Get wallet button icon
   const getWalletButtonIcon = () => {
-    if (isConnecting) {
-      return <Loader2 className="h-4 w-4 animate-spin" />;
-    }
-    if (isAuthenticating || isLoggingIn) {
+    if (isLoggingIn) {
       return <Loader2 className="h-4 w-4 animate-spin" />;
     }
 
@@ -185,7 +230,7 @@ export function Topbar({
     return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20";
   };
 
-  // Get Telegram button text - ADD AVATAR HERE
+  // Get Telegram button text
   const getTelegramButtonText = () => {
     return getLogoutDisplayName();
   };
@@ -237,7 +282,7 @@ export function Topbar({
             Please switch wallets to continue.
           </span>
         </div>,
-        { duration: 8000 }, // shows for 8 seconds
+        { duration: 8000 },
       );
     }
   }, [isAuthenticated, walletValidation]);
@@ -250,9 +295,11 @@ export function Topbar({
         {/* Left: Logo (shown on mobile when showLogo is true) */}
         {showLogo && (
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="neon flex h-8 w-8 items-center justify-center rounded-md bg-cyan-400/20 ring-1 ring-cyan-400/60">
-              <Scale size={18} />
-            </div>
+            <img
+              src={logo}
+              alt="DexCourt Logo"
+              className="size-10 object-cover"
+            />
             <span className="glow-text leading-none font-semibold text-cyan-300">
               DexCourt
             </span>
@@ -274,7 +321,8 @@ export function Topbar({
                 </span>
               </div>
             )}
-          {/* Telegram Login/Logout Button - UPDATED WITH AVATAR */}
+
+          {/* Telegram Login/Logout Button */}
           <button
             onClick={handleTelegramAuth}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getTelegramButtonVariant()}`}
@@ -282,7 +330,6 @@ export function Topbar({
           >
             {isAuthenticated ? (
               <>
-                {/* Add UserAvatar component here */}
                 <UserAvatar
                   userId={user?.id || ""}
                   avatarId={user?.avatarId || null}
@@ -302,8 +349,8 @@ export function Topbar({
               </>
             )}
           </button>
-          {/* Wallet Connect Button */}
 
+          {/* Wallet Connect Button - SIMPLIFIED FOR AUTO SIGN-IN */}
           <ConnectButton.Custom>
             {({
               account,
@@ -314,14 +361,6 @@ export function Topbar({
             }) => {
               const ready = mounted;
               const connected = ready && account && chain;
-
-              // console.log("🔐 ConnectButton state:", {
-              //   connected,
-              //   account: account?.address,
-              //   isAuthenticated,
-              //   loginMethod,
-              //   walletValidation: walletValidation.isValid,
-              // });
 
               // Case 1: Wallet connected AND authenticated with wallet
               if (isAuthenticated && loginMethod === "wallet" && connected) {
@@ -360,13 +399,14 @@ export function Topbar({
                 );
               }
 
-              // Connected wallet — always show address + balance
+              // Case 3: Connected but not authenticated yet (auto sign-in in progress or failed)
               if (connected) {
                 return (
                   <button
                     onClick={() => {
+                      // If auto sign-in failed or user wants to retry
                       if (!isAuthenticated) {
-                        handleWalletAuth();
+                        handleManualSignIn();
                       } else {
                         openAccountModal();
                       }
@@ -375,13 +415,17 @@ export function Topbar({
                   >
                     {!isAuthenticated ? (
                       <>
-                        <span className="text-sm font-semibold">Sign in</span>
-                        <ArrowRight className="h-4 w-4 opacity-80" />
-
+                        {isLoggingIn ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4" />
+                        )}
+                        <span className="text-sm font-semibold">
+                          {isLoggingIn ? "Signing..." : "Sign In"}
+                        </span>
                         <span className="ml-1 max-w-[100px] truncate opacity-90">
                           {account.displayName}
                         </span>
-
                         <span className="opacity-70">
                           {account.displayBalance}
                         </span>
@@ -413,8 +457,6 @@ export function Topbar({
               );
             }}
           </ConnectButton.Custom>
-          {/* 
-          <ConnectButton /> */}
         </div>
 
         {/* Right: Mobile Hamburger Menu */}
