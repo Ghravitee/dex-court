@@ -1279,8 +1279,6 @@ export default function DisputeDetails() {
             {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
 
             {dispute.status === "Vote in Progress" &&
-              (dispute.agreement?.type === 1 || // Reputational: always show if status is Vote in Progress
-                (dispute.agreement?.type === 2 && isVoteStarted())) && // Escrow: only show if vote started
               canVote &&
               !hasVoted &&
               !isCurrentUserPlaintiff() &&
