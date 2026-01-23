@@ -114,9 +114,8 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
-        isCurrentUser ? "opacity-80" : ""
-      }`}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-80" : ""
+        }`}
     >
       <UserAvatar
         userId={user.id}
@@ -225,8 +224,6 @@ export default function OpenDisputeModal({
   const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
   const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(0);
-  const [onChainVotingConfigs, setOnChainVotingConfigs] = useState<any>(null);
-  const [onChainLoading, setOnChainLoading] = useState(false);
 
   // File upload state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -517,8 +514,8 @@ export default function OpenDisputeModal({
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
+            resultUser.telegram?.username ||
+            resultUser.telegramInfo,
           );
 
           return (
@@ -695,13 +692,10 @@ export default function OpenDisputeModal({
         const res = await getVoteConfigs(
           agreement.chainId || networkInfo.chainId,
         );
-        console.log("getVoteConfigs data:", res);
-        setOnChainVotingConfigs(res);
+        return res;
       } catch (err) {
         console.error("Failed to fetch getVoteConfig agreement:", err);
-        setOnChainVotingConfigs(null);
-      } finally {
-        setOnChainLoading(false);
+        return null;
       }
     },
     [networkInfo.chainId],
@@ -781,12 +775,11 @@ export default function OpenDisputeModal({
         blockchain: agreement?.blockchain,
       });
 
-      fetchOnchainVoteConfigs(agreement);
+      const configs = await fetchOnchainVoteConfigs(agreement);
 
       console.log("📊 [DEBUG] On-chain configs:", {
-        feeAmount: onChainVotingConfigs?.feeAmount?.toString(),
-        isLoading: onChainLoading,
-        configsExist: !!onChainVotingConfigs,
+        feeAmount: configs?.feeAmount?.toString(),
+        configsExist: !!configs,
       });
 
       console.log("🎯 [DEBUG] Voting ID to use:", votingIdToUse);
@@ -795,10 +788,8 @@ export default function OpenDisputeModal({
         bigInt: BigInt(votingIdToUse),
       });
 
-      const feeValue =
-        onChainVotingConfigs && !onChainLoading
-          ? onChainVotingConfigs.feeAmount
-          : undefined;
+
+      const feeValue = configs ? configs.feeAmount : undefined;
 
       console.log("💰 [DEBUG] Transaction details:", {
         contractAddress,
@@ -806,7 +797,6 @@ export default function OpenDisputeModal({
         args: [BigInt(votingIdToUse), false],
         value: feeValue?.toString(),
         hasFee: !!feeValue,
-        isLoading: onChainLoading,
       });
 
       console.log("⏳ [DEBUG] Calling writeContract...");
@@ -847,15 +837,7 @@ export default function OpenDisputeModal({
     } finally {
       console.log("🔚 [DEBUG] createDisputeOnchain execution complete");
     }
-  }, [
-    agreement,
-    fetchOnchainVoteConfigs,
-    networkInfo.chainId,
-    onChainLoading,
-    onChainVotingConfigs,
-    votingIdToUse,
-    writeContract,
-  ]);
+  }, [agreement, fetchOnchainVoteConfigs, networkInfo.chainId, votingIdToUse, writeContract]);
 
   // Main form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1108,17 +1090,15 @@ export default function OpenDisputeModal({
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
                       key={kind}
-                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                        form.kind === kind
-                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 bg-white/5"
-                      } ${
-                        isSubmitting ||
-                        transactionStep === "pending" ||
-                        isProcessingPaidDispute
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
+                        ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                        : "border-white/10 bg-white/5"
+                        } ${isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
                           ? "cursor-not-allowed opacity-50"
                           : ""
-                      }`}
+                        }`}
                     >
                       <input
                         type="radio"
@@ -1347,17 +1327,15 @@ export default function OpenDisputeModal({
                 </label>
 
                 <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                    isDragOver
-                      ? "border-cyan-400/60 bg-cyan-500/20"
-                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                  } ${
-                    isSubmitting ||
-                    transactionStep === "pending" ||
-                    isProcessingPaidDispute
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                    ? "border-cyan-400/60 bg-cyan-500/20"
+                    : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                    } ${isSubmitting ||
+                      transactionStep === "pending" ||
+                      isProcessingPaidDispute
                       ? "cursor-not-allowed opacity-50"
                       : ""
-                  }`}
+                    }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -1377,13 +1355,12 @@ export default function OpenDisputeModal({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${
-                      isSubmitting ||
+                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${isSubmitting ||
                       transactionStep === "pending" ||
                       isProcessingPaidDispute
-                        ? "cursor-not-allowed"
-                        : ""
-                    }`}
+                      ? "cursor-not-allowed"
+                      : ""
+                      }`}
                   >
                     <Upload className="mb-2 h-6 w-6 text-cyan-400" />
                     <div className="text-sm text-cyan-300">
