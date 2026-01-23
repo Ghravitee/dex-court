@@ -1,8 +1,13 @@
 // src/web3/helper.ts
 
 import { useState, useEffect } from "react";
-import { DISPUTE_STATS_FALLBACK, LEADERBOARD_FALLBACK, VOTER_STATS_FALLBACK, VOTER_TIER_FALLBACK, VOTING_STATS_WITH_AVG_FALLBACK, type Agreement, type BatchCreatorsResult, type DisputeStats, type Leaderboard, type VoterReveal, type VoterStats, type VoterTier, type VOTING_CONFIG, type VotingStatsWithAvg } from "./interfaces";
-import type { RawAgreementArray, RawVotingConfigArray } from "./tuples";
+import {
+  DISPUTE_STATS_FALLBACK,
+  type Agreement,
+  type BatchCreatorsResult,
+  type DisputeStats,
+} from "./interfaces";
+import type { RawAgreementArray } from "./tuples";
 import { ZERO_ADDRESS } from "./config";
 import { getAgreementExistOnchain } from "./readContract";
 
@@ -43,9 +48,9 @@ export function useCountdown(targetTimestamp: bigint) {
 }
 
 export const isValidAddress = (addr: string): boolean => {
-  if (!addr || typeof addr !== 'string') return false;
+  if (!addr || typeof addr !== "string") return false;
   // Handle empty string, "0x", or malformed addresses
-  if (addr === '0x' || addr.trim() === '' || addr.length !== 42) return false;
+  if (addr === "0x" || addr.trim() === "" || addr.length !== 42) return false;
   return /^0x[a-fA-F0-9]{40}$/.test(addr);
 };
 
@@ -83,7 +88,8 @@ function toBigInt(value: unknown): bigint {
     if (typeof value === "number") return BigInt(Math.trunc(value));
     if (typeof value === "string") {
       // allow hex string or decimal
-      if (value.startsWith("0x") || value.startsWith("0X")) return BigInt(value);
+      if (value.startsWith("0x") || value.startsWith("0X"))
+        return BigInt(value);
       return BigInt(value);
     }
   } catch {
@@ -93,7 +99,11 @@ function toBigInt(value: unknown): bigint {
 }
 
 function toAddress(value: unknown): `0x${string}` {
-  if (typeof value === "string" && value.startsWith("0x") && value.length === 42) {
+  if (
+    typeof value === "string" &&
+    value.startsWith("0x") &&
+    value.length === 42
+  ) {
     return value as `0x${string}`;
   }
   return ZERO_ADDRESS as `0x${string}`;
@@ -109,39 +119,6 @@ function toBool(value: unknown): boolean {
     if (!Number.isNaN(n)) return n !== 0;
   }
   return false;
-}
-
-/** helper to convert unknown readContract response to Agreement */
-export function normalizeVotingConfig(res: unknown): VOTING_CONFIG {
-  if (Array.isArray(res)) {
-    const tuple = res as RawVotingConfigArray;
-
-    return {
-      tier1ThresholdPercent: toBigInt(tuple[0]),
-      tier2ThresholdPercent: toBigInt(tuple[1]),
-      divisor: toBigInt(tuple[2]),
-      tier1Weight: toBigInt(tuple[3]),
-      tier2Weight: toBigInt(tuple[4]),
-      judgeWeight: toBigInt(tuple[5]),
-      votingDuration: toBigInt(tuple[6]),
-    };
-  }
-
-  const obj = (res ?? {}) as Record<string, unknown>;
-  const get = (k1: string, k2: number) => {
-    if (k1 in obj) return obj[k1];
-    return obj[k2];
-  };
-
-  return {
-    tier1ThresholdPercent: toBigInt(get("tier1ThresholdPercent", 0)),
-    tier2ThresholdPercent: toBigInt(get("tier2ThresholdPercent", 1)),
-    divisor: toBigInt(get("divisor", 2)),
-    tier1Weight: toBigInt(get("tier1Weight", 3)),
-    tier2Weight: toBigInt(get("tier2Weight", 4)),
-    judgeWeight: toBigInt(get("judgeWeight", 5)),
-    votingDuration: toBigInt(get("votingDuration", 6)),
-  };
 }
 
 export function normalizeAgreement(res: unknown): Agreement {
@@ -224,63 +201,6 @@ export function normalizeAgreement(res: unknown): Agreement {
   };
 }
 
-export const normalizeVotingStatsWithAvg = (raw: unknown): VotingStatsWithAvg => {
-  if (!raw || !Array.isArray(raw) || raw.length < 10) {
-    return VOTING_STATS_WITH_AVG_FALLBACK;
-  }
-
-  return {
-    disputesOpened: BigInt(raw[0] ?? 0),
-    votesCast: BigInt(raw[1] ?? 0),
-    finalized: BigInt(raw[2] ?? 0),
-    plaintiffWins: BigInt(raw[3] ?? 0),
-    defendantWins: BigInt(raw[4] ?? 0),
-    dismissed: BigInt(raw[5] ?? 0),
-    tier1Votes: BigInt(raw[6] ?? 0),
-    tier2Votes: BigInt(raw[7] ?? 0),
-    judgeVotes: BigInt(raw[8] ?? 0),
-    avgResolutionTime: BigInt(raw[9] ?? 0),
-  };
-};
-
-export const normalizeLeaderboard = (raw: unknown): Leaderboard => {
-  if (!raw || !Array.isArray(raw) || raw.length < 4) {
-    return LEADERBOARD_FALLBACK;
-  }
-
-  return {
-    mostActiveJudge: (raw[0] as `0x${string}`) || '0x0000000000000000000000000000000000000000',
-    mostActiveTier1: (raw[1] as `0x${string}`) || '0x0000000000000000000000000000000000000000',
-    mostActiveTier2: (raw[2] as `0x${string}`) || '0x0000000000000000000000000000000000000000',
-    mostActiveOverall: (raw[3] as `0x${string}`) || '0x0000000000000000000000000000000000000000',
-  };
-};
-
-export const normalizeVoterStats = (raw: unknown): VoterStats => {
-  if (!raw || !Array.isArray(raw) || raw.length < 5) {
-    return VOTER_STATS_FALLBACK;
-  }
-
-  return {
-    tier: BigInt(raw[0] ?? 0),
-    totalVotes: BigInt(raw[1] ?? 0),
-    votesForPlaintiff: BigInt(raw[2] ?? 0),
-    votesForDefendant: BigInt(raw[3] ?? 0),
-    votesForDismiss: BigInt(raw[4] ?? 0),
-  };
-};
-
-export const normalizeVoterTier = (raw: unknown): VoterTier => {
-  if (!raw || !Array.isArray(raw) || raw.length < 2) {
-    return VOTER_TIER_FALLBACK;
-  }
-
-  return {
-    tier: BigInt(raw[0] ?? 0),
-    weight: BigInt(raw[1] ?? 0),
-  };
-};
-
 export const normalizeDisputeStats = (raw: unknown): DisputeStats => {
   if (!raw || !Array.isArray(raw) || raw.length < 10) {
     return DISPUTE_STATS_FALLBACK;
@@ -297,26 +217,6 @@ export const normalizeDisputeStats = (raw: unknown): DisputeStats => {
     weightedPlaintiff: BigInt(raw[7] ?? 0),
     weightedDefendant: BigInt(raw[8] ?? 0),
     weightedDismiss: BigInt(raw[9] ?? 0),
-  };
-};
-
-export const normalizeVoterReveal = (raw: unknown): VoterReveal => {
-  if (!raw || !Array.isArray(raw) || raw.length < 5) {
-    return {
-      isRevealed: false,
-      vote: 0n,
-      tier: 0n,
-      weight: 0n,
-      timestamp: 0n,
-    };
-  }
-
-  return {
-    isRevealed: Boolean(raw[0]),
-    vote: BigInt(raw[1] ?? 0),
-    tier: BigInt(raw[2] ?? 0),
-    weight: BigInt(raw[3] ?? 0),
-    timestamp: BigInt(raw[4] ?? 0),
   };
 };
 
@@ -349,7 +249,7 @@ export const formatNumberWithCommas = (value: string | undefined): string => {
 
 export async function checkMultipleAgreementsExist(
   chainId: number,
-  agreementIds: bigint[]
+  agreementIds: bigint[],
 ): Promise<BatchCreatorsResult> {
   try {
     const creators = await getAgreementExistOnchain(chainId, agreementIds);
@@ -357,18 +257,18 @@ export async function checkMultipleAgreementsExist(
     // Map IDs to their creators
     const results = agreementIds.map((id, index) => ({
       id,
-      creator: creators[index] || ZERO_ADDRESS as `0x${string}`,
-      exists: creators[index] !== undefined && creators[index] !== ZERO_ADDRESS
+      creator: creators[index] || (ZERO_ADDRESS as `0x${string}`),
+      exists: creators[index] !== undefined && creators[index] !== ZERO_ADDRESS,
     }));
 
     return results;
   } catch (error) {
-    console.error('Error checking multiple agreements:', error);
+    console.error("Error checking multiple agreements:", error);
     // Return fallback results with all false
-    return agreementIds.map(id => ({
+    return agreementIds.map((id) => ({
       id,
       creator: ZERO_ADDRESS as `0x${string}`,
-      exists: false
+      exists: false,
     }));
   }
 }
