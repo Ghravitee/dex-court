@@ -51,6 +51,7 @@ import {
   getMilestoneCount,
   getTokenDecimals,
   getTokenSymbol,
+  getVoteConfigs,
 } from "../web3/readContract";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
 import {
@@ -1146,13 +1147,14 @@ export default function EscrowDetails() {
 
   const networkInfo = useNetworkEnvironment();
   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
-  const [onChainLoading, setOnChainLoading] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
   const [uiSuccess, setUiSuccess] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(
     BigInt(Math.floor(Date.now() / 1000)),
   );
   const [milestones, setMilestones] = useState<MilestoneData[]>([]);
+  const [onChainVotingConfigs, setOnChainVotingConfigs] = useState<any>(null);
+  const [onChainLoading, setOnChainLoading] = useState(false);
 
   const [refetchTrigger, setRefetchTrigger] = useState(0);
 
@@ -2327,6 +2329,27 @@ export default function EscrowDetails() {
     }
   };
 
+  const fetchOnchainVoteConfigs = useCallback(
+    async (agreement: any) => {
+      if (!agreement) return;
+
+      console.log("Fetching on-chain vote configs for agreement:", agreement);
+      try {
+        const res = await getVoteConfigs(
+          agreement.chainId || networkInfo.chainId,
+        );
+        console.log("getVoteConfigs data:", res);
+        setOnChainVotingConfigs(res);
+      } catch (err) {
+        console.error("Failed to fetch getVoteConfig agreement:", err);
+        setOnChainVotingConfigs(null);
+      } finally {
+        setOnChainLoading(false);
+      }
+    },
+    [networkInfo.chainId],
+  );
+
   // Replace the existing handleRaiseDispute function with this:
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,
@@ -2366,6 +2389,8 @@ export default function EscrowDetails() {
         onChainAgreementId: onChainAgreement.id,
       });
 
+      fetchOnchainVoteConfigs(agreementId);
+
       // Call the API to create dispute
       const disputeResponse = await disputeService.createDisputeFromAgreement(
         agreementId,
@@ -2383,6 +2408,13 @@ export default function EscrowDetails() {
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
         args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse), probono],
+        value: probono
+          ? 0n
+          : data.requestKind === DisputeTypeEnum.Paid
+            ? onChainVotingConfigs && !onChainLoading
+              ? onChainVotingConfigs.feeAmount
+              : undefined
+            : 0n,
       });
 
       setUiSuccess("Dispute raised successfully! Telegram notifications sent.");

@@ -170,9 +170,11 @@ class DisputeService {
     agreementId: number,
     data: CreateDisputeFromAgreementRequest,
     files: File[],
+    chainId?: number, // Make chainId optional for backward compatibility
   ): Promise<{ id: number; votingId?: string }> {
     console.log(
       "🚀 Creating dispute from agreement with proper form-data format...",
+      chainId ? `[Chain ID: ${chainId}]` : "",
     );
 
     const formData = new FormData();
@@ -185,6 +187,12 @@ class DisputeService {
 
     const votingId = generateVotingId();
     formData.append("votingId", votingId);
+
+    // Add chainId if provided
+    if (chainId !== undefined) {
+      formData.append("chainId", String(chainId));
+      console.log("🔗 Added chainId to formData:", chainId);
+    }
 
     console.log("✅ Generated votingId for agreement dispute:", votingId);
 
@@ -238,6 +246,7 @@ class DisputeService {
         console.log(
           "✅ Dispute created from agreement successfully!",
           `Dispute ID: ${disputeId}, Voting ID: ${votingId}`,
+          chainId ? `Chain ID: ${chainId}` : "",
           "Full response:",
           response.data,
         );
@@ -278,12 +287,27 @@ class DisputeService {
           const errorData = error.response.data;
           if (errorData.error === "MissingData") {
             throw new Error(
-              "Missing required data. Please check all fields are filled correctly.",
+              "Missing required data. Please check all fields are filled correctly." +
+                (chainId === undefined
+                  ? " (Note: chainId might be required for paid disputes)"
+                  : ""),
             );
           }
           if (errorData.error === "InvalidData") {
             throw new Error(
-              "Invalid data provided. Please check your inputs and try again.",
+              "Invalid data provided. Please check your inputs and try again." +
+                (chainId !== undefined ? ` (Chain ID: ${chainId})` : ""),
+            );
+          }
+          // Add specific error for missing chainId if the backend requires it
+          if (errorData.error === "MissingChainId") {
+            throw new Error(
+              "Chain ID is required for creating a dispute. Please specify the blockchain network.",
+            );
+          }
+          if (errorData.error === "InvalidChainId") {
+            throw new Error(
+              "Invalid chain ID provided. Please check the network and try again.",
             );
           }
         }
@@ -298,6 +322,16 @@ class DisputeService {
           throw new Error(
             "A dispute already exists for this agreement. You cannot create another one.",
           );
+        }
+
+        if (error.response.status === 422) {
+          // Handle validation errors (might include chainId validation)
+          const errorData = error.response.data;
+          if (errorData.errors && errorData.errors.chainId) {
+            throw new Error(
+              `Invalid chain ID: ${errorData.errors.chainId.join(", ")}`,
+            );
+          }
         }
       }
 

@@ -71,6 +71,36 @@ export const AGREEMENT_FALLBACK: Agreement = {
   defendant: ZERO_ADDRESS as `0x${string}`,
 };
 
+export interface Escrow_Configs {
+  platformFeeBP: bigint;
+  feeAmount: bigint;
+  disputeDuration: bigint;
+  grace1Duration: bigint;
+  grace2Duration: bigint;
+}
+
+export const ESCROW_CONFIG_FALLBACKS: Escrow_Configs = {
+  platformFeeBP: 0n,
+  feeAmount: 0n,
+  disputeDuration: 0n,
+  grace1Duration: 0n,
+  grace2Duration: 0n,
+};
+
+export interface VOTING_CONFIG {
+  disputeDuration: bigint;
+  vToken: `0x${string}`; //voteToken
+  feeRec: `0x${string}`; //feeRecipient
+  feeAmount: bigint;
+}
+
+export const VOTING_CONFIG_FALLBACK: VOTING_CONFIG = {
+  disputeDuration: 0n,
+  vToken: ZERO_ADDRESS as `0x${string}`,
+  feeRec: ZERO_ADDRESS as `0x${string}`,
+  feeAmount: 0n,
+};
+
 // Add a type for batch creators result
 export type BatchCreatorsResult = {
   id: bigint;
@@ -106,59 +136,6 @@ export interface LoadingStates {
   loadAgreement: boolean;
 }
 
-export interface VOTING_CONFIG {
-  tier1ThresholdPercent: bigint;
-  tier2ThresholdPercent: bigint;
-  divisor: bigint;
-  tier1Weight: bigint;
-  tier2Weight: bigint;
-  judgeWeight: bigint;
-  votingDuration: bigint;
-}
-
-export const VOTING_CONFIG_FALLBACK: VOTING_CONFIG = {
-  tier1ThresholdPercent: 0n,
-  tier2ThresholdPercent: 0n,
-  divisor: 0n,
-  tier1Weight: 0n,
-  tier2Weight: 0n,
-  judgeWeight: 0n,
-  votingDuration: 0n,
-}
-
-export interface VotingStatsWithAvg {
-  disputesOpened: bigint;
-  votesCast: bigint;
-  finalized: bigint;
-  plaintiffWins: bigint;
-  defendantWins: bigint;
-  dismissed: bigint;
-  tier1Votes: bigint;
-  tier2Votes: bigint;
-  judgeVotes: bigint;
-  avgResolutionTime: bigint;
-}
-
-export interface Leaderboard {
-  mostActiveJudge: `0x${string}`;
-  mostActiveTier1: `0x${string}`;
-  mostActiveTier2: `0x${string}`;
-  mostActiveOverall: `0x${string}`;
-}
-
-export interface VoterStats {
-  tier: bigint;
-  totalVotes: bigint;
-  votesForPlaintiff: bigint;
-  votesForDefendant: bigint;
-  votesForDismiss: bigint;
-}
-
-export interface VoterTier {
-  tier: bigint;
-  weight: bigint;
-}
-
 export interface DisputeStats {
   id: bigint;
   active: boolean;
@@ -172,47 +149,6 @@ export interface DisputeStats {
   weightedDismiss: bigint;
 }
 
-export interface VoterReveal {
-  isRevealed: boolean;
-  vote: bigint;
-  tier: bigint;
-  weight: bigint;
-  timestamp: bigint;
-}
-
-export const VOTING_STATS_WITH_AVG_FALLBACK: VotingStatsWithAvg = {
-  disputesOpened: 0n,
-  votesCast: 0n,
-  finalized: 0n,
-  plaintiffWins: 0n,
-  defendantWins: 0n,
-  dismissed: 0n,
-  tier1Votes: 0n,
-  tier2Votes: 0n,
-  judgeVotes: 0n,
-  avgResolutionTime: 0n,
-};
-
-export const LEADERBOARD_FALLBACK: Leaderboard = {
-  mostActiveJudge: '0x0000000000000000000000000000000000000000',
-  mostActiveTier1: '0x0000000000000000000000000000000000000000',
-  mostActiveTier2: '0x0000000000000000000000000000000000000000',
-  mostActiveOverall: '0x0000000000000000000000000000000000000000',
-};
-
-export const VOTER_STATS_FALLBACK: VoterStats = {
-  tier: 0n,
-  totalVotes: 0n,
-  votesForPlaintiff: 0n,
-  votesForDefendant: 0n,
-  votesForDismiss: 0n,
-};
-
-export const VOTER_TIER_FALLBACK: VoterTier = {
-  tier: 0n,
-  weight: 0n,
-};
-
 export const DISPUTE_STATS_FALLBACK: DisputeStats = {
   id: 0n,
   active: false,
@@ -225,4 +161,3 @@ export const DISPUTE_STATS_FALLBACK: DisputeStats = {
   weightedDefendant: 0n,
   weightedDismiss: 0n,
 };
-
