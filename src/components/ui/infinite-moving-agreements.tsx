@@ -29,6 +29,26 @@ interface InfiniteMovingAgreementsProps {
   showControls?: boolean;
 }
 
+// Utility function to format wallet addresses
+const formatWalletAddress = (address: string | undefined): string => {
+  if (!address) return "";
+
+  // Remove @ symbol if present
+  const formatted = address.startsWith("@") ? address.substring(1) : address;
+
+  // If it looks like a wallet address (starts with 0x and has length > 20), slice it
+  if (formatted.startsWith("0x") && formatted.length > 20) {
+    return `${formatted.slice(0, 6)}...${formatted.slice(-4)}`;
+  }
+
+  // If it's still too long (like a long username), slice it
+  if (formatted.length > 15) {
+    return `${formatted.slice(0, 12)}...`;
+  }
+
+  return formatted;
+};
+
 export const InfiniteMovingAgreements = ({
   items,
   direction = "left",
@@ -207,7 +227,6 @@ export const InfiniteMovingAgreements = ({
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
               title="Previous card"
             >
-              {/* <FaStepBackward className="h-5 w-5 text-cyan-300" /> */}
               <ChevronLeft className="h-5 w-5 text-cyan-300" />
             </button>
           </div>
@@ -219,7 +238,6 @@ export const InfiniteMovingAgreements = ({
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
               title="Next card"
             >
-              {/* <FaStepForward className="h-5 w-5 text-cyan-300" /> */}
               <ChevronRight className="h-5 w-5 text-cyan-300" />
             </button>
           </div>
@@ -288,7 +306,7 @@ export const InfiniteMovingAgreements = ({
                         size="md"
                       />
                       <span className="max-w-[130px] text-xs text-cyan-300">
-                        {item.createdBy}
+                        {formatWalletAddress(item.createdBy)}
                       </span>
                     </div>
 
@@ -306,7 +324,7 @@ export const InfiniteMovingAgreements = ({
                         size="md"
                       />
                       <span className="max-w-[130px] text-xs text-cyan-300">
-                        {item.counterparty}
+                        {formatWalletAddress(item.counterparty)}
                       </span>
                     </div>
                   </div>

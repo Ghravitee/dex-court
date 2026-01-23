@@ -1,8 +1,9 @@
-// src/components/LoginModal.tsx - IMPROVED VERSION
-import { useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// src/components/LoginModal.tsx - FIXED WITH CLEAR SIGN MESSAGING
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { useAuth } from "../hooks/useAuth";
-import { X, Wallet, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
+import { X, Wallet, Loader2, CheckCircle2 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../hooks/useWalletLogin";
@@ -20,17 +21,39 @@ export function LoginModal({
 }: LoginModalProps) {
   const [otp, setOtp] = useState("");
   const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
-  const { login, isLoading, linkTelegram, user } = useAuth();
+  const { login, isLoading, linkTelegram, user, isAuthenticated, loginMethod } =
+    useAuth();
   const { isConnected, address } = useAccount();
 
   const {
-    loginWithConnectedWallet,
+    manualSignIn,
     isLoggingIn,
     error: walletError,
     setError: setWalletError,
   } = useWalletLogin();
 
-  // In LoginModal.tsx - Replace the handleTelegramAction function
+  // Close modal when user becomes authenticated (after auto sign-in)
+  useEffect(() => {
+    if (isOpen && isAuthenticated && activeTab === "wallet") {
+      console.log("🔐 [Modal] User authenticated, closing modal...");
+      // Small delay to show success state before closing
+      const timer = setTimeout(() => {
+        onClose();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isAuthenticated, activeTab, onClose]);
+
+  // Only handle auto sign-in if modal opens with wallet already connected
+  useEffect(() => {
+    if (isOpen && activeTab === "wallet" && isConnected && address) {
+      console.log(
+        "🔐 [Modal] Wallet already connected, showing auto sign-in status",
+      );
+    }
+  }, [isOpen, activeTab, isConnected, address]);
+
   const handleTelegramAction = async () => {
     if (!otp.trim()) {
       alert("Please enter your OTP");
@@ -50,7 +73,6 @@ export function LoginModal({
 
       onClose();
       setOtp("");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error(`${mode === "link" ? "Linking" : "Login"} failed:`, error);
 
@@ -58,16 +80,6 @@ export function LoginModal({
         error.response?.data?.message ||
         error.message ||
         "Authentication failed";
-
-      // Handle specific error cases
-      if (
-        errorMessage.includes("already exists") ||
-        errorMessage.includes("already registered") ||
-        errorMessage.includes("User already exists")
-      ) {
-        alert("You already have an existing account. Please login instead.");
-        return;
-      }
 
       if (errorMessage.includes("expired")) {
         alert(
@@ -84,23 +96,11 @@ export function LoginModal({
         alert(
           "Telegram bot not found. Please check the bot username: @DexCourtDVBot",
         );
-      } else if (
-        errorMessage.includes("401") ||
-        errorMessage.includes("unauthorized")
-      ) {
-        alert("Authentication failed. Please check your OTP and try again.");
       } else {
         alert(`Authentication failed: ${errorMessage}`);
       }
     }
   };
-
-  // Update the wallet section text to be clearer
-  <p className="text-sm text-gray-300">
-    {mode === "link"
-      ? "Connect your wallet to link it to your account"
-      : "Connect your wallet to access DexCourt. We'll automatically find your existing account or create a new one."}
-  </p>;
 
   const getModalTitle = () => {
     if (mode === "link") {
@@ -116,8 +116,11 @@ export function LoginModal({
     return isLoading ? "Continuing..." : "Continue with Telegram";
   };
 
-  // Replace the renderWalletProgress function with this:
   const renderWalletProgress = () => {
+    const isSuccess =
+      isAuthenticated &&
+      (loginMethod === "wallet" || (loginMethod === "telegram" && isConnected));
+
     return (
       <div className="mb-4 space-y-3">
         {/* Step 1: Connect Wallet */}
@@ -147,24 +150,54 @@ export function LoginModal({
         <div className="flex items-center gap-3">
           <div
             className={`flex h-6 w-6 items-center justify-center rounded-full ${
-              isConnected
-                ? "border-2 border-amber-400 text-amber-400"
-                : "border-2 border-gray-500 text-gray-500"
+              isSuccess
+                ? "bg-green-500 text-white"
+                : isLoggingIn
+                  ? "animate-pulse border-2 border-amber-400 text-amber-400"
+                  : isConnected && !isLoggingIn
+                    ? "border-2 border-green-400 text-green-400"
+                    : "border-2 border-gray-500 text-gray-500"
             }`}
           >
-            2
+            {isSuccess ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : isLoggingIn ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              "2"
+            )}
           </div>
           <div className="flex-1">
             <p
-              className={`text-sm ${isConnected ? "text-amber-300" : "text-gray-500"}`}
+              className={`text-sm ${
+                isSuccess
+                  ? "text-green-300"
+                  : isLoggingIn
+                    ? "text-amber-300"
+                    : isConnected && !isLoggingIn
+                      ? "text-green-300"
+                      : "text-gray-500"
+              }`}
             >
-              Verify ownership
+              {isSuccess
+                ? "Signed In Successfully!"
+                : isLoggingIn
+                  ? "Signing Message..."
+                  : "Verify Ownership"}
             </p>
-            {isConnected && (
-              <p className="text-xs text-amber-200">
-                Click below to sign message
+            {isSuccess ? (
+              <p className="text-xs text-green-200">
+                Authentication complete! ✓
               </p>
-            )}
+            ) : isLoggingIn ? (
+              <p className="text-xs text-amber-200">
+                Please approve the signature in your wallet...
+              </p>
+            ) : isConnected && !isLoggingIn ? (
+              <p className="text-xs text-green-200">
+                You'll be prompted to sign a message ✓
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -178,6 +211,11 @@ export function LoginModal({
     setWalletError(null);
     onClose();
   };
+
+  // Check if authentication was successful
+  const isAuthSuccess =
+    isAuthenticated &&
+    (loginMethod === "wallet" || (loginMethod === "telegram" && isConnected));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -223,7 +261,6 @@ export function LoginModal({
         {/* Wallet Section */}
         {activeTab === "wallet" && (
           <div className="space-y-4">
-            {/* NEW: Show current user's linked wallet info */}
             {mode === "link" && user?.walletAddress && (
               <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-3">
                 <p className="text-sm font-medium text-amber-300">
@@ -243,132 +280,141 @@ export function LoginModal({
                 ? user?.walletAddress
                   ? "Reconnect your linked wallet to verify ownership"
                   : "Connect your wallet to link it to your account"
-                : "Connect your wallet to access DexCourt. We'll automatically find your existing account or create a new one."}
+                : "Connect your wallet to access DexCourt. You'll be prompted to sign a message to verify ownership."}
             </p>
 
-            {/* NEW: Progress Indicator */}
+            {/* Progress Indicator */}
             {renderWalletProgress()}
 
-            {mode === "link" && isConnected ? (
+            {walletError && (
+              <div className="rounded-md border border-red-400/20 bg-red-500/10 p-3">
+                <p className="text-sm text-red-300">{walletError}</p>
+              </div>
+            )}
+
+            {/* Connected wallet info */}
+            {isConnected && address && (
+              <div
+                className={`rounded-md border p-3 ${
+                  isAuthSuccess
+                    ? "border-green-400/20 bg-green-500/10"
+                    : "border-cyan-400/20 bg-cyan-500/10"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p
+                      className={`text-sm font-medium ${
+                        isAuthSuccess ? "text-green-300" : "text-cyan-300"
+                      }`}
+                    >
+                      Wallet Connected{" "}
+                      {isAuthSuccess ? "✅" : isLoggingIn ? "⏳" : "✅"}
+                    </p>
+                    <p
+                      className={`text-xs ${
+                        isAuthSuccess ? "text-green-200" : "text-cyan-200"
+                      }`}
+                    >
+                      {address.slice(0, 6)}...{address.slice(-4)}
+                    </p>
+                  </div>
+                  {isAuthSuccess ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-400" />
+                  ) : (
+                    !isLoggingIn && (
+                      <CheckCircle2 className="h-5 w-5 text-green-400" />
+                    )
+                  )}
+                </div>
+                {isLoggingIn && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Waiting for signature approval in your wallet...
+                  </p>
+                )}
+                {isAuthSuccess && (
+                  <p className="mt-2 text-xs text-green-300">
+                    ✅ Authentication successful! Closing...
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!isAuthSuccess && (
+              <ConnectButton.Custom>
+                {({ openConnectModal, mounted }) => {
+                  const ready = mounted;
+
+                  return (
+                    <Button
+                      disabled={!ready || isLoggingIn}
+                      onClick={openConnectModal}
+                      className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Signing Message...
+                        </>
+                      ) : !isConnected ? (
+                        <>
+                          <Wallet className="mr-2 h-5 w-5" />
+                          Connect Wallet
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="mr-2 h-5 w-5" />
+                          Wallet Connected
+                        </>
+                      )}
+                    </Button>
+                  );
+                }}
+              </ConnectButton.Custom>
+            )}
+
+            {/* Manual sign-in button for when auto sign-in fails */}
+            {isConnected && !isLoggingIn && walletError && !isAuthSuccess && (
+              <Button
+                onClick={async () => {
+                  const success = await manualSignIn();
+                  if (success) onClose();
+                }}
+                className="w-full border border-amber-400/40 bg-amber-600/20 py-3 text-sm font-medium text-amber-100 hover:bg-amber-500/30"
+              >
+                Try Manual Sign-In
+              </Button>
+            )}
+
+            {/* Dynamic help text */}
+            {!isConnected ? (
+              <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
+                <p className="text-center text-sm text-cyan-300">
+                  <strong>Step 1:</strong> Click "Connect Wallet" to link your
+                  wallet
+                </p>
+                <p className="mt-1 text-center text-xs text-cyan-200">
+                  You'll be prompted to sign a message after connection
+                </p>
+              </div>
+            ) : !isAuthSuccess ? (
               <div className="rounded-md border border-green-400/20 bg-green-500/10 p-3">
-                <p className="text-sm text-green-300">
-                  ✅ Wallet connected! Switch to Telegram tab to complete
-                  linking.
+                <p className="text-center text-sm text-green-300">
+                  <strong>Step 2:</strong> Sign message to verify ownership
+                </p>
+                <p className="mt-1 text-center text-xs text-green-200">
+                  Check your wallet for a signature request
                 </p>
               </div>
             ) : (
-              <>
-                {walletError && (
-                  <div className="rounded-md border border-red-400/20 bg-red-500/10 p-3">
-                    <p className="text-sm text-red-300">{walletError}</p>
-                  </div>
-                )}
-
-                {/* NEW: Connected wallet info */}
-                {isConnected && address && (
-                  <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-cyan-300">
-                          Wallet Connected ✅
-                        </p>
-                        <p className="text-xs text-cyan-200">
-                          {address.slice(0, 6)}...{address.slice(-4)}
-                        </p>
-                      </div>
-                      <CheckCircle2 className="h-5 w-5 text-green-400" />
-                    </div>
-                  </div>
-                )}
-
-                <ConnectButton.Custom>
-                  {({ openConnectModal, mounted }) => {
-                    const ready = mounted;
-
-                    return (
-                      <Button
-                        disabled={!ready || isLoggingIn}
-                        onClick={async () => {
-                          // STEP 1 — not connected → open RainbowKit modal
-                          if (!isConnected) {
-                            openConnectModal();
-                            return;
-                          }
-
-                          // STEP 2 — linking safety check
-                          if (
-                            mode === "link" &&
-                            user?.walletAddress &&
-                            address
-                          ) {
-                            if (
-                              user.walletAddress.toLowerCase() !==
-                              address.toLowerCase()
-                            ) {
-                              setWalletError(
-                                "This wallet does not match your linked wallet.",
-                              );
-                              return;
-                            }
-                          }
-
-                          // STEP 3 — sign message / authenticate
-                          const success = await loginWithConnectedWallet();
-                          if (success) onClose();
-                        }}
-                        className="w-full border border-cyan-400/40 bg-cyan-600/20 py-4 text-lg font-medium text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
-                      >
-                        {isLoggingIn ? (
-                          <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Signing...
-                          </>
-                        ) : !isConnected ? (
-                          <>
-                            <Wallet className="mr-2 h-5 w-5" />
-                            Connect Wallet
-                          </>
-                        ) : (
-                          <>
-                            <ArrowRight className="mr-2 h-5 w-5" />
-                            Verify Ownership
-                          </>
-                        )}
-                      </Button>
-                    );
-                  }}
-                </ConnectButton.Custom>
-
-                {/* NEW: Dynamic help text based on connection state */}
-                {!isConnected ? (
-                  <div className="rounded-md border border-cyan-400/20 bg-cyan-500/10 p-3">
-                    <p className="text-center text-sm text-cyan-300">
-                      <strong>Step 1:</strong> Click "Connect Wallet LoginModal" to link
-                      your wallet
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-3">
-                    <p className="text-center text-sm text-amber-300">
-                      <strong>Step 2:</strong> Click "Verify Ownership" to sign
-                      a message and complete authentication
-                    </p>
-                    <p className="mt-1 text-center text-xs text-amber-200">
-                      This proves you own the wallet and keeps your account
-                      secure
-                    </p>
-                  </div>
-                )}
-
-                {/* Connection status info */}
-                {isConnected && !isLoggingIn && (
-                  <div className="text-center">
-                    <p className="text-sm text-gray-300">
-                      Almost there! One more step to verify ownership.
-                    </p>
-                  </div>
-                )}
-              </>
+              <div className="rounded-md border border-green-400/20 bg-green-500/10 p-3">
+                <p className="text-center text-sm text-green-300">
+                  <strong>Success!</strong> You're now authenticated
+                </p>
+                <p className="mt-1 text-center text-xs text-green-200">
+                  The modal will close automatically...
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -379,7 +425,7 @@ export function LoginModal({
             <p className="text-sm text-gray-300">
               {mode === "link"
                 ? "Link your Telegram account to enable social features"
-                : "Login or register with Telegram. If you have an existing account, we'll automatically log you in."}
+                : "Login or register with Telegram."}
             </p>
 
             <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
@@ -414,10 +460,6 @@ export function LoginModal({
             <p className="text-sm text-gray-300">
               Paste the OTP you received below to{" "}
               {mode === "link" ? "link your account" : "continue"}.
-              <br />
-              <span className="text-cyan-300">
-                We'll automatically detect if you have an existing account.
-              </span>
             </p>
 
             <label className="block text-sm text-gray-300">

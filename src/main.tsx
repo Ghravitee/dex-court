@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+// import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 // import App from './App.tsx'
@@ -6,7 +6,7 @@ import WalletApp from "./entry/WalletApp.tsx";
 import "@rainbow-me/rainbowkit/styles.css";
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <WalletApp />
-  </StrictMode>,
+  // <StrictMode>
+  <WalletApp />,
+  // </StrictMode>,
 );

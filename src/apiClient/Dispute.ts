@@ -12,14 +12,17 @@
 
 import {
   AgreementListQueryResquest,
+  DisputeCreationDTO,
   DisputeDetailsDTO,
   DisputeListDTO,
+  DisputeVoteEligibilityDTO,
+  DisputeVoteInProgressResultListDTO,
+  DisputeVoteRequest,
   DisputesByAgreementRequest,
   DisputesDefendantClaimRequest,
   DisputesEditDefendantClaimRequest,
   DisputesRequest,
-  DisputeVoteInProgressResultListDTO,
-  DisputeVoteRequest,
+  EditPlaintiffClaimRequest,
 } from "./data-contracts";
 import { ContentType, HttpClient, RequestParams } from "./http-client";
 
@@ -27,7 +30,7 @@ export class Dispute<
   SecurityDataType = unknown,
 > extends HttpClient<SecurityDataType> {
   /**
-   * @description Create Dispute This endpoint is used to create a new dispute manually between two parties (plaintiff and defendant). The creator provides the claim text, title, description, dispute type (ProBono or Paid), and optionally witnesses. The dispute can include up to 10 attached files, uploaded using multipart/form-data. Validation rules: - All required fields must be provided: `claim`, `title`, `requestKind`, `description`, `defendant`, and at least one file. - `requestKind` must be a valid value from `DisputeTypeEnum`. - If the type is `Paid`, the creator must have a valid wallet address. - Witnesses (if provided) must exist and not be deleted. - The defendant account must exist and not be deleted. Upon success, the dispute is created and notifications are sent via Telegram to the defendant and witnesses (if any).
+   * @description Create Dispute This endpoint is used to create a new dispute manually between two parties (plaintiff and defendant). The creator provides the claim text, title, description, dispute type (ProBono or Paid), and optionally witnesses. The dispute can include up to 10 attached files, uploaded using multipart/form-data. Validation rules: - All required fields must be provided: `claim`, `title`, `requestKind`, `description`, `defendant`, and at least one file. - `requestKind` must be a valid value from `DisputeTypeEnum`. - If the type is `Paid`, the creator must have a valid wallet address. - Witnesses (if provided) must exist and not be deleted. - The defendant account can exist or not. Upon success, the dispute is created and notifications are sent via Telegram to the defendant and witnesses (if any).
    *
    * @tags Dispute
    * @name DisputeCreate
@@ -35,12 +38,13 @@ export class Dispute<
    * @secure
    */
   disputeCreate = (data: DisputesRequest, params: RequestParams = {}) =>
-    this.request<void, void>({
+    this.request<DisputeCreationDTO, void>({
       path: `/dispute`,
       method: "POST",
       body: data,
       secure: true,
       type: ContentType.Json,
+      format: "json",
       ...params,
     });
   /**
@@ -89,12 +93,13 @@ export class Dispute<
     data: DisputesByAgreementRequest,
     params: RequestParams = {},
   ) =>
-    this.request<void, void>({
+    this.request<DisputeCreationDTO, void>({
       path: `/dispute/${agreementId}`,
       method: "POST",
       body: data,
       secure: true,
       type: ContentType.Json,
+      format: "json",
       ...params,
     });
   /**
@@ -177,7 +182,7 @@ export class Dispute<
    */
   plaintiffClaimPartialUpdate = (
     disputeId: number,
-    data: DisputesRequest,
+    data: EditPlaintiffClaimRequest,
     params: RequestParams = {},
   ) =>
     this.request<void, void>({
@@ -240,6 +245,30 @@ export class Dispute<
       ...params,
     });
   /**
+   * @description Attach files to an existing dispute message Allows authorized users to attach files to a message they created. The message must exist and belong to the same dispute.
+   *
+   * @tags Dispute
+   * @name MessageUploadCreate
+   * @request POST:/dispute/{disputeId}/message/{messageId}/upload
+   * @secure
+   */
+  messageUploadCreate = (
+    disputeId: number,
+    messageId: number,
+    data: {
+      files?: any[];
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<void, void>({
+      path: `/dispute/${disputeId}/message/${messageId}/upload`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.FormData,
+      ...params,
+    });
+  /**
    * @description Get all disputes currently in VoteInProgress (no pagination) Returns all ongoing disputes where voting is still active. Typically used for the Voting Hub view in the app.
    *
    * @tags Dispute
@@ -282,7 +311,7 @@ export class Dispute<
       ...params,
     });
   /**
-   * @description Cast a vote in a dispute Judges and community members with tier holding tokens can cast their votes for Plaintiff, Defendant, or DismissCase. TODO: MISSING > RASGNUR > Add tier logic to the vote Witnesses, plaintiffs, and defendants cannot vote.
+   * @description Cast a vote in a dispute Judges and community members with tier holding tokens can cast their votes for Plaintiff, Defendant, or DismissCase. Witnesses, plaintiffs, and defendants cannot vote.
    *
    * @tags Dispute
    * @name VoteCreate
@@ -300,6 +329,22 @@ export class Dispute<
       body: data,
       secure: true,
       type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Check eligibility of an user on a certain dispute This endpoint checks if the user is eligible to vote on that dispute or not
+   *
+   * @tags Dispute
+   * @name CheckEligibilityCreate
+   * @request POST:/dispute/{disputeId}/check-eligibility
+   * @secure
+   */
+  checkEligibilityCreate = (disputeId: number, params: RequestParams = {}) =>
+    this.request<DisputeVoteEligibilityDTO, void>({
+      path: `/dispute/${disputeId}/check-eligibility`,
+      method: "POST",
+      secure: true,
+      format: "json",
       ...params,
     });
 }

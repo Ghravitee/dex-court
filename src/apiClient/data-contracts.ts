@@ -15,31 +15,8 @@ export interface AccountUpdateRequest {
   bio?: string;
 }
 
-export interface AgreementsRequest {
-  /** Title of agreement */
-  title: string;
-  /** Description of agreement */
-  description: string;
-  /** Type of agreement > enum > [Reputation = 1, Escrow] */
-  type: number;
-  /** Visibility of agreement > enum > [Private = 1, Public, AutoPublic - used when a dispute has been raised, it's automatically] */
-  visibility: number;
-  /** first party of agreement */
-  firstParty: string;
-  /** counter party of agreement */
-  counterParty: string;
-  /** Deadline of agreement > requires a bigger date than today, expected input: '2025-10-14T00:00:00.000Z' */
-  deadline?: string;
-  /** Indicates if the agreement includes funds */
-  includesFunds: boolean;
-  /** Indicates if the agreement should secure the funds */
-  secureTheFunds: boolean;
-  /** Token symbol of escrow agreement > required only when amount has been setted, if not it's optional */
-  tokenSymbol?: string;
-  /** Amount of escrow agreement > required only when token symbol has been setted, if not it's optional */
-  amount?: number;
-  /** contract Address of agreement > required only when token symbol has been setted as custom, if not it's optional */
-  contractAddress?: string;
+export interface AccountsRoleRequest {
+  accountsId: any[];
 }
 
 export interface AgreementSignRequest {
@@ -48,6 +25,35 @@ export interface AgreementSignRequest {
 }
 
 export type AgreementListQueryResquest = any;
+
+export interface AgreementsEditRequest {
+  /** Title of the agreement */
+  title?: string;
+  /** Description of the agreement */
+  description?: string;
+  /** Type of agreement > enum > [Reputation = 1, Escrow] */
+  type?: number;
+  /** Visibility of agreement > enum > [Private = 1, Public, AutoPublic - used when a dispute has been raised, it's automatically] */
+  visibility?: number;
+  /** Deadline of agreement > requires a future date, example: '2025-10-14T00:00:00.000Z' */
+  deadline?: string;
+  /** Token symbol of escrow agreement > required only when amount is set */
+  tokenSymbol?: string;
+  /** Amount of escrow agreement > required only when tokenSymbol is set */
+  amount?: number;
+  /** Contract address > required only when tokenSymbol is 'custom' */
+  contractAddress?: string;
+  /** Indicates if the agreement includes funds */
+  includesFunds?: boolean;
+  /** Indicates if the agreement should secure the funds */
+  secureTheFunds?: boolean;
+  txnhash?: string;
+  contractAgreementId?: string;
+  chainId?: number;
+  votingId?: string;
+  payerWalletAddress?: string;
+  payeeWalletAddress?: string;
+}
 
 export interface AgreementDeliveryRequest {
   /**
@@ -83,6 +89,24 @@ export interface DisputesRequest {
   defendant: string;
   /** Formal claim text describing the issue or complaint */
   claim: string;
+  votingId: string;
+  chainId?: number;
+  witnesses?: string[];
+}
+
+export interface EditPlaintiffClaimRequest {
+  /** Title of the dispute */
+  title?: string;
+  /** Description of the dispute */
+  description?: string;
+  /** Type of dispute > enum > [ProBono = 1, Paid] - requires having wallet */
+  requestKind?: number;
+  /** Formal claim text describing the issue or complaint */
+  claim?: string;
+  feeAmount?: number;
+  txnhash?: string;
+  contractAgreementId?: string;
+  chainId?: number;
   witnesses?: string[];
 }
 
@@ -95,6 +119,9 @@ export interface DisputesByAgreementRequest {
   requestKind: number;
   /** Formal claim text by the plaintiff */
   claim: string;
+  chainId?: number;
+  votingId: string;
+  contractAgreementId?: string;
   witnesses?: string[];
 }
 
@@ -140,6 +167,30 @@ export interface DisputeVoteRequest {
 
 export type DisputeListVoteSettledQueryRequest = any;
 
+export interface DisputeSocketJoinRequest {
+  /** Dispute ID to join (loads full chat history) */
+  disputeId: number;
+}
+
+export interface DisputeSocketMessageCreateRequest {
+  /** Dispute ID to which the message belongs */
+  disputeId: number;
+  /** Content text of the message */
+  content: string;
+}
+
+export interface DisputeSocketMessageDeleteRequest {
+  /** Dispute ID */
+  disputeId: number;
+  /** Message ID to delete */
+  messageId: number;
+}
+
+export interface DisputeSocketMessageDeletedEventRequest {
+  /** ID of the message that was deleted */
+  messageId: number;
+}
+
 export interface LoginTelegramRequest {
   /** User’s OTP code */
   otp: string;
@@ -172,6 +223,10 @@ export interface RegisterTelegramRequest {
   username: string;
 }
 
+export interface TestingRequest {
+  disputeIds: any[];
+}
+
 export interface AccountSummaryDTO {
   /** Account unique identifier */
   id: number;
@@ -181,6 +236,8 @@ export interface AccountSummaryDTO {
   bio?: string;
   /** Whether the account is platform verified */
   isVerified: boolean;
+  /** Whether the account is admin or no */
+  isAdmin: boolean;
   /** Telegram information */
   telegram?: object;
   /** Telegram username (nullable) */
@@ -197,6 +254,93 @@ export interface AccountSummaryDTO {
 
 export interface AccountListDTO {
   results: AccountSummaryDTO[];
+}
+
+export interface ReputationEntryDTO {
+  /** Reputation entry ID */
+  id: number;
+  /** Event type (enum ReputationEventTypeEnum > TelegramVerified = 1, AgreementCompleted = 2, AgreementEscrowCompleted = 3, DisputeWon = 4, VotedWinningOutcome = 5, WitnessEvery5Comments = 6, JudgeWinningVote = 7, JudgeCommentAdded = 8, FirstJudgeToVote = 9, FirstCommunityToVote = 10, CommunityVoteLost = 50, JudgeVoteLost = 51, DisputeLostRegular = 52, DisputeLostEscrow = 53, LateDelivery = 54, FrequentCancellationsBanned = 55, SpamAgreementsTempBan = 56, }) */
+  eventType: number;
+  /** Event reputation value (+/-) */
+  value: number;
+  /** Attached entity ID (agreementId, disputeId) > only used if it's associated with agreements or disputes */
+  eventId?: string;
+  /** ISO creation timestamp */
+  createdAt: string;
+}
+
+export interface ReputationHistoryDTO {
+  /** Total number of reputation events */
+  total: number;
+  /** Number of results in this page */
+  totalResults: number;
+  /** Base reputation (always 50) */
+  baseScore: number;
+  /** Total score including base + events */
+  finalScore: number;
+  results: ReputationEntryDTO[];
+}
+
+export interface DisputeStatsDTO {
+  /** Number of disputes cancelled */
+  disputes: number;
+}
+
+export interface ReputationLeaderboardEntryDTO {
+  /** Account unique identifier */
+  id: number;
+  /** Display username (telegram handle or wallet) */
+  username?: string;
+  /** Avatar file ID (nullable) */
+  avatarId?: number;
+  /** Reputation score including base score */
+  finalScore: number;
+  /** Rank in the current page (1-based) */
+  rank: number;
+  /** Total agreements for this account */
+  agreementsTotal: number;
+  /** Number of disputes cancelled */
+  disputes: number;
+  lastEvents: ReputationEntryDTO[];
+}
+
+export interface ReputationLeaderboardDTO {
+  /** Total number of matching accounts */
+  total: number;
+  /** Number of results in this page */
+  totalResults: number;
+  results: ReputationLeaderboardEntryDTO[];
+}
+
+export interface ReputationFeedAccountDTO {
+  /** Account unique identifier */
+  id: number;
+  /** Display username (telegram handle or wallet) */
+  username?: string;
+  /** Avatar file ID (nullable) */
+  avatarId?: number;
+}
+
+export interface ReputationFeedEntryDTO {
+  /** Reputation entry id */
+  id: number;
+  account: ReputationFeedAccountDTO;
+  /** Reputation event type enum */
+  eventType: number;
+  /** Event value (+/-) */
+  value: number;
+  /** Attached entity ID (if applicable) */
+  eventId?: number;
+  /** ISO creation date */
+  createdAt: string;
+}
+
+export interface ReputationFeedDTO {
+  /** Total number of reputation entries (for non-deleted accounts) */
+  total: number;
+  /** Number of results in this page */
+  totalResults: number;
+  results: ReputationFeedEntryDTO[];
 }
 
 export interface AgreementParty {
@@ -219,8 +363,17 @@ export interface AgreementListItem {
   dateCreated: string;
   /** Title of the agreement */
   title: string;
+  /** Description text of the agreement */
+  description: string;
+  payerWalletAddress?: string;
+  payeeWalletAddress?: string;
+  contractAgreementId?: string;
+  chainId?: number;
+  escrowContractAddress?: string;
   firstParty: AgreementParty;
   counterParty: AgreementParty;
+  /** Agreement type > enum > [Reputation = 1, Escrow] */
+  type: number;
   /** Amount of the agreement (nullable) */
   amount?: number;
   /** Token symbol of the agreement (nullable) */
@@ -372,6 +525,12 @@ export interface AgreementDetailsDTO {
   tokenSymbol?: string;
   /** Escrow contract address (nullable) */
   escrowContract?: string;
+  txnhash?: string;
+  contractAgreementId?: string;
+  chainId?: number;
+  votingId?: string;
+  payerWalletAddress?: string;
+  payeeWalletAddress?: string;
   /** Date when the agreement was created (ISO 8601) */
   createdAt: string;
   /** Deadline date (ISO 8601) */
@@ -384,8 +543,13 @@ export interface AgreementDetailsDTO {
   timeline?: AgreementEventDTO[];
 }
 
+export interface AgreementCreationDTO {
+  /** Agreement unique identifier */
+  id?: number;
+}
+
 export interface DisputeAccountDTO {
-  /** Account unique identifier */
+  /** Account unique identifier > can be null if it's a ghost account */
   id?: number;
   /** Account username or Telegram username or wallet address */
   username?: string;
@@ -406,6 +570,11 @@ export interface DisputeFileDTO {
   mimeType?: string;
   /** Upload timestamp (ISO 8601) */
   uploadedAt?: string;
+}
+
+export interface DisputeCreationDTO {
+  /** Dispute unique identifier */
+  id?: number;
 }
 
 export interface DisputeMessageDTO {
@@ -452,17 +621,34 @@ export interface DisputeDefendantSectionDTO {
   evidenceFiles?: DisputeFileDTO[];
 }
 
+export interface AgreementDetailDisputeDTO {
+  /** agreement id */
+  id?: number;
+  /** agreement type */
+  type?: number;
+  /** agreement status */
+  status?: number;
+  /** agreement title */
+  title?: string;
+}
+
 export interface DisputeDetailsDTO {
   /** Dispute unique identifier */
   id: number;
-  /** Agreement id associated */
-  agreementId?: number;
+  /** Agreement associated */
+  agreement?: agreementDetailDisputeDto;
   /** Title or short summary of the dispute */
   title: string;
   /** Current dispute status (DisputeStatusEnum > Pending = 1, VoteInProgress, Settled, Dismissed) */
   status: number;
   /** Type of dispute (DisputeTypeEnum > ProBono = 1, Paid) */
   type: number;
+  txnhash?: string;
+  contractAgreementId?: string;
+  votingId?: string;
+  /** Fee Amount of the dispute to vote */
+  feeAmount?: number;
+  chainId?: number;
   /** Result of dispute (DisputeResultEnum, nullable > Pending = 1, PartyA, PartyB, Draw, Cancelled) */
   result?: number;
   /** Date when the dispute was created (ISO 8601 format) */
@@ -488,7 +674,9 @@ export interface DisputeListItemDTO {
   /** Title of the dispute */
   title: string;
   /** Shortened version of the plaintiff’s claim or complaint */
-  claim: string;
+  claim?: string;
+  /** Agreement associated */
+  agreement?: agreementDetailDisputeDto;
   /** Dispute type > enum > [ProBono = 1, Paid] */
   requestType: number;
   /** Current status of the dispute > enum > [Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4] */
@@ -523,7 +711,9 @@ export interface DisputeVoteInProgressListDTO {
   /** Title of the dispute */
   title: string;
   /** Shortened version of the plaintiff’s claim or complaint */
-  claim: string;
+  claim?: string;
+  /** Agreement associated */
+  agreement?: agreementDetailDisputeDto;
   /** if user is logged in, will show a flag if user has voted */
   hasVoted: string;
   /** Dispute type > enum > [ProBono = 1, Paid] */
@@ -532,6 +722,8 @@ export interface DisputeVoteInProgressListDTO {
   status: number;
   /** Result of the dispute (nullable, depends on voting outcome) */
   result?: number;
+  /** Fee Amount of the dispute to vote */
+  feeAmount?: number;
   /** Date when the dispute was created (ISO 8601 format) */
   createdAt: string;
   /** Date when dispute entered pending vote) */
@@ -602,6 +794,75 @@ export interface DisputeVoteResultListDTO {
   /** Number of disputes returned in the current page */
   totalResults: number;
   results: any[];
+}
+
+export interface DisputeSocketFileDTO {
+  /** Unique file identifier (MySQL) */
+  id: number;
+  /** Original name of the file */
+  fileName: string;
+  /** File size in bytes (nullable) */
+  fileSize?: number;
+  /** MIME type of the file (e.g., image/png) */
+  mimeType?: string;
+  /** Upload timestamp (ISO 8601 format) */
+  uploadedAt?: string;
+}
+
+export interface DisputeSocketMessageDTO {
+  /** Message unique identifier (MySQL) */
+  id: number;
+  /** Dispute ID to which this message belongs */
+  disputeId: number;
+  /** Author avatar file ID (nullable) */
+  avatarId?: number;
+  /** Author account ID (nullable) */
+  accountId?: number;
+  /** Display name of the author (username, Telegram username, or wallet) */
+  username: string;
+  /** Role of the message author within the dispute (plaintiff, defendant, judge, witness, admin) */
+  role?: string;
+  /** Message side (DisputeMessageEnum: None=0, Plaintiff=1, Defendant=2) */
+  side: number;
+  /** Text content of the message */
+  content: string;
+  /** ISO 8601 timestamp when the message was created */
+  creationDate: string;
+  files?: DisputeSocketFileDTO[];
+}
+
+export interface DisputeSocketJoinDTO {
+  /** Whether join succeeded */
+  ok: boolean;
+  /** Error code (ErrorsEnum) if failed */
+  error?: number;
+  history?: DisputeSocketMessageDTO[];
+}
+
+export interface DisputeSocketMessageCreateDTO {
+  /** Whether message creation succeeded */
+  ok: boolean;
+  /** Error code (ErrorsEnum) if applicable */
+  error?: number;
+  message?: DisputeSocketMessageDTO;
+}
+
+export interface DisputeSocketMessageDeleteDTO {
+  /** Whether delete succeeded */
+  ok: boolean;
+  /** Error code (ErrorsEnum) if applicable */
+  error?: number;
+}
+
+export interface DisputeVoteEligibilityDTO {
+  /** If user's wallet is eligible to vote */
+  isEligible: boolean;
+  /** why user's wallet is/isn't eligible to vote > ErrorsEnum > if no tier returns Forbidden = 17 > if on loadProofForAddress there's an error returns Forbidden = 17 > If user has no wallet, returns MissingWallet = 12 */
+  reason?: number;
+  /** user's tier vote > don't forget if judge tier is 0. */
+  tier?: number;
+  /** user's weight vote */
+  weight?: number;
 }
 
 export interface LoginDTO {

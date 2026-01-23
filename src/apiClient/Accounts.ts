@@ -14,6 +14,9 @@ import {
   AccountListDTO,
   AccountSummaryDTO,
   AccountUpdateRequest,
+  ReputationFeedDTO,
+  ReputationHistoryDTO,
+  ReputationLeaderboardDTO,
 } from "./data-contracts";
 import { ContentType, HttpClient, RequestParams } from "./http-client";
 
@@ -147,6 +150,82 @@ export class Accounts<
       path: `/accounts/${accountId}/file/${fileId}`,
       method: "GET",
       secure: true,
+      ...params,
+    });
+  /**
+   * @description Get paginated reputation history for a user. This endpoint returns all reputation events for a given account, fully paginated, including: - Id of entry - Event type - Event value (+/-) - Event ID > Attached entity ID (if applicable) - ISO creation date Each user starts with **50 base reputation points**, which are included in the `finalScore` result.
+   *
+   * @tags Account
+   * @name ReputationList
+   * @request GET:/accounts/{accountId}/reputation
+   * @secure
+   */
+  reputationList = (
+    accountId: number,
+    query?: {
+      /** Number of results per page (default: 10) */
+      top?: number;
+      /** Results to skip for pagination (default: 0) */
+      skip?: number;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<ReputationHistoryDTO, void>({
+      path: `/accounts/${accountId}/reputation`,
+      method: "GET",
+      query: query,
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get reputation leaderboard. Returns a paginated leaderboard of accounts ordered by reputation score. Score = BASE_SCORE (50) + value of all reputation events for the account. Only accounts with at least one reputation event and active accounts Search parameter filters by telegram username or wallet address. Sort by lowest / highest > same param as the other ones > highest by default.
+   *
+   * @tags Account
+   * @name ReputationLeaderboardList
+   * @request GET:/accounts/reputation/leaderboard
+   */
+  reputationLeaderboardList = (
+    query?: {
+      /** Number of results per page (default: 10) */
+      top?: number;
+      /** Results to skip for pagination (default: 0) */
+      skip?: number;
+      /** Sort by reputation score > enum > [asc, desc] (default: desc [highest]) */
+      sort?: string;
+      /** Search by telegram username or wallet address */
+      search?: string;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<ReputationLeaderboardDTO, void>({
+      path: `/accounts/reputation/leaderboard`,
+      method: "GET",
+      query: query,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get latest reputation events (global feed). Returns the most recent reputation events across ALL accounts, ordered by creation date (DESC). Only events from non-deleted accounts (IsDeleted = 0) are included.
+   *
+   * @tags Account
+   * @name ReputationUpdatesList
+   * @request GET:/accounts/reputation/updates
+   */
+  reputationUpdatesList = (
+    query?: {
+      /** Number of results per page (default: 5, max: 50) */
+      top?: number;
+      /** Results to skip for pagination (default: 0) */
+      skip?: number;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<ReputationFeedDTO, void>({
+      path: `/accounts/reputation/updates`,
+      method: "GET",
+      query: query,
+      format: "json",
       ...params,
     });
 }

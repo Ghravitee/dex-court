@@ -1,8 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// hooks/useWalletLogin.ts - COMPLETELY FIXED VERSION
-import { useState } from "react";
+// hooks/useWalletLogin.ts - FIXED SINGLE REQUEST VERSION
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useAccount, useSignMessage } from "wagmi";
+
+// Global ref to track auto sign-in across components
+let globalLoginAttempted = false;
+let globalLastWalletAddress: string | null = null;
 
 export function useWalletLogin() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -11,6 +15,20 @@ export function useWalletLogin() {
     useAuth();
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+
+  // Local refs for component-specific tracking
+  const componentLoginAttemptedRef = useRef(false);
+  const componentSignInPromiseRef = useRef<Promise<boolean> | null>(null);
+
+  // Reset login attempt when wallet disconnects
+  useEffect(() => {
+    if (!isConnected) {
+      globalLoginAttempted = false;
+      globalLastWalletAddress = null;
+      componentLoginAttemptedRef.current = false;
+      componentSignInPromiseRef.current = null;
+    }
+  }, [isConnected]);
 
   // FIXED: Better wallet validation logic
   const validateWalletForUser = (): boolean => {
@@ -36,88 +54,97 @@ export function useWalletLogin() {
     return true;
   };
 
-  const loginWithConnectedWallet = async (): Promise<boolean> => {
+  // SINGLE AUTO SIGN-IN FUNCTION with better coordination
+  const autoSignIn = useCallback(async (): Promise<boolean> => {
+    // Only proceed if wallet is connected and we have an address
+    if (!isConnected || !address) {
+      console.log("🔐 Auto sign-in: Wallet not connected");
+      return false;
+    }
+
+    // Global check: prevent multiple components from triggering auto sign-in
+    if (globalLoginAttempted && globalLastWalletAddress === address) {
+      console.log(
+        "🔐 Auto sign-in: Already attempted globally for this wallet",
+      );
+      return false;
+    }
+
+    // Component check: prevent this component from trying multiple times
+    if (componentLoginAttemptedRef.current) {
+      console.log("🔐 Auto sign-in: Already attempted in this component");
+      return false;
+    }
+
+    // If already authenticated and wallet matches, skip
+    if (isAuthenticated && user?.walletAddress) {
+      if (user.walletAddress.toLowerCase() === address.toLowerCase()) {
+        console.log("🔐 Auto sign-in: Already authenticated with this wallet");
+        return true;
+      }
+    }
+
+    // Mark that we're attempting login
+    globalLoginAttempted = true;
+    globalLastWalletAddress = address;
+    componentLoginAttemptedRef.current = true;
+
+    console.log("🔐 Starting auto sign-in for wallet:", address);
+
+    setIsLoggingIn(true);
+    setError(null);
+
+    try {
+      // Step 1: Get login nonce
+      const nonce = await generateLoginNonce(address);
+      console.log("🔐 Auto sign-in nonce received:", nonce);
+
+      // Step 2: Sign the nonce
+      const message = nonce;
+      const signature = await signMessageAsync({ message });
+      console.log("🔐 Auto sign-in signature generated:", signature);
+
+      // Step 3: Verify and login (or register new account)
+      await loginWithWallet(address, signature);
+      console.log("🔐 Auto sign-in successful!");
+
+      return true;
+    } catch (error: any) {
+      console.error("Auto sign-in failed:", error);
+      handleWalletError(error);
+
+      // Reset global state on error (but only for non-user errors)
+      if (!error.message?.includes("User rejected")) {
+        globalLoginAttempted = false;
+        componentLoginAttemptedRef.current = false;
+      }
+
+      return false;
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }, [
+    isConnected,
+    address,
+    isAuthenticated,
+    user,
+    generateLoginNonce,
+    signMessageAsync,
+    loginWithWallet,
+  ]);
+
+  // Manual trigger for sign-in (when user explicitly clicks)
+  const manualSignIn = async (): Promise<boolean> => {
     if (!isConnected || !address) {
       setError("Please connect your wallet first");
       return false;
     }
 
-    // NEW: For authenticated users, we're linking wallet to existing account
-    if (isAuthenticated && user) {
-      // This is a wallet linking flow for existing users (especially Telegram users)
-      return await linkWalletToExistingAccount();
-    }
+    // Reset the attempt flags to allow manual sign-in
+    globalLoginAttempted = false;
+    componentLoginAttemptedRef.current = false;
 
-    // Original login flow for unauthenticated users
-    return await performWalletLogin();
-  };
-
-  // FIXED: Wallet linking for existing users
-  const linkWalletToExistingAccount = async (): Promise<boolean> => {
-    setIsLoggingIn(true);
-    setError("");
-
-    try {
-      console.log(
-        "🔐 Starting wallet linking for existing user:",
-        user?.username,
-      );
-
-      // Step 1: Get nonce for linking
-      const nonceResponse = await generateLoginNonce(address!);
-      const nonce = nonceResponse;
-
-      console.log("🔐 Linking nonce received:", nonce);
-
-      // Step 2: Sign the nonce
-      const message = nonce;
-      const signature = await signMessageAsync({ message });
-
-      console.log("🔐 Linking signature generated:", signature);
-
-      // Step 3: This will link the wallet to the existing account
-      await loginWithWallet(address!, signature);
-
-      console.log("🔐 Wallet successfully linked to existing account");
-      return true;
-    } catch (error: any) {
-      console.error("Wallet linking failed:", error);
-      handleWalletError(error);
-      return false;
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  // Wallet login for new users
-  const performWalletLogin = async (): Promise<boolean> => {
-    setIsLoggingIn(true);
-    setError("");
-
-    try {
-      // Step 1: Get login nonce
-      const nonceResponse = await generateLoginNonce(address!);
-      const nonce = nonceResponse;
-
-      console.log("🔐 Login nonce received:", nonce);
-
-      // Step 2: Sign ONLY the nonce
-      const message = nonce;
-      const signature = await signMessageAsync({ message });
-
-      console.log("🔐 Login signature generated:", signature);
-
-      // Step 3: Verify and login (or register new account)
-      await loginWithWallet(address!, signature);
-
-      return true;
-    } catch (error: any) {
-      console.error("Wallet login failed:", error);
-      handleWalletError(error);
-      return false;
-    } finally {
-      setIsLoggingIn(false);
-    }
+    return await autoSignIn();
   };
 
   // Error handling
@@ -207,14 +234,21 @@ export function useWalletLogin() {
   };
 
   return {
-    loginWithConnectedWallet,
+    autoSignIn,
+    manualSignIn,
     isLoggingIn,
     error,
-    setError, // ✅ allow message input
+    setError,
     clearError: () => setError(null),
     isWalletConnected: isConnected,
     walletAddress: address,
     validateWalletForUser,
     getWalletValidationStatus,
+    // Add these for tracking
+    hasLoginAttempted: componentLoginAttemptedRef.current,
+    resetLoginAttempt: () => {
+      globalLoginAttempted = false;
+      componentLoginAttemptedRef.current = false;
+    },
   };
 }

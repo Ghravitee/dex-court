@@ -165,6 +165,7 @@ class DisputeService {
   }
 
   // Create dispute from agreement
+  // Create dispute from agreement
   async createDisputeFromAgreement(
     agreementId: number,
     data: CreateDisputeFromAgreementRequest,
@@ -205,38 +206,118 @@ class DisputeService {
     }
 
     try {
+      // FIXED: Added timeout and better error handling
       const response = await api.post(`/dispute/${agreementId}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 30000, // 30 second timeout
       });
 
-      if (!response.data || !response.data.id) {
-        console.error("❌ Invalid response from server - missing dispute ID");
-        throw new Error(
-          "Server returned invalid response. Dispute not created.",
+      console.log("📥 Raw response from server:", response);
+      console.log("📦 Response data:", response.data);
+      console.log("📊 Response status:", response.status);
+
+      if (response.status === 201) {
+        // FIXED: Handle the new response format { id: disputeId }
+        if (!response.data || typeof response.data !== "object") {
+          console.error("❌ Invalid response format - expected object with id");
+          throw new Error(
+            "Server returned invalid response format. Expected { id: disputeId }.",
+          );
+        }
+
+        const disputeId = response.data.id;
+
+        if (!disputeId || typeof disputeId !== "number") {
+          console.error("❌ Missing or invalid dispute ID in response");
+          console.error("Response data:", response.data);
+          throw new Error(
+            "Server response missing dispute ID. Please contact support.",
+          );
+        }
+
+        console.log(
+          "✅ Dispute created from agreement successfully!",
+          `Dispute ID: ${disputeId}, Voting ID: ${votingId}`,
+          "Full response:",
+          response.data,
         );
+
+        return {
+          id: disputeId,
+          votingId: votingId,
+        };
+      } else if (response.status === 200) {
+        // Handle 200 OK response as well (some APIs use 200 for successful creation)
+        if (response.data && response.data.id) {
+          console.log("✅ Dispute created (200 OK)", response.data);
+          return {
+            id: response.data.id,
+            votingId: votingId,
+          };
+        } else {
+          throw new Error("Server returned 200 but missing dispute ID.");
+        }
+      } else {
+        console.error("❌ Unexpected response status:", response.status);
+        throw new Error(`Unexpected server response: ${response.status}`);
       }
-
-      console.log(
-        "✅ Dispute created from agreement with votingId:",
-        votingId,
-        response.data,
-      );
-
-      return {
-        id: response.data.id,
-        votingId: votingId,
-      };
     } catch (error: any) {
       console.error("❌ Error in createDisputeFromAgreement:", error);
 
-      if (error.response?.status === 500) {
-        console.error("❌ 500 Internal Server Error - Dispute creation failed");
+      // Enhanced error logging
+      if (error.response) {
+        console.error("📥 Server response:", {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+
+        // Handle specific error cases
+        if (error.response.status === 400) {
+          const errorData = error.response.data;
+          if (errorData.error === "MissingData") {
+            throw new Error(
+              "Missing required data. Please check all fields are filled correctly.",
+            );
+          }
+          if (errorData.error === "InvalidData") {
+            throw new Error(
+              "Invalid data provided. Please check your inputs and try again.",
+            );
+          }
+        }
+
+        if (error.response.status === 404) {
+          throw new Error(
+            "Agreement not found. Please check the agreement ID and try again.",
+          );
+        }
+
+        if (error.response.status === 409) {
+          throw new Error(
+            "A dispute already exists for this agreement. You cannot create another one.",
+          );
+        }
+      }
+
+      if (error.code === "ECONNABORTED") {
+        console.error("⏰ Request timeout - server took too long to respond");
         throw new Error(
-          "SERVER_ERROR: Dispute creation failed due to server error. Please try again.",
+          "Request timeout. The server took too long to respond. Please try again.",
         );
       }
 
-      throw error;
+      if (error.code === "ERR_NETWORK") {
+        console.error("🌐 Network error - cannot connect to server");
+        throw new Error(
+          "Cannot connect to server. Please check your internet connection and try again.",
+        );
+      }
+
+      // Re-throw with better error message
+      const errorMessage = error.message || "Unknown error occurred";
+      throw new Error(`Failed to create dispute: ${errorMessage}`);
     }
   }
 
