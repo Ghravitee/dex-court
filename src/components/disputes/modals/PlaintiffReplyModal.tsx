@@ -27,6 +27,12 @@ import { UserAvatar } from "../../../components/UserAvatar";
 import { useAuth } from "../../../hooks/useAuth";
 import { UserSearchResult } from "../UserSearchResult";
 
+const getTotalFileSize = (files: UploadedFile[]): string => {
+  const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
+  const mb = totalBytes / 1024 / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
+
 // Plaintiff Reply Modal Component
 
 const PlaintiffReplyModal = ({
@@ -163,11 +169,30 @@ const PlaintiffReplyModal = ({
     console.log("new files:", newFiles);
 
     Array.from(selectedFiles).forEach((file) => {
+      const fileSizeMB = file.size / 1024 / 1024;
       const fileType = file.type.startsWith("image/") ? "image" : "document";
+
+      // Apply file size limits based on file type (same as OpenDisputeModal)
+      if (fileType === "image" && fileSizeMB > 2) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && fileSizeMB > 3) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
         type: fileType,
+        size: fileSize,
       };
 
       // Create preview for images
@@ -254,7 +279,24 @@ const PlaintiffReplyModal = ({
       return;
     }
 
-    // Validate file sizes and types
+    // VALIDATION: Maximum 10 files allowed
+    if (files.length > 10) {
+      toast.error("Maximum 10 files allowed for evidence");
+      return;
+    }
+
+    // VALIDATION: Check total file size (max 50MB)
+    const totalSize = files.reduce((total, file) => total + file.file.size, 0);
+    const maxTotalSize = 50 * 1024 * 1024; // 50MB
+    if (totalSize > maxTotalSize) {
+      toast.error("Total file size too large", {
+        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
+        duration: 8000,
+      });
+      return;
+    }
+
+    // VALIDATION: Individual file sizes and types
     const maxFileSize = 10 * 1024 * 1024; // 10MB
     const allowedImageTypes = [
       "image/jpeg",
@@ -289,12 +331,6 @@ const PlaintiffReplyModal = ({
         );
         return;
       }
-    }
-
-    // Validate total files count
-    if (files.length > 10) {
-      toast.error("Maximum 10 files allowed for evidence");
-      return;
     }
 
     setIsSubmitting(true);
@@ -607,6 +643,11 @@ const PlaintiffReplyModal = ({
               <div>
                 <label className="mb-3 block text-sm font-medium text-cyan-200">
                   Supporting Evidence (Additional files)
+                  {files.length > 0 && (
+                    <span className="ml-2 text-xs text-cyan-400">
+                      (Total: {getTotalFileSize(files)})
+                    </span>
+                  )}
                 </label>
 
                 {/* File Input */}
@@ -624,19 +665,26 @@ const PlaintiffReplyModal = ({
                     className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-cyan-400/30 bg-cyan-500/5 px-4 py-6 text-sm transition-colors hover:bg-cyan-500/10"
                   >
                     <Upload className="h-5 w-5 text-cyan-400" />
-                    <span className="text-cyan-300">Click to upload files</span>
-                    <span className="text-cyan-200/70">
-                      (Images, PDFs, Documents)
-                    </span>
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      Supports images{" "}
+                      <span className="text-yellow-300">(max 2MB) </span>,
+                      documents{" "}
+                      <span className="text-yellow-300">(max 3MB)</span>
+                    </div>
                   </label>
                 </div>
 
                 {/* File List */}
                 {files.length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-cyan-200">
-                      Selected Files ({files.length})
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-cyan-200">
+                        Selected Files ({files.length})
+                      </h4>
+                      <div className="text-xs text-cyan-400">
+                        Total: {getTotalFileSize(files)}
+                      </div>
+                    </div>
                     {files.map((file) => (
                       <div
                         key={file.id}

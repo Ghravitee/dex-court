@@ -114,8 +114,9 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-80" : ""
-        }`}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
+        isCurrentUser ? "opacity-80" : ""
+      }`}
     >
       <UserAvatar
         userId={user.id}
@@ -179,7 +180,7 @@ const TransactionStatus = ({
 
   return (
     <div
-      className={`rounded-lg border p-3 ${config.className} border-current/20 bg-current/5`}
+      className={`rounded-lg border p-3 ${config.className} mt-3 w-fit border-current/20 bg-current/5`}
     >
       <div className="flex items-center gap-2">
         <Icon className={`h-5 w-5 ${config.iconClassName}`} />
@@ -242,6 +243,10 @@ export default function OpenDisputeModal({
   const agreementIdRef = useRef(agreement?.id);
   const networkInfoRef = useRef(networkInfo);
 
+  // Refs to prevent duplicate dispute creation
+  const hasCreatedDisputeRef = useRef(false);
+  const lastTransactionHashRef = useRef<string | null>(null);
+
   // Wagmi hooks for smart contract interaction
   const {
     data: hash,
@@ -251,13 +256,10 @@ export default function OpenDisputeModal({
     reset: resetWrite,
   } = useWriteContract();
 
-  const {
-    isSuccess: isTransactionSuccess,
-    isError: isTransactionError,
-    // isLoading: isConfirming,
-  } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isSuccess: isTransactionSuccess, isError: isTransactionError } =
+    useWaitForTransactionReceipt({
+      hash,
+    });
 
   // Generate random voting ID
   const votingIdToUse = useMemo(() => {
@@ -328,6 +330,9 @@ export default function OpenDisputeModal({
       hasInitialized.current = false;
       setTransactionStep("idle");
       setIsProcessingPaidDispute(false);
+      // Reset duplicate prevention refs
+      hasCreatedDisputeRef.current = false;
+      lastTransactionHashRef.current = null;
       resetWrite();
     }
   }, [isOpen, resetWrite]);
@@ -345,6 +350,11 @@ export default function OpenDisputeModal({
     });
     setTransactionStep("idle");
     setIsProcessingPaidDispute(false);
+    // Reset the processing ref
+    transactionProcessingRef.current = {
+      hasProcessed: false,
+      transactionHash: null,
+    };
     resetWrite();
     onDisputeCreated();
     onClose();
@@ -353,6 +363,17 @@ export default function OpenDisputeModal({
   // Create dispute in backend (used for BOTH Pro Bono AND Paid)
   const createDisputeOffchain = useCallback(
     async (transactionHash?: string) => {
+      console.log(
+        "🟡 createDisputeOffchain called with hash:",
+        transactionHash,
+      );
+
+      // Only check isSubmitting, not other flags
+      if (isSubmitting) {
+        console.log("⏸️ Already submitting, skipping");
+        return;
+      }
+
       setIsSubmitting(true);
 
       try {
@@ -383,27 +404,33 @@ export default function OpenDisputeModal({
 
         const files = currentForm.evidence.map((uf) => uf.file);
 
-        // Create the dispute with ALL data for BOTH types
+        console.log("📋 Creating dispute with:", {
+          agreementId: currentAgreementId,
+          title: currentForm.title,
+          kind: currentForm.kind,
+          chainId: currentNetworkInfo.chainId,
+          transactionHash,
+        });
+
+        // Create the dispute
         const result = await disputeService.createDisputeFromAgreement(
-          parseInt(currentAgreementId),
+          parseInt(agreement.id),
           {
-            title: currentForm.title,
-            description: currentForm.description,
+            title: form.title,
+            description: form.description,
             requestKind,
-            defendant: cleanedDefendant, // Use cleaned defendant (without @)
-            claim: currentForm.claim,
+            defendant: cleanedDefendant,
+            claim: form.claim,
             witnesses: cleanedWitnesses,
-            // Add on-chain data ONLY for paid disputes
-            ...(currentForm.kind === "Paid" && {
-              onchainVotingId: votingIdToUse,
-              transactionHash: transactionHash || hash,
-              chainId: currentNetworkInfo.chainId,
-            }),
+            onchainVotingId: votingIdToUse.toString(), // ✅ Convert number to string
+            chainId: networkInfo.chainId,
+            // Don't include transactionHash yet - will be null initially
           },
           files,
+          networkInfo.chainId,
         );
 
-        console.log("✅ Dispute created from agreement:", result);
+        console.log("✅ Dispute created successfully:", result);
 
         if (currentForm.kind === "Paid") {
           toast.success("Paid dispute created successfully!", {
@@ -420,67 +447,113 @@ export default function OpenDisputeModal({
       } catch (error: any) {
         console.error("❌ Dispute creation failed:", error);
 
-        // Enhanced error handling with specific messages
-        const errorMessage = error.message || "Failed to submit dispute";
+        // Reset processing flag on error
+        transactionProcessingRef.current = {
+          hasProcessed: false,
+          transactionHash: null,
+        };
 
-        // Check for specific error messages from the service
-        if (
-          errorMessage.includes("File too large") ||
-          errorMessage.includes("exceeds server limits")
-        ) {
-          toast.error("File Size Limit Exceeded", {
-            description:
-              "The total size of your files is too large for the server. Please:\n1. Upload fewer files\n2. Compress images before uploading\n3. Remove large documents\n4. Try with files under 5MB each",
-            duration: 10000,
-          });
-        } else if (errorMessage.includes("CORS_ERROR")) {
-          toast.error("Connection Security Issue", {
-            description:
-              "Unable to connect due to browser security restrictions.",
-            duration: 10000,
-          });
-        } else if (errorMessage.includes("Request timeout")) {
-          toast.error("Upload Timeout", {
-            description:
-              "The upload is taking too long. This may be due to:\n1. Large file sizes\n2. Slow internet connection\n3. Server is busy\n\nPlease try with smaller files or try again later.",
-            duration: 8000,
-          });
-        } else if (
-          errorMessage.includes("Missing required") ||
-          errorMessage.includes("invalid")
-        ) {
-          toast.error("Validation Error", {
-            description: errorMessage,
-            duration: 6000,
-          });
-        } else {
-          toast.error("Submission Failed", {
-            description: errorMessage,
-            duration: 6000,
-          });
-        }
+        const errorMessage = error.message || "Failed to submit dispute";
+        toast.error("Submission Failed", {
+          description: errorMessage,
+          duration: 6000,
+        });
 
         // Reset transaction state on error
-        setTransactionStep("idle");
+        setTransactionStep("error");
         setIsProcessingPaidDispute(false);
       } finally {
         setIsSubmitting(false);
       }
     },
-    [hash, resetFormAndClose, votingIdToUse],
+    [
+      resetFormAndClose,
+      votingIdToUse,
+      isSubmitting,
+      agreement.id,
+      form.claim,
+      form.description,
+      form.title,
+      networkInfo.chainId,
+    ],
   );
 
-  // Handle transaction status changes
+  // Replace the entire transaction handling logic with this:
+
+  // Transaction state ref to prevent multiple executions
+  const transactionProcessingRef = useRef({
+    hasProcessed: false,
+    transactionHash: null as string | null,
+  });
+
+  // Handle transaction status changes - SIMPLE AND RELIABLE VERSION
+  // Handle transaction status changes - UPDATED
   useEffect(() => {
+    console.log("🔄 Transaction effect running:", {
+      isWritePending,
+      isTransactionSuccess,
+      writeError,
+      isTransactionError,
+      isProcessingPaidDispute,
+      hash,
+      hasProcessed: transactionProcessingRef.current.hasProcessed,
+    });
+
     if (isWritePending) {
+      console.log("⏳ Transaction pending...");
       setTransactionStep("pending");
-    } else if (isTransactionSuccess && isProcessingPaidDispute) {
+      // Reset processing flag when new transaction starts
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
+    } else if (isTransactionSuccess && hash && isProcessingPaidDispute) {
+      console.log("✅ Transaction successful!");
+
+      // Check if we've already processed this transaction
+      if (
+        transactionProcessingRef.current.hasProcessed &&
+        transactionProcessingRef.current.transactionHash === hash
+      ) {
+        console.log("⏸️ Already processed this transaction, skipping");
+        return;
+      }
+
+      // Mark as processed
+      transactionProcessingRef.current = {
+        hasProcessed: true,
+        transactionHash: hash,
+      };
+
+      console.log("🚀 Transaction confirmed for dispute");
       setTransactionStep("success");
-      // After transaction success, create the dispute in backend
-      createDisputeOffchain(hash);
+      setIsProcessingPaidDispute(false);
+
+      // Show success message
+      toast.success("Paid dispute created successfully!", {
+        description:
+          "Transaction confirmed on blockchain. The dispute is now active.",
+        duration: 5000,
+      });
+
+      // Reset form and close modal
+      resetFormAndClose();
     } else if (writeError || isTransactionError) {
+      console.log("❌ Transaction failed");
       setTransactionStep("error");
       setIsProcessingPaidDispute(false);
+
+      // Show error but keep the modal open so user can retry
+      toast.error("Transaction failed", {
+        description: "Smart contract transaction failed. Please try again.",
+        duration: 5000,
+      });
+
+      // Reset processing flag on error
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
     }
   }, [
     isWritePending,
@@ -488,9 +561,19 @@ export default function OpenDisputeModal({
     writeError,
     isTransactionError,
     isProcessingPaidDispute,
-    createDisputeOffchain,
     hash,
+    resetFormAndClose,
   ]);
+
+  // Reset processing ref when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
+    }
+  }, [isOpen]);
 
   const handleWitnessSearch = useCallback(
     async (query: string) => {
@@ -514,8 +597,8 @@ export default function OpenDisputeModal({
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-            resultUser.telegram?.username ||
-            resultUser.telegramInfo,
+              resultUser.telegram?.username ||
+              resultUser.telegramInfo,
           );
 
           return (
@@ -702,142 +785,111 @@ export default function OpenDisputeModal({
   );
 
   // Smart contract interaction for paid disputes
-  // const createDisputeOnchain = useCallback(async (): Promise<void> => {
-  //   try {
-  //     const contractAddress = VOTING_CA[networkInfo.chainId as number];
-
-  //     if (!contractAddress) {
-  //       throw new Error(
-  //         `No contract address found for chain ID ${networkInfo.chainId}`,
-  //       );
-  //     }
-
-  //     fetchOnchainVoteConfigs(agreement);
-
-  //     writeContract({
-  //       address: contractAddress,
-  //       abi: VOTING_ABI.abi,
-  //       functionName: "raiseDispute",
-  //       args: [BigInt(votingIdToUse), false],
-  //       value:
-  //         onChainVotingConfigs && !onChainLoading
-  //           ? onChainVotingConfigs.feeAmount
-  //           : undefined,
-  //     });
-  //   } catch (error: any) {
-  //     console.error("Smart contract interaction failed:", error);
-  //     toast.error("Failed to initiate smart contract transaction", {
-  //       description:
-  //         error.message || "Please check your wallet connection and try again.",
-  //     });
-  //     setTransactionStep("error");
-  //     setIsProcessingPaidDispute(false);
-  //   }
-  // }, [
-  //   agreement,
-  //   fetchOnchainVoteConfigs,
-  //   networkInfo.chainId,
-  //   onChainLoading,
-  //   onChainVotingConfigs,
-  //   votingIdToUse,
-  //   writeContract,
-  // ]);
-
-  const createDisputeOnchain = useCallback(async (): Promise<void> => {
-    console.log("🟡 [DEBUG] createDisputeOnchain STARTED");
-
-    try {
-      console.log("🔍 [DEBUG] Network Info:", {
-        chainId: networkInfo.chainId,
-      });
-
-      const contractAddress = VOTING_CA[networkInfo.chainId as number];
-      console.log("📝 [DEBUG] Contract lookup:", {
-        chainId: networkInfo.chainId,
-        contractAddress,
-        availableChains: Object.keys(VOTING_CA),
-      });
-
-      if (!contractAddress) {
-        console.error(
-          "❌ [DEBUG] No contract address found for chain ID",
-          networkInfo.chainId,
-        );
-        throw new Error(
-          `No contract address found for chain ID ${networkInfo.chainId}`,
-        );
-      }
-
-      console.log("🔍 [DEBUG] Before fetchOnchainVoteConfigs");
-      console.log("📋 [DEBUG] Agreement data:", {
-        id: agreement?.id,
-        votingId: agreement?.votingId,
-        blockchain: agreement?.blockchain,
-      });
-
-      const configs = await fetchOnchainVoteConfigs(agreement);
-
-      console.log("📊 [DEBUG] On-chain configs:", {
-        feeAmount: configs?.feeAmount?.toString(),
-        configsExist: !!configs,
-      });
-
-      console.log("🎯 [DEBUG] Voting ID to use:", votingIdToUse);
-      console.log("🔢 [DEBUG] BigInt conversion:", {
-        original: votingIdToUse,
-        bigInt: BigInt(votingIdToUse),
-      });
-
-
-      const feeValue = configs ? configs.feeAmount : undefined;
-
-      console.log("💰 [DEBUG] Transaction details:", {
-        contractAddress,
-        functionName: "raiseDispute",
-        args: [BigInt(votingIdToUse), false],
-        value: feeValue?.toString(),
-        hasFee: !!feeValue,
-      });
-
-      console.log("⏳ [DEBUG] Calling writeContract...");
-
-      writeContract({
-        address: contractAddress,
-        abi: VOTING_ABI.abi,
-        functionName: "raiseDispute",
-        args: [BigInt(votingIdToUse), false],
-        value: feeValue,
-      });
-
-      console.log("✅ [DEBUG] writeContract called successfully");
+  // Smart contract interaction for paid disputes - UPDATED
+  const createDisputeOnchain = useCallback(
+    async (votingId: number): Promise<void> => {
       console.log(
-        "🟢 [DEBUG] Transaction initiated - waiting for confirmation",
+        "🟡 [DEBUG] createDisputeOnchain STARTED with votingId:",
+        votingId,
       );
-    } catch (error: any) {
-      console.error("❌ [DEBUG] createDisputeOnchain ERROR:", {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        code: error.code,
-        data: error.data,
-      });
 
-      console.error("❌ Smart contract interaction failed:", error);
+      try {
+        console.log("🔍 [DEBUG] Network Info:", {
+          chainId: networkInfo.chainId,
+        });
 
-      toast.error("Failed to initiate smart contract transaction", {
-        description:
-          error.message || "Please check your wallet connection and try again.",
-      });
+        const contractAddress = VOTING_CA[networkInfo.chainId as number];
+        console.log("📝 [DEBUG] Contract lookup:", {
+          chainId: networkInfo.chainId,
+          contractAddress,
+          availableChains: Object.keys(VOTING_ABI),
+        });
 
-      console.log("🔧 [DEBUG] Setting error state");
-      setTransactionStep("error");
-      setIsProcessingPaidDispute(false);
+        if (!contractAddress) {
+          console.error(
+            "❌ [DEBUG] No contract address found for chain ID",
+            networkInfo.chainId,
+          );
+          throw new Error(
+            `No contract address found for chain ID ${networkInfo.chainId}`,
+          );
+        }
 
-      console.log("🟢 [DEBUG] Error handled, user notified");
-    } finally {
-      console.log("🔚 [DEBUG] createDisputeOnchain execution complete");
-    }
-  }, [agreement, fetchOnchainVoteConfigs, networkInfo.chainId, votingIdToUse, writeContract]);
+        console.log("🔍 [DEBUG] Before fetchOnchainVoteConfigs");
+        console.log("📋 [DEBUG] Agreement data:", {
+          id: agreement?.id,
+          votingId: agreement?.votingId,
+          blockchain: agreement?.blockchain,
+        });
+
+        const configs = await fetchOnchainVoteConfigs(agreement);
+
+        console.log("📊 [DEBUG] On-chain configs:", {
+          feeAmount: configs?.feeAmount?.toString(),
+          configsExist: !!configs,
+        });
+
+        console.log("🎯 [DEBUG] Voting ID to use:", votingId);
+        console.log("🔢 [DEBUG] BigInt conversion:", {
+          original: votingId,
+          bigInt: BigInt(votingId),
+        });
+
+        const feeValue = configs ? configs.feeAmount : undefined;
+
+        console.log("💰 [DEBUG] Transaction details:", {
+          contractAddress,
+          functionName: "raiseDispute",
+          args: [BigInt(votingId), false],
+          value: feeValue?.toString(),
+          hasFee: !!feeValue,
+        });
+
+        console.log("⏳ [DEBUG] Calling writeContract...");
+
+        writeContract({
+          address: contractAddress,
+          abi: VOTING_ABI.abi,
+          functionName: "raiseDispute",
+          args: [BigInt(votingId), false],
+          value: feeValue,
+        });
+
+        console.log("✅ [DEBUG] writeContract called successfully");
+        console.log(
+          "🟢 [DEBUG] Transaction initiated - waiting for confirmation",
+        );
+      } catch (error: any) {
+        console.error("❌ [DEBUG] createDisputeOnchain ERROR:", {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          data: error.data,
+        });
+
+        console.error("❌ Smart contract interaction failed:", error);
+
+        toast.error("Failed to initiate smart contract transaction", {
+          description:
+            error.message ||
+            "Please check your wallet connection and try again.",
+        });
+
+        console.log("🔧 [DEBUG] Setting error state");
+        setTransactionStep("error");
+        setIsProcessingPaidDispute(false);
+        // Reset flags on error
+        hasCreatedDisputeRef.current = false;
+        lastTransactionHashRef.current = null;
+
+        console.log("🟢 [DEBUG] Error handled, user notified");
+      } finally {
+        console.log("🔚 [DEBUG] createDisputeOnchain execution complete");
+      }
+    },
+    [agreement, fetchOnchainVoteConfigs, networkInfo.chainId, writeContract],
+  );
 
   // Main form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -931,11 +983,99 @@ export default function OpenDisputeModal({
 
     // Handle based on dispute type
     if (form.kind === "Paid") {
-      // For paid disputes, FIRST call smart contract
+      // For paid disputes, FIRST create in backend (like EscrowDetails)
       setIsProcessingPaidDispute(true);
-      await createDisputeOnchain();
+
+      try {
+        console.log("🟡 [PAID] Creating dispute in backend first...");
+
+        // Clean defendant - remove @ symbol before storing
+        const cleanedDefendant = form.defendant.startsWith("@")
+          ? form.defendant.substring(1)
+          : form.defendant;
+
+        // Clean witness usernames
+        const cleanedWitnesses = form.witnesses
+          .filter((w) => w.trim())
+          .map((w) => {
+            const cleanW = w.startsWith("@") ? w.substring(1) : w;
+            return cleanTelegramUsername(cleanW);
+          });
+
+        const requestKind = DisputeTypeEnum.Paid;
+        const files = form.evidence.map((uf) => uf.file);
+
+        console.log("📋 [PAID] Creating dispute in backend with:", {
+          agreementId: agreement?.id,
+          title: form.title,
+          votingId: votingIdToUse,
+          chainId: networkInfo.chainId,
+        });
+
+        // STEP 1: Create dispute in backend FIRST (without transaction hash)
+        const result = await disputeService.createDisputeFromAgreement(
+          parseInt(agreement.id),
+          {
+            title: form.title,
+            description: form.description,
+            requestKind,
+            defendant: cleanedDefendant,
+            claim: form.claim,
+            witnesses: cleanedWitnesses,
+            onchainVotingId: votingIdToUse.toString(), // Pass voting ID to backend
+            chainId: networkInfo.chainId,
+            // Don't include transactionHash yet - will be null initially
+          },
+          files,
+          networkInfo.chainId,
+        );
+
+        console.log("✅ [PAID] Backend dispute created:", result);
+
+        // Use the votingId from response or our generated one
+        // Extract and convert the voting ID
+        let votingIdForContract: number;
+        if (result.votingId) {
+          votingIdForContract =
+            typeof result.votingId === "string"
+              ? parseInt(result.votingId, 10)
+              : result.votingId;
+
+          // Validate it's a valid number
+          if (isNaN(votingIdForContract)) {
+            console.warn("Invalid votingId from backend, using generated ID");
+            votingIdForContract = votingIdToUse;
+          }
+        } else {
+          votingIdForContract = votingIdToUse;
+        }
+
+        console.log(
+          `🔢 [PAID] Using voting ID for contract: ${votingIdForContract}`,
+        );
+
+        toast.info("Dispute created in system. Please confirm transaction...", {
+          description: "Now confirming on-chain transaction...",
+          duration: 3000,
+        });
+
+        // STEP 2: Now call smart contract with the voting ID
+        await createDisputeOnchain(votingIdForContract);
+      } catch (error: any) {
+        console.error("❌ [PAID] Failed to create paid dispute:", error);
+        setIsProcessingPaidDispute(false);
+
+        const errorMessage = error.message || "Failed to create dispute";
+        toast.error("Submission Failed", {
+          description: errorMessage,
+          duration: 6000,
+        });
+      }
     } else {
-      // For pro bono disputes, create directly
+      // For pro bono disputes, create directly (existing code)
+      // Reset duplicate prevention flags
+      hasCreatedDisputeRef.current = false;
+      lastTransactionHashRef.current = null;
       await createDisputeOffchain();
     }
   };
@@ -943,11 +1083,14 @@ export default function OpenDisputeModal({
   // Retry transaction function
   const retryTransaction = useCallback(() => {
     setTransactionStep("idle");
+    // Reset duplicate prevention flags
+    hasCreatedDisputeRef.current = false;
+    lastTransactionHashRef.current = null;
     resetWrite();
     if (form.kind === "Paid") {
-      createDisputeOnchain();
+      createDisputeOnchain(votingIdToUse);
     }
-  }, [form.kind, createDisputeOnchain, resetWrite]);
+  }, [form.kind, createDisputeOnchain, resetWrite, votingIdToUse]);
 
   // Separate click outside handling
   useEffect(() => {
@@ -1020,14 +1163,6 @@ export default function OpenDisputeModal({
             </div>
 
             {/* Transaction Status Display */}
-            {transactionStep !== "idle" && (
-              <div className="mb-4">
-                <TransactionStatus
-                  status={transactionStep}
-                  onRetry={retryTransaction}
-                />
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Title */}
@@ -1090,15 +1225,17 @@ export default function OpenDisputeModal({
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
                       key={kind}
-                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
-                        ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                        : "border-white/10 bg-white/5"
-                        } ${isSubmitting ||
-                          transactionStep === "pending" ||
-                          isProcessingPaidDispute
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                        form.kind === kind
+                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                          : "border-white/10 bg-white/5"
+                      } ${
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
                           ? "cursor-not-allowed opacity-50"
                           : ""
-                        }`}
+                      }`}
                     >
                       <input
                         type="radio"
@@ -1119,7 +1256,6 @@ export default function OpenDisputeModal({
                 </div>
               </div>
 
-              {/* Defendant Field */}
               {/* Defendant Field */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-cyan-200">
@@ -1327,15 +1463,17 @@ export default function OpenDisputeModal({
                 </label>
 
                 <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                    ? "border-cyan-400/60 bg-cyan-500/20"
-                    : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                    } ${isSubmitting ||
-                      transactionStep === "pending" ||
-                      isProcessingPaidDispute
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                    isDragOver
+                      ? "border-cyan-400/60 bg-cyan-500/20"
+                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                  } ${
+                    isSubmitting ||
+                    transactionStep === "pending" ||
+                    isProcessingPaidDispute
                       ? "cursor-not-allowed opacity-50"
                       : ""
-                    }`}
+                  }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -1355,12 +1493,13 @@ export default function OpenDisputeModal({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${isSubmitting ||
+                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${
+                      isSubmitting ||
                       transactionStep === "pending" ||
                       isProcessingPaidDispute
-                      ? "cursor-not-allowed"
-                      : ""
-                      }`}
+                        ? "cursor-not-allowed"
+                        : ""
+                    }`}
                   >
                     <Upload className="mb-2 h-6 w-6 text-cyan-400" />
                     <div className="text-sm text-cyan-300">
@@ -1467,6 +1606,15 @@ export default function OpenDisputeModal({
                 </Button>
               </div>
             </form>
+
+            {transactionStep !== "idle" && (
+              <div className="mb-4">
+                <TransactionStatus
+                  status={transactionStep}
+                  onRetry={retryTransaction}
+                />
+              </div>
+            )}
 
             {/* Smart Contract Info for Paid Disputes */}
             {form.kind === "Paid" &&

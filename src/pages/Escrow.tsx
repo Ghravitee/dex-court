@@ -51,7 +51,7 @@ import {
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
 import { agreementService } from "../services/agreementServices";
-import { cleanTelegramUsername } from "../lib/usernameUtils";
+// import { cleanTelegramUsername } from "../lib/usernameUtils";
 import { isValidAddress } from "../web3/helper";
 import { useAuth } from "../hooks/useAuth";
 
@@ -85,71 +85,6 @@ const extractTxHashFromDescription = (
   return match?.[1];
 };
 
-// Enhanced extraction functions with better pattern matching
-const extractServiceProviderFromDescription = (
-  description: string,
-): string | undefined => {
-  if (!description) return undefined;
-
-  const patterns = [
-    /Service Provider: (0x[a-fA-F0-9]{40})/,
-    /Service Provider:\s*(0x[a-fA-F0-9]{40})/i,
-    /Provider:\s*(0x[a-fA-F0-9]{40})/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = description.match(pattern);
-    if (match?.[1]) {
-      const address = match[1];
-      if (isValidAddress(address)) {
-        return address.toLowerCase();
-      }
-    }
-  }
-
-  return undefined;
-};
-
-const extractServiceRecipientFromDescription = (
-  description: string,
-): string | undefined => {
-  if (!description) return undefined;
-
-  const patterns = [
-    /Service Recipient: (0x[a-fA-F0-9]{40})/,
-    /Service Recipient:\s*(0x[a-fA-F0-9]{40})/i,
-    /Recipient:\s*(0x[a-fA-F0-9]{40})/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = description.match(pattern);
-    if (match?.[1]) {
-      const address = match[1];
-      if (isValidAddress(address)) {
-        return address.toLowerCase();
-      }
-    }
-  }
-
-  return undefined;
-};
-
-// Enhanced helper function to get wallet address from party object
-const getPartyWalletAddress = (party: any): string => {
-  if (!party) return "";
-
-  return (
-    party.walletAddress ||
-    party.wallet ||
-    party.WalletAddress ||
-    party.address ||
-    (party.wallet && typeof party.wallet === "object"
-      ? party.wallet.address
-      : null) ||
-    ""
-  );
-};
-
 // Helper function to format wallet addresses for display
 const formatWalletAddress = (address: string): string => {
   if (!address || address === "@unknown") return "@unknown";
@@ -167,6 +102,14 @@ const formatWalletAddress = (address: string): string => {
   }
 
   return address;
+};
+
+// Add this helper function near the top of the component
+const normalizeContractAddress = (
+  address: string | null | undefined,
+): string | null => {
+  if (!address) return null;
+  return address.toLowerCase().trim();
 };
 
 // File upload types
@@ -238,6 +181,32 @@ interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
   lastUpdated?: number;
 }
 
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_DOCUMENT_SIZE = 3 * 1024 * 1024; // 3MB
+const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
+const ALLOWED_DOCUMENT_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+];
+
+// Helper function to calculate total file size
+const getTotalFileSize = (files: UploadedFile[]): string => {
+  const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
+  const mb = totalBytes / 1024 / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
+
 // Smart contract error patterns
 const CONTRACT_ERRORS = {
   NOT_PARTY: "NotParty",
@@ -290,127 +259,41 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
 const transformApiAgreementToEscrow = (
   apiAgreement: any,
 ): ExtendedEscrowWithOnChain => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("🔍 Processing agreement:", {
-      id: apiAgreement.id,
-      title: apiAgreement.title,
-      hasOnChainData: apiAgreement.description?.includes(
-        "ON-CHAIN ESCROW DATA",
-      ),
-      descriptionPreview: apiAgreement.description?.substring(0, 150) + "...",
-      payeeWalletAddress: apiAgreement.payeeWalletAddress,
-      payerWalletAddress: apiAgreement.payerWalletAddress,
-    });
-  }
-
-  let serviceProvider = apiAgreement.payeeWalletAddress;
-  let serviceRecipient = apiAgreement.payerWalletAddress;
-
-  if (!serviceProvider || !serviceRecipient) {
-    console.log(
-      `⚠️ Using description extraction as fallback for agreement ${apiAgreement.id}`,
-    );
-
-    const serviceProviderFromDesc = extractServiceProviderFromDescription(
-      apiAgreement.description,
-    );
-    const serviceRecipientFromDesc = extractServiceRecipientFromDescription(
-      apiAgreement.description,
-    );
-
-    serviceProvider = serviceProviderFromDesc;
-    serviceRecipient = serviceRecipientFromDesc;
-  }
-
-  if (!serviceProvider || !serviceRecipient) {
-    console.warn(
-      `⚠️ Could not extract roles from new fields or description for agreement ${apiAgreement.id}, using party data fallback`,
-    );
-
-    const serviceProviderWallet = getPartyWalletAddress(
-      apiAgreement.firstParty,
-    );
-    const serviceRecipientWallet = getPartyWalletAddress(
-      apiAgreement.counterParty,
-    );
-
-    serviceProvider = serviceProviderWallet?.toLowerCase() || "";
-    serviceRecipient = serviceRecipientWallet?.toLowerCase() || "";
-
-    const fallbackServiceProvider =
-      serviceProvider ||
-      cleanTelegramUsername(apiAgreement.firstParty?.telegramUsername) ||
-      "@unknown";
-
-    const fallbackServiceRecipient =
-      serviceRecipient ||
-      cleanTelegramUsername(apiAgreement.counterParty?.telegramUsername) ||
-      "@unknown";
-
-    serviceProvider = serviceProvider || fallbackServiceProvider;
-    serviceRecipient = serviceRecipient || fallbackServiceRecipient;
-  }
-
-  if (serviceProvider && serviceProvider.startsWith("0x")) {
-    serviceProvider = serviceProvider.toLowerCase();
-  }
-  if (serviceRecipient && serviceRecipient.startsWith("0x")) {
-    serviceRecipient = serviceRecipient.toLowerCase();
-  }
+  // DIRECT FIELD MAPPING - NO DESCRIPTION EXTRACTION
+  const serviceProvider = apiAgreement.payeeWalletAddress?.toLowerCase() || "";
+  const serviceRecipient = apiAgreement.payerWalletAddress?.toLowerCase() || "";
 
   let payerDetails, payeeDetails;
 
-  if (
-    serviceRecipient?.toLowerCase() ===
-    apiAgreement.firstParty.wallet?.toLowerCase()
-  ) {
-    // If serviceRecipient is firstParty
+  // Determine payer/payee details based on wallet comparison
+  if (serviceRecipient === apiAgreement.firstParty?.wallet?.toLowerCase()) {
+    // serviceRecipient is firstParty
     payerDetails = {
-      id: apiAgreement.firstParty.id, // Add user ID
+      id: apiAgreement.firstParty.id,
       telegramUsername: apiAgreement.firstParty.telegramUsername,
       username: apiAgreement.firstParty.username,
       avatarId: apiAgreement.firstParty.avatarId,
     };
     payeeDetails = {
-      id: apiAgreement.counterParty.id, // Add user ID
-      telegramUsername: apiAgreement.counterParty.telegramUsername,
-      username: apiAgreement.counterParty.username,
-      avatarId: apiAgreement.counterParty.avatarId,
+      id: apiAgreement.counterParty?.id,
+      telegramUsername: apiAgreement.counterParty?.telegramUsername,
+      username: apiAgreement.counterParty?.username,
+      avatarId: apiAgreement.counterParty?.avatarId,
     };
   } else {
-    // If serviceRecipient is counterParty
+    // serviceRecipient is counterParty
     payerDetails = {
-      id: apiAgreement.counterParty.id, // Add user ID
-      telegramUsername: apiAgreement.counterParty.telegramUsername,
-      username: apiAgreement.counterParty.username,
-      avatarId: apiAgreement.counterParty.avatarId,
+      id: apiAgreement.counterParty?.id,
+      telegramUsername: apiAgreement.counterParty?.telegramUsername,
+      username: apiAgreement.counterParty?.username,
+      avatarId: apiAgreement.counterParty?.avatarId,
     };
     payeeDetails = {
-      id: apiAgreement.firstParty.id, // Add user ID
+      id: apiAgreement.firstParty.id,
       telegramUsername: apiAgreement.firstParty.telegramUsername,
       username: apiAgreement.firstParty.username,
       avatarId: apiAgreement.firstParty.avatarId,
     };
-  }
-
-  const source = apiAgreement.payeeWalletAddress
-    ? "new fields (payeeWalletAddress/payerWalletAddress)"
-    : "description extraction (fallback)";
-
-  if (process.env.NODE_ENV === "development") {
-    console.log("✅ Final mapping for agreement:", {
-      id: apiAgreement.id,
-      title: apiAgreement.title,
-      source: source,
-      mapping: {
-        from: `Service Recipient (Payer) = ${serviceRecipient}`,
-        to: `Service Provider (Payee) = ${serviceProvider}`,
-      },
-      userDetails: {
-        payer: payerDetails,
-        payee: payeeDetails,
-      },
-    });
   }
 
   const includeFunds = apiAgreement.includesFunds ? "yes" : "no";
@@ -437,8 +320,8 @@ const transformApiAgreementToEscrow = (
     onChainId: onChainId,
     includeFunds: includeFunds,
     useEscrow: useEscrow,
-    escrowAddress: apiAgreement.escrowContractAddress,
-    source: source,
+    escrowAddress: apiAgreement.escrowContractAddress, // Direct field access
+    source: "direct API fields only",
     payerDetails,
     payeeDetails,
   };
@@ -583,38 +466,65 @@ export default function Escrow() {
       }
 
       const escrowAgreementsResponse = await agreementService.getAgreements({
-        top: 100,
+        top: 200,
         skip: 0,
         sort: "desc",
         type: AgreementTypeEnum.ESCROW,
       });
 
-      console.log(
-        "📄 Fetched escrow agreements response:",
-        escrowAgreementsResponse,
-      );
+      console.log("📄 Fetched escrow agreements response:", {
+        totalResults: escrowAgreementsResponse.totalResults,
+        totalAgreements: escrowAgreementsResponse.totalAgreements,
+        resultsCount: escrowAgreementsResponse.results?.length,
+      });
 
       const escrowAgreementsList = escrowAgreementsResponse.results || [];
 
-      if (
-        process.env.NODE_ENV === "development" &&
-        escrowAgreementsList.length > 0
-      ) {
-        console.log(
-          "📋 First agreement description:",
-          escrowAgreementsList[0].description,
-        );
-      }
+      // Log contract address information
+      const contractAddresses = escrowAgreementsList.map((agreement) => ({
+        id: agreement.id,
+        title: agreement.title,
+        escrowContractAddress: agreement.escrowContractAddress,
+        hasEscrowContractAddress: !!agreement.escrowContractAddress,
+      }));
+
+      console.log("🔍 Contract addresses in agreements:", {
+        totalWithAddress: contractAddresses.filter(
+          (a) => a.hasEscrowContractAddress,
+        ).length,
+        totalWithoutAddress: contractAddresses.filter(
+          (a) => !a.hasEscrowContractAddress,
+        ).length,
+        addresses: contractAddresses,
+      });
 
       const transformedEscrows = escrowAgreementsList.map(
         transformApiAgreementToEscrow,
       );
 
+      // Log current contract address for comparison
+      console.log("🎯 Current contract address from config:", {
+        contractAddress,
+        networkChainId: networkInfo.chainId,
+        ESCROW_CA,
+      });
+
       setAllEscrows(transformedEscrows);
       setTotalEscrows(transformedEscrows.length);
 
       if (process.env.NODE_ENV === "development") {
-        console.log("✅ Loaded escrow agreements:", transformedEscrows.length);
+        console.log("✅ Loaded escrow agreements:", {
+          count: transformedEscrows.length,
+          escrowAddressCount: transformedEscrows.filter((e) => e.escrowAddress)
+            .length,
+          nullEscrowAddressCount: transformedEscrows.filter(
+            (e) => !e.escrowAddress,
+          ).length,
+          // Show sample of addresses for debugging
+          sampleEscrowAddresses: transformedEscrows
+            .slice(0, 3)
+            .map((e) => ({ id: e.id, escrowAddress: e.escrowAddress })),
+        });
       }
     } catch (error: any) {
       console.error("Failed to fetch escrow agreements:", error);
@@ -624,7 +534,7 @@ export default function Escrow() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [contractAddress, networkInfo.chainId]); // Add dependencies
 
   // Load agreements on mount
   useEffect(() => {
@@ -741,7 +651,19 @@ export default function Escrow() {
   const filteredEscrows = useMemo(() => {
     if (allEscrows.length === 0) return [];
 
+    const currentContractAddress = contractAddress
+      ? normalizeContractAddress(contractAddress)
+      : null;
+
     let result = allEscrows.filter((e) => {
+      // Filter by contract address if available
+      if (currentContractAddress) {
+        const escrowContractAddr = normalizeContractAddress(e.escrowAddress);
+        if (escrowContractAddr !== currentContractAddress) {
+          return false; // Skip escrows with different contract addresses
+        }
+      }
+
       if (statusTab !== "all" && e.status !== statusTab) return false;
 
       if (query.trim()) {
@@ -761,7 +683,7 @@ export default function Escrow() {
     );
 
     return result;
-  }, [allEscrows, statusTab, query, sortAsc]);
+  }, [allEscrows, statusTab, query, sortAsc, contractAddress]);
 
   // Apply pagination when filters change
   useEffect(() => {
@@ -864,9 +786,60 @@ export default function Escrow() {
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
 
+    const newFiles: UploadedFile[] = [];
+    let totalSize = form.evidence.reduce(
+      (total, file) => total + file.file.size,
+      0,
+    );
+
     Array.from(selectedFiles).forEach((file) => {
+      const fileSizeMB = file.size / 1024 / 1024;
       const fileType = file.type.startsWith("image/") ? "image" : "document";
-      const fileSize = (file.size / 1024 / 1024).toFixed(2) + " MB";
+
+      // Check file type
+      if (fileType === "image" && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        toast.error(
+          `Image "${file.name}" has unsupported type. Allowed: JPEG, PNG, GIF, WebP`,
+        );
+        return;
+      }
+
+      if (
+        fileType === "document" &&
+        !ALLOWED_DOCUMENT_TYPES.includes(file.type)
+      ) {
+        toast.error(
+          `Document "${file.name}" has unsupported type. Allowed: PDF, DOC, DOCX, TXT`,
+        );
+        return;
+      }
+
+      // Check file size limits
+      if (fileType === "image" && file.size > MAX_IMAGE_SIZE) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && file.size > MAX_DOCUMENT_SIZE) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      // Check total size
+      if (totalSize + file.size > MAX_TOTAL_SIZE) {
+        toast.error(
+          `Adding "${file.name}" would exceed total 50MB limit. Current total: ${(totalSize / 1024 / 1024).toFixed(2)}MB`,
+        );
+        return;
+      }
+
+      totalSize += file.size;
+
+      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
@@ -874,20 +847,41 @@ export default function Escrow() {
         size: fileSize,
       };
 
+      newFiles.push(newFile);
+
+      // Create preview for images
       if (fileType === "image") {
         const reader = new FileReader();
         reader.onload = (e) => {
           newFile.preview = e.target?.result as string;
+          // Update the specific file with preview
           setForm((prev) => ({
             ...prev,
-            evidence: [...prev.evidence, newFile],
+            evidence: prev.evidence.map((f) =>
+              f.id === newFile.id ? { ...f, preview: newFile.preview } : f,
+            ),
           }));
         };
         reader.readAsDataURL(file);
-      } else {
-        setForm((prev) => ({ ...prev, evidence: [...prev.evidence, newFile] }));
       }
     });
+
+    // Add all valid files to evidence
+    if (newFiles.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        evidence: [...prev.evidence, ...newFiles],
+      }));
+
+      // Show success message
+      if (newFiles.length === 1) {
+        toast.success(`Added ${newFiles[0].file.name}`, {
+          description: `Size: ${newFiles[0].size}, Type: ${newFiles[0].type}`,
+        });
+      } else {
+        toast.success(`Added ${newFiles.length} files`);
+      }
+    }
   };
 
   const removeFile = (id: string) => {
@@ -1113,8 +1107,6 @@ export default function Escrow() {
 
       try {
         console.log("✅ Transaction confirmed on-chain:", txHash);
-
-        // SUCCESS MESSAGE ONLY - NO BACKEND UPDATE
         setUiSuccess("✅ Escrow created successfully!");
         toast.success("Escrow Created Successfully!", {
           description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
@@ -1151,6 +1143,10 @@ export default function Escrow() {
     loadEscrowAgreements,
   ]);
 
+  const transactionDataRef = useRef<{
+    contractAgreementId: string;
+  } | null>(null);
+
   // Add resetForm function
   const resetForm = () => {
     setForm({
@@ -1174,15 +1170,11 @@ export default function Escrow() {
     setPendingAgreementData(null);
   };
 
-  // ================================================
-  // MAIN FUNCTION: Create agreement ONLY AFTER on-chain success
-  // ================================================
   const handleCreateAgreementOnChain = async () => {
     resetMessages();
     setCreationStep("idle");
     setCurrentStepMessage("");
 
-    // Validation checks
     if (!contractAddress || !isValidAddress(contractAddress)) {
       const errorMsg =
         chainConfigError || "Escrow contract not configured for this network";
@@ -1196,11 +1188,6 @@ export default function Escrow() {
     if (!isConnected) {
       setUiError("Connect your wallet");
       updateStep("error", "Wallet not connected");
-      return;
-    }
-    if (!currentUser?.walletAddress) {
-      setUiError("Sign in to your account");
-      updateStep("error", "User not signed in");
       return;
     }
     if (!form.title) {
@@ -1369,44 +1356,99 @@ export default function Escrow() {
       contractAgreementId,
     );
 
-    // Prepare files for upload
-    let filesToUpload: File[] = [];
-    if (form.evidence.length > 0) {
-      filesToUpload = form.evidence.map((f) => f.file);
-    }
-
     // ================================================
-    // STEP 1: Store agreement data for backend creation AFTER on-chain success
+    // STEP 1: Create agreement in backend (off-chain)
     // ================================================
     setIsSubmitting(true);
-    updateStep("creating_onchain", "Preparing on-chain transaction...");
+    updateStep("creating_backend", "Creating agreement in database...");
 
     try {
-      // Store all data needed for backend creation
-      const agreementData: PendingAgreementData = {
-        form: { ...form },
-        deadline,
-        serviceProviderAddr,
-        serviceRecipientAddr,
-        firstPartyAddr,
-        counterPartyAddr,
+      // Prepare files for upload
+      let filesToUpload: File[] = [];
+      if (form.evidence.length > 0) {
+        filesToUpload = form.evidence.map((f) => f.file);
+      }
+
+      console.log("📝 Creating agreement in backend...");
+
+      const fullDescription = form.description;
+
+      let backendAgreementId = contractAgreementId;
+
+      try {
+        updateStep("creating_backend", "Sending data to backend server...");
+        const agreementResponse = await agreementService.createAgreement(
+          {
+            title: form.title,
+            description: fullDescription,
+            type: AgreementTypeEnum.ESCROW,
+            visibility:
+              form.type === "private"
+                ? AgreementVisibilityEnum.PRIVATE
+                : AgreementVisibilityEnum.PUBLIC,
+            firstParty: firstPartyAddr,
+            counterParty: counterPartyAddr,
+            deadline: deadline.toISOString(),
+            amount: parseFloat(form.amount),
+            tokenSymbol: form.token === "custom" ? "custom" : form.token,
+            customTokenAddress:
+              form.token === "custom" ? form.customTokenAddress : undefined,
+            includesFunds: true,
+            secureTheFunds: true,
+            chainId: networkInfo.chainId,
+            payeeWalletAddress: serviceProviderAddr, // The service provider (who receives funds)
+            payerWalletAddress: serviceRecipientAddr, // The service recipient (who pays funds)
+            contractAgreementId: contractAgreementId,
+            escrowContractAddress: contractAddress,
+          },
+          filesToUpload,
+        );
+
+        console.log("✅ Backend agreement creation response:", {
+          id: agreementResponse?.id,
+          escrowContractAddress: agreementResponse?.escrowContractAddress,
+          escrowContractAddressReceived:
+            agreementResponse?.escrowContractAddress !== null,
+          fullResponse: agreementResponse,
+        });
+
+        if (agreementResponse && !agreementResponse.escrowContractAddress) {
+          console.warn(
+            "⚠️ escrowContractAddress is null/missing in backend response",
+          );
+        }
+
+        if (agreementResponse && agreementResponse.id) {
+          backendAgreementId = String(agreementResponse.id);
+        }
+
+        updateStep(
+          "creating_backend",
+          "Backend agreement created successfully",
+        );
+      } catch (backendErr) {
+        console.warn(
+          "⚠️ Backend creation had minor issues, continuing anyway:",
+          backendErr,
+        );
+        updateStep("creating_backend", "Backend completed (with warnings)");
+      }
+
+      console.log("🔗 Agreement references:", {
+        backendAgreementId,
         contractAgreementId,
-        filesToUpload,
-        tokenAddr,
-        amountBN,
-        vestingMode,
-        milestonePercs,
-        milestoneOffsets,
-        deadlineDuration,
+      });
+
+      // Store minimal data
+      transactionDataRef.current = {
+        contractAgreementId,
       };
 
-      setPendingAgreementData(agreementData);
-      console.log("📦 Stored agreement data for backend creation");
-
       // ================================================
-      // STEP 2: Create on-chain escrow FIRST
+      // STEP 2: Call smart contract
       // ================================================
       const agreementIdNumber = BigInt(contractAgreementId);
+
       const callerIsDepositor =
         serviceRecipientAddr.toLowerCase() === address?.toLowerCase();
       const tokenIsETH = tokenAddr === ZERO_ADDRESS;
@@ -1490,130 +1532,32 @@ export default function Escrow() {
       );
       setUiSuccess("CreateAgreement transaction submitted — check wallet");
       setIsSubmitting(false);
-    } catch (err: any) {
-      console.error("❌ Failed to prepare transaction:", err);
+    } catch (backendErr: any) {
+      console.error("❌ Failed:", backendErr);
       setIsSubmitting(false);
-      updateStep("error", "Failed to prepare transaction");
-      setUiError(err.message || "Failed to prepare transaction");
-      toast.error("Transaction Error", { description: err.message });
+      updateStep("error", "Failed to create agreement");
+
+      const errorCode = backendErr.response?.data?.error;
+      let userMessage = "Failed to create agreement";
+
+      switch (errorCode) {
+        case 1:
+          userMessage = "Missing required information";
+          break;
+        case 7:
+          userMessage = "One or both parties need to register first";
+          break;
+        case 11:
+          userMessage = "Parties cannot be the same account";
+          break;
+      }
+
+      setUiError(userMessage);
+      toast.error("Error", {
+        description: userMessage,
+      });
     }
   };
-
-  // ================================================
-  // EFFECT: Handle on-chain success and create backend agreement
-  // ================================================
-  useEffect(() => {
-    const createBackendAgreement = async () => {
-      if (!txSuccess || !txHash || !pendingAgreementData || isSyncing) {
-        return;
-      }
-
-      setIsSyncing(true);
-      setLastSyncedTxHash(txHash);
-
-      try {
-        console.log("✅ Transaction confirmed on-chain:", txHash);
-
-        // ================================================
-        // STEP 3: Create backend agreement AFTER on-chain success
-        // ================================================
-        updateStep("creating_backend", "Creating agreement in database...");
-
-        const {
-          form: storedForm,
-          deadline: storedDeadline,
-          serviceProviderAddr,
-          serviceRecipientAddr,
-          firstPartyAddr,
-          counterPartyAddr,
-          contractAgreementId,
-          filesToUpload,
-        } = pendingAgreementData;
-
-        const fullDescription = storedForm.description;
-
-        // Create agreement in backend
-        const agreementResponse = await agreementService.createAgreement(
-          {
-            title: storedForm.title,
-            description: fullDescription,
-            type: AgreementTypeEnum.ESCROW,
-            visibility:
-              storedForm.type === "private"
-                ? AgreementVisibilityEnum.PRIVATE
-                : AgreementVisibilityEnum.PUBLIC,
-            firstParty: firstPartyAddr,
-            counterParty: counterPartyAddr,
-            deadline: storedDeadline!.toISOString(),
-            amount: parseFloat(storedForm.amount),
-            tokenSymbol:
-              storedForm.token === "custom" ? "custom" : storedForm.token,
-            contractAddress:
-              storedForm.token === "custom"
-                ? storedForm.customTokenAddress
-                : undefined,
-            includesFunds: true,
-            secureTheFunds: true,
-            chainId: networkInfo.chainId,
-            contractAgreementId: contractAgreementId,
-            payeeWalletAddress: serviceProviderAddr,
-            payerWalletAddress: serviceRecipientAddr,
-          },
-          filesToUpload,
-        );
-
-        console.log("✅ Backend agreement created:", agreementResponse);
-
-        updateStep("success", "Escrow created successfully!");
-        setUiSuccess("✅ Escrow created successfully!");
-
-        toast.success("Escrow Created Successfully!", {
-          description: `Transaction confirmed. Both parties will receive Telegram notifications.`,
-        });
-
-        // Close modal and reset
-        setTimeout(() => {
-          setOpen(false);
-          resetForm();
-          setCreationStep("idle");
-          setCurrentStepMessage("");
-          loadEscrowAgreements();
-        }, 2000);
-      } catch (backendErr: any) {
-        console.error("❌ Error creating backend agreement:", backendErr);
-        updateStep("error", "On-chain success but backend creation failed");
-
-        // Show appropriate message
-        setUiSuccess("On-chain escrow created but backend sync failed");
-        toast.warning("Partial Success", {
-          description:
-            "Escrow created on-chain but there was an issue with backend sync. Please contact support.",
-        });
-
-        // Still close modal but keep data for retry
-        setTimeout(() => {
-          setOpen(false);
-          setCreationStep("idle");
-          setCurrentStepMessage("");
-          loadEscrowAgreements();
-        }, 2000);
-      } finally {
-        setIsSyncing(false);
-        setPendingAgreementData(null);
-        resetWrite();
-      }
-    };
-
-    createBackendAgreement();
-  }, [
-    txSuccess,
-    txHash,
-    pendingAgreementData,
-    isSyncing,
-    resetWrite,
-    loadEscrowAgreements,
-    networkInfo.chainId,
-  ]);
 
   // Wrapper for modal submit
   const createEscrowSubmit = async (e: React.FormEvent) => {
@@ -1621,6 +1565,12 @@ export default function Escrow() {
     resetMessages();
     setCreationStep("idle");
     setCurrentStepMessage("");
+
+    const maxTotalSize = 50 * 1024 * 1024; // 50MB
+    const totalSize = form.evidence.reduce(
+      (total, file) => total + file.file.size,
+      0,
+    );
 
     if (!form.title.trim()) {
       setUiError("Please enter a title");
@@ -1672,6 +1622,25 @@ export default function Escrow() {
     if (!deadline) {
       setUiError("Please select a deadline");
       return;
+    }
+
+    if (totalSize > maxTotalSize) {
+      setUiError("Total file size too large");
+      toast.error("Total file size exceeds 50MB limit");
+      return;
+    }
+
+    // Validate individual file sizes
+    for (const file of form.evidence) {
+      const maxSize =
+        file.type === "image" ? MAX_IMAGE_SIZE : MAX_DOCUMENT_SIZE;
+      if (file.file.size > maxSize) {
+        setUiError(`File ${file.file.name} exceeds size limit`);
+        toast.error(
+          `${file.type === "image" ? "Image" : "Document"} "${file.file.name}" exceeds ${file.type === "image" ? "2MB" : "3MB"} limit`,
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -1758,6 +1727,30 @@ export default function Escrow() {
               {Object.keys(ESCROW_CA)
                 .map((id) => `Chain ${id}`)
                 .join(", ")}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ContractFilterInfo = () => {
+    if (!contractAddress) return null;
+
+    return (
+      <div className="mb-4 w-fit rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+        <div className="flex items-start gap-2">
+          <Server className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+          <div>
+            <h4 className="text-sm font-medium text-cyan-300">
+              Filtered by Contract Address
+            </h4>
+            <p className="mt-1 font-mono text-xs text-cyan-300/80">
+              {contractAddress.slice(0, 20)}...{contractAddress.slice(-20)}
+            </p>
+            <p className="mt-2 text-xs text-cyan-200/60">
+              Showing escrows using the current contract version on chain{" "}
+              {networkInfo.chainId}
             </p>
           </div>
         </div>
@@ -1921,7 +1914,7 @@ export default function Escrow() {
 
         {/* Progress Steps */}
         <div className="relative mb-8">
-          <div className="relative z-10 grid grid-cols-3 gap-4 md:grid-cols-6">
+          <div className="relative z-10 flex flex-wrap gap-3">
             {steps.slice(0, -1).map((step, index) => {
               const StepIcon = step.icon;
               const isCompleted = index < currentStepIndex;
@@ -2191,17 +2184,17 @@ export default function Escrow() {
   const StatusMessages = () => (
     <div className="space-y-2">
       {uiError && (
-        <div className="rounded-md border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="w-fit rounded-md border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {uiError}
         </div>
       )}
       {uiSuccess && (
-        <div className="rounded-md border border-green-400/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+        <div className="w-fit rounded-md border border-green-400/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
           {uiSuccess}
         </div>
       )}
       {(isTxPending || isApprovalPending) && (
-        <div className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+        <div className="w-fit rounded-md border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
           <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
           Transaction pending...
         </div>
@@ -2240,6 +2233,7 @@ export default function Escrow() {
   return (
     <div className="relative">
       <NetworkWarning />
+      <ContractFilterInfo />
 
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
@@ -2755,9 +2749,15 @@ export default function Escrow() {
                     </div>
 
                     {/* Evidence Upload */}
+                    {/* Evidence Upload Section - Updated */}
                     <div>
                       <label className="text-muted-foreground mb-2 block text-sm">
                         Supporting Documents
+                        {form.evidence.length > 0 && (
+                          <span className="ml-2 text-xs text-yellow-400">
+                            (Total: {getTotalFileSize(form.evidence)})
+                          </span>
+                        )}
                       </label>
 
                       <div
@@ -2774,7 +2774,7 @@ export default function Escrow() {
                           onChange={handleFileSelect}
                           type="file"
                           multiple
-                          accept="image/*,.pdf,.doc,.docx,.txt"
+                          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt"
                           className="hidden"
                           id="escrow-upload"
                         />
@@ -2789,16 +2789,27 @@ export default function Escrow() {
                               : "Click to upload or drag and drop"}
                           </div>
                           <div className="text-muted-foreground mt-1 text-xs">
-                            Supports images, PDFs, and documents
+                            Supports images{" "}
+                            <span className="text-yellow-300">(max 2MB)</span>,
+                            documents{" "}
+                            <span className="text-yellow-300">(max 3MB)</span>
+                          </div>
+                          <div className="mt-1 text-xs text-red-400">
+                            Total limit: 50MB
                           </div>
                         </label>
                       </div>
 
                       {form.evidence.length > 0 && (
                         <div className="mt-4 space-y-3">
-                          <h4 className="text-sm font-medium text-cyan-200">
-                            Selected Files ({form.evidence.length})
-                          </h4>
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-cyan-200">
+                              Selected Files ({form.evidence.length})
+                            </h4>
+                            <div className="text-xs text-yellow-400">
+                              Total: {getTotalFileSize(form.evidence)}
+                            </div>
+                          </div>
                           {form.evidence.map((file) => (
                             <div
                               key={file.id}
@@ -2926,23 +2937,6 @@ export default function Escrow() {
                     {/* Buttons */}
                     <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
                       <Button
-                        type="button"
-                        variant="outline"
-                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                        onClick={() => {
-                          toast.message("Draft saved", {
-                            description: "Your escrow has been saved as draft",
-                          });
-                          setOpen(false);
-                          resetMessages();
-                        }}
-                        disabled={
-                          isSubmitting || isTxPending || isApprovalPending
-                        }
-                      >
-                        Save Draft
-                      </Button>
-                      <Button
                         type="submit"
                         variant="neon"
                         className="neon-hover"
@@ -2953,26 +2947,10 @@ export default function Escrow() {
                           createApprovalState.isApprovingToken
                         }
                       >
-                        {creationStep !== "idle" ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            {creationStep === "creating_backend" &&
-                              "Creating Backend..."}
-                            {creationStep === "awaiting_approval" &&
-                              "Awaiting Approval..."}
-                            {creationStep === "approving" &&
-                              "Approving Token..."}
-                            {creationStep === "creating_onchain" &&
-                              "Creating On-Chain..."}
-                            {creationStep === "waiting_confirmation" &&
-                              "Waiting Confirmation..."}
-                            {creationStep === "success" && "Success!"}
-                            {creationStep === "error" && "Error - Retry"}
-                          </>
-                        ) : isSubmitting ||
-                          isTxPending ||
-                          isApprovalPending ||
-                          createApprovalState.isApprovingToken ? (
+                        {isSubmitting ||
+                        isTxPending ||
+                        isApprovalPending ||
+                        createApprovalState.isApprovingToken ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             {createApprovalState.isApprovingToken

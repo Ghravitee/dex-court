@@ -760,6 +760,21 @@ const getDeliverySubmittedDate = (agreement: any): string | null => {
   return null;
 };
 
+// helper function to check if dispute was triggered by delivery rejection
+const isDisputeTriggeredByRejection = (agreement: any): boolean => {
+  if (!agreement?._raw?.timeline) return false;
+
+  // Look specifically for DELIVERY_REJECTED event (type 6) that leads to DISPUTED status
+  const deliveryRejectionEvent = agreement._raw.timeline.find(
+    (event: any) =>
+      (event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
+        event.type === 6) &&
+      event.toStatus === AgreementStatusEnum.DISPUTED,
+  );
+
+  return !!deliveryRejectionEvent;
+};
+
 // Enhanced date formatting with time for all displays
 // Enhanced date formatting with time for all displays - with null handling
 const formatDateWithTime = (dateString: string | null | undefined): string => {
@@ -1092,7 +1107,7 @@ export default function AgreementDetails() {
         hasFundsWithoutEscrow: hasFundsWithoutEscrow,
         useEscrow: useEscrow,
         secureTheFunds: agreementData.hasSecuredFunds || false,
-        escrowAddress: agreementData.escrowContract || undefined,
+        escrowAddress: agreementData.customTokenAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
 
@@ -1194,7 +1209,7 @@ export default function AgreementDetails() {
         includeFunds: includeFunds,
         hasFundsWithoutEscrow: hasFundsWithoutEscrow,
         useEscrow: useEscrow,
-        escrowAddress: agreementData.escrowContract || undefined,
+        escrowAddress: agreementData.customTokenAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
         completionDate: completionDate || undefined,
@@ -1575,6 +1590,10 @@ export default function AgreementDetails() {
     // Optionally refresh the agreement data to show disputed status
     fetchAgreementDetailsBackground();
   };
+
+  const disputeTriggeredByRejection = agreement
+    ? isDisputeTriggeredByRejection(agreement)
+    : false;
 
   // Or create a direct dispute creation modal:
 
@@ -2405,7 +2424,6 @@ export default function AgreementDetails() {
               {/* Dispute Information Section */}
 
               {/* Dispute Information Section */}
-              {/* Dispute Information Section */}
               {agreement._raw?.disputes &&
                 agreement._raw.disputes.length > 0 && (
                   <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
@@ -2417,7 +2435,6 @@ export default function AgreementDetails() {
                       <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            {/* DISPUTE FILING INFORMATION */}
                             {/* DISPUTE FILING INFORMATION */}
                             {disputeInfo.filedAt && (
                               <div className="mt-2 space-y-3">
@@ -2454,7 +2471,6 @@ export default function AgreementDetails() {
                                         }}
                                         className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
                                       >
-                                        {/* APPLY THE SLICING HERE */}
                                         {disputeInfo.filedBy.startsWith("0x")
                                           ? formatWalletAddress(
                                               disputeInfo.filedBy,
@@ -2485,17 +2501,20 @@ export default function AgreementDetails() {
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
-                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-                        <div>
-                          <p className="text-sm text-amber-300">
-                            This dispute was filed when the delivery was
-                            rejected. Please visit the dispute page to view
-                            evidence, participate in voting, or see the
-                            resolution process.
-                          </p>
+                      {/* CONDITIONAL: Only show this if dispute was triggered by delivery rejection */}
+                      {disputeTriggeredByRejection && (
+                        <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
+                          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+                          <div>
+                            <p className="text-sm text-amber-300">
+                              This dispute was filed when the delivery was
+                              rejected. Please visit the dispute page to view
+                              evidence, participate in voting, or see the
+                              resolution process.
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}

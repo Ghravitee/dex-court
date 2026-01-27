@@ -200,7 +200,7 @@ const VotingStatus = ({
   reason,
   hasVoted,
   handleOpenVoteModal,
-  isVoteStarted, // Add this prop
+
   tier, // Add this prop
   weight, // Add this prop
 }: {
@@ -263,61 +263,6 @@ const VotingStatus = ({
   }
 
   // In the VotingStatus component, update the logic:
-
-  // If vote hasn't been started yet, show waiting message
-  if (!isVoteStarted) {
-    // Only show this for escrow disputes
-    if (dispute.agreement?.type === 2) {
-      return (
-        <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-              <Clock className="h-6 w-6 text-amber-300" />
-            </div>
-            <div>
-              <h3 className="mb-1 text-lg font-bold text-amber-300">
-                Waiting for Voting to Begin
-              </h3>
-              <p className="text-sm text-amber-200">
-                The voting phase hasn't been initiated yet. Click "Start Vote"
-                to begin the voting process.
-              </p>
-              <p className="mt-2 text-xs text-amber-300/70">
-                Anyone can start the voting phase by clicking the Start Vote
-                button.
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // For reputational disputes that are in "Vote in Progress" but isVoteStarted is false
-    // (this shouldn't happen, but just in case)
-    if (dispute.agreement?.type === 1) {
-      return (
-        <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-              <AlertTriangle className="h-6 w-6 text-amber-300" />
-            </div>
-            <div>
-              <h3 className="mb-1 text-lg font-bold text-amber-300">
-                Voting Status Issue
-              </h3>
-              <p className="text-sm text-amber-200">
-                This reputational dispute is marked as "Vote in Progress" but
-                voting hasn't been properly initiated.
-              </p>
-              <p className="mt-2 text-xs text-amber-300/70">
-                Please contact support if you believe this is an error.
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-  }
 
   // User has voted - Consistent with Voting page
   if (hasVoted) {
@@ -447,6 +392,9 @@ export default function DisputeDetails() {
 
   const [escalating, setEscalating] = useState(false);
 
+  const [finalizing, setFinalizing] = useState(false);
+  const [canFinalize, setCanFinalize] = useState(false);
+
   const [settlingDispute, setSettlingDispute] = useState(false);
   const [pendingTransactionType, setPendingTransactionType] = useState<
     "settle" | "startVote" | null
@@ -496,7 +444,6 @@ export default function DisputeDetails() {
   const [defendantReplyModalOpen, setDefendantReplyModalOpen] = useState(false);
   const [plaintiffReplyModalOpen, setPlaintiffReplyModalOpen] = useState(false);
 
-  // Replace your current isCurrentUserPlaintiff function with this:
   const isCurrentUserPlaintiff = useCallback(() => {
     if (!user || !dispute) {
       return false;
@@ -1087,12 +1034,6 @@ export default function DisputeDetails() {
   const handleEscalateToVote = useCallback(async () => {
     if (!disputeId || !user || !dispute) return;
 
-    // Optional: Double-check this is a reputational dispute
-    if (dispute.agreement?.type !== 1) {
-      toast.error("Only reputational disputes can be escalated to vote");
-      return;
-    }
-
     try {
       setEscalating(true);
       await disputeService.escalateDisputesToVote([disputeId]);
@@ -1115,6 +1056,70 @@ export default function DisputeDetails() {
       setEscalating(false);
     }
   }, [disputeId, user, dispute]); // Added dispute to dependencies
+
+  const checkIfCanFinalize = useCallback(() => {
+    if (!dispute || !user) return false;
+
+    // Only disputes in "Vote in Progress" status can be finalized
+    const isVoteInProgress = dispute.status === "Vote in Progress";
+
+    // Only admins or judges can finalize (or you can adjust permissions as needed)
+    const isEligibleToFinalize = isUserAdmin() || isUserJudge();
+
+    return isVoteInProgress && isEligibleToFinalize;
+  }, [dispute, user, isUserAdmin, isUserJudge]);
+
+  useEffect(() => {
+    if (dispute && user) {
+      const canFinalizeDispute = checkIfCanFinalize();
+      setCanFinalize(canFinalizeDispute);
+    }
+  }, [dispute, user, checkIfCanFinalize]);
+
+  // Add this handler function
+  const handleFinalizeVote = useCallback(async () => {
+    if (!disputeId || !user) return;
+
+    // Confirm with the user
+    if (
+      !confirm(
+        "Are you sure you want to manually finalize this dispute? This will calculate votes and determine the outcome.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setFinalizing(true);
+
+      // Show loading toast
+      const loadingToast = toast.loading("Finalizing dispute votes...", {
+        description: "This may take a moment as votes are calculated.",
+      });
+
+      await disputeService.finalizeDisputes([disputeId]);
+
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+
+      toast.success("Dispute votes finalized successfully!", {
+        description:
+          "Voting results have been calculated and dispute status updated.",
+      });
+
+      // Refresh dispute details
+      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+      const transformedDispute =
+        disputeService.transformDisputeDetailsToRow(disputeDetails);
+      setDispute(transformedDispute);
+    } catch (error: any) {
+      toast.error("Failed to finalize dispute", {
+        description: error.message || "Please try again later",
+      });
+    } finally {
+      setFinalizing(false);
+    }
+  }, [disputeId, user]);
 
   useEffect(() => {
     if (isSuccess && hash && pendingTransactionType) {
@@ -1259,7 +1264,7 @@ export default function DisputeDetails() {
             </Button>
           )}
 
-          {dispute?.status === "Pending" && dispute.agreement?.type === 1 && (
+          {dispute?.status === "Pending" && (
             <Button
               variant="outline"
               className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
@@ -1275,12 +1280,27 @@ export default function DisputeDetails() {
             </Button>
           )}
 
+          {/* Add this near your other action buttons */}
+          {canFinalize && (
+            <Button
+              variant="outline"
+              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              onClick={handleFinalizeVote}
+              disabled={finalizing}
+            >
+              {finalizing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Gavel className="mr-2 h-4 w-4" />
+              )}
+              {finalizing ? "Finalizing..." : "Finalize Votes"}
+            </Button>
+          )}
+
           <div className="flex flex-wrap gap-3">
             {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
 
             {dispute.status === "Vote in Progress" &&
-              (dispute.agreement?.type === 1 || // Reputational: always show if status is Vote in Progress
-                (dispute.agreement?.type === 2 && isVoteStarted())) && // Escrow: only show if vote started
               canVote &&
               !hasVoted &&
               !isCurrentUserPlaintiff() &&
@@ -1299,8 +1319,7 @@ export default function DisputeDetails() {
               {/* Settle Escrow Dispute Button */}
               {dispute.status === "Pending" &&
                 isCurrentUserPlaintiff() &&
-                dispute.agreement?.type === 2 &&
-                dispute.type === 1 && (
+                dispute.agreement?.type === 2 && (
                   <Button
                     variant="outline"
                     className="border-green-400/30 text-green-300 hover:bg-green-500/10"
@@ -1456,7 +1475,7 @@ export default function DisputeDetails() {
                     Transaction Hash
                   </span>
                   <span className="truncate font-mono text-xs text-amber-200">
-                    {dispute.txnhash}
+                    {dispute.txnhash.slice(0, 6)}...{dispute.txnhash.slice(-4)}
                   </span>
                 </div>
               )}

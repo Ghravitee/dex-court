@@ -5,18 +5,7 @@ import { BarChart3, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { calculateVoteResults } from "../../../lib/voteCalculations";
-
-interface VoteOutcomeData {
-  winner: "plaintiff" | "defendant" | "dismissed";
-  judgeVotes: number;
-  communityVotes: number;
-  judgePct: number;
-  communityPct: number;
-  comments: Array<{
-    handle: string;
-    text: string;
-  }>;
-}
+import type { VoteOutcomeData } from "@/types";
 
 interface VoteOutcomeModalProps {
   isOpen: boolean;
@@ -56,16 +45,8 @@ const VoteOutcomeModal = ({
     }
   }, [isOpen, disputeId, passedVoteOutcome, fetchVoteOutcome]);
 
-  // Calculate vote results only when voteOutcome is available
-  const voteResults = voteOutcome
-    ? calculateVoteResults(
-        voteOutcome.judgeVotes,
-        voteOutcome.communityVotes,
-        voteOutcome.judgePct,
-        voteOutcome.communityPct,
-        voteOutcome.winner,
-      )
-    : null;
+  // Calculate vote results using the utility function
+  const voteResults = voteOutcome ? calculateVoteResults(voteOutcome) : null;
 
   const handleModalClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -337,7 +318,7 @@ const VoteOutcomeModal = ({
               </div>
 
               {/* Judges' Comments */}
-              {comments.length > 0 && (
+              {comments && comments.length > 0 ? (
                 <div>
                   <div className="mb-4 text-lg font-medium text-white/90">
                     Judges' Comments
@@ -349,11 +330,19 @@ const VoteOutcomeModal = ({
                         className="rounded-lg border border-white/10 bg-white/5 p-4"
                       >
                         <div className="text-sm font-medium text-cyan-300">
-                          {comment.handle}
+                          {comment.username || "Anonymous"}
                         </div>
-                        <div className="mt-2 text-white/80">{comment.text}</div>
+                        <div className="mt-2 text-white/80">
+                          {comment.comment || "No comment"}
+                        </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="text-center text-white/70">
+                    No judges' comments were provided for this case.
                   </div>
                 </div>
               )}
