@@ -643,7 +643,7 @@ export interface DisputeDetailsDTO {
   agreement?: agreementDetailDisputeDto;
   /** Title or short summary of the dispute */
   title: string;
-  /** Current dispute status (DisputeStatusEnum > Pending = 1, VoteInProgress, Settled, Dismissed) */
+  /** Current dispute status (DisputeStatusEnum > Pending = 1, VoteInProgress, Settled, Dismissed, pendingPayment) */
   status: number;
   /** Type of dispute (DisputeTypeEnum > ProBono = 1, Paid) */
   type: number;
@@ -683,7 +683,7 @@ export interface DisputeListItemDTO {
   agreement?: agreementDetailDisputeDto;
   /** Dispute type > enum > [ProBono = 1, Paid] */
   requestType: number;
-  /** Current status of the dispute > enum > [Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4] */
+  /** Current status of the dispute > enum > [Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4, pendingPayment = 5] */
   status: number;
   /** Result of the dispute (nullable, depends on voting outcome) */
   result?: number;
@@ -722,7 +722,7 @@ export interface DisputeVoteInProgressListDTO {
   hasVoted: string;
   /** Dispute type > enum > [ProBono = 1, Paid] */
   requestType: number;
-  /** Current status of the dispute > enum > [Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4] */
+  /** Current status of the dispute > enum > [Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4, pendingPayment = 5] */
   status: number;
   /** Result of the dispute (nullable, depends on voting outcome) */
   result?: number;

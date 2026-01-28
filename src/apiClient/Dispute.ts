@@ -60,7 +60,7 @@ export class Dispute<
       top?: number;
       /** Number of records to skip (default: 0) */
       skip?: number;
-      /** Filter by DisputeStatusEnum (Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4) */
+      /** Filter by DisputeStatusEnum (Pending = 1, VoteInProgress = 2, Settled = 3, Dismissed = 4, pendingPayment = 5) */
       status?: number;
       /** Sort by creation date > enum > [asc, desc] (default: desc) */
       sort?: string;

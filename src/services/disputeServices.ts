@@ -295,6 +295,7 @@ class DisputeService {
     }
   }
 
+
   // Create dispute from agreement
   // Create dispute from agreement
   async createDisputeFromAgreement(
@@ -1137,7 +1138,7 @@ class DisputeService {
 
   private mapStatusToFrontend(
     status: DisputeStatusEnum,
-  ): "Pending" | "Vote in Progress" | "Settled" | "Dismissed" {
+  ): "Pending" | "Vote in Progress" | "Settled" | "Dismissed" | "Pending Payment" {
     switch (status) {
       case DisputeStatusEnum.Pending:
         return "Pending";
@@ -1147,6 +1148,8 @@ class DisputeService {
         return "Settled";
       case DisputeStatusEnum.Dismissed:
         return "Dismissed";
+      case DisputeStatusEnum.PendingPayment:
+        return "Pending Payment";
       default:
         return "Pending";
     }

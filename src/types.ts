@@ -37,6 +37,8 @@ export interface Agreement {
   id: string;
   title: string;
   description: string;
+  disputeId?: string | null;
+  disputeVotingId?: number | null;
   type: "Public" | "Private";
   counterparty: string;
   createdBy: string;
@@ -194,12 +196,12 @@ export type Escrow = {
   token: string;
   amount: number;
   status:
-    | "pending"
-    | "signed"
-    | "cancelled"
-    | "completed"
-    | "frozen"
-    | "disputed";
+  | "pending"
+  | "signed"
+  | "cancelled"
+  | "completed"
+  | "frozen"
+  | "disputed";
   deadline: string;
   type: "public" | "private";
   description: string;
@@ -294,6 +296,7 @@ export const DisputeStatusEnum = {
   VoteInProgress: 2,
   Settled: 3,
   Dismissed: 4,
+  PendingPayment: 5,
 } as const;
 export type DisputeStatusEnum =
   (typeof DisputeStatusEnum)[keyof typeof DisputeStatusEnum];
@@ -471,7 +474,7 @@ export interface DisputeRow {
   title: string;
   request: "Pro Bono" | "Paid";
   parties: string;
-  status: "Pending" | "Vote in Progress" | "Settled" | "Dismissed";
+  status: "Pending" | "Vote in Progress" | "Settled" | "Dismissed" | "Pending Payment";
   claim: string;
   plaintiff: string;
   defendant: string;

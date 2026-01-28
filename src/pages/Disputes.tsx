@@ -116,9 +116,8 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername, field, index)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
-        isCurrentUser ? "opacity-80" : ""
-      }`}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-80" : ""
+        }`}
     >
       <UserAvatar
         userId={user.id}
@@ -185,7 +184,9 @@ const useDisputes = (filters: {
                   ? DisputeStatusEnum.Settled
                   : filters.status === "Dismissed"
                     ? DisputeStatusEnum.Dismissed
-                    : undefined,
+                    : filters.status === "pendingPayment"
+                      ? DisputeStatusEnum.pendingPayment
+                      : undefined,
         // REMOVE search from here
         // search: filters.search,
         range: rangeValue,
@@ -415,6 +416,7 @@ export default function Disputes() {
     { label: "Vote in Progress", value: "Vote in Progress" },
     { label: "Settled", value: "Settled" },
     { label: "Dismissed", value: "Dismissed" },
+    { label: "pendingPayment", value: "pending Payment" },
   ];
 
   const recentDisputesFilterOptions = [
@@ -423,6 +425,7 @@ export default function Disputes() {
     { label: "Vote in Progress", value: "Vote in Progress" },
     { label: "Settled", value: "Settled" },
     { label: "Dismissed", value: "Dismissed" },
+    { label: "Dismissed", value: "pending Payment" },
   ];
 
   // Close dropdown when clicking outside
@@ -471,8 +474,8 @@ export default function Disputes() {
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
+            resultUser.telegram?.username ||
+            resultUser.telegramInfo,
           );
 
           return (
@@ -515,8 +518,8 @@ export default function Disputes() {
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
+            resultUser.telegram?.username ||
+            resultUser.telegramInfo,
           );
 
           return (
@@ -1308,9 +1311,8 @@ export default function Disputes() {
                     "All"}
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform ${
-                    isOpen ? "rotate-180" : ""
-                  }`}
+                  className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""
+                    }`}
                 />
               </div>
 
@@ -1324,11 +1326,10 @@ export default function Disputes() {
                         setStatus(option.value as DisputeRow["status"] | "All");
                         setIsOpen(false);
                       }}
-                      className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${
-                        status === option.value
-                          ? "bg-cyan-500/20 text-cyan-200"
-                          : ""
-                      }`}
+                      className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${status === option.value
+                        ? "bg-cyan-500/20 text-cyan-200"
+                        : ""
+                        }`}
                     >
                       {option.label}
                     </div>
@@ -1549,11 +1550,14 @@ export default function Disputes() {
                             <span className="badge badge-orange">Pending</span>
                           ) : d.status === "Dismissed" ? (
                             <span className="badge badge-red">Dismissed</span>
-                          ) : (
-                            <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
-                              Vote in Progress
-                            </span>
-                          )}
+                          ) : d.status === "pending Payment" ? (
+                            <span className="badge border-yellow" >pending Payment</span>
+                          )
+                            : (
+                              <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
+                                Vote in Progress
+                              </span>
+                            )}
                         </td>
                       </tr>
                     ))
@@ -1613,11 +1617,10 @@ export default function Disputes() {
                           variant={currentPage === pageNum ? "neon" : "outline"}
                           size="sm"
                           onClick={() => handlePageChange(pageNum)}
-                          className={`${
-                            currentPage === pageNum
-                              ? "neon-hover"
-                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                          className={`${currentPage === pageNum
+                            ? "neon-hover"
+                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                            } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                         >
                           {pageNum}
                         </Button>
@@ -1668,9 +1671,8 @@ export default function Disputes() {
                 }
                 <div className="bg-Primary flex h-8 w-8 items-center justify-center rounded-md">
                   <ChevronDown
-                    className={`transform text-2xl text-white transition-transform duration-300 ${
-                      isRecentDisputesFilterOpen ? "rotate-180" : ""
-                    }`}
+                    className={`transform text-2xl text-white transition-transform duration-300 ${isRecentDisputesFilterOpen ? "rotate-180" : ""
+                      }`}
                   />
                 </div>
               </div>
@@ -1684,13 +1686,11 @@ export default function Disputes() {
                         setRecentDisputesFilter(option.value);
                         setIsRecentDisputesFilterOpen(false);
                       }}
-                      className={`cursor-pointer px-3 py-1.5 text-sm transition-colors hover:bg-cyan-300 hover:text-white ${
-                        idx === 0 ? "rounded-t-xl" : ""
-                      } ${
-                        idx === recentDisputesFilterOptions.length - 1
+                      className={`cursor-pointer px-3 py-1.5 text-sm transition-colors hover:bg-cyan-300 hover:text-white ${idx === 0 ? "rounded-t-xl" : ""
+                        } ${idx === recentDisputesFilterOptions.length - 1
                           ? "rounded-b-xl"
                           : ""
-                      }`}
+                        }`}
                     >
                       {option.label}
                     </div>
@@ -1724,17 +1724,16 @@ export default function Disputes() {
                       </div>
                     </div>
                     <span
-                      className={`badge ml-2 text-xs ${
-                        dispute.status === "Pending"
-                          ? "badge-orange"
-                          : dispute.status === "Vote in Progress"
-                            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                            : dispute.status === "Settled"
-                              ? "badge-blue"
-                              : dispute.status === "Dismissed"
-                                ? "badge-red"
-                                : ""
-                      }`}
+                      className={`badge ml-2 text-xs ${dispute.status === "Pending"
+                        ? "badge-orange"
+                        : dispute.status === "Vote in Progress"
+                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                          : dispute.status === "Settled"
+                            ? "badge-blue"
+                            : dispute.status === "Dismissed"
+                              ? "badge-red"
+                              : ""
+                        }`}
                     >
                       {dispute.status}
                     </span>
@@ -1866,17 +1865,15 @@ export default function Disputes() {
                       {(["Pro Bono", "Paid"] as const).map((kind) => (
                         <label
                           key={kind}
-                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                            form.kind === kind
-                              ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                              : "border-white/10 bg-white/5"
-                          } ${
-                            isSubmitting ||
-                            transactionStep === "pending" ||
-                            isProcessingPaidDispute
+                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
+                            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                            : "border-white/10 bg-white/5"
+                            } ${isSubmitting ||
+                              transactionStep === "pending" ||
+                              isProcessingPaidDispute
                               ? "cursor-not-allowed opacity-50"
                               : ""
-                          }`}
+                            }`}
                         >
                           <input
                             type="radio"
@@ -1948,7 +1945,7 @@ export default function Disputes() {
                             />
                           ))
                         ) : defendantSearchQuery.replace(/^@/, "").trim()
-                            .length >= 1 && !isDefendantSearchLoading ? (
+                          .length >= 1 && !isDefendantSearchLoading ? (
                           <div className="px-4 py-3 text-center text-sm text-cyan-300">
                             No users found for "
                             {defendantSearchQuery.replace(/^@/, "")}"
@@ -1960,10 +1957,10 @@ export default function Disputes() {
 
                         {defendantSearchQuery.replace(/^@/, "").trim().length <
                           1 && (
-                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                            Type at least 1 character to search
-                          </div>
-                        )}
+                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                              Type at least 1 character to search
+                            </div>
+                          )}
                       </div>
                     )}
                   </div>
@@ -2031,17 +2028,15 @@ export default function Disputes() {
 
                     {/* Drag and Drop Area */}
                     <div
-                      className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                        isDragOver
-                          ? "border-cyan-400/60 bg-cyan-500/20"
-                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                      } ${
-                        isSubmitting ||
-                        transactionStep === "pending" ||
-                        isProcessingPaidDispute
+                      className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                        ? "border-cyan-400/60 bg-cyan-500/20"
+                        : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                        } ${isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
                           ? "cursor-not-allowed opacity-50"
                           : ""
-                      }`}
+                        }`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
@@ -2061,13 +2056,12 @@ export default function Disputes() {
                       />
                       <label
                         htmlFor="evidence-upload"
-                        className={`flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center ${
-                          isSubmitting ||
+                        className={`flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center ${isSubmitting ||
                           transactionStep === "pending" ||
                           isProcessingPaidDispute
-                            ? "cursor-not-allowed"
-                            : ""
-                        }`}
+                          ? "cursor-not-allowed"
+                          : ""
+                          }`}
                       >
                         <Upload className="mb-3 h-8 w-8 text-cyan-400" />
                         <div className="text-sm text-cyan-300">
@@ -2347,9 +2341,8 @@ function JudgesIntro() {
 
   return (
     <section
-      className={`card-cyan relative col-span-2 overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
-        expanded ? "h-auto" : "lg:h-[14rem]"
-      }`}
+      className={`card-cyan relative col-span-2 overflow-hidden rounded-2xl p-6 transition-all duration-300 ${expanded ? "h-auto" : "lg:h-[14rem]"
+        }`}
     >
       {/* Cyan glow effect */}
       <div className="absolute top-0 -right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>

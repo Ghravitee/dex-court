@@ -89,6 +89,7 @@ export interface AgreementDetailsDTO {
   amount?: number;
   tokenSymbol?: string;
   deadline: string;
+  disputes: DisputeSummaryDTO[];
   createdAt: string;
   contractAgreementId?: string;
   includesFunds?: boolean;
@@ -134,6 +135,10 @@ export interface TimelineEventDTO {
   eventType: number;
   createdAt: string;
   description?: string;
+}
+
+export interface DisputeSummaryDTO {
+  disputeId: number;
 }
 
 export interface AgreementsEditRequest {

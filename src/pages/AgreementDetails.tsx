@@ -45,6 +45,8 @@ import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import OpenDisputeModal from "../components/OpenDisputeModal";
 import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
+import { disputeService } from "../services/disputeServices";
+import OpenPendingDisputeModal from "../components/OpenPendingDisputeModal";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -1013,6 +1015,8 @@ export default function AgreementDetails() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [agreement, setAgreement] = useState<Agreement | null>(null);
+  const [disputeStatus, setDisputeStatus] = useState<any | null>(null);
+  const [disputeVotingId, setDisputeVotingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEscrowAddress, setShowEscrowAddress] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
@@ -1050,6 +1054,7 @@ export default function AgreementDetails() {
       const agreementData =
         await agreementService.getAgreementDetails(agreementId);
 
+
       console.log("📋 AgreementDetails API Response:", agreementData);
 
       // Helper function to extract avatar ID from party data and convert to number
@@ -1062,6 +1067,10 @@ export default function AgreementDetails() {
       const firstPartyUsername = getTelegramUsernameFromParty(
         agreementData.firstParty,
       );
+
+      const disputeId = agreementData.disputes?.[0]?.disputeId || null;
+      console.log("📋 Dispute ID:", disputeId);
+
       const counterPartyUsername = getTelegramUsernameFromParty(
         agreementData.counterParty,
       );
@@ -1089,6 +1098,8 @@ export default function AgreementDetails() {
       const transformedAgreement: Agreement = {
         id: agreementData.id.toString(),
         title: agreementData.title,
+        disputeId: disputeId ? disputeId.toString() : null,
+        disputeVotingId: disputeVotingId ? disputeVotingId : null,
         description: agreementData.description,
         type:
           agreementData.visibility === AgreementVisibilityEnum.PRIVATE
@@ -1175,6 +1186,9 @@ export default function AgreementDetails() {
         agreementData.creator,
       );
 
+      const disputeId = agreementData.disputes?.[0]?.disputeId || null;
+      console.log("📋 Dispute ID:", disputeId);
+
       // 🆕 FIXED: Detect funds inclusion based on amount/token presence since API doesn't return includesFunds
       const hasAmountOrToken =
         agreementData.amount || agreementData.tokenSymbol;
@@ -1192,6 +1206,8 @@ export default function AgreementDetails() {
       const transformedAgreement: Agreement = {
         id: agreementData.id.toString(),
         title: agreementData.title,
+        disputeId: disputeId ? disputeId.toString() : null,
+        disputeVotingId: disputeVotingId ? disputeVotingId : null,
         description: agreementData.description,
         type:
           agreementData.visibility === AgreementVisibilityEnum.PRIVATE
@@ -1240,9 +1256,41 @@ export default function AgreementDetails() {
     }
   }, [id, isRefreshing]);
 
+  // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
+  useEffect(() => {
+    if (!agreement?.disputeId) return;
+
+    const disputeId = parseInt(agreement?.disputeId);
+    if (isNaN(disputeId)) {
+      return;
+    }
+
+    const fetchDisputeDetails = async () => {
+      try {
+        const disputeDetails =
+          await disputeService.getDisputeDetails(disputeId);
+        console.log("✅ Received dispute details:", disputeDetails);
+
+        const transformedDispute =
+          disputeService.transformDisputeDetailsToRow(disputeDetails);
+        console.log("✅ Transformed dispute Status:", transformedDispute.status);
+
+        setDisputeStatus(transformedDispute.status);
+        if (transformedDispute.votingId !== undefined) {
+          setDisputeVotingId(transformedDispute.votingId);
+        }
+      } catch (error: any) {
+        console.error("❌ Failed to fetch dispute details:", error);
+      }
+    };
+
+    fetchDisputeDetails();
+  }, [agreement?.disputeId]);
+
   useEffect(() => {
     fetchAgreementDetails();
   }, [id, fetchAgreementDetails]);
+
 
   // ADD THIS POLLING EFFECT
   useEffect(() => {
@@ -1639,6 +1687,15 @@ export default function AgreementDetails() {
     }
   };
 
+
+  const getDisputeStatusIcon = () => {
+    return <CheckCircle className="h-5 w-5 text-green-400" />;
+  }
+
+  const getDisputeStatusColor = () => {
+    return "bg-green-500/20 text-green-400 border-green-500/30";
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -1968,19 +2025,43 @@ export default function AgreementDetails() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Agreements
             </Button>
+
             <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-2">
-                {getStatusIcon(agreement.status)}
-                <span
-                  className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
-                >
-                  {agreement.status.charAt(0).toUpperCase() +
-                    agreement.status.slice(1).replace("_", " ")}
-                </span>
-              </div>
-              {/* ADD THIS: Dispute Link when agreement has disputes */}
+              {
+                disputeStatus === 'Pending Payment' && (
+
+                  <div className="flex items-center space-x-2">
+                    {getDisputeStatusIcon()}
+
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-medium ${getDisputeStatusColor()}`}
+                    >
+                      Dispute Pending Payment
+
+                    </span>
+                  </div>
+                )
+              }
+
+              {
+                disputeStatus !== 'Pending Payment' &&
+                (
+
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(agreement.status)}
+
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
+                    >
+                      {agreement.status.charAt(0).toUpperCase() +
+                        agreement.status.slice(1).replace("_", " ")}
+                    </span>
+                  </div>
+                )
+              }
+
               {agreement._raw?.disputes &&
-                agreement._raw.disputes.length > 0 && (
+                agreement._raw.disputes.length > 0 && disputeStatus !== 'Pending Payment' && (
                   <Link
                     to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
                     className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
@@ -2281,18 +2362,16 @@ export default function AgreementDetails() {
                 <div>
                   {agreement.includeFunds === "yes" && (
                     <div
-                      className={`rounded-lg border ${
-                        agreement.useEscrow
-                          ? "border-emerald-400/30 bg-emerald-500/10"
-                          : "border-cyan-400/30 bg-cyan-500/10"
-                      } p-4`}
+                      className={`rounded-lg border ${agreement.useEscrow
+                        ? "border-emerald-400/30 bg-emerald-500/10"
+                        : "border-cyan-400/30 bg-cyan-500/10"
+                        } p-4`}
                     >
                       <h3
-                        className={`mb-3 text-lg font-semibold ${
-                          agreement.useEscrow
-                            ? "text-emerald-300"
-                            : "text-cyan-300"
-                        }`}
+                        className={`mb-3 text-lg font-semibold ${agreement.useEscrow
+                          ? "text-emerald-300"
+                          : "text-cyan-300"
+                          }`}
                       >
                         Financial Details
                       </h3>
@@ -2301,11 +2380,10 @@ export default function AgreementDetails() {
                         {/* Funds included */}
                         <div>
                           <div
-                            className={`text-sm ${
-                              agreement.useEscrow
-                                ? "text-emerald-300"
-                                : "text-cyan-300"
-                            }`}
+                            className={`text-sm ${agreement.useEscrow
+                              ? "text-emerald-300"
+                              : "text-cyan-300"
+                              }`}
                           >
                             Funds Included
                           </div>
@@ -2317,11 +2395,10 @@ export default function AgreementDetails() {
                         {/* Escrow Status */}
                         <div>
                           <div
-                            className={`text-sm ${
-                              agreement.useEscrow
-                                ? "text-emerald-300"
-                                : "text-cyan-300"
-                            }`}
+                            className={`text-sm ${agreement.useEscrow
+                              ? "text-emerald-300"
+                              : "text-cyan-300"
+                              }`}
                           >
                             Escrow Protection
                           </div>
@@ -2334,11 +2411,10 @@ export default function AgreementDetails() {
                         {agreement.amount && (
                           <div className="md:col-span-2">
                             <div
-                              className={`text-sm ${
-                                agreement.useEscrow
-                                  ? "text-emerald-300"
-                                  : "text-cyan-300"
-                              }`}
+                              className={`text-sm ${agreement.useEscrow
+                                ? "text-emerald-300"
+                                : "text-cyan-300"
+                                }`}
                             >
                               Amount
                             </div>
@@ -2425,7 +2501,7 @@ export default function AgreementDetails() {
 
               {/* Dispute Information Section */}
               {agreement._raw?.disputes &&
-                agreement._raw.disputes.length > 0 && (
+                agreement._raw.disputes.length > 0 && disputeStatus !== 'Pending Payment' && (
                   <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Active Dispute
@@ -2473,16 +2549,16 @@ export default function AgreementDetails() {
                                       >
                                         {disputeInfo.filedBy.startsWith("0x")
                                           ? formatWalletAddress(
-                                              disputeInfo.filedBy,
-                                            )
+                                            disputeInfo.filedBy,
+                                          )
                                           : disputeInfo.filedBy}
                                       </button>
                                       {user &&
                                         disputeInfo.filedBy &&
                                         normalizeUsername(user.username) ===
-                                          normalizeUsername(
-                                            disputeInfo.filedBy,
-                                          ) && (
+                                        normalizeUsername(
+                                          disputeInfo.filedBy,
+                                        ) && (
                                           <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                         )}
                                     </div>
@@ -2767,6 +2843,48 @@ export default function AgreementDetails() {
                   )}
                 </div>
               )}
+            {(canSign ||
+              canCancel ||
+              canRequestCancellation ||
+              canRespondToCancellation ||
+              canMarkDelivered ||
+              canReviewDelivery ||
+              canOpenDispute ||
+              canCancelDispute) &&
+              agreement?.status === "disputed" &&
+              disputeStatus === 'Pending Payment' &&
+              ( // Add this line to hide when disputed
+                <div className="card-cyan rounded-xl p-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">
+                    Agreement Actions
+                  </h3>
+                  <div className="flex flex-wrap gap-3">
+
+                    {/* Open Dispute Button */}
+                    {(
+                      <Button
+                        variant="outline"
+                        className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                        onClick={handleOpenDispute}
+                        disabled={isOpeningDispute || isRefreshing}
+                      >
+                        {isOpeningDispute ? (
+                          <>
+                            <Clock className="mr-2 h-4 w-4 animate-spin" />
+                            Opening...
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="mr-2 h-4 w-4" />
+                            Open Dispute
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+
+                </div>
+              )}
 
             {/* NEW: Enhanced Delivery Status Information with Context */}
             {agreement?.status === "pending_approval" && (
@@ -2836,22 +2954,22 @@ export default function AgreementDetails() {
                   "disputed",
                   "pending_approval",
                 ].includes(agreement.status) && (
-                  <div className="relative flex min-w-[12rem] flex-col items-center text-center">
-                    <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
-                    <div className="mt-3 font-medium text-white">
-                      Agreement Signed
+                    <div className="relative flex min-w-[12rem] flex-col items-center text-center">
+                      <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400"></div>
+                      <div className="mt-3 font-medium text-white">
+                        Agreement Signed
+                      </div>
+                      <div className="text-sm text-cyan-300">
+                        {signingDate
+                          ? formatDateWithTime(signingDate)
+                          : formatDateWithTime(agreement.dateCreated)}
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-400/70">
+                        by both parties
+                      </div>
+                      <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      {signingDate
-                        ? formatDateWithTime(signingDate)
-                        : formatDateWithTime(agreement.dateCreated)}
-                    </div>
-                    <div className="mt-1 text-xs text-emerald-400/70">
-                      by both parties
-                    </div>
-                    <div className="absolute top-2 left-[calc(100%+0.5rem)] h-[2px] w-8 bg-emerald-400/50"></div>
-                  </div>
-                )}
+                  )}
                 {/* Step 3 - Delivery Submitted (if pending approval) */}
                 {agreement.status === "pending_approval" && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
@@ -2888,7 +3006,7 @@ export default function AgreementDetails() {
 
                 {/* Disputed State */}
                 {/* Disputed State */}
-                {agreement.status === "disputed" && (
+                {agreement.status === "disputed" && disputeStatus !== 'Pending Payment' && (
                   <div className="relative flex min-w-[10rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-violet-400"></div>
                     <div className="mt-3 font-medium text-white">
@@ -2929,7 +3047,7 @@ export default function AgreementDetails() {
                         {user &&
                           disputeInfo.filedBy &&
                           normalizeUsername(user.username) ===
-                            normalizeUsername(disputeInfo.filedBy) && (
+                          normalizeUsername(disputeInfo.filedBy) && (
                             <VscVerifiedFilled className="h-3 w-3 text-green-400" />
                           )}
                       </div>
@@ -2984,11 +3102,26 @@ export default function AgreementDetails() {
 
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Status</span>
-                  <span
-                    className={`font-medium ${getStatusColor(agreement.status)} rounded px-2 py-1 text-xs`}
-                  >
-                    {agreement.status.replace("_", " ")}
-                  </span>
+                  {
+                    disputeStatus !== 'Pending Payment' && (
+
+                      <span
+                        className={`font-medium ${getStatusColor(agreement.status)} rounded px-2 py-1 text-xs`}
+                      >
+                        {agreement.status.replace("_", " ")}
+                      </span>
+                    )
+                  }
+                  {
+                    disputeStatus === 'Pending Payment' && (
+
+                      <span
+                        className={`font-medium ${getDisputeStatusColor()} rounded px-2 py-1 text-xs`}
+                      >
+                        Dispute Pending Payment
+                      </span>
+                    )
+                  }
                 </div>
                 <div className="flex justify-between">
                   <span className="text-cyan-300">Files Attached</span>
@@ -3096,7 +3229,7 @@ export default function AgreementDetails() {
 
                 {/* ADD DISPUTE FILED DATE */}
                 {/* DISPUTE FILED INFORMATION */}
-                {agreement.status === "disputed" && disputeInfo.filedAt && (
+                {agreement.status === "disputed" && disputeInfo.filedAt && disputeStatus !== 'Pending Payment' && (
                   <div className="space-y-1">
                     <div className="flex justify-between">
                       <span className="text-purple-300">Dispute Filed</span>
@@ -3123,6 +3256,16 @@ export default function AgreementDetails() {
         <OpenDisputeModal
           isOpen={isDisputeModalOpen}
           onClose={() => setIsDisputeModalOpen(false)}
+          agreement={agreement}
+          onDisputeCreated={handleDisputeCreated}
+        />
+      )}
+
+      {isDisputeModalOpen && disputeStatus === 'Pending Payment' && (
+        <OpenPendingDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => setIsDisputeModalOpen(false)}
+          votingId={agreement.disputeVotingId ?? 0}
           agreement={agreement}
           onDisputeCreated={handleDisputeCreated}
         />

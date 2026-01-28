@@ -602,6 +602,7 @@ export default function DisputeDetails() {
         const disputeDetails =
           await disputeService.getDisputeDetails(disputeId);
         console.log("✅ Received dispute details:", disputeDetails);
+        
 
         const transformedDispute =
           disputeService.transformDisputeDetailsToRow(disputeDetails);
