@@ -838,7 +838,9 @@ export default function Disputes() {
       setIsSubmitting(true);
 
       try {
-        console.log("🚀 Creating paid dispute after transaction...");
+        console.log("🚀 Creating paid dispute after transaction...", {
+          txHash: transactionHash, // Use it here
+        });
 
         const cleanedDefendant = isValidWalletAddress(form.defendant)
           ? form.defendant
