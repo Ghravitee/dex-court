@@ -1,6 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../components/ui/button";
-import { ChevronDown, ChevronRight, ChevronLeft, Send } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Send,
+  CheckCircle2,
+  AlertCircle,
+  X,
+  Wallet,
+} from "lucide-react";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 import {
@@ -28,6 +37,11 @@ import {
 } from "../lib/usernameUtils";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import { useAuth } from "../hooks/useAuth";
+import { motion, AnimatePresence } from "framer-motion";
+import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { VOTING_ABI, VOTING_CA } from "../web3/config";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { getVoteConfigs } from "../web3/readContract";
 
 // File upload types
 interface UploadedFile {
@@ -37,6 +51,29 @@ interface UploadedFile {
   type: "image" | "document";
   size: string;
 }
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
+const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+const ALLOWED_DOCUMENT_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+];
+
+// Helper function to calculate total file size
+const getTotalFileSize = (files: UploadedFile[]): string => {
+  const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
+  const mb = totalBytes / 1024 / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
 
 const isValidWalletAddress = (value: string) =>
   /^0x[a-fA-F0-9]{40}$/.test(value);
@@ -230,10 +267,66 @@ const DisputeSkeleton = () => (
   </tr>
 );
 
+// Transaction Status Component
+const TransactionStatus = ({
+  status,
+  onRetry,
+}: {
+  status: "idle" | "pending" | "success" | "error";
+  onRetry?: () => void;
+}) => {
+  if (status === "idle") return null;
+
+  const configs = {
+    pending: {
+      icon: Loader2,
+      text: "Processing transaction...",
+      className: "text-yellow-400",
+      iconClassName: "animate-spin",
+    },
+    success: {
+      icon: CheckCircle2,
+      text: "Transaction confirmed!",
+      className: "text-green-400",
+      iconClassName: "",
+    },
+    error: {
+      icon: AlertCircle,
+      text: "Transaction failed",
+      className: "text-red-400",
+      iconClassName: "",
+    },
+  };
+
+  const config = configs[status];
+  const Icon = config.icon;
+
+  return (
+    <div
+      className={`rounded-lg border p-3 ${config.className} border-current/20 bg-current/5`}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className={`h-5 w-5 ${config.iconClassName}`} />
+        <span className="text-sm font-medium">{config.text}</span>
+        {status === "error" && onRetry && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRetry}
+            className="ml-auto border-current text-current hover:bg-current/10"
+          >
+            Retry
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function Disputes() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-
+  const networkInfo = useNetworkEnvironment();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<DisputeRow["status"] | "All">("All");
   const [dateRange, setDateRange] = useState("All");
@@ -285,6 +378,29 @@ export default function Disputes() {
 
   const debouncedDefendantQuery = useDebounce(defendantSearchQuery, 300);
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+  const [transactionStep, setTransactionStep] = useState<
+    "idle" | "pending" | "success" | "error"
+  >("idle");
+  const [isProcessingPaidDispute, setIsProcessingPaidDispute] = useState(false);
+
+  const {
+    data: hash,
+    writeContract,
+    isPending: isWritePending,
+    error: writeError,
+    reset: resetWrite,
+  } = useWriteContract();
+
+  const { isSuccess: isTransactionSuccess, isError: isTransactionError } =
+    useWaitForTransactionReceipt({
+      hash,
+    });
+
+  const votingIdToUse = useMemo(() => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return 100000 + (array[0] % 900000);
+  }, []);
 
   // Use the custom hook for data fetching
   const { data, loading, error, refetch } = useDisputes({
@@ -566,11 +682,51 @@ export default function Disputes() {
 
     const newFiles: UploadedFile[] = [];
 
-    console.log("New Files:", newFiles);
+    // Calculate current total size
+    const currentTotalSize = form.evidence.reduce(
+      (total, file) => total + file.file.size,
+      0,
+    );
 
     Array.from(selectedFiles).forEach((file) => {
+      const fileSizeMB = file.size / 1024 / 1024;
       const fileType = file.type.startsWith("image/") ? "image" : "document";
-      const fileSize = (file.size / 1024 / 1024).toFixed(2) + " MB";
+
+      // Apply file size limits based on file type
+      if (fileType === "image" && fileSizeMB > 2) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && fileSizeMB > 3) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      // Check if adding this file would exceed total size limit
+      if (currentTotalSize + file.size > MAX_TOTAL_SIZE) {
+        toast.error(
+          `Adding "${file.name}" would exceed total 50MB limit. Current total: ${(currentTotalSize / 1024 / 1024).toFixed(2)}MB`,
+        );
+        return;
+      }
+
+      // Validate file type
+      if (
+        !ALLOWED_IMAGE_TYPES.includes(file.type) &&
+        !ALLOWED_DOCUMENT_TYPES.includes(file.type)
+      ) {
+        toast.error(
+          `File "${file.name}" has unsupported type. Allowed: images (JPEG, PNG, GIF, WebP), PDFs, Word docs, text files`,
+        );
+        return;
+      }
+
+      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
@@ -578,24 +734,32 @@ export default function Disputes() {
         size: fileSize,
       };
 
+      newFiles.push(newFile);
+
       // Create preview for images
       if (fileType === "image") {
         const reader = new FileReader();
         reader.onload = (e) => {
           newFile.preview = e.target?.result as string;
+          // Update the specific file with preview
           setForm((prev) => ({
             ...prev,
-            evidence: [...prev.evidence, newFile],
+            evidence: prev.evidence.map((f) =>
+              f.id === newFile.id ? { ...f, preview: newFile.preview } : f,
+            ),
           }));
         };
         reader.readAsDataURL(file);
-      } else {
-        setForm((prev) => ({
-          ...prev,
-          evidence: [...prev.evidence, newFile],
-        }));
       }
     });
+
+    // Add all valid files to evidence
+    if (newFiles.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        evidence: [...prev.evidence, ...newFiles],
+      }));
+    }
   };
 
   const removeFile = (id: string) => {
@@ -664,10 +828,263 @@ export default function Disputes() {
     }));
   }
 
+  const transactionProcessingRef = useRef({
+    hasProcessed: false,
+    transactionHash: null as string | null,
+  });
+
+  const createDisputeAfterTransaction = useCallback(
+    async (transactionHash: string) => {
+      setIsSubmitting(true);
+
+      try {
+        console.log("🚀 Creating paid dispute after transaction...", {
+          txHash: transactionHash, // Use it here
+        });
+
+        const cleanedDefendant = isValidWalletAddress(form.defendant)
+          ? form.defendant
+          : cleanTelegramUsername(form.defendant);
+
+        const cleanedWitnesses = form.witnesses
+          .filter((w) => w.trim())
+          .map((w) => (isValidWalletAddress(w) ? w : cleanTelegramUsername(w)));
+
+        const requestKind = DisputeTypeEnum.Paid;
+
+        const createDisputeData: CreateDisputeRequest = {
+          title: form.title,
+          description: form.description,
+          requestKind,
+          defendant: cleanedDefendant,
+          claim: form.claim,
+          witnesses: cleanedWitnesses,
+          chainId: networkInfo.chainId, // Send chainId for paid disputes
+        };
+
+        const files = form.evidence.map((uf) => uf.file);
+
+        // Call the updated createDispute method with chainId
+        const result = await disputeService.createDispute(
+          createDisputeData,
+          files,
+          networkInfo.chainId,
+        );
+
+        console.log("✅ Paid dispute created:", result);
+        toast.success("Paid dispute submitted successfully!", {
+          description: `${form.title} has been recorded on-chain and in our system`,
+        });
+
+        // Reset form
+        setOpen(false);
+        setForm({
+          title: "",
+          kind: "Pro Bono",
+          defendant: "",
+          description: "",
+          claim: "",
+          evidence: [],
+          witnesses: [""],
+        });
+
+        refetch();
+      } catch (error: any) {
+        console.error("❌ Dispute creation failed after transaction:", error);
+        toast.error("Failed to create dispute", {
+          description:
+            error.message ||
+            "Transaction succeeded but dispute creation failed",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [
+      form.title,
+      form.description,
+      form.defendant,
+      form.claim,
+      form.witnesses,
+      form.evidence,
+      networkInfo.chainId,
+      refetch,
+      setOpen,
+      setForm,
+      setIsSubmitting,
+      // Note: Add any other dependencies that are used inside the function
+    ],
+  );
+
+  // Handle transaction status changes
+  useEffect(() => {
+    console.log("🔄 Transaction effect running:", {
+      isWritePending,
+      isTransactionSuccess,
+      writeError,
+      isTransactionError,
+      isProcessingPaidDispute,
+      hash,
+      hasProcessed: transactionProcessingRef.current.hasProcessed,
+    });
+
+    if (isWritePending) {
+      console.log("⏳ Transaction pending...");
+      setTransactionStep("pending");
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
+    } else if (isTransactionSuccess && hash && isProcessingPaidDispute) {
+      console.log("✅ Transaction successful!");
+
+      // Check if we've already processed this transaction
+      if (
+        transactionProcessingRef.current.hasProcessed &&
+        transactionProcessingRef.current.transactionHash === hash
+      ) {
+        console.log("⏸️ Already processed this transaction, skipping");
+        return;
+      }
+
+      // Mark as processed
+      transactionProcessingRef.current = {
+        hasProcessed: true,
+        transactionHash: hash,
+      };
+
+      console.log("🚀 Creating dispute for successful transaction");
+      setTransactionStep("success");
+      setIsProcessingPaidDispute(false);
+
+      // Create the dispute after successful transaction
+      createDisputeAfterTransaction(hash);
+    } else if (writeError || isTransactionError) {
+      console.log("❌ Transaction failed");
+      setTransactionStep("error");
+      setIsProcessingPaidDispute(false);
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
+    }
+  }, [
+    isWritePending,
+    isTransactionSuccess,
+    writeError,
+    isTransactionError,
+    isProcessingPaidDispute,
+    hash,
+    createDisputeAfterTransaction,
+  ]);
+
+  // Reset processing ref when modal closes
+  useEffect(() => {
+    if (!open) {
+      transactionProcessingRef.current = {
+        hasProcessed: false,
+        transactionHash: null,
+      };
+      setTransactionStep("idle");
+      setIsProcessingPaidDispute(false);
+      resetWrite();
+    }
+  }, [open, resetWrite]);
+
+  // Function to create dispute after successful transaction
+
+  // Function to create dispute on-chain (for paid disputes)
+  const createDisputeOnchain = useCallback(async (): Promise<void> => {
+    console.log("🟡 [DEBUG] createDisputeOnchain STARTED");
+
+    try {
+      console.log("🔍 [DEBUG] Network Info:", {
+        chainId: networkInfo.chainId,
+      });
+
+      const contractAddress = VOTING_CA[networkInfo.chainId as number];
+      console.log("📝 [DEBUG] Contract lookup:", {
+        chainId: networkInfo.chainId,
+        contractAddress,
+        availableChains: Object.keys(VOTING_CA),
+      });
+
+      if (!contractAddress) {
+        console.error(
+          "❌ [DEBUG] No contract address found for chain ID",
+          networkInfo.chainId,
+        );
+        throw new Error(
+          `No contract address found for chain ID ${networkInfo.chainId}`,
+        );
+      }
+
+      // Fetch on-chain vote configs for fee amount
+      const configs = await getVoteConfigs(networkInfo.chainId);
+
+      console.log("📊 [DEBUG] On-chain configs:", {
+        feeAmount: configs?.feeAmount?.toString(),
+        configsExist: !!configs,
+      });
+
+      console.log("🎯 [DEBUG] Voting ID to use:", votingIdToUse);
+      console.log("🔢 [DEBUG] BigInt conversion:", {
+        original: votingIdToUse,
+        bigInt: BigInt(votingIdToUse),
+      });
+
+      const feeValue = configs ? configs.feeAmount : undefined;
+
+      console.log("💰 [DEBUG] Transaction details:", {
+        contractAddress,
+        functionName: "raiseDispute",
+        args: [BigInt(votingIdToUse), false],
+        value: feeValue?.toString(),
+        hasFee: !!feeValue,
+      });
+
+      console.log("⏳ [DEBUG] Calling writeContract...");
+
+      writeContract({
+        address: contractAddress,
+        abi: VOTING_ABI.abi,
+        functionName: "raiseDispute",
+        args: [BigInt(votingIdToUse), false],
+        value: feeValue,
+      });
+
+      console.log("✅ [DEBUG] writeContract called successfully");
+      console.log(
+        "🟢 [DEBUG] Transaction initiated - waiting for confirmation",
+      );
+    } catch (error: any) {
+      console.error("❌ [DEBUG] createDisputeOnchain ERROR:", error);
+
+      toast.error("Failed to initiate smart contract transaction", {
+        description:
+          error.message || "Please check your wallet connection and try again.",
+      });
+
+      console.log("🔧 [DEBUG] Setting error state");
+      setTransactionStep("error");
+      setIsProcessingPaidDispute(false);
+    }
+  }, [networkInfo.chainId, votingIdToUse, writeContract]);
+
+  // Retry transaction function
+  const retryTransaction = useCallback(() => {
+    setTransactionStep("idle");
+    resetWrite();
+    if (form.kind === "Paid") {
+      createDisputeOnchain();
+    }
+  }, [form.kind, createDisputeOnchain, resetWrite]);
+
+  // Replace your existing submit function with this updated version
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Form validation
+    // Form validation (same as before)
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -689,7 +1106,40 @@ export default function Disputes() {
       return;
     }
 
-    // Validate Telegram usernames - FIXED to handle @ symbol
+    // Validate file sizes and types
+    const totalSize = form.evidence.reduce(
+      (total, file) => total + file.file.size,
+      0,
+    );
+
+    if (totalSize > MAX_TOTAL_SIZE) {
+      toast.error("Total file size too large", {
+        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
+        duration: 8000,
+      });
+      return;
+    }
+
+    // Check individual file sizes and types
+    for (const file of form.evidence) {
+      if (file.file.size > MAX_FILE_SIZE) {
+        toast.error(`File ${file.file.name} exceeds 10MB size limit`);
+        return;
+      }
+
+      const fileType = file.file.type;
+      if (
+        !ALLOWED_IMAGE_TYPES.includes(fileType) &&
+        !ALLOWED_DOCUMENT_TYPES.includes(fileType)
+      ) {
+        toast.error(
+          `File ${file.file.name} has unsupported type. Allowed: images, PDFs, Word docs, text files`,
+        );
+        return;
+      }
+    }
+
+    // Validate Telegram usernames
     const cleanedDefendantInput = cleanTelegramUsername(form.defendant);
     if (
       !isValidTelegramUsername(cleanedDefendantInput) &&
@@ -701,7 +1151,7 @@ export default function Disputes() {
 
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
-      .map((w) => cleanTelegramUsername(w)) // Clean witness inputs
+      .map((w) => cleanTelegramUsername(w))
       .filter((w) => !isValidTelegramUsername(w) && !isValidWalletAddress(w));
 
     if (invalidWitnesses.length > 0) {
@@ -709,64 +1159,69 @@ export default function Disputes() {
       return;
     }
 
-    setIsSubmitting(true);
+    // Handle based on dispute type
+    if (form.kind === "Paid") {
+      // For paid disputes, FIRST call smart contract
+      setIsProcessingPaidDispute(true);
+      await createDisputeOnchain();
+    } else {
+      // For pro bono disputes, create directly
+      setIsSubmitting(true);
 
-    try {
-      console.log("🚀 Preparing dispute submission...");
+      try {
+        console.log("🚀 Preparing pro bono dispute submission...");
 
-      const cleanedDefendant = isValidWalletAddress(form.defendant)
-        ? form.defendant
-        : cleanTelegramUsername(form.defendant);
+        const cleanedDefendant = isValidWalletAddress(form.defendant)
+          ? form.defendant
+          : cleanTelegramUsername(form.defendant);
 
-      const cleanedWitnesses = form.witnesses
-        .filter((w) => w.trim())
-        .map((w) => (isValidWalletAddress(w) ? w : cleanTelegramUsername(w)));
+        const cleanedWitnesses = form.witnesses
+          .filter((w) => w.trim())
+          .map((w) => (isValidWalletAddress(w) ? w : cleanTelegramUsername(w)));
 
-      const requestKind =
-        form.kind === "Pro Bono"
-          ? DisputeTypeEnum.ProBono
-          : DisputeTypeEnum.Paid;
+        const requestKind = DisputeTypeEnum.ProBono;
 
-      const createDisputeData: CreateDisputeRequest = {
-        title: form.title,
-        description: form.description,
-        requestKind,
-        defendant: cleanedDefendant,
-        claim: form.claim,
-        witnesses: cleanedWitnesses,
-      };
+        const createDisputeData: CreateDisputeRequest = {
+          title: form.title,
+          description: form.description,
+          requestKind,
+          defendant: cleanedDefendant,
+          claim: form.claim,
+          witnesses: cleanedWitnesses,
+        };
 
-      const files = form.evidence.map((uf) => uf.file);
+        const files = form.evidence.map((uf) => uf.file);
 
-      // ✅ Call updated service method
-      const result = await disputeService.createDispute(
-        createDisputeData,
-        files,
-      );
+        // Call service method for pro bono dispute (without chainId)
+        const result = await disputeService.createDispute(
+          createDisputeData,
+          files,
+        );
 
-      console.log("✅ Dispute created:", result);
-      toast.success("Dispute submitted successfully", {
-        description: `${form.title} • ${form.kind} • ${files.length} files uploaded`,
-      });
+        console.log("✅ Pro bono dispute created:", result);
+        toast.success("Pro Bono dispute submitted successfully", {
+          description: `${form.title} has been submitted for review`,
+        });
 
-      // Reset form
-      setOpen(false);
-      setForm({
-        title: "",
-        kind: "Pro Bono",
-        defendant: "",
-        description: "",
-        claim: "",
-        evidence: [],
-        witnesses: [""],
-      });
+        // Reset form
+        setOpen(false);
+        setForm({
+          title: "",
+          kind: "Pro Bono",
+          defendant: "",
+          description: "",
+          claim: "",
+          evidence: [],
+          witnesses: [""],
+        });
 
-      refetch();
-    } catch (error: any) {
-      console.error("❌ Submission failed:", error);
-      toast.error("Failed to submit dispute", { description: error.message });
-    } finally {
-      setIsSubmitting(false);
+        refetch();
+      } catch (error: any) {
+        console.error("❌ Submission failed:", error);
+        toast.error("Failed to submit dispute", { description: error.message });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -1293,424 +1748,595 @@ export default function Disputes() {
 
       {/* Create Dispute Modal */}
       {open && (
-        <div
-          onClick={() => setOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl"
+        <AnimatePresence mode="wait">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            onClick={() =>
+              !isSubmitting && !isProcessingPaidDispute && setOpen(false)
+            }
           >
-            {/* Close button */}
-            <button
-              onClick={() => setOpen(false)}
-              className="absolute top-3 right-3 text-white/70 hover:text-white"
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass card-cyan relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
-              ✕
-            </button>
-
-            {/* Modal Header */}
-            <div className="mb-5 border-b border-white/10 pb-3">
-              <h2 className="text-lg font-semibold text-white/90">
-                Raise New Dispute
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                Provide details and evidence. Max 5 witnesses.
-              </p>
-            </div>
-
-            {/* Form */}
-            <form
-              onSubmit={submit}
-              className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
-            >
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-muted-foreground text-sm">
-                    Title <span className="text-red-500">*</span>
-                  </label>
-                  <div className="group relative cursor-help">
-                    <Info className="h-4 w-4 text-cyan-300" />
-                    <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                      Never underestimate the power of a catchy title — it can
-                      grab attention and attract judges to your case faster.
-                    </div>
-                  </div>
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-cyan-400/30 bg-cyan-500/10 p-6">
+                <div className="flex items-center gap-3">
+                  <Scale className="h-6 w-6 text-cyan-300" />
+                  <h3 className="text-xl font-semibold text-cyan-300">
+                    Raise New Dispute
+                  </h3>
                 </div>
-                <input
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                  placeholder="e.g. He refused to issue a refund despite going AWOL for weeks!"
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-muted-foreground text-sm">
-                    Request Kind <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex items-center gap-3 text-xs">
-                    <div className="group relative cursor-pointer">
-                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                        Pro Bono
-                      </span>
-                      <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                        No payment required. Judges will handle your case pro
-                        bono when available.
-                      </div>
-                    </div>
-                    <div className="group relative cursor-pointer">
-                      <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
-                        Paid
-                      </span>
-                      <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                        A fee of 0.01 ETH is required to initiate your dispute.
-                        This fee helps prioritize your case and notifies all
-                        judges to begin reviewing it immediately.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["Pro Bono", "Paid"] as const).map((k) => (
-                    <label
-                      key={k}
-                      className={`cursor-pointer rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                        form.kind === k
-                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="kind"
-                        className="hidden"
-                        checked={form.kind === k}
-                        onChange={() => setForm({ ...form, kind: k })}
-                      />
-                      {k}
-                    </label>
-                  ))}
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOpen(false)}
+                  className="text-white/70 hover:text-white"
+                  disabled={
+                    isSubmitting ||
+                    transactionStep === "pending" ||
+                    isProcessingPaidDispute
+                  }
+                >
+                  <X className="h-5 w-5" />
+                </Button>
               </div>
 
-              {/* Defendant Field with User Search - SEPARATE LIKE OpenDisputeModal */}
-              <div className="relative" ref={defendantSearchRef}>
-                <label className="text-muted-foreground mb-2 block text-sm">
-                  Defendant <span className="text-red-500">*</span>
-                  <span className="ml-2 text-xs text-cyan-400">
-                    (Start typing to search users)
-                  </span>
-                </label>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-                  <input
-                    value={form.defendant}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setForm({ ...form, defendant: value });
-                      setDefendantSearchQuery(value);
-                    }}
-                    onFocus={() => {
-                      // Show suggestions if there's already some text
-                      if (form.defendant.replace(/^@/, "").trim().length >= 1) {
-                        setShowDefendantSuggestions(true);
-                      }
-                    }}
-                    className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                    placeholder="Type username (with or without @)..."
-                    required
-                  />
-                  {isDefendantSearchLoading && (
-                    <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
-                  )}
-                </div>
+              {/* Content */}
+              <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
+                {/* Transaction Status Display */}
+                {transactionStep !== "idle" && (
+                  <div className="mb-4">
+                    <TransactionStatus
+                      status={transactionStep}
+                      onRetry={retryTransaction}
+                    />
+                  </div>
+                )}
 
-                {/* Defendant Suggestions Dropdown */}
-                {showDefendantSuggestions && (
-                  <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                    {defendantSearchResults.length > 0 ? (
-                      defendantSearchResults.map((user) => (
-                        <UserSearchResult
-                          key={user.id}
-                          user={user}
-                          onSelect={handleUserSelect}
-                          field="defendant"
-                        />
-                      ))
-                    ) : defendantSearchQuery.replace(/^@/, "").trim().length >=
-                        1 && !isDefendantSearchLoading ? (
-                      <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                        No users found for "
-                        {defendantSearchQuery.replace(/^@/, "")}"
-                        <div className="mt-1 text-xs text-cyan-400">
-                          You may also enter a wallet address directly
+                <form
+                  onSubmit={submit}
+                  className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
+                >
+                  {/* Title field */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-muted-foreground text-sm">
+                        Title <span className="text-red-500">*</span>
+                      </label>
+                      <div className="group relative cursor-help">
+                        <Info className="h-4 w-4 text-cyan-300" />
+                        <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                          Never underestimate the power of a catchy title — it
+                          can grab attention and attract judges to your case
+                          faster.
                         </div>
                       </div>
-                    ) : null}
+                    </div>
+                    <input
+                      value={form.title}
+                      onChange={(e) =>
+                        setForm({ ...form, title: e.target.value })
+                      }
+                      className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                      placeholder="e.g. He refused to issue a refund despite going AWOL for weeks!"
+                      disabled={
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                      }
+                    />
+                  </div>
 
-                    {defendantSearchQuery.replace(/^@/, "").trim().length <
-                      1 && (
-                      <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                        Type at least 1 character to search
+                  {/* Request Kind */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-muted-foreground text-sm">
+                        Request Kind <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex items-center gap-3 text-xs">
+                        <div className="group relative cursor-pointer">
+                          <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                            Pro Bono
+                          </span>
+                          <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                            No payment required. Judges will handle your case
+                            pro bono when available.
+                          </div>
+                        </div>
+                        <div className="group relative cursor-pointer">
+                          <span className="cursor-help rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                            Paid
+                          </span>
+                          <div className="absolute top-full right-0 mt-2 hidden w-52 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                            A fee is required to initiate your dispute. This fee
+                            helps prioritize your case and notifies all judges
+                            to begin reviewing it immediately.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(["Pro Bono", "Paid"] as const).map((kind) => (
+                        <label
+                          key={kind}
+                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                            form.kind === kind
+                              ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                              : "border-white/10 bg-white/5"
+                          } ${
+                            isSubmitting ||
+                            transactionStep === "pending" ||
+                            isProcessingPaidDispute
+                              ? "cursor-not-allowed opacity-50"
+                              : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="kind"
+                            className="hidden"
+                            checked={form.kind === kind}
+                            onChange={() => setForm({ ...form, kind })}
+                            disabled={
+                              isSubmitting ||
+                              transactionStep === "pending" ||
+                              isProcessingPaidDispute
+                            }
+                          />
+                          {kind === "Paid" && <Wallet className="h-4 w-4" />}
+                          {kind}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Defendant Field with User Search */}
+                  <div className="relative" ref={defendantSearchRef}>
+                    <label className="text-muted-foreground mb-2 block text-sm">
+                      Defendant <span className="text-red-500">*</span>
+                      <span className="ml-2 text-xs text-cyan-400">
+                        (Start typing to search users)
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                      <input
+                        value={form.defendant}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setForm({ ...form, defendant: value });
+                          setDefendantSearchQuery(value);
+                        }}
+                        onFocus={() => {
+                          if (
+                            form.defendant.replace(/^@/, "").trim().length >= 1
+                          ) {
+                            setShowDefendantSuggestions(true);
+                          }
+                        }}
+                        className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                        placeholder="Type username (with or without @)..."
+                        required
+                        disabled={
+                          isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
+                        }
+                      />
+                      {isDefendantSearchLoading && (
+                        <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                      )}
+                    </div>
+
+                    {/* Defendant Suggestions Dropdown */}
+                    {showDefendantSuggestions && (
+                      <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                        {defendantSearchResults.length > 0 ? (
+                          defendantSearchResults.map((user) => (
+                            <UserSearchResult
+                              key={user.id}
+                              user={user}
+                              onSelect={handleUserSelect}
+                              field="defendant"
+                            />
+                          ))
+                        ) : defendantSearchQuery.replace(/^@/, "").trim()
+                            .length >= 1 && !isDefendantSearchLoading ? (
+                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                            No users found for "
+                            {defendantSearchQuery.replace(/^@/, "")}"
+                            <div className="mt-1 text-xs text-cyan-400">
+                              You may also enter a wallet address directly
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {defendantSearchQuery.replace(/^@/, "").trim().length <
+                          1 && (
+                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                            Type at least 1 character to search
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              <div>
-                <label className="text-muted-foreground mb-2 block text-sm">
-                  Detailed Description <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm({ ...form, description: e.target.value })
-                  }
-                  className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                  placeholder="Describe the situation, milestones, messages, and expectations"
-                />
-              </div>
-
-              {/* Claim Section */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-muted-foreground text-sm">
-                    Claim <span className="text-red-500">*</span>
-                  </label>
-                  <div className="group relative cursor-help">
-                    <Info className="h-4 w-4 text-cyan-300" />
-                    <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                      Make sure it's reasonable, as that might help your case
-                      when the judges look into it.
-                    </div>
+                  {/* Description field */}
+                  <div>
+                    <label className="text-muted-foreground mb-2 block text-sm">
+                      Detailed Description{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) =>
+                        setForm({ ...form, description: e.target.value })
+                      }
+                      className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                      placeholder="Describe the situation, milestones, messages, and expectations"
+                      disabled={
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                      }
+                    />
                   </div>
-                </div>
-                <textarea
-                  value={form.claim || ""}
-                  onChange={(e) => setForm({ ...form, claim: e.target.value })}
-                  className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
-                  placeholder="What do you want the court to do for you?"
-                />
-              </div>
 
-              {/* Enhanced Evidence Upload Section */}
-              <div>
-                <label className="text-muted-foreground mb-2 block text-sm">
-                  Evidence Upload <span className="text-red-500">*</span>
-                </label>
-
-                {/* Drag and Drop Area */}
-                <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                    isDragOver
-                      ? "border-cyan-400/60 bg-cyan-500/20"
-                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                  }`}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                >
-                  <input
-                    onChange={handleFileSelect}
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf,.doc,.docx,.txt"
-                    className="hidden"
-                    id="evidence-upload"
-                  />
-                  <label
-                    htmlFor="evidence-upload"
-                    className="flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center"
-                  >
-                    <Upload className="mb-3 h-8 w-8 text-cyan-400" />
-                    <div className="text-sm text-cyan-300">
-                      {isDragOver
-                        ? "Drop files here"
-                        : "Click to upload or drag and drop"}
+                  {/* Claim Section */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-muted-foreground text-sm">
+                        Claim <span className="text-red-500">*</span>
+                      </label>
+                      <div className="group relative cursor-help">
+                        <Info className="h-4 w-4 text-cyan-300" />
+                        <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                          Make sure it's reasonable, as that might help your
+                          case when the judges look into it.
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-muted-foreground mt-1 text-xs">
-                      Supports images, PDFs, and documents
-                    </div>
-                  </label>
-                </div>
+                    <textarea
+                      value={form.claim || ""}
+                      onChange={(e) =>
+                        setForm({ ...form, claim: e.target.value })
+                      }
+                      className="min-h-24 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 outline-none placeholder:text-sm focus:border-cyan-400/40"
+                      placeholder="What do you want the court to do for you?"
+                      disabled={
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                      }
+                    />
+                  </div>
 
-                {/* File List with Previews */}
-                {form.evidence.length > 0 && (
-                  <div className="mt-4 space-y-3">
-                    <h4 className="text-sm font-medium text-cyan-200">
-                      Selected Files ({form.evidence.length})
-                    </h4>
-                    {form.evidence.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3"
+                  {/* Evidence Upload Section */}
+                  <div>
+                    <label className="text-muted-foreground mb-2 block text-sm">
+                      Evidence Upload <span className="text-red-500">*</span>
+                      {form.evidence.length > 0 && (
+                        <span className="ml-2 text-xs text-yellow-400">
+                          (Total: {getTotalFileSize(form.evidence)})
+                        </span>
+                      )}
+                    </label>
+
+                    {/* Drag and Drop Area */}
+                    <div
+                      className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                        isDragOver
+                          ? "border-cyan-400/60 bg-cyan-500/20"
+                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                      } ${
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                          ? "cursor-not-allowed opacity-50"
+                          : ""
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                      <input
+                        onChange={handleFileSelect}
+                        type="file"
+                        multiple
+                        accept="image/*,.pdf,.doc,.docx,.txt"
+                        className="hidden"
+                        id="evidence-upload"
+                        disabled={
+                          isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
+                        }
+                      />
+                      <label
+                        htmlFor="evidence-upload"
+                        className={`flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center ${
+                          isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
+                            ? "cursor-not-allowed"
+                            : ""
+                        }`}
                       >
-                        <div className="flex items-center gap-3">
-                          {file.type === "image" && file.preview ? (
-                            <img
-                              src={file.preview}
-                              alt={file.file.name}
-                              className="h-10 w-10 rounded object-cover"
-                            />
-                          ) : (
-                            <Paperclip className="h-5 w-5 text-cyan-400" />
-                          )}
-                          <div>
-                            <div className="text-sm font-medium text-white">
-                              {file.file.name}
-                            </div>
-                            <div className="text-xs text-cyan-200/70">
-                              {file.size} • {file.type}
-                            </div>
+                        <Upload className="mb-3 h-8 w-8 text-cyan-400" />
+                        <div className="text-sm text-cyan-300">
+                          {isDragOver
+                            ? "Drop files here"
+                            : "Click to upload or drag and drop"}
+                        </div>
+                        <div className="text-muted-foreground mt-1 text-xs">
+                          Supports images{" "}
+                          <span className="text-yellow-300">(max 2MB) </span>,
+                          documents{" "}
+                          <span className="text-yellow-300">(max 3MB)</span>
+                          <br />
+                          <span className="text-yellow-300">
+                            Max total size: 50MB
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* File List with Previews */}
+                    {form.evidence.length > 0 && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium text-cyan-200">
+                            Selected Files ({form.evidence.length})
+                          </h4>
+                          <div className="text-xs text-yellow-400">
+                            Total: {getTotalFileSize(form.evidence)}
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFile(file.id)}
-                          className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Witnesses with User Search - SEPARATE LIKE OpenDisputeModal */}
-              <div ref={witnessSearchRef}>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-muted-foreground text-sm">
-                    Witness list (max 5)
-                    <span className="ml-2 text-xs text-cyan-400">
-                      (Start typing to search users)
-                    </span>
-                  </label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                    onClick={addWitness}
-                    disabled={form.witnesses.length >= 5}
-                  >
-                    Add witness
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {form.witnesses.map((w, i) => (
-                    <div key={i} className="relative flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-                        <input
-                          value={w}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            updateWitness(i, value);
-                            setWitnessSearchQuery(value);
-                          }}
-                          onFocus={() => {
-                            setActiveWitnessIndex(i);
-                            const searchValue = w.startsWith("@")
-                              ? w.substring(1)
-                              : w;
-                            if (searchValue.length >= 2) {
-                              setShowWitnessSuggestions(true);
-                            }
-                          }}
-                          className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
-                          placeholder={`Type username with or without @ (min 2 characters)...`}
-                        />
-                        {isWitnessSearchLoading && activeWitnessIndex === i && (
-                          <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
-                        )}
-                      </div>
-                      {form.witnesses.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeWitness(i)}
-                          className="text-muted-foreground rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs hover:text-white"
-                        >
-                          Remove
-                        </button>
-                      )}
-
-                      {/* Witness User Suggestions Dropdown */}
-                      {showWitnessSuggestions && activeWitnessIndex === i && (
-                        <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
-                          {witnessSearchResults.length > 0 ? (
-                            witnessSearchResults.map((user) => (
-                              <UserSearchResult
-                                key={user.id}
-                                user={user}
-                                onSelect={handleUserSelect}
-                                field="witness"
-                                index={i}
-                              />
-                            ))
-                          ) : witnessSearchQuery.length >= 2 &&
-                            !isWitnessSearchLoading ? (
-                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                              No users found for "{witnessSearchQuery}"
-                              <div className="mt-1 text-xs text-cyan-400">
-                                Make sure the user exists and has a Telegram
-                                username
+                        {form.evidence.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              {file.type === "image" && file.preview ? (
+                                <img
+                                  src={file.preview}
+                                  alt={file.file.name}
+                                  className="h-10 w-10 rounded object-cover"
+                                />
+                              ) : (
+                                <Paperclip className="h-5 w-5 text-cyan-400" />
+                              )}
+                              <div>
+                                <div className="text-sm font-medium text-white">
+                                  {file.file.name}
+                                </div>
+                                <div className="text-xs text-cyan-200/70">
+                                  {file.size} • {file.type}
+                                </div>
                               </div>
                             </div>
-                          ) : null}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeFile(file.id)}
+                              className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                              disabled={
+                                isSubmitting ||
+                                transactionStep === "pending" ||
+                                isProcessingPaidDispute
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                          {witnessSearchQuery.length < 2 && (
-                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                              Type at least 2 characters to search
-                            </div>
-                          )}
-                        </div>
-                      )}
+                  {/* Witnesses with User Search */}
+                  <div ref={witnessSearchRef}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-muted-foreground text-sm">
+                        Witness list (max 5)
+                        <span className="ml-2 text-xs text-cyan-400">
+                          (Start typing to search users)
+                        </span>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                        onClick={addWitness}
+                        disabled={
+                          form.witnesses.length >= 5 ||
+                          isSubmitting ||
+                          transactionStep === "pending" ||
+                          isProcessingPaidDispute
+                        }
+                      >
+                        Add witness
+                      </Button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      {form.witnesses.map((w, i) => (
+                        <div
+                          key={i}
+                          className="relative flex items-center gap-2"
+                        >
+                          <div className="relative flex-1">
+                            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+                            <input
+                              value={w}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                updateWitness(i, value);
+                                setWitnessSearchQuery(value);
+                              }}
+                              onFocus={() => {
+                                setActiveWitnessIndex(i);
+                                const searchValue = w.startsWith("@")
+                                  ? w.substring(1)
+                                  : w;
+                                if (searchValue.length >= 2) {
+                                  setShowWitnessSuggestions(true);
+                                }
+                              }}
+                              className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
+                              placeholder={`Type username with or without @ (min 2 characters)...`}
+                              disabled={
+                                isSubmitting ||
+                                transactionStep === "pending" ||
+                                isProcessingPaidDispute
+                              }
+                            />
+                            {isWitnessSearchLoading &&
+                              activeWitnessIndex === i && (
+                                <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-cyan-300" />
+                              )}
+                          </div>
+                          {form.witnesses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeWitness(i)}
+                              className="text-muted-foreground rounded-md border border-white/10 bg-white/5 px-2 py-2 text-xs hover:text-white"
+                              disabled={
+                                isSubmitting ||
+                                transactionStep === "pending" ||
+                                isProcessingPaidDispute
+                              }
+                            >
+                              Remove
+                            </button>
+                          )}
 
-              {/* Buttons */}
-              <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  onClick={() => {
-                    toast.message("Draft saved", {
-                      description: "Your dispute has been saved as draft",
-                    });
-                    setOpen(false);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Save Draft
-                </Button>
-                <Button
-                  type="submit"
-                  variant="neon"
-                  className="neon-hover"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="mr-2 h-4 w-4" />
-                      Submit Dispute
-                    </>
-                  )}
-                </Button>
+                          {/* Witness User Suggestions Dropdown */}
+                          {showWitnessSuggestions &&
+                            activeWitnessIndex === i && (
+                              <div className="absolute top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-white/10 bg-cyan-900/95 shadow-lg backdrop-blur-md">
+                                {witnessSearchResults.length > 0 ? (
+                                  witnessSearchResults.map((user) => (
+                                    <UserSearchResult
+                                      key={user.id}
+                                      user={user}
+                                      onSelect={handleUserSelect}
+                                      field="witness"
+                                      index={i}
+                                    />
+                                  ))
+                                ) : witnessSearchQuery.length >= 2 &&
+                                  !isWitnessSearchLoading ? (
+                                  <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                    No users found for "{witnessSearchQuery}"
+                                    <div className="mt-1 text-xs text-cyan-400">
+                                      Make sure the user exists and has a
+                                      Telegram username
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {witnessSearchQuery.length < 2 && (
+                                  <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                                    Type at least 2 characters to search
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Smart Contract Info for Paid Disputes */}
+                  {form.kind === "Paid" &&
+                    transactionStep === "idle" &&
+                    !isSubmitting && (
+                      <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-4">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="h-5 w-5 text-cyan-300" />
+                          <h4 className="text-sm font-medium text-cyan-200">
+                            Smart Contract Transaction Required
+                          </h4>
+                        </div>
+                        <p className="mt-2 text-xs text-cyan-300/80">
+                          For paid disputes, you'll need to confirm a
+                          transaction in your wallet to record the dispute
+                          on-chain. This ensures transparency and security for
+                          your case.
+                        </p>
+                        <div className="mt-3 text-xs text-cyan-400">
+                          <div className="flex items-center gap-1">
+                            <span>•</span>
+                            <span>Generated Voting ID: {votingIdToUse}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>•</span>
+                            <span>Network: {networkInfo.chainName}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Buttons */}
+                  <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+                      onClick={() => {
+                        toast.message("Draft saved", {
+                          description: "Your dispute has been saved as draft",
+                        });
+                        setOpen(false);
+                      }}
+                      disabled={
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                      }
+                    >
+                      Save Draft
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="neon"
+                      className="neon-hover"
+                      disabled={
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
+                      }
+                    >
+                      {isSubmitting || transactionStep === "pending" ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {form.kind === "Paid" && transactionStep === "pending"
+                            ? "Processing Transaction..."
+                            : "Creating Dispute..."}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          {form.kind === "Paid"
+                            ? "Pay & Submit Dispute"
+                            : "Submit Dispute"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
-        </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>
       )}
     </div>
   );

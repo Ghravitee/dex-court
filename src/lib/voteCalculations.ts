@@ -1,5 +1,7 @@
 // utils/voteCalculations.ts
 
+import type { VoteOutcomeData } from "../types";
+
 export interface VoteCalculationResult {
   totalVotes: number;
   plaintiffJudgeVotes: number;
@@ -14,26 +16,49 @@ export interface VoteCalculationResult {
   isDismissedDueToNoVotes: boolean;
 }
 
+// Remove DoneCase interface and update function to accept VoteOutcomeData
 export const calculateVoteResults = (
-  judgeVotes: number,
-  communityVotes: number,
-  judgePct: number,
-  communityPct: number,
-  winner: "plaintiff" | "defendant" | "dismissed",
+  voteOutcome: VoteOutcomeData,
 ): VoteCalculationResult => {
+  // Get vote counts directly from API data
+  const judgeVotes = voteOutcome.votesPerGroup?.judges?.total || 0;
+  const communityTierOneVotes =
+    voteOutcome.votesPerGroup?.communityTierOne?.total || 0;
+  const communityTierTwoVotes =
+    voteOutcome.votesPerGroup?.communityTierTwo?.total || 0;
+  const communityVotes = communityTierOneVotes + communityTierTwoVotes;
+
   const totalVotes = judgeVotes + communityVotes;
 
-  // Calculate actual vote counts from percentages
-  const plaintiffJudgeVotes = Math.round((judgePct / 100) * judgeVotes);
-  const defendantJudgeVotes = judgeVotes - plaintiffJudgeVotes;
+  // Get actual vote counts from API
+  const plaintiffJudgeVotes = voteOutcome.votesPerGroup?.judges?.plaintiff || 0;
+  const defendantJudgeVotes = voteOutcome.votesPerGroup?.judges?.defendant || 0;
 
-  const plaintiffCommunityVotes = Math.round(
-    (communityPct / 100) * communityVotes,
-  );
-  const defendantCommunityVotes = communityVotes - plaintiffCommunityVotes;
+  const plaintiffCommunityVotes =
+    (voteOutcome.votesPerGroup?.communityTierOne?.plaintiff || 0) +
+    (voteOutcome.votesPerGroup?.communityTierTwo?.plaintiff || 0);
+  const defendantCommunityVotes =
+    (voteOutcome.votesPerGroup?.communityTierOne?.defendant || 0) +
+    (voteOutcome.votesPerGroup?.communityTierTwo?.defendant || 0);
 
   const plaintiffVotes = plaintiffJudgeVotes + plaintiffCommunityVotes;
   const defendantVotes = defendantJudgeVotes + defendantCommunityVotes;
+
+  // Get percentages from API
+  const judgePct = voteOutcome.judgePct;
+  const communityTierOnePct =
+    voteOutcome.percentagesPerGroup?.communityTierOne?.plaintiff || 0;
+  const communityTierTwoPct =
+    voteOutcome.percentagesPerGroup?.communityTierTwo?.plaintiff || 0;
+
+  // Calculate weighted average for community (weight by vote count if available)
+  let communityPct = 0;
+  if (communityVotes > 0) {
+    communityPct =
+      (communityTierOnePct * communityTierOneVotes +
+        communityTierTwoPct * communityTierTwoVotes) /
+      communityVotes;
+  }
 
   // Weighted calculation (70% judges, 30% community)
   const judgeWeight = 0.7;
@@ -43,7 +68,8 @@ export const calculateVoteResults = (
   const weightedDefendantPct = 100 - weightedPlaintiffPct;
 
   const winPct = Math.round(weightedPlaintiffPct);
-  const isDismissedDueToNoVotes = winner === "dismissed" && totalVotes === 0;
+  const isDismissedDueToNoVotes =
+    voteOutcome.winner === "dismissed" && totalVotes === 0;
 
   return {
     totalVotes,

@@ -42,7 +42,9 @@ export interface AgreementsEditRequest {
   /** Amount of escrow agreement > required only when tokenSymbol is set */
   amount?: number;
   /** Contract address > required only when tokenSymbol is 'custom' */
-  contractAddress?: string;
+  customTokenAddress?: string;
+  /** escrow contract address that deploys escrow */
+  escrowContractAddress?: string;
   /** Indicates if the agreement includes funds */
   includesFunds?: boolean;
   /** Indicates if the agreement should secure the funds */
@@ -103,8 +105,6 @@ export interface EditPlaintiffClaimRequest {
   requestKind?: number;
   /** Formal claim text describing the issue or complaint */
   claim?: string;
-  feeAmount?: number;
-  txnhash?: string;
   contractAgreementId?: string;
   chainId?: number;
   witnesses?: string[];
@@ -369,6 +369,8 @@ export interface AgreementListItem {
   payeeWalletAddress?: string;
   contractAgreementId?: string;
   chainId?: number;
+  customTokenAddress?: string;
+  /** escrow contract address that deploys escrow */
   escrowContractAddress?: string;
   firstParty: AgreementParty;
   counterParty: AgreementParty;
@@ -524,7 +526,9 @@ export interface AgreementDetailsDTO {
   /** Token symbol (if applicable) */
   tokenSymbol?: string;
   /** Escrow contract address (nullable) */
-  escrowContract?: string;
+  customTokenAddress?: string;
+  /** escrow contract address that deploys escrow */
+  escrowContractAddress?: string;
   txnhash?: string;
   contractAgreementId?: string;
   chainId?: number;

@@ -36,13 +36,14 @@ export interface AgreementsRequest {
   includesFunds?: boolean;
   secureTheFunds?: boolean;
   tokenSymbol?: string;
-  contractAddress?: string;
+  customTokenAddress?: string;
   amount?: number;
   chainId?: number;
   contractAgreementId?: string;
   txHash?: string;
   payeeWalletAddress?: string;
   payerWalletAddress?: string;
+  escrowContractAddress?: string;
 }
 
 export interface AgreementSignRequest {
@@ -69,6 +70,9 @@ export interface AgreementSummaryDTO {
   tokenSymbol?: string;
   deadline: string;
   status: number;
+  escrowContractAddress?: string;
+  payeeWalletAddress?: string;
+  payerWalletAddress?: string;
 }
 
 export interface AgreementMineListDTO {
@@ -89,7 +93,7 @@ export interface AgreementDetailsDTO {
   contractAgreementId?: string;
   includesFunds?: boolean;
   hasSecuredFunds?: boolean;
-  escrowContract?: string;
+  customTokenAddress?: string;
   creator: PartyDTO;
   firstParty: PartyDTO;
   counterParty: PartyDTO;
@@ -102,6 +106,7 @@ export interface AgreementDetailsDTO {
   deliverySubmittedById?: number | null;
   completedAt?: string;
   updatedAt?: string;
+  escrowContractAddress?: string;
 }
 
 export interface PartyDTO {
@@ -185,8 +190,13 @@ class AgreementService {
   }
 
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<any> {
-    console.log("🔄 Creating agreement with data:", data);
-
+    console.log("🔄 Creating agreement with data:", {
+      ...data,
+      filesCount: files.length,
+      // Log escrowContractAddress specifically
+      escrowContractAddress: data.escrowContractAddress,
+      isEscrowContractAddressValid: data.escrowContractAddress,
+    });
     const formData = new FormData();
     formData.append("title", data.title);
     formData.append("description", data.description);
@@ -228,13 +238,17 @@ class AgreementService {
       formData.append("txHash", data.txHash);
     }
 
-    // 🆕 ADD THESE TWO LINES - THIS IS WHAT'S MISSING!
+    // 🆕 ADD THESE THREE LINES - This includes escrowContractAddress
     if (data.payeeWalletAddress) {
       formData.append("payeeWalletAddress", data.payeeWalletAddress);
     }
 
     if (data.payerWalletAddress) {
       formData.append("payerWalletAddress", data.payerWalletAddress);
+    }
+
+    if (data.escrowContractAddress) {
+      formData.append("escrowContractAddress", data.escrowContractAddress);
     }
 
     files.forEach((file) => {
@@ -248,7 +262,11 @@ class AgreementService {
         },
       });
 
-      console.log("✅ Agreement created successfully:", response.data);
+      console.log("✅ Backend response:", {
+        status: response.status,
+        data: response.data,
+        escrowContractAddressInResponse: response.data.escrowContractAddress,
+      });
       return response.data;
     } catch (error: any) {
       console.error("❌ Agreement creation failed:", error);

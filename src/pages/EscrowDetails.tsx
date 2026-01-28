@@ -31,6 +31,8 @@ import {
   Upload,
   Info,
   X,
+  Search,
+  Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -51,7 +53,7 @@ import {
   getEscrowConfigs,
   getMilestoneCount,
   getTokenDecimals,
-  getTokenSymbol
+  getTokenSymbol,
 } from "../web3/readContract";
 import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
 import {
@@ -117,6 +119,77 @@ const apiStatusToFrontend = (status: number): string => {
     default:
       return "pending";
   }
+};
+
+// Add these helper functions near the top of the component
+const getTotalFileSize = (files: File[]): string => {
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  const mb = totalBytes / 1024 / 1024;
+  return `${mb.toFixed(2)} MB`;
+};
+
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+const UserSearchResult = ({
+  user,
+  onSelect,
+}: {
+  user: any;
+  onSelect: (username: string) => void;
+  field: "defendant" | "witness";
+}) => {
+  const { user: currentUser } = useAuth();
+
+  const telegramUsername = user.telegramUsername || user.username || "";
+
+  if (!telegramUsername) {
+    return null;
+  }
+
+  const displayUsername = telegramUsername.startsWith("@")
+    ? telegramUsername
+    : `@${telegramUsername}`;
+  const isCurrentUser = user.id === currentUser?.id;
+
+  return (
+    <div
+      onClick={() => onSelect(telegramUsername)}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${
+        isCurrentUser ? "opacity-80" : ""
+      }`}
+    >
+      <UserAvatar
+        userId={user.id}
+        avatarId={user.avatarId || user.avatar?.id}
+        username={telegramUsername}
+        size="sm"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-white">
+          {displayUsername}
+        </div>
+        {user.bio && (
+          <div className="mt-1 truncate text-xs text-purple-200/70">
+            {user.bio}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // Helper function to process agreement files for display
@@ -261,6 +334,7 @@ const getAvatarIdFromParty = (party: any): number | null => {
   return avatarId ? Number(avatarId) : null;
 };
 
+// Format wallet address for display
 // Format wallet address for display
 // Format wallet address for display
 const formatWalletAddress = (address: string): string => {
@@ -409,10 +483,11 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
         ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
         : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-      }`}
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -423,10 +498,11 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
         ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
         : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-      }`}
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -435,8 +511,6 @@ const SafetyBadge = ({ value }: { value: boolean }) => (
   </div>
 );
 
-// Add this modal component (place it near the RejectDeliveryModal in AgreementDetails or create a new one)
-// Enhanced RaiseDisputeModal Component
 const RaiseDisputeModal = ({
   isOpen,
   onClose,
@@ -445,13 +519,14 @@ const RaiseDisputeModal = ({
   setClaim,
   title = "",
   description = "",
-  disputeType = DisputeTypeEnum.ProBono,
   defendant = "",
   witnesses = [],
   files = [],
   isSubmitting,
   agreement,
   currentUser,
+  // onChainAgreement,
+  // networkInfo,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -464,26 +539,35 @@ const RaiseDisputeModal = ({
   setClaim: (claim: string) => void;
   title?: string;
   description?: string;
-  disputeType?: DisputeTypeEnum;
   defendant?: string;
   witnesses?: string[];
   files?: File[];
   isSubmitting: boolean;
   agreement?: any;
   currentUser?: any;
+  onChainAgreement?: any; // For contractAgreementId
+  networkInfo?: any;
 }) => {
   const [proBono, setProBono] = useState(false);
   const [localTitle, setLocalTitle] = useState(title || agreement?.title || "");
   const [localDescription, setLocalDescription] = useState(
     description || agreement?.description || "",
   );
-
-  const [localDisputeType, setLocalDisputeType] =
-    useState<DisputeTypeEnum>(disputeType);
   const [localDefendant, setLocalDefendant] = useState(defendant);
   const [localWitnesses, setLocalWitnesses] = useState<string[]>(witnesses);
   const [localFiles, setLocalFiles] = useState<File[]>(files);
   const [witnessInput, setWitnessInput] = useState("");
+
+  // Search states for witnesses
+  const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
+  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
+  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
+  const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
+  // const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(-1);
+
+  // File upload state
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
 
   const defendantOptions = useMemo(() => {
     if (!agreement) return [];
@@ -522,27 +606,228 @@ const RaiseDisputeModal = ({
     }
   }, [agreement, localDefendant, defendantOptions, currentUser]);
 
+  // Handle witness search
+  const handleWitnessSearch = useCallback(
+    async (query: string) => {
+      // Remove @ symbol from query for searching
+      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
+
+      if (cleanQuery.length < 2) {
+        setWitnessSearchResults([]);
+        setShowWitnessSuggestions(false);
+        return;
+      }
+
+      setIsWitnessSearchLoading(true);
+      setShowWitnessSuggestions(true);
+
+      try {
+        // You'll need to import disputeService or create a user search function
+        const results = await disputeService.searchUsers(cleanQuery);
+
+        const currentUserTelegram = currentUser?.username || "";
+        const filteredResults = results.filter((resultUser) => {
+          const resultTelegram =
+            resultUser.telegramUsername || resultUser.username;
+          return (
+            resultTelegram &&
+            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
+          );
+        });
+
+        setWitnessSearchResults(filteredResults);
+      } catch (error) {
+        console.error("Witness search failed:", error);
+        setWitnessSearchResults([]);
+      } finally {
+        setIsWitnessSearchLoading(false);
+      }
+    },
+    [currentUser],
+  );
+
+  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+
+  useEffect(() => {
+    if (debouncedWitnessQuery.length >= 2) {
+      handleWitnessSearch(debouncedWitnessQuery);
+    } else {
+      setWitnessSearchResults([]);
+      setShowWitnessSuggestions(false);
+    }
+  }, [debouncedWitnessQuery, handleWitnessSearch]);
+
+  // Handle witness selection
+  const handleWitnessSelect = (username: string) => {
+    const formattedUsername = username.startsWith("@")
+      ? username
+      : `@${username}`;
+    addWitness(formattedUsername);
+    setShowWitnessSuggestions(false);
+    setWitnessSearchQuery("");
+  };
+
+  const handleWitnessInputChange = (value: string) => {
+    setWitnessInput(value);
+    setWitnessSearchQuery(value);
+  };
+
+  // Updated file upload handler with validations
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
-    if (selectedFiles) {
-      const newFiles = Array.from(selectedFiles);
-      if (localFiles.length + newFiles.length > 10) {
+    if (!selectedFiles) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: Record<string, string> = {};
+
+    Array.from(selectedFiles).forEach((file) => {
+      const fileSizeMB = file.size / 1024 / 1024;
+      const fileType = file.type.startsWith("image/") ? "image" : "document";
+
+      // Apply file size limits based on file type
+      if (fileType === "image" && fileSizeMB > 2) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && fileSizeMB > 3) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      // Check total files limit
+      if (localFiles.length + newFiles.length >= 10) {
         toast.error("Maximum 10 files allowed");
         return;
       }
+
+      // Calculate total size
+      const currentTotal = localFiles.reduce((total, f) => total + f.size, 0);
+      const newTotal = currentTotal + file.size;
+      const maxTotalSize = 50 * 1024 * 1024; // 50MB
+
+      if (newTotal > maxTotalSize) {
+        toast.error("Total file size too large", {
+          description: `Adding this file would exceed 50MB total limit`,
+          duration: 8000,
+        });
+        return;
+      }
+
+      // Validate file types
+      const allowedImageTypes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+      ];
+      const allowedDocumentTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+      ];
+
+      if (
+        !allowedImageTypes.includes(file.type) &&
+        !allowedDocumentTypes.includes(file.type)
+      ) {
+        toast.error(
+          `File "${file.name}" has unsupported type. Allowed: images (JPEG, PNG, GIF, WebP), PDFs, Word docs, text files`,
+        );
+        return;
+      }
+
+      newFiles.push(file);
+
+      // Create preview for images
+      if (fileType === "image") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newPreviews[file.name] = e.target?.result as string;
+          setFilePreviews((prev) => ({
+            ...prev,
+            [file.name]: e.target?.result as string,
+          }));
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    if (newFiles.length > 0) {
       setLocalFiles([...localFiles, ...newFiles]);
     }
   };
 
-  const removeFile = (index: number) => {
-    setLocalFiles(localFiles.filter((_, i) => i !== index));
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
   };
 
-  const addWitness = () => {
-    const trimmed = witnessInput.trim();
-    if (trimmed && !localWitnesses.includes(trimmed)) {
-      setLocalWitnesses([...localWitnesses, trimmed]);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = "image/*,.pdf,.doc,.docx,.txt";
+    const dataTransfer = new DataTransfer();
+    Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
+    input.files = dataTransfer.files;
+
+    const event = new Event("change", { bubbles: true });
+    input.dispatchEvent(event);
+
+    handleFileUpload({
+      target: { files: dataTransfer.files },
+    } as React.ChangeEvent<HTMLInputElement>);
+  };
+
+  const removeFile = (index: number) => {
+    const newFiles = [...localFiles];
+    const removedFile = newFiles[index];
+    newFiles.splice(index, 1);
+    setLocalFiles(newFiles);
+
+    // Remove preview if exists
+    if (filePreviews[removedFile.name]) {
+      const newPreviews = { ...filePreviews };
+      delete newPreviews[removedFile.name];
+      setFilePreviews(newPreviews);
+    }
+  };
+
+  const addWitness = (witness?: string) => {
+    const trimmed = witness || witnessInput.trim();
+    if (
+      trimmed &&
+      !localWitnesses.includes(trimmed) &&
+      localWitnesses.length < 5
+    ) {
+      const formattedWitness = trimmed.startsWith("@")
+        ? trimmed
+        : `@${trimmed}`;
+      setLocalWitnesses([...localWitnesses, formattedWitness]);
       setWitnessInput("");
+      setWitnessSearchQuery("");
+      setShowWitnessSuggestions(false);
+    } else if (localWitnesses.length >= 5) {
+      toast.error("Maximum 5 witnesses allowed");
     }
   };
 
@@ -579,10 +864,22 @@ const RaiseDisputeModal = ({
       return;
     }
 
+    // Validate file sizes and types
+    const maxTotalSize = 50 * 1024 * 1024; // 50MB
+    const totalSize = localFiles.reduce((total, file) => total + file.size, 0);
+
+    if (totalSize > maxTotalSize) {
+      toast.error("Total file size too large", {
+        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
+        duration: 8000,
+      });
+      return;
+    }
+
     const disputeData: CreateDisputeFromAgreementRequest = {
       title: localTitle,
       description: localDescription,
-      requestKind: localDisputeType,
+      requestKind: proBono ? DisputeTypeEnum.ProBono : DisputeTypeEnum.Paid,
       defendant: localDefendant,
       claim: claim,
       witnesses: localWitnesses,
@@ -594,7 +891,7 @@ const RaiseDisputeModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
       <div className="relative max-h-[90vh] w-full max-w-[32rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:p-6">
         <button
           onClick={onClose}
@@ -625,7 +922,7 @@ const RaiseDisputeModal = ({
             {/* Title */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
-                Title *
+                Title <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -637,10 +934,52 @@ const RaiseDisputeModal = ({
               />
             </div>
 
+            {/* Defendant - Read Only Display */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Defendant <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-2">
+                {localDefendant ? (
+                  <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+                    <div className="flex items-center gap-3">
+                      {/* You might want to get the defendant's avatar ID from agreement data */}
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+                        <Users className="h-4 w-4 text-purple-400" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-white">
+                          {formatUsernameForDisplay(localDefendant)}
+                        </div>
+                        <div className="text-xs text-purple-300">
+                          Other party in agreement
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-purple-500/20 px-2 py-1 text-xs font-medium text-purple-300">
+                      Defendant
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-purple-500/30 bg-black/50 p-3 text-center text-sm text-gray-400">
+                    Loading defendant information...
+                  </div>
+                )}
+
+                {/* Hidden input to still pass the value */}
+                <input type="hidden" name="defendant" value={localDefendant} />
+
+                <p className="text-xs text-gray-400">
+                  Defendant is automatically set to the other party in the
+                  agreement and cannot be changed.
+                </p>
+              </div>
+            </div>
+
             {/* Description */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
-                Description *
+                Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={localDescription}
@@ -654,7 +993,7 @@ const RaiseDisputeModal = ({
             {/* Claim */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
-                Formal Claim *
+                Formal Claim <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={claim}
@@ -665,127 +1004,246 @@ const RaiseDisputeModal = ({
               />
             </div>
 
-            {/* Dispute Type */}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-purple-300">
-                Dispute Type *
-              </label>
-              <div className="flex gap-4">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value={DisputeTypeEnum.ProBono}
-                    checked={localDisputeType === DisputeTypeEnum.ProBono}
-                    onChange={() =>
-                      setLocalDisputeType(DisputeTypeEnum.ProBono)
-                    }
-                    className="mr-2"
-                    disabled={isSubmitting}
-                  />
-                  <span className="text-white">Pro Bono</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value={DisputeTypeEnum.Paid}
-                    checked={localDisputeType === DisputeTypeEnum.Paid}
-                    onChange={() => setLocalDisputeType(DisputeTypeEnum.Paid)}
-                    className="mr-2"
-                    disabled={isSubmitting}
-                  />
-                  <span className="text-white">Paid</span>
-                </label>
-              </div>
-            </div>
-
+            {/* Dispute type */}
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium text-purple-300">
-                Fee Options
-              </label>
-              <div className="flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-green-200/90 select-none">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium text-purple-300">
+                  Request Kind <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="group relative cursor-pointer">
+                    <span className="cursor-help rounded border border-blue-400/20 bg-blue-500/10 px-2 py-0.5 text-blue-300">
+                      Pro Bono
+                    </span>
+                    <div className="absolute top-full right-0 z-10 mt-2 hidden w-60 rounded-md border border-blue-400/30 bg-blue-950/90 px-3 py-2 text-xs text-white shadow-lg backdrop-blur-sm group-hover:block">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500/20">
+                          <div className="h-2 w-2 rounded-full bg-blue-400"></div>
+                        </div>
+                        <div>
+                          <p className="font-medium text-blue-300">
+                            No Payment Required
+                          </p>
+                          <p className="mt-1 text-blue-200">
+                            Judges will handle your case pro bono when
+                            available.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="group relative cursor-pointer">
+                    <span className="cursor-help rounded border border-green-400/20 bg-green-500/10 px-2 py-0.5 text-green-300">
+                      Paid
+                    </span>
+                    <div className="absolute top-full right-0 z-10 mt-2 hidden w-60 rounded-md border border-green-400/30 bg-green-950/90 px-3 py-2 text-xs text-white shadow-lg backdrop-blur-sm group-hover:block">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-500/20">
+                          <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                        </div>
+                        <div>
+                          <p className="font-medium text-green-300">
+                            Priority Handling
+                          </p>
+                          <p className="mt-1 text-green-200">
+                            A fee is required to initiate your dispute. The fee
+                            helps prioritize your case This helps prioritize
+                            your case and notifies all judges to bigin reviewing
+                            immediately.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    proBono
+                      ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
+                      : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                >
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="feeOption"
                     checked={proBono}
                     onChange={(e) => setProBono(e.target.checked)}
-                    className="h-4 w-4 rounded border-green-300/40 bg-transparent"
+                    className="hidden"
                     disabled={isSubmitting}
                   />
-                  <span>Pro Bono (no fee)</span>
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      proBono
+                        ? "border border-blue-400/50 bg-blue-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full ${
+                        proBono
+                          ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                          : "border border-purple-400"
+                      }`}
+                    ></div>
+                  </div>
+                  <span className="font-medium">Pro Bono</span>
+                  <span className="text-xs opacity-80">
+                    No payment required
+                  </span>
+                </label>
+
+                <label
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    !proBono
+                      ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
+                      : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="feeOption"
+                    checked={!proBono}
+                    onChange={(e) => setProBono(!e.target.checked)}
+                    className="hidden"
+                    disabled={isSubmitting}
+                  />
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      !proBono
+                        ? "border border-green-400/50 bg-green-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full ${
+                        !proBono
+                          ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
+                          : "border border-purple-400"
+                      }`}
+                    ></div>
+                  </div>
+                  <span className="font-medium">Paid</span>
+                  <span className="text-xs opacity-80">Small fee required</span>
                 </label>
               </div>
-              <p className="mt-1 text-xs text-gray-400">
-                Pro Bono disputes don't require a fee. If unchecked, a small fee
-                will be required.
-              </p>
-            </div>
 
-            {/* Defendant */}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-purple-300">
-                Defendant *
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={localDefendant}
-                  onChange={(e) => setLocalDefendant(e.target.value)}
-                  className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-                  disabled={isSubmitting}
-                >
-                  <option value="">Select defendant</option>
-                  {defendantOptions.map((username, index) => (
-                    <option key={index} value={username}>
-                      {username}
-                    </option>
-                  ))}
-                </select>
-                {defendantOptions.length === 0 && (
-                  <input
-                    type="text"
-                    value={localDefendant}
-                    onChange={(e) => setLocalDefendant(e.target.value)}
-                    placeholder="Enter defendant username"
-                    className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-                    disabled={isSubmitting}
-                  />
+              <div className="mt-3 space-y-2">
+                <div className="flex items-start gap-2 rounded-lg bg-purple-500/10 p-2">
+                  <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
+                    <Info className="h-3 w-3 text-purple-400" />
+                  </div>
+                  <p className="text-xs text-purple-300/90">
+                    {proBono
+                      ? "Pro Bono disputes may have longer wait times as judges volunteer their time. You can change this later if needed."
+                      : "Paid disputes ensure faster processing and immediate notification to all available judges."}
+                  </p>
+                </div>
+
+                {!proBono && (
+                  <div className="flex items-start gap-2 rounded-lg bg-green-500/10 p-2">
+                    <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20">
+                      <DollarSign className="h-3 w-3 text-green-400" />
+                    </div>
+                    <p className="text-xs text-green-300/90">
+                      A small fee will be required when you confirm the dispute.
+                      Ensure you have sufficient funds in your wallet.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Witnesses */}
+            {/* Witnesses - WITH SEARCH */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
-                Witnesses (Optional)
+                Witnesses (Optional) - Max 5
               </label>
               <div className="mb-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={witnessInput}
-                    onChange={(e) => setWitnessInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Enter witness username"
-                    className="flex-1 rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-                    disabled={isSubmitting}
-                  />
+                <div className="relative flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-purple-400" />
+                    <input
+                      type="text"
+                      value={witnessInput}
+                      onChange={(e) => handleWitnessInputChange(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      onFocus={() => {
+                        if (witnessInput.length >= 2) {
+                          setShowWitnessSuggestions(true);
+                        }
+                      }}
+                      placeholder="Type username with or without @ (min 2 characters)..."
+                      className="w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 pl-9 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                      disabled={isSubmitting}
+                    />
+                    {isWitnessSearchLoading && (
+                      <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-purple-400" />
+                    )}
+                  </div>
                   <Button
                     type="button"
-                    onClick={addWitness}
-                    disabled={isSubmitting || !witnessInput.trim()}
+                    onClick={() => addWitness()}
+                    disabled={
+                      isSubmitting ||
+                      !witnessInput.trim() ||
+                      localWitnesses.length >= 5
+                    }
                     className="border-purple-500/30 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
                   >
                     Add
                   </Button>
                 </div>
+
+                {/* Witness User Suggestions Dropdown */}
+                {showWitnessSuggestions && (
+                  <div className="relative z-10 mt-1">
+                    <div className="absolute top-0 right-0 left-0 max-h-48 overflow-y-auto rounded-lg border border-purple-500/30 bg-purple-900/95 shadow-xl backdrop-blur-md">
+                      {witnessSearchResults.length > 0 ? (
+                        witnessSearchResults.map((user) => (
+                          <UserSearchResult
+                            key={user.id}
+                            user={user}
+                            onSelect={(username) =>
+                              handleWitnessSelect(username)
+                            }
+                            field="witness"
+                          />
+                        ))
+                      ) : witnessSearchQuery.length >= 2 &&
+                        !isWitnessSearchLoading ? (
+                        <div className="px-4 py-3 text-center text-sm text-purple-300">
+                          No users found for "{witnessSearchQuery}"
+                          <div className="mt-1 text-xs text-purple-400">
+                            Make sure the user exists and has a username
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {witnessSearchQuery.length < 2 && (
+                        <div className="px-4 py-3 text-center text-sm text-purple-300">
+                          Type at least 2 characters to search
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Witness list */}
               {localWitnesses.length > 0 && (
                 <div className="space-y-2">
                   {localWitnesses.map((witness, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
+                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-3"
                     >
-                      <span className="text-sm text-white">{witness}</span>
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-purple-400" />
+                        <span className="text-sm text-white">{witness}</span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => removeWitness(index)}
@@ -796,58 +1254,135 @@ const RaiseDisputeModal = ({
                       </button>
                     </div>
                   ))}
+                  <p className="text-xs text-purple-400">
+                    {localWitnesses.length} of 5 witnesses added
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* File Upload */}
+            {/* File Upload - WITH VALIDATIONS */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
-                Evidence Files * (Max 10 files)
+                Evidence Files <span className="text-red-500">*</span> (Max 10
+                files, 50MB total)
+                {localFiles.length > 0 && (
+                  <span className="ml-2 text-xs text-yellow-400">
+                    Total: {getTotalFileSize(localFiles)}
+                  </span>
+                )}
               </label>
               <div className="mb-2">
-                <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-purple-500/30 bg-purple-500/10 p-4 hover:border-purple-500/50">
-                  <Upload className="mr-2 h-5 w-5 text-purple-400" />
-                  <span className="text-purple-300">Click to upload files</span>
+                <div
+                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
+                    isDragOver
+                      ? "border-purple-500/60 bg-purple-500/20"
+                      : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
                   <input
                     type="file"
                     multiple
                     onChange={handleFileUpload}
                     className="hidden"
+                    id="evidence-upload"
                     disabled={isSubmitting}
+                    accept="image/*,.pdf,.doc,.docx,.txt"
                   />
-                </label>
+                  <label
+                    htmlFor="evidence-upload"
+                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${
+                      isSubmitting ? "cursor-not-allowed opacity-50" : ""
+                    }`}
+                  >
+                    <Upload className="mb-2 h-5 w-5 text-purple-400" />
+                    <span className="text-purple-300">
+                      Click to upload or drag and drop
+                    </span>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Supports images{" "}
+                      <span className="text-yellow-300">(max 2MB)</span>,
+                      documents{" "}
+                      <span className="text-yellow-300">(max 3MB)</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Max 10 files, 50MB total • Allowed: images, PDFs, Word
+                      docs, text files
+                    </p>
+                  </label>
+                </div>
               </div>
+
+              {/* File List */}
               {localFiles.length > 0 && (
                 <div className="space-y-2">
-                  {localFiles.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-purple-400" />
-                        <span className="text-sm text-white">{file.name}</span>
-                        <span className="text-xs text-purple-300">
-                          ({(file.size / 1024).toFixed(1)} KB)
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        className="text-red-400 hover:text-red-300"
-                        disabled={isSubmitting}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-purple-300">
+                      Selected Files ({localFiles.length})
+                    </h4>
+                    <div className="text-xs text-yellow-400">
+                      Total: {getTotalFileSize(localFiles)}
                     </div>
-                  ))}
+                  </div>
+
+                  {localFiles.map((file, index) => {
+                    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+                    const isImage = file.type.startsWith("image/");
+
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isImage && filePreviews[file.name] ? (
+                            <img
+                              src={filePreviews[file.name]}
+                              alt={file.name}
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <Paperclip className="h-4 w-4 text-purple-400" />
+                          )}
+                          <div>
+                            <div className="text-sm text-white">
+                              {file.name}
+                            </div>
+                            <div className="text-xs text-purple-300">
+                              {fileSizeMB} MB • {isImage ? "Image" : "Document"}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="text-red-400 hover:text-red-300"
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex items-center justify-between pt-2 text-xs text-purple-400">
+                    <div>
+                      {localFiles.length} of 10 files •{" "}
+                      {getTotalFileSize(localFiles)}
+                    </div>
+                    <div>
+                      {localFiles.length >= 10 && (
+                        <span className="text-yellow-400">
+                          Maximum files reached
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
-              <p className="mt-1 text-xs text-gray-400">
-                Upload supporting documents, screenshots, or evidence (PDF,
-                images, etc.)
-              </p>
             </div>
           </div>
         </div>
@@ -1464,7 +1999,7 @@ export default function EscrowDetails() {
         includeFunds: agreementData.includesFunds ? "yes" : "no",
         useEscrow: agreementData.type === AgreementTypeEnum.ESCROW,
         secureTheFunds: agreementData.hasSecuredFunds || false,
-        escrowAddress: agreementData.escrowContract || undefined,
+        escrowAddress: agreementData.customTokenAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
         fromAvatarId: getAvatarIdFromParty(agreementData.firstParty), // FIXED: Mystyri's avatar
@@ -1531,7 +2066,7 @@ export default function EscrowDetails() {
         includeFunds: agreementData.includesFunds ? "yes" : "no",
         useEscrow: agreementData.type === AgreementTypeEnum.ESCROW,
         secureTheFunds: agreementData.hasSecuredFunds || false,
-        escrowAddress: agreementData.escrowContract || undefined,
+        escrowAddress: agreementData.customTokenAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
         // FIXED: Match avatar IDs with the "from" and "to" assignments
@@ -1567,13 +2102,13 @@ export default function EscrowDetails() {
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceProvider.toString().toLowerCase();
+      onChainAgreement.serviceProvider.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceRecipient.toString().toLowerCase();
+      onChainAgreement.serviceRecipient.toString().toLowerCase();
   const now = currentTime;
 
   const switchToTokenChain = useCallback(async () => {
@@ -2346,6 +2881,7 @@ export default function EscrowDetails() {
   );
 
   // Replace the existing handleRaiseDispute function with this:
+  // Updated handleRaiseDispute function with transaction completion check
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,
     files: File[],
@@ -2356,72 +2892,118 @@ export default function EscrowDetails() {
     setIsSubmittingDispute(true);
 
     try {
-      if (!id) return setUiError("Agreement ID required");
-      if (!onChainAgreement?.id)
-        return setUiError("On-chain agreement ID required");
-      if (!isLoadedAgreement) return setUiError("Load the agreement first");
-      if (!isServiceProvider && !isServiceRecipient)
-        return setUiError("Only parties to the agreement can raise a dispute");
-      if (!onChainAgreement.funded) return setUiError("Agreement not funded");
-      if (!onChainAgreement.signed) return setUiError("Agreement not signed");
-      if (onChainAgreement.completed)
-        return setUiError("The agreement is completed");
-      if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
-      if (onChainAgreement.disputed)
-        return setUiError("The agreement is already in dispute");
-
-      // Validation for Paid disputes
-      if (data.requestKind === DisputeTypeEnum.Paid && !user?.walletAddress) {
-        return setUiError("Wallet address required for paid disputes");
+      if (!id) {
+        setUiError("Agreement ID required");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
       }
 
+      if (!onChainAgreement?.id) {
+        setUiError("On-chain agreement ID required");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (!isLoadedAgreement) {
+        setUiError("Load the agreement first");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (!isServiceProvider && !isServiceRecipient) {
+        setUiError("Only parties to the agreement can raise a dispute");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (!onChainAgreement.funded) {
+        setUiError("Agreement not funded");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (!onChainAgreement.signed) {
+        setUiError("Agreement not signed");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (onChainAgreement.completed) {
+        setUiError("The agreement is completed");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (onChainAgreement.frozen) {
+        setUiError("The agreement is frozen");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      if (onChainAgreement.disputed) {
+        setUiError("The agreement is already in dispute");
+        setIsSubmittingDispute(false);
+        setLoading("raiseDispute", false);
+        return;
+      }
+
+      // Get required IDs
       const agreementId = parseInt(id);
+      const contractAgreementId = Number(onChainAgreement.id); // On-chain contract ID
+      const chainId = networkInfo.chainId; // Current chain ID
 
       console.log("🚀 Creating dispute from agreement:", {
         agreementId,
+        contractAgreementId,
+        chainId,
         data,
         files: files.map((f) => f.name),
-        onChainAgreementId: onChainAgreement.id,
+        probono,
       });
 
-      const configs = await fetchOnchainEscrowConfigs(agreementId);
-
-      // Call the API to create dispute
+      // Call the API to create dispute with all required parameters
       const disputeResponse = await disputeService.createDisputeFromAgreement(
-        agreementId,
+        agreementId, // Database agreement ID
         data,
         files,
+        chainId, // Add chainId parameter
       );
 
       console.log("✅ Dispute created via API:", disputeResponse);
 
-      // Now TypeScript knows disputeResponse.votingId exists (optional)
+      // Use the votingId from response or generate one
       const votingIdToUse = disputeResponse.votingId || votingId;
 
+      // Get contract configs for fee calculation
+      const configs = await fetchOnchainEscrowConfigs(onChainAgreement);
+
+      // Call blockchain to raise dispute
       writeContract({
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
-        args: [BigInt(onChainAgreement?.id), BigInt(votingIdToUse), probono],
-        value: probono
-          ? 0n
-          : data.requestKind === DisputeTypeEnum.Paid
-            ? configs
-              ? configs.feeAmount
-              : undefined
-            : 0n,
+        args: [
+          BigInt(contractAgreementId), // Use on-chain contract agreement ID
+          BigInt(votingIdToUse),
+          probono,
+        ],
+        value: probono ? 0n : configs?.feeAmount || 0n,
       });
 
-      setUiSuccess("Dispute raised successfully! Telegram notifications sent.");
+      // Show initial success message but keep modal open
+      setUiSuccess("Transaction submitted. Waiting for confirmation...");
 
-      // Close the modal
-      setIsDisputeModalOpen(false);
-      setDisputeClaim("");
-
-      // Refresh data to show updated status
-      setTimeout(() => {
-        fetchEscrowDetailsBackground().catch(console.error);
-      }, 2000);
+      // IMPORTANT: Don't close the modal yet
+      // The modal will be closed in the useEffect that watches for transaction success
+      // We'll keep isSubmittingDispute = true to disable the form
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
       setIsSubmittingDispute(false);
@@ -2434,17 +3016,74 @@ export default function EscrowDetails() {
       setUiError(errorMessage);
       console.error("Error raising dispute:", error);
 
-      // Show error toast
       toast.error("Failed to create dispute", {
         description: errorMessage,
         duration: 5000,
       });
-    } finally {
-      if (!isSuccess) {
-        setIsSubmittingDispute(false);
-      }
     }
+    // Note: We don't finally close the modal here - it will be closed when transaction is confirmed
   };
+
+  // Handle dispute transaction success
+  useEffect(() => {
+    if (isSuccess && hash && isSubmittingDispute) {
+      const handleTransactionSuccess = async () => {
+        try {
+          console.log(
+            "✅ Blockchain transaction confirmed! Dispute created successfully.",
+          );
+
+          // Show final success message
+          toast.success("Dispute raised successfully!", {
+            description:
+              "Transaction confirmed on blockchain. Telegram notifications sent.",
+            duration: 5000,
+          });
+
+          // Close the modal
+          setIsDisputeModalOpen(false);
+          setDisputeClaim("");
+          setUiSuccess("Dispute raised successfully! Transaction confirmed.");
+
+          // Refresh data to show updated status
+          setTimeout(() => {
+            fetchEscrowDetailsBackground().catch(console.error);
+          }, 2000);
+        } catch (error: any) {
+          console.error("❌ Error in post-transaction processing:", error);
+          toast.error("Error in post-transaction processing", {
+            description:
+              error.message ||
+              "Please check the transaction and contact support if needed.",
+            duration: 5000,
+          });
+        } finally {
+          setIsSubmittingDispute(false);
+          setLoading("raiseDispute", false);
+          resetWrite(); // Reset write state
+        }
+      };
+
+      handleTransactionSuccess();
+    }
+  }, [
+    isSuccess,
+    hash,
+    isSubmittingDispute,
+    resetWrite,
+    fetchEscrowDetailsBackground,
+  ]);
+
+  useEffect(() => {
+    if (!isDisputeModalOpen) {
+      // Reset states when modal closes
+      setIsSubmittingDispute(false);
+      setDisputeClaim("");
+      setUiError(null);
+      setUiSuccess(null);
+      resetWrite();
+    }
+  }, [isDisputeModalOpen, resetWrite]);
 
   // Add a function to open the dispute modal
   const handleOpenDisputeModal = () => {
@@ -2667,8 +3306,8 @@ export default function EscrowDetails() {
 
   const tokenAddress =
     onChainAgreement &&
-      onChainAgreement.token &&
-      onChainAgreement.token !== ZERO_ADDRESS
+    onChainAgreement.token &&
+    onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
@@ -2773,9 +3412,9 @@ export default function EscrowDetails() {
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-      (new Date(escrow.deadline).getTime() - Date.now()) /
-      (1000 * 60 * 60 * 24),
-    )
+        (new Date(escrow.deadline).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24),
+      )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -2869,12 +3508,13 @@ export default function EscrowDetails() {
               {statusInfo.label}
             </span>
             <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
+              className={`rounded-full px-3 py-1 text-sm font-medium ${
+                isOverdue
                   ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
                   : isUrgent
                     ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
                     : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-                }`}
+              }`}
             >
               {isOverdue ? "Overdue" : `${daysRemaining} days left`}
             </span>
@@ -3251,10 +3891,11 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                              onChainAgreement.funded
                                 ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
                                 : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                              }`}
+                            }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -3424,7 +4065,7 @@ export default function EscrowDetails() {
                           Pending Order Cancellation:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                          // onComplete={refetchAgreement}
+                            // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -3485,7 +4126,7 @@ export default function EscrowDetails() {
                           Pending Delivery [Grace period 1]:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                          // onComplete={refetchAgreement}
+                            // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -3521,56 +4162,56 @@ export default function EscrowDetails() {
 
                 {/* Check if any action buttons are available */}
                 {(isServiceProvider || isServiceRecipient) &&
-                  ((((isServiceProvider &&
-                    !onChainAgreement.acceptedByServiceProvider) ||
-                    (isServiceRecipient &&
-                      !onChainAgreement.acceptedByServiceRecipient)) &&
-                    onChainAgreement.funded) ||
-                    (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                    (onChainAgreement.signed &&
-                      isServiceProvider &&
-                      !onChainAgreement.frozen &&
-                      !onChainAgreement.pendingCancellation &&
-                      !onChainAgreement.deliverySubmited) ||
-                    (onChainAgreement.signed &&
-                      isServiceRecipient &&
-                      !onChainAgreement.pendingCancellation &&
-                      onChainAgreement.deliverySubmited) ||
-                    (now < onChainAgreement.grace1Ends &&
-                      onChainAgreement.signed &&
-                      onChainAgreement.pendingCancellation &&
-                      address &&
-                      address.toLowerCase() !==
+                ((((isServiceProvider &&
+                  !onChainAgreement.acceptedByServiceProvider) ||
+                  (isServiceRecipient &&
+                    !onChainAgreement.acceptedByServiceRecipient)) &&
+                  onChainAgreement.funded) ||
+                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    isServiceProvider &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    isServiceRecipient &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.deliverySubmited) ||
+                  (now < onChainAgreement.grace1Ends &&
+                    onChainAgreement.signed &&
+                    onChainAgreement.pendingCancellation &&
+                    address &&
+                    address.toLowerCase() !==
                       String(
                         onChainAgreement.grace1EndsCalledBy,
                       ).toLowerCase() &&
-                      !onChainAgreement.deliverySubmited) ||
-                    (onChainAgreement.signed &&
-                      !onChainAgreement.pendingCancellation &&
-                      !onChainAgreement.deliverySubmited &&
-                      !onChainAgreement.frozen) ||
-                    (onChainAgreement.grace1Ends !== BigInt(0) &&
-                      !onChainAgreement.vesting &&
-                      now > onChainAgreement.grace1Ends &&
-                      onChainAgreement.funded &&
-                      !onChainAgreement.pendingCancellation &&
-                      onChainAgreement.signed) ||
-                    (onChainAgreement.signed &&
-                      !onChainAgreement.vesting &&
-                      now > onChainAgreement.grace2Ends &&
-                      onChainAgreement.grace2Ends !== BigInt(0) &&
-                      onChainAgreement.funded &&
-                      onChainAgreement.pendingCancellation) ||
-                    (onChainAgreement.signed &&
-                      now > onChainAgreement.grace1Ends &&
-                      onChainAgreement.pendingCancellation &&
-                      onChainAgreement.grace1Ends !== BigInt(0)) ||
-                    (onChainAgreement.funded &&
-                      onChainAgreement.signed &&
-                      !onChainAgreement.disputed &&
-                      !onChainAgreement.completed &&
-                      !onChainAgreement.frozen &&
-                      !onChainAgreement.pendingCancellation)) ? (
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.frozen) ||
+                  (onChainAgreement.grace1Ends !== BigInt(0) &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.funded &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace2Ends &&
+                    onChainAgreement.grace2Ends !== BigInt(0) &&
+                    onChainAgreement.funded &&
+                    onChainAgreement.pendingCancellation) ||
+                  (onChainAgreement.signed &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.pendingCancellation &&
+                    onChainAgreement.grace1Ends !== BigInt(0)) ||
+                  (onChainAgreement.funded &&
+                    onChainAgreement.signed &&
+                    !onChainAgreement.disputed &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation)) ? (
                   <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
@@ -3739,9 +4380,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(
-                          onChainAgreement.grace1EndsCalledBy,
-                        ).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(true)}
@@ -3773,9 +4414,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(
-                          onChainAgreement.grace1EndsCalledBy,
-                        ).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(false)}
@@ -4086,9 +4727,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                    normalizeUsername(
-                                      disputeInfo.filedBy,
-                                    ) && (
+                                      normalizeUsername(
+                                        disputeInfo.filedBy,
+                                      ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -4107,7 +4748,7 @@ export default function EscrowDetails() {
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
+                  {/* <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
                     <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
                     <div>
                       <p className="text-sm text-amber-300">
@@ -4116,7 +4757,7 @@ export default function EscrowDetails() {
                         participate in voting, or see the resolution process.
                       </p>
                     </div>
-                  </div>
+                  </div> */}
                 </div>
               </div>
             )}
@@ -4187,7 +4828,7 @@ export default function EscrowDetails() {
                     </div>
                     <div className="text-sm text-cyan-300">
                       {onChainAgreement?.acceptedByServiceProvider &&
-                        onChainAgreement?.acceptedByServiceRecipient
+                      onChainAgreement?.acceptedByServiceRecipient
                         ? "Fully Executed"
                         : "Partially Signed"}
                     </div>
@@ -4240,12 +4881,12 @@ export default function EscrowDetails() {
                         Delivered by
                         <div className="flex items-center gap-1">
                           <UserAvatar
-                            userId={escrow.fromUserId || escrow.from}
-                            avatarId={escrow.fromAvatarId || null}
-                            username={escrow.from}
+                            userId={escrow.toUserId || escrow.to}
+                            avatarId={escrow.toAvatarId || null}
+                            username={escrow.to}
                             size="sm"
                           />
-                          {formatWalletAddress(escrow.from)}
+                          {formatWalletAddress(escrow.to)}
                         </div>
                       </div>
                     </div>
@@ -4269,12 +4910,12 @@ export default function EscrowDetails() {
                           Awaiting approval from{" "}
                           <div className="flex items-center gap-1">
                             <UserAvatar
-                              userId={escrow.toUserId || escrow.to}
-                              avatarId={escrow.toAvatarId || null}
+                              userId={escrow.fromUserId || escrow.from}
+                              avatarId={escrow.fromAvatarId || null}
                               username={escrow.to}
                               size="sm"
                             />
-                            {formatWalletAddress(escrow.to)}
+                            {formatWalletAddress(escrow.from)}
                           </div>
                         </div>
                       </div>
@@ -4530,6 +5171,7 @@ export default function EscrowDetails() {
 
       {/* Add this at the end of your JSX, before the closing </div> */}
       {isDisputeModalOpen && (
+        // Update the modal to accept full agreement data
         <RaiseDisputeModal
           isOpen={isDisputeModalOpen}
           onClose={() => {
@@ -4540,6 +5182,8 @@ export default function EscrowDetails() {
           claim={disputeClaim}
           setClaim={setDisputeClaim}
           agreement={escrow?._raw}
+          onChainAgreement={onChainAgreement} // Pass on-chain data
+          networkInfo={networkInfo} // Pass network info
           currentUser={user}
           isSubmitting={isSubmittingDispute || loadingStates.raiseDispute}
         />

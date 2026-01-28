@@ -121,8 +121,13 @@ class DisputeService {
   async createDispute(
     data: CreateDisputeRequest,
     files: File[],
-  ): Promise<{ id: number }> {
-    console.log("🚀 Creating dispute with proper form-data format...");
+    chainId?: number, // Add chainId as optional parameter
+  ): Promise<{ id: number; votingId?: string }> {
+    // Update return type to include votingId
+    console.log(
+      "🚀 Creating dispute with proper form-data format...",
+      chainId ? `[Chain ID: ${chainId}]` : "",
+    );
 
     const formData = new FormData();
 
@@ -134,6 +139,12 @@ class DisputeService {
 
     const votingId = generateVotingId();
     formData.append("votingId", votingId);
+
+    // Add chainId if provided
+    if (chainId !== undefined) {
+      formData.append("chainId", String(chainId));
+      console.log("🔗 Added chainId to formData:", chainId);
+    }
 
     console.log("✅ Generated votingId for dispute:", votingId);
 
@@ -155,12 +166,132 @@ class DisputeService {
     try {
       const response = await api.post("/dispute", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 30000, // Add timeout like the other method
       });
 
-      console.log("✅ Dispute created with votingId:", votingId, response.data);
-      return { ...response.data, votingId };
+      console.log("📥 Raw response from server:", response);
+      console.log("📦 Response data:", response.data);
+      console.log("📊 Response status:", response.status);
+
+      if (response.status === 201) {
+        if (!response.data || typeof response.data !== "object") {
+          console.error("❌ Invalid response format - expected object with id");
+          throw new Error(
+            "Server returned invalid response format. Expected { id: disputeId }.",
+          );
+        }
+
+        const disputeId = response.data.id;
+
+        if (!disputeId || typeof disputeId !== "number") {
+          console.error("❌ Missing or invalid dispute ID in response");
+          console.error("Response data:", response.data);
+          throw new Error(
+            "Server response missing dispute ID. Please contact support.",
+          );
+        }
+
+        console.log(
+          "✅ Dispute created successfully!",
+          `Dispute ID: ${disputeId}, Voting ID: ${votingId}`,
+          chainId ? `Chain ID: ${chainId}` : "",
+          "Full response:",
+          response.data,
+        );
+
+        return {
+          id: disputeId,
+          votingId: votingId,
+        };
+      } else if (response.status === 200) {
+        // Handle 200 OK response as well
+        if (response.data && response.data.id) {
+          console.log("✅ Dispute created (200 OK)", response.data);
+          return {
+            id: response.data.id,
+            votingId: votingId,
+          };
+        } else {
+          throw new Error("Server returned 200 but missing dispute ID.");
+        }
+      } else {
+        console.error("❌ Unexpected response status:", response.status);
+        throw new Error(`Unexpected server response: ${response.status}`);
+      }
     } catch (error: any) {
-      this.handleError(error);
+      console.error("❌ Error in createDispute:", error);
+
+      // Enhanced error handling (similar to createDisputeFromAgreement)
+      if (error.response) {
+        console.error("📥 Server response:", {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+
+        // Handle specific error cases
+        if (error.response.status === 400) {
+          const errorData = error.response.data;
+          if (errorData.error === "MissingData") {
+            throw new Error(
+              "Missing required data. Please check all fields are filled correctly." +
+                (chainId === undefined
+                  ? " (Note: chainId might be required for paid disputes)"
+                  : ""),
+            );
+          }
+          if (errorData.error === "InvalidData") {
+            throw new Error(
+              "Invalid data provided. Please check your inputs and try again." +
+                (chainId !== undefined ? ` (Chain ID: ${chainId})` : ""),
+            );
+          }
+          // Add specific error for missing chainId if the backend requires it
+          if (errorData.error === "MissingChainId") {
+            throw new Error(
+              "Chain ID is required for creating a dispute. Please specify the blockchain network.",
+            );
+          }
+          if (errorData.error === "InvalidChainId") {
+            throw new Error(
+              "Invalid chain ID provided. Please check the network and try again.",
+            );
+          }
+        }
+
+        if (error.response.status === 409) {
+          throw new Error("A dispute with similar parameters already exists.");
+        }
+
+        if (error.response.status === 422) {
+          // Handle validation errors (might include chainId validation)
+          const errorData = error.response.data;
+          if (errorData.errors && errorData.errors.chainId) {
+            throw new Error(
+              `Invalid chain ID: ${errorData.errors.chainId.join(", ")}`,
+            );
+          }
+        }
+      }
+
+      if (error.code === "ECONNABORTED") {
+        console.error("⏰ Request timeout - server took too long to respond");
+        throw new Error(
+          "Request timeout. The server took too long to respond. Please try again.",
+        );
+      }
+
+      if (error.code === "ERR_NETWORK") {
+        console.error("🌐 Network error - cannot connect to server");
+        throw new Error(
+          "Cannot connect to server. Please check your internet connection and try again.",
+        );
+      }
+
+      // Re-throw with better error message
+      const errorMessage = error.message || "Unknown error occurred";
+      throw new Error(`Failed to create dispute: ${errorMessage}`);
     }
   }
 
@@ -588,6 +719,74 @@ class DisputeService {
     }
   }
 
+  // Add this method to your disputeService class
+  async finalizeDisputes(disputeIds: number[]): Promise<void> {
+    try {
+      console.log(`🚀 Manually finalizing disputes (PATCH):`, disputeIds);
+
+      const response = await api.patch(
+        "/testing/finalize-votes",
+        {
+          disputeIds,
+        },
+        {
+          timeout: 60000, // 60 second timeout for potentially longer operations
+        },
+      );
+
+      console.log("✅ Disputes finalized successfully:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ Failed to finalize disputes:", error);
+
+      // Enhanced error handling
+      if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+        console.warn("⚠️ Request timed out, but may have succeeded on server");
+        throw new Error(
+          "Request timed out. Please refresh the page to check if it succeeded.",
+        );
+      }
+
+      // Handle specific error cases
+      if (error.response) {
+        console.error("📥 Server response:", {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+
+        if (error.response.status === 400) {
+          const errorData = error.response.data;
+          if (errorData.error === "InvalidData") {
+            throw new Error(
+              "Invalid dispute data provided. Please check the dispute IDs.",
+            );
+          }
+          if (errorData.error === "InvalidStatus") {
+            throw new Error(
+              "One or more disputes are not in VoteInProgress status.",
+            );
+          }
+        }
+
+        if (error.response.status === 404) {
+          throw new Error("One or more disputes not found.");
+        }
+
+        if (error.response.status === 500) {
+          throw new Error(
+            "Server error while finalizing disputes. Please try again later.",
+          );
+        }
+      }
+
+      // Re-throw with better error message
+      const errorMessage = error.message || "Unknown error occurred";
+      throw new Error(`Failed to finalize disputes: ${errorMessage}`);
+    }
+  }
+
   // Check if user can vote in a dispute
   async canUserVote(
     disputeId: number,
@@ -650,102 +849,33 @@ class DisputeService {
   // Get vote outcome
   async getVoteOutcome(disputeId: number): Promise<VoteOutcomeData> {
     try {
-      console.log(
-        `🔍 [DisputeService] Fetching vote outcome for dispute ${disputeId}`,
-      );
-
       const response = await api.get(`/dispute/${disputeId}/vote-outcome`);
-
-      console.log(
-        `📊 [DisputeService] Raw vote outcome response:`,
-        response.data,
-      );
-
       const apiData = response.data;
 
-      const totalVotes =
-        typeof apiData.totalVotes === "number" ? apiData.totalVotes : 0;
-
-      const judgeVotesObj =
-        apiData.votesPerGroup?.judges || apiData.judgeVotes || {};
-      const judgeVotes =
-        (judgeVotesObj.plaintiff || 0) +
-        (judgeVotesObj.defendant || 0) +
-        (judgeVotesObj.dismiss || 0);
-
-      const communityTierOne = apiData.votesPerGroup?.communityTierOne || {};
-      const communityTierTwo = apiData.votesPerGroup?.communityTierTwo || {};
-      const communityVotes =
-        (communityTierOne.plaintiff || 0) +
-        (communityTierOne.defendant || 0) +
-        (communityTierOne.dismiss || 0) +
-        (communityTierTwo.plaintiff || 0) +
-        (communityTierTwo.defendant || 0) +
-        (communityTierTwo.dismiss || 0);
-
-      const judgePctObj =
-        apiData.percentagesPerGroup?.judges || apiData.judgePct || {};
-      const judgePct = judgePctObj.plaintiff || 0;
-
-      const communityPctObj =
-        apiData.percentagesPerGroup?.communityTierOne ||
-        apiData.communityPct ||
-        {};
-      const communityPct = communityPctObj.plaintiff || 0;
-
-      let winner: "plaintiff" | "defendant" | "dismissed" = "dismissed";
-
-      if (apiData.result === 1) winner = "plaintiff";
-      else if (apiData.result === 2) winner = "defendant";
-      else if (apiData.result === 3) winner = "dismissed";
-      else if (apiData.weighted) {
-        const { plaintiff = 0, defendant = 0, dismiss = 0 } = apiData.weighted;
-        if (plaintiff > defendant && plaintiff > dismiss) winner = "plaintiff";
-        else if (defendant > plaintiff && defendant > dismiss)
-          winner = "defendant";
-        else winner = "dismissed";
-      }
-
-      const transformedData = {
-        winner: winner,
-        judgeVotes: judgeVotes,
-        communityVotes: communityVotes,
-        judgePct: judgePct,
-        communityPct: communityPct,
+      const transformedData: VoteOutcomeData = {
+        winner:
+          apiData.result === 1
+            ? "plaintiff"
+            : apiData.result === 2
+              ? "defendant"
+              : "dismissed",
+        judgeVotes: apiData.votesPerGroup?.judges?.total || 0,
+        communityVotes:
+          (apiData.votesPerGroup?.communityTierOne?.total || 0) +
+          (apiData.votesPerGroup?.communityTierTwo?.total || 0),
+        judgePct: apiData.percentagesPerGroup?.judges?.plaintiff || 0,
+        communityPct:
+          apiData.percentagesPerGroup?.communityTierOne?.plaintiff || 0,
         comments: apiData.comments || [],
-      };
-
-      console.log("🔄 Transformed vote outcome:", transformedData);
-      console.log("📈 Detailed vote analysis:", {
-        totalVotes,
-        judgeVotes: {
-          total: judgeVotes,
-          breakdown: judgeVotesObj,
-        },
-        communityVotes: {
-          total: communityVotes,
-          breakdown: {
-            tierOne: communityTierOne,
-            tierTwo: communityTierTwo,
-          },
-        },
-        judgePct: {
-          plaintiff: judgePct,
-          breakdown: judgePctObj,
-        },
-        communityPct: {
-          plaintiff: communityPct,
-          breakdown: communityPctObj,
-        },
-        winner,
         weighted: apiData.weighted,
-        result: apiData.result,
-      });
+        votesPerGroup: apiData.votesPerGroup,
+        percentagesPerGroup: apiData.percentagesPerGroup,
+      };
 
       return transformedData;
     } catch (error: any) {
       console.error(
-        `❌ [DisputeService] Failed to fetch vote outcome for dispute ${disputeId}:`,
+        `Failed to fetch vote outcome for dispute ${disputeId}:`,
         error,
       );
       this.handleError(error);

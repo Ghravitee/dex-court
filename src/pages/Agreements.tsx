@@ -2500,20 +2500,6 @@ export default function Agreements() {
               {/* Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4">
                 <Button
-                  type="button"
-                  variant="outline"
-                  className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  onClick={() => {
-                    toast.message("Draft saved", {
-                      description: "Your agreement has been saved as draft",
-                    });
-                    setIsModalOpen(false);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Save Draft
-                </Button>
-                <Button
                   type="submit"
                   variant="neon"
                   className="neon-hover"

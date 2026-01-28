@@ -427,6 +427,7 @@ export interface CreateDisputeRequest {
   defendant: string;
   claim: string;
   witnesses?: string[];
+  chainId?: number; // Add chainId as optional parameter
 }
 
 export interface CreateDisputeFromAgreementRequest {
@@ -437,6 +438,8 @@ export interface CreateDisputeFromAgreementRequest {
   witnesses?: string[];
   defendant: string;
   votingId?: string;
+  onchainVotingId?: string;
+  chainId?: number;
 }
 
 export interface DefendantClaimRequest {
@@ -447,19 +450,6 @@ export interface DefendantClaimRequest {
 export interface VoteRequest {
   voteType: number;
   comment: string;
-}
-
-// In your types file
-export interface VoteOutcomeData {
-  winner: "plaintiff" | "defendant" | "dismissed";
-  judgeVotes: number;
-  communityVotes: number;
-  judgePct: number;
-  communityPct: number;
-  comments: Array<{
-    handle: string;
-    text: string;
-  }>;
 }
 
 export interface ApiError {
@@ -588,4 +578,63 @@ export interface CanUserVoteResponse {
   reason?: string;
   tier?: number;
   weight?: number;
+}
+
+export interface CommentData {
+  accountId: number;
+  username: string;
+  avatarId: number | null;
+  role: number;
+  comment: string;
+}
+
+export interface VoteOutcomeData {
+  winner: "plaintiff" | "defendant" | "dismissed";
+  judgeVotes: number;
+  communityVotes: number;
+  judgePct: number;
+  communityPct: number;
+  comments: CommentData[];
+  weighted?: {
+    plaintiff: number;
+    defendant: number;
+    dismiss: number;
+  };
+  votesPerGroup?: {
+    judges: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+      total: number;
+    };
+    communityTierOne: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+      total: number;
+    };
+    communityTierTwo: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+      total: number;
+    };
+  };
+  percentagesPerGroup?: {
+    judges: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+    };
+    communityTierOne: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+    };
+    communityTierTwo: {
+      plaintiff: number;
+      defendant: number;
+      dismiss: number;
+    };
+  };
 }
