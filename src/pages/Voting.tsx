@@ -388,6 +388,7 @@ const LiveCaseCard = ({
     tier,
     weight,
     markAsVoted,
+    isInitialCheck,
     refetch: refetchVotingStatus,
   } = useVotingStatus(parseInt(c.id), c.rawDispute);
 
@@ -552,7 +553,6 @@ const LiveCaseCard = ({
               >
                 <h2 className="font-semibold text-white/90">{c.title}</h2>
               </Link>
-
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-cyan-300">Plaintiff: </span>{" "}
@@ -573,8 +573,16 @@ const LiveCaseCard = ({
                 </div>
               </div>
               {/* Vote Status Badge */}
+
+              {/* Vote Status Badge */}
               <div className="mt-1">
-                {hasVoted ? (
+                {isInitialCheck ? (
+                  // Loading state
+                  <span className="inline-flex items-center rounded-full bg-gray-500/20 px-2 py-1 text-xs font-medium text-gray-300">
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Checking eligibility...
+                  </span>
+                ) : hasVoted ? (
                   <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
                     ✓ You have voted
                   </span>
@@ -707,7 +715,24 @@ const LiveCaseCard = ({
               )}
 
               {/* Eligibility Message */}
-              {voteStarted && !canVote && reason && (
+              {/* Eligibility Message */}
+              {voteStarted && isInitialCheck ? (
+                <div className="rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-blue-300">
+                        Checking Eligibility
+                      </h4>
+                      <p className="text-xs text-blue-200">
+                        Verifying your voting status...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : voteStarted && !canVote && reason ? (
                 <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20">
@@ -721,7 +746,7 @@ const LiveCaseCard = ({
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Vote Counts Not Available Message - Only show if vote has started */}
               {voteStarted && (
@@ -736,7 +761,7 @@ const LiveCaseCard = ({
               )}
 
               {/* Voting Section - Only show if vote has started AND user can vote */}
-              {!isExpired && voteStarted && canVote && (
+              {!isExpired && voteStarted && !isInitialCheck && canVote && (
                 <div className="mt-2">
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     {hasVoted
@@ -747,7 +772,7 @@ const LiveCaseCard = ({
                   </h4>
 
                   {!hasVoted && !isExpired && (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <MemoizedVoteOption
                         label={`Plaintiff (${c.parties.plaintiff})`}
                         active={choice === "plaintiff"}
@@ -1287,13 +1312,13 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                     </div>
 
                     {/* Dismiss votes */}
-                    {c.weighted?.dismiss > 0 && (
+                    {/* {c.weighted?.dismiss > 0 && (
                       <div className="mt-2 flex justify-center">
                         <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-300">
                           {c.weighted.dismiss} votes for dismissal
                         </span>
                       </div>
-                    )}
+                    )} */}
                   </div>
                 </div>
               )}
@@ -1559,7 +1584,7 @@ export default function Voting() {
     try {
       setConcludedLoading(true);
       const response = await disputeService.getSettledDisputes({
-        top: 1000,
+        top: 300,
         sort: "desc",
       });
 
@@ -1767,7 +1792,7 @@ export default function Voting() {
   const tabContent = useMemo(() => {
     if (error) {
       return (
-        <div className="flex h-64 items-center justify-center">
+        <div className="col-span-2 mt-10 h-[20rem]">
           <div className="text-center">
             <div className="mb-4 text-2xl">❌</div>
             <div className="text-lg text-red-400">{error}</div>

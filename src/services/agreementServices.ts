@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { DisputeTypeEnum } from "../types";
 import { api } from "../lib/apiClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -163,6 +164,15 @@ export interface UserDTO {
   walletAddress: string;
   role: number;
   avatarId: number;
+}
+
+export interface AgreementDeliveryRejectedRequest {
+  votingId: string;
+  claim: string;
+  contractAgreementId: string;
+  chainId?: number;
+  requestKind: DisputeTypeEnum;
+  txHash?: string;
 }
 
 // TanStack Query Keys for organized cache management
@@ -742,25 +752,18 @@ class AgreementService {
     return response.data;
   }
 
-  // Update the rejectDelivery function to accept a claim parameter
-  // In agreementServices.ts - update the rejectDelivery function
   async rejectDelivery(
     agreementId: number,
-    claim?: string,
-    votingId?: string,
+    data: AgreementDeliveryRejectedRequest,
   ): Promise<void> {
     try {
-      const payload: any = {};
-
-      // Only include claim if it's provided and not empty
-      if (claim && claim.trim()) {
-        payload.claim = claim.trim();
-      }
-
-      // Include votingId if provided
-      if (votingId) {
-        payload.votingId = votingId;
-      }
+      const payload: AgreementDeliveryRejectedRequest = {
+        votingId: data.votingId,
+        claim: data.claim.trim(),
+        contractAgreementId: data.contractAgreementId,
+        requestKind: data.requestKind,
+        ...(data.chainId && { chainId: data.chainId }),
+      };
 
       console.log("📤 Rejecting delivery with payload:", payload);
 
@@ -768,10 +771,12 @@ class AgreementService {
         `/agreement/${agreementId}/delivery/reject`,
         payload,
       );
+
       console.log("✅ Delivery rejected successfully:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Failed to reject delivery:", error);
+      throw error;
     }
   }
 
@@ -991,11 +996,17 @@ export function useDeliveryActions() {
   });
 
   const rejectDelivery = useMutation({
-    mutationFn: (agreementId: number) =>
-      agreementService.rejectDelivery(agreementId),
-    onSuccess: (_, agreementId) => {
+    mutationFn: ({
+      agreementId,
+      data,
+    }: {
+      agreementId: number;
+      data: AgreementDeliveryRejectedRequest;
+    }) => agreementService.rejectDelivery(agreementId, data),
+
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: agreementQueryKeys.detail(agreementId),
+        queryKey: agreementQueryKeys.detail(variables.agreementId),
       });
       queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
     },
