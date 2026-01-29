@@ -185,7 +185,7 @@ const useDisputes = (filters: {
                   : filters.status === "Dismissed"
                     ? DisputeStatusEnum.Dismissed
                     : filters.status === "pendingPayment"
-                      ? DisputeStatusEnum.pendingPayment
+                      ? DisputeStatusEnum.PendingPayment
                       : undefined,
         // REMOVE search from here
         // search: filters.search,
@@ -1550,7 +1550,7 @@ export default function Disputes() {
                             <span className="badge badge-orange">Pending</span>
                           ) : d.status === "Dismissed" ? (
                             <span className="badge badge-red">Dismissed</span>
-                          ) : d.status === "pending Payment" ? (
+                          ) : d.status === "Pending Payment" ? (
                             <span className="badge border-yellow" >pending Payment</span>
                           )
                             : (
