@@ -93,57 +93,43 @@ export const getAgreement = async (
 
 export const getAgreementExistOnchain = async (
   chainId: number,
-  agreementIds: bigint[],
-): Promise<`0x${string}`[]> => {
+  contractAgreementIds: bigint[],
+  escrowContractAddress: `0x${string}`
+): Promise<boolean[]> => {
   // Changed return type
   const publicClient: PublicClient = getClientForChain(chainId);
-  const contractAddr = ESCROW_CA[chainId];
 
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);
   }
 
-  if (!contractAddr || isZeroAddress(contractAddr)) {
+  if (!escrowContractAddress || isZeroAddress(escrowContractAddress)) {
     return []; // Return empty array instead of CREATORS_FALLBACK
   }
 
-  if (agreementIds.length === 0) return [];
+  if (contractAgreementIds.length === 0) return [];
 
-  // Filter out any zero IDs if needed
-  const validIds = agreementIds.filter((id) => id !== 0n);
-  if (validIds.length === 0) return [];
 
   try {
-    // avoid 'any' by coercing ESCROW_ABI into viem's Abi type
-    type AbiLike = { abi?: Abi } | Abi;
-    const maybe = ESCROW_ABI as AbiLike;
-    const abi =
-      ("abi" in (maybe as object)
-        ? (maybe as { abi?: Abi }).abi
-        : (maybe as Abi)) ?? (ESCROW_ABI as unknown as Abi);
-
     const raw = await publicClient.readContract({
-      address: contractAddr,
-      abi,
+      address: escrowContractAddress,
+      abi: ESCROW_ABI.abi,
       functionName: "getCreatorsBatch",
-      args: [validIds],
+      args: [contractAgreementIds],
     });
 
-    // The contract returns an array of addresses
     if (Array.isArray(raw)) {
-      return raw.map(
-        (addr) => (addr as `0x${string}`) || (ZERO_ADDRESS as `0x${string}`),
-      );
+      return raw.map((creator) => creator !== ZERO_ADDRESS);
     }
 
-    return [];
+    return contractAgreementIds.map(() => false);
   } catch (err) {
     console.error(
-      `getAgreementExistOnchain failed (chain=${chainId}, ids=${agreementIds}):`,
-      err,
+      `getAgreementExistOnchain failed (chain=${chainId}, ids=${contractAgreementIds}):`,
+      err
     );
-    // Return empty array on error
-    return [];
+    // Return false for all on error
+    return contractAgreementIds.map(() => false);
   }
 };
 
