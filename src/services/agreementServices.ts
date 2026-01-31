@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { api } from "../lib/apiClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { DisputeTypeEnum } from "../types";
 
 // API Enum Mappings
 export const AgreementTypeEnum = {
@@ -46,6 +47,15 @@ export interface AgreementsRequest {
   escrowContractAddress?: string;
 }
 
+export interface AgreementDeliveryRejectedRequest {
+  votingId: string;
+  claim: string;
+  contractAgreementId?: string;
+  chainId?: number;
+  requestKind: DisputeTypeEnum;
+  txHash?: string;
+}
+
 export interface AgreementSignRequest {
   accepted: boolean;
 }
@@ -67,6 +77,7 @@ export interface AgreementSummaryDTO {
   firstParty: PartyDTO;
   counterParty: PartyDTO;
   amount?: number;
+  type?: number;
   tokenSymbol?: string;
   deadline: string;
   status: number;
@@ -370,24 +381,24 @@ class AgreementService {
   }
 
   // Get agreements list with filters
-  // In agreementServices.ts - Update the getAgreements method
+  // Replace your getAgreements method with this optimized version
   async getAgreements(params?: {
     top?: number;
     skip?: number;
     status?: number;
     sort?: string;
     search?: string;
-    type?: number; // 🆕 ADD type filter parameter
+    type?: number;
   }): Promise<AgreementListDTO> {
     console.log("🔍 getAgreements called with params:", params);
 
     const requestParams = {
-      top: params?.top || 10,
+      top: Math.min(params?.top || 10, 100), // Cap at 100 to prevent timeouts
       skip: params?.skip || 0,
       status: params?.status,
       sort: params?.sort || "desc",
       search: params?.search,
-      type: params?.type, // 🆕 Pass type parameter to API
+      type: params?.type,
     };
 
     // Remove undefined parameters
@@ -397,18 +408,81 @@ class AgreementService {
       }
     });
 
-    const response = await api.get("/agreement", { params: requestParams });
+    try {
+      // Add timeout to prevent hanging requests
+      const response = await api.get("/agreement", {
+        params: requestParams,
+        timeout: 30000, // 30 second timeout
+      });
 
-    console.log("📦 getAgreements response:", {
-      totalResults: response.data.totalResults,
-      totalAgreements: response.data.totalAgreements,
-      resultsCount: response.data.results?.length,
-      firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
-      // 🆕 Check the types of returned agreements
-      types: response.data.results?.map((a: any) => a.type),
-    });
+      console.log("📦 getAgreements response:", {
+        totalResults: response.data.totalResults,
+        totalAgreements: response.data.totalAgreements,
+        resultsCount: response.data.results?.length,
+        firstFewIds: response.data.results?.slice(0, 3).map((a: any) => a.id),
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ getAgreements failed:", error);
+
+      // Return a fallback response instead of throwing
+      if (error.code === "ECONNABORTED") {
+        console.warn("⚠️ Request timed out, returning empty results");
+        return {
+          totalAgreements: 0,
+          totalResults: 0,
+          results: [],
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  // Add this optimized method for bulk agreement details
+  async getAgreementDetailsBatch(
+    agreementIds: number[],
+  ): Promise<Map<number, AgreementDetailsDTO>> {
+    if (agreementIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      // Limit concurrent requests to avoid overwhelming the server
+      const batchSize = 5;
+      const resultMap = new Map<number, AgreementDetailsDTO>();
+
+      for (let i = 0; i < agreementIds.length; i += batchSize) {
+        const batch = agreementIds.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (id) => {
+          try {
+            const details = await this.getAgreementDetails(id);
+            return { id, details };
+          } catch (error) {
+            console.warn(`Failed to fetch details for agreement ${id}:`, error);
+            return { id, details: null };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach((result) => {
+          if (result.details) {
+            resultMap.set(result.id, result.details);
+          }
+        });
+
+        // Add a small delay between batches to avoid rate limiting
+        if (i + batchSize < agreementIds.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      return resultMap;
+    } catch (error) {
+      console.error("❌ Failed to fetch agreement details batch:", error);
+      return new Map();
+    }
   }
 
   // Get all agreements count - optimized
@@ -748,24 +822,18 @@ class AgreementService {
   }
 
   // Update the rejectDelivery function to accept a claim parameter
-  // In agreementServices.ts - update the rejectDelivery function
   async rejectDelivery(
     agreementId: number,
-    claim?: string,
-    votingId?: string,
+    data: AgreementDeliveryRejectedRequest,
   ): Promise<void> {
     try {
-      const payload: any = {};
-
-      // Only include claim if it's provided and not empty
-      if (claim && claim.trim()) {
-        payload.claim = claim.trim();
-      }
-
-      // Include votingId if provided
-      if (votingId) {
-        payload.votingId = votingId;
-      }
+      const payload: AgreementDeliveryRejectedRequest = {
+        votingId: data.votingId,
+        claim: data.claim.trim(),
+        contractAgreementId: data.contractAgreementId,
+        requestKind: data.requestKind,
+        ...(data.chainId && { chainId: data.chainId }),
+      };
 
       console.log("📤 Rejecting delivery with payload:", payload);
 
@@ -773,10 +841,12 @@ class AgreementService {
         `/agreement/${agreementId}/delivery/reject`,
         payload,
       );
+
       console.log("✅ Delivery rejected successfully:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Failed to reject delivery:", error);
+      throw error;
     }
   }
 
@@ -996,11 +1066,17 @@ export function useDeliveryActions() {
   });
 
   const rejectDelivery = useMutation({
-    mutationFn: (agreementId: number) =>
-      agreementService.rejectDelivery(agreementId),
-    onSuccess: (_, agreementId) => {
+    mutationFn: ({
+      agreementId,
+      data,
+    }: {
+      agreementId: number;
+      data: AgreementDeliveryRejectedRequest;
+    }) => agreementService.rejectDelivery(agreementId, data),
+
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: agreementQueryKeys.detail(agreementId),
+        queryKey: agreementQueryKeys.detail(variables.agreementId),
       });
       queryClient.invalidateQueries({ queryKey: agreementQueryKeys.lists() });
     },

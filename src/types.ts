@@ -34,7 +34,7 @@ export interface TimelineEvent {
 
 // Then update the Agreement interface
 export interface Agreement {
-  id: string;
+  id: number;
   title: string;
   description: string;
   disputeId?: string | null;
@@ -196,12 +196,12 @@ export type Escrow = {
   token: string;
   amount: number;
   status:
-  | "pending"
-  | "signed"
-  | "cancelled"
-  | "completed"
-  | "frozen"
-  | "disputed";
+    | "pending"
+    | "signed"
+    | "cancelled"
+    | "completed"
+    | "frozen"
+    | "disputed";
   deadline: string;
   type: "public" | "private";
   description: string;
@@ -443,6 +443,7 @@ export interface CreateDisputeFromAgreementRequest {
   votingId?: string;
   onchainVotingId?: string;
   chainId?: number;
+  txHash?: string;
 }
 
 export interface DefendantClaimRequest {
@@ -474,7 +475,12 @@ export interface DisputeRow {
   title: string;
   request: "Pro Bono" | "Paid";
   parties: string;
-  status: "Pending" | "Vote in Progress" | "Settled" | "Dismissed" | "Pending Payment";
+  status:
+    | "Pending"
+    | "Vote in Progress"
+    | "Settled"
+    | "Dismissed"
+    | "Pending Payment";
   claim: string;
   plaintiff: string;
   defendant: string;

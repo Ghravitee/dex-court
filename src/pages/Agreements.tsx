@@ -1,6 +1,6 @@
 // src/pages/Agreements.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import {
   Calendar,
@@ -338,7 +338,7 @@ export default function Agreements() {
   const [pageSize, setPageSize] = useState(10); // Default page size
   const [totalAgreements, setTotalAgreements] = useState(0);
   const [, setTotalResults] = useState(0);
-  const [allAgreements, setAllAgreements] = useState<Agreement[]>([]);
+  // const [allAgreements, setAllAgreements] = useState<Agreement[]>([]);
 
   // New state for agreement type selection
   const [agreementType, setAgreementType] = useState<AgreementType>("myself");
@@ -442,126 +442,136 @@ export default function Agreements() {
     };
   }, []);
 
-  // Sync authentication with agreement service
-  // useEffect(() => {
-  //   const token = localStorage.getItem("authToken");
-  //   if (token && isAuthenticated) {
-  //     agreementService.setAuthToken(token);
-  //     console.log("🔐 Agreement service authenticated");
-  //   } else {
-  //     agreementService.clearAuthToken();
-  //     console.log("🔓 Agreement service not authenticated");
-  //   }
-  // }, [isAuthenticated]);
+  const tableFilterOptions = [
+    { value: "all", label: "All" },
+    { value: "pending", label: "Pending" },
+    { value: "signed", label: "Signed" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "expired", label: "Expired" }, // Add expired
+    { value: "completed", label: "Completed" },
+    { value: "disputed", label: "Disputed" },
+    { value: "pending_approval", label: "Pending Approval" }, // Add pending_approval
+  ];
+  const recentFilterOptions = [
+    { value: "all", label: "All" },
+    { value: "active", label: "Active" },
+    { value: "completed", label: "Completed" },
+    { value: "disputed", label: "Disputed" },
+  ];
 
-  // Load agreements
+  const [tableFilter, setTableFilter] = useState<AgreementStatusFilter>("all");
+  const [recentFilter, setRecentFilter] = useState<
+    "all" | "active" | "completed" | "disputed"
+  >("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const applyPagination = useCallback(
-    (agreementsList: Agreement[], page: number, size: number) => {
-      const startIndex = (page - 1) * size;
-      const endIndex = startIndex + size;
-      const paginatedAgreements = agreementsList.slice(startIndex, endIndex);
-      setAgreements(paginatedAgreements);
-    },
-    [],
-  );
-
-  // Update loadAgreements to store ALL agreements
   const loadAgreements = useCallback(async () => {
     try {
       setLoading(true);
 
-      // 🔥 OPTIMIZATION: Use query parameter to filter by type=1 (reputational agreements only)
-      // This eliminates the need for fetching details just to check hasSecuredFunds
-      const allAgreementsResponse = await agreementService.getAgreements({
-        top: 100,
-        skip: 0,
-        sort: "desc",
-        type: 1, // 🆕 NEW: Only fetch reputational agreements (type 1)
+      // Build query parameters for API
+      const queryParams: any = {
+        top: pageSize,
+        skip: (currentPage - 1) * pageSize,
+        sort: sortOrder, // API accepts "asc" or "desc"
+        type: 1, // Reputational agreements only
+      };
+
+      // Add status filter if not "all"
+      if (tableFilter !== "all") {
+        // Convert frontend status to API status
+        const statusMap: Record<string, number> = {
+          pending: AgreementStatusEnum.PENDING_ACCEPTANCE,
+          signed: AgreementStatusEnum.ACTIVE,
+          completed: AgreementStatusEnum.COMPLETED,
+          disputed: AgreementStatusEnum.DISPUTED,
+          cancelled: AgreementStatusEnum.CANCELLED,
+          expired: AgreementStatusEnum.EXPIRED,
+          pending_approval: AgreementStatusEnum.PARTY_SUBMITTED_DELIVERY,
+        };
+
+        if (statusMap[tableFilter]) {
+          queryParams.status = statusMap[tableFilter];
+        }
+      }
+
+      // Add search query if provided (API searches title, parties, telegram, wallet)
+      if (searchQuery.trim()) {
+        queryParams.search = searchQuery;
+      }
+
+      console.log("🔍 API Request Params:", queryParams);
+
+      // Get paginated agreements with ALL filters from API
+      const allAgreementsResponse =
+        await agreementService.getAgreements(queryParams);
+
+      const pageAgreements = allAgreementsResponse.results || [];
+
+      console.log("📊 API Response:", {
+        page: currentPage,
+        pageSize: pageSize,
+        totalAgreements: allAgreementsResponse.totalAgreements,
+        totalResults: allAgreementsResponse.totalResults,
+        returnedCount: pageAgreements.length,
+        filters: {
+          status: tableFilter,
+          search: searchQuery,
+          sort: sortOrder,
+        },
       });
 
-      const allAgreementsList = allAgreementsResponse.results || [];
-
-      console.log(
-        "🔍 Total reputational agreements (type=1):",
-        allAgreementsList.length,
-      );
-
-      // 🔥 MAJOR OPTIMIZATION: No need to fetch details for filtering!
-      // All agreements returned are already reputational (type=1)
-
-      // Only fetch details for agreements that will be displayed on current page
-      const startIndex = (currentPage - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
-      const agreementsToDisplay = allAgreementsList.slice(startIndex, endIndex);
-
-      // 🔥 OPTIMIZATION: Only fetch details for agreements being displayed
-      const displayedAgreementsWithDetails = await Promise.all(
-        agreementsToDisplay.map(async (agreement) => {
-          try {
-            const details = await agreementService.getAgreementDetails(
-              agreement.id,
-            );
-            return { ...agreement, details };
-          } catch (err) {
-            console.warn(
-              `Failed fetching details for agreement ${agreement.id}`,
-              err,
-            );
-            return { ...agreement, details: null };
-          }
-        }),
-      );
-
-      // Transform agreements for display
-      const transformedDisplayedAgreements = displayedAgreementsWithDetails.map(
-        (item) => transformApiAgreement(item),
-      );
-
-      // 🔥 OPTIMIZATION: Store ALL agreements without details for filtering/sorting
-      const allTransformedAgreements = allAgreementsList.map((agreement) =>
+      // 🚀 OPTIMIZATION: Transform agreements WITHOUT fetching additional details
+      // All needed information is already in the main API response
+      const transformedAgreements = pageAgreements.map((agreement) =>
         transformApiAgreement(agreement),
       );
 
-      // Store ALL agreements (without details for filtering)
-      setAllAgreements(allTransformedAgreements);
-      setTotalAgreements(allAgreementsList.length);
-      setTotalResults(allAgreementsList.length);
+      // Set agreements immediately for display
+      setAgreements(transformedAgreements);
+      setTotalAgreements(allAgreementsResponse.totalAgreements || 0);
+      setTotalResults(allAgreementsResponse.totalResults || 0);
 
-      // Set displayed agreements (with details)
-      setAgreements(transformedDisplayedAgreements);
-
-      console.log(
-        "✅ Displaying",
-        transformedDisplayedAgreements.length,
-        "agreements on page",
-        currentPage,
-      );
+      console.log("✅ Displaying", transformedAgreements.length, "agreements");
     } catch (error: any) {
       console.error("Failed to fetch agreements:", error);
-      toast.error(error.message || "Failed to load agreements");
-      setAllAgreements([]);
+
+      // Show user-friendly error message
+      if (error.message?.includes("timeout") || error.code === "ECONNABORTED") {
+        toast.error("Request timed out", {
+          description:
+            "Please try again with fewer results or a smaller page size",
+        });
+      } else {
+        toast.error(error.message || "Failed to load agreements");
+      }
+
       setAgreements([]);
       setTotalAgreements(0);
       setTotalResults(0);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, tableFilter, searchQuery, sortOrder]);
 
   useEffect(() => {
     loadAgreements();
   }, [loadAgreements]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tableFilter, searchQuery, sortOrder]);
+
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
-    applyPagination(filteredTableAgreements, newPage, pageSize);
+    // loadAgreements will be triggered by the useEffect
   };
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
     setCurrentPage(1);
-    applyPagination(filteredTableAgreements, 1, newSize);
+    // loadAgreements will be triggered by the useEffect
   };
 
   const transformApiAgreement = (apiAgreement: any): Agreement => {
@@ -581,7 +591,7 @@ export default function Agreements() {
     const getTelegramUsernameFromParty = (party: any): string => {
       if (!party) return "Unknown";
 
-      // Priority 1: Check for telegramUsername field (if available in API)
+      // Priority 1: Check for telegramUsername field (from API response)
       const telegramUsername = party?.telegramUsername || party?.username;
 
       if (!telegramUsername) return "Unknown";
@@ -592,26 +602,17 @@ export default function Agreements() {
         : `@${telegramUsername}`;
     };
 
-    // 🆕 FIXED: Use the detailed data to detect escrow usage
-    // Check if we have detailed data with hasSecuredFunds property
-    const hasSecuredFunds = apiAgreement.details?.hasSecuredFunds || false;
+    // 🚀 OPTIMIZATION: Check for escrow directly from type field
+    const useEscrow = apiAgreement.type === AgreementTypeEnum.ESCROW;
 
-    const includesFunds =
-      apiAgreement.details?.includesFunds === true ||
-      apiAgreement.details?.hasSecuredFunds === true ||
-      Boolean(
-        apiAgreement.amount ||
-          apiAgreement.tokenSymbol ||
-          apiAgreement.details?.amount ||
-          apiAgreement.details?.tokenSymbol ||
-          apiAgreement.fundsWithoutEscrow?.amount ||
-          apiAgreement.fundsWithoutEscrow?.token,
-      );
+    // 🚀 OPTIMIZATION: Check for funds from the main payload
+    const includesFunds = Boolean(
+      apiAgreement.amount ||
+        apiAgreement.tokenSymbol ||
+        apiAgreement.type === AgreementTypeEnum.ESCROW,
+    );
 
     const includeFunds = includesFunds ? "yes" : "no";
-
-    // 🆕 FIXED: Use hasSecuredFunds from detailed data as the source of truth
-    const useEscrow = hasSecuredFunds;
 
     const formatDateSafely = (dateString: string) => {
       if (!dateString) return "No deadline";
@@ -632,12 +633,10 @@ export default function Agreements() {
       return avatarId ? Number(avatarId) : null;
     };
 
-    // 🚨 FIXED: Look for telegramUsername field (from API response)
     const getFirstPartyTelegramUsername = (party: any): string => {
       return getTelegramUsernameFromParty(party);
     };
 
-    // 🚨 FIXED: Use the new Telegram username extraction function
     const getCounterpartyTelegramUsername = (party: any): string => {
       return getTelegramUsernameFromParty(party);
     };
@@ -667,20 +666,18 @@ export default function Agreements() {
 
     let amountValue: string | undefined;
 
-    if (includesFunds) {
-      if (apiAgreement.amount) {
-        if (typeof apiAgreement.amount === "string") {
-          amountValue = parseFloat(apiAgreement.amount).toString();
-        } else if (typeof apiAgreement.amount === "number") {
-          amountValue = apiAgreement.amount.toString();
-        }
-      } else {
-        amountValue = "0";
+    if (includesFunds && apiAgreement.amount) {
+      // Format the amount from the main payload
+      if (typeof apiAgreement.amount === "string") {
+        amountValue = parseFloat(apiAgreement.amount).toString();
+      } else if (typeof apiAgreement.amount === "number") {
+        amountValue = apiAgreement.amount.toString();
       }
     }
 
+    // 🚀 OPTIMIZATION: Return agreement using data from main payload
     return {
-      id: apiAgreement.id.toString(),
+      id: apiAgreement.id, // Keep as number
       title: apiAgreement.title || "Untitled Agreement",
       description: apiAgreement.description || "",
       type: getAgreementType(apiAgreement.visibility),
@@ -691,13 +688,13 @@ export default function Agreements() {
         apiAgreement.dateCreated || apiAgreement.createdAt,
       ),
       deadline: formatDateSafely(apiAgreement.deadline),
-      amount: amountValue, // 🆕 Use the fixed amount value
+      amount: amountValue,
       token: apiAgreement.tokenSymbol || undefined,
       files: apiAgreement.files?.length || 0,
 
-      includeFunds: includeFunds, // 🆕 Now correctly detects funds based on detailed data
-      useEscrow: useEscrow, // 🆕 Now correctly detects escrow based on detailed data
-      escrowAddress: apiAgreement.escrowContract || undefined,
+      includeFunds: includeFunds,
+      useEscrow: useEscrow,
+      escrowAddress: apiAgreement.escrowContractAddress || undefined, // Use from main payload
 
       createdByAvatarId: createdByAvatarId,
       counterpartyAvatarId: counterpartyAvatarId,
@@ -709,85 +706,15 @@ export default function Agreements() {
     };
   };
 
-  const tableFilterOptions = [
-    { value: "all", label: "All" },
-    { value: "pending", label: "Pending" },
-    { value: "signed", label: "Signed" },
-    { value: "cancelled", label: "Cancelled" },
-    { value: "expired", label: "Expired" }, // Add expired
-    { value: "completed", label: "Completed" },
-    { value: "disputed", label: "Disputed" },
-    { value: "pending_approval", label: "Pending Approval" }, // Add pending_approval
-  ];
-  const recentFilterOptions = [
-    { value: "all", label: "All" },
-    { value: "active", label: "Active" },
-    { value: "completed", label: "Completed" },
-    { value: "disputed", label: "Disputed" },
-  ];
-
-  const [tableFilter, setTableFilter] = useState<AgreementStatusFilter>("all");
-  const [recentFilter, setRecentFilter] = useState<
-    "all" | "active" | "completed" | "disputed"
-  >("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-
-  // Update the filter logic to search ALL agreements
-  const filteredTableAgreements: Agreement[] = useMemo(() => {
-    if (allAgreements.length === 0) return [];
-
-    let result = allAgreements.filter((a) => {
-      // Status filter
-      if (tableFilter !== "all" && a.status !== tableFilter) return false;
-
-      // Search filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        return (
-          a.title.toLowerCase().includes(query) ||
-          a.counterparty.toLowerCase().includes(query) ||
-          (a.amount && a.amount.toLowerCase().includes(query))
-        );
-      }
-      return true;
-    });
-
-    // Sort the results
-    result = result.sort((a, b) => {
-      const dateA = new Date(a.dateCreated);
-      const dateB = new Date(b.dateCreated);
-
-      if (sortOrder === "asc") {
-        return dateA.getTime() - dateB.getTime();
-      } else {
-        return dateB.getTime() - dateA.getTime();
-      }
-    });
-
-    return result;
-  }, [allAgreements, tableFilter, searchQuery, sortOrder]);
-
-  useEffect(() => {
-    if (filteredTableAgreements.length > 0) {
-      applyPagination(filteredTableAgreements, currentPage, pageSize);
-    } else {
-      setAgreements([]);
-    }
-  }, [filteredTableAgreements, currentPage, pageSize, applyPagination]);
-
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [tableFilter, searchQuery, sortOrder]);
 
   // Update pagination info calculations
-  const totalPages = Math.ceil(filteredTableAgreements.length / pageSize);
-  const startItem = (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(
-    currentPage * pageSize,
-    filteredTableAgreements.length,
-  );
+  const totalPages = Math.ceil(totalAgreements / pageSize);
+  // const startItem = (currentPage - 1) * pageSize + 1;
+  // const endItem = Math.min(currentPage * pageSize, totalAgreements);
 
   const filteredRecentAgreements: Agreement[] = agreements
     .filter((a) => a.status === "disputed")
@@ -1647,10 +1574,10 @@ export default function Agreements() {
             {/* Pagination Controls */}
             {!loading && totalAgreements > 0 && (
               <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
-                <div className="text-sm whitespace-nowrap text-cyan-300">
+                {/* <div className="text-sm whitespace-nowrap text-cyan-300">
                   Showing {startItem} to {endItem} of{" "}
                   {filteredTableAgreements.length} agreements
-                </div>
+                </div> */}
 
                 <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
                   {/* Previous Button */}
@@ -1716,6 +1643,13 @@ export default function Agreements() {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
+
+                {/* <div className="flex items-center justify-between border-b border-white/10 p-5">
+    <h3 className="font-semibold text-white/90">Agreements</h3>
+    <div className="text-sm text-cyan-300">
+      {totalAgreements} {totalAgreements === 1 ? "agreement" : "agreements"}
+    </div>
+  </div> */}
               </div>
             )}
           </div>

@@ -424,6 +424,7 @@ export default function OpenDisputeModal({
             witnesses: cleanedWitnesses,
             onchainVotingId: votingIdToUse.toString(), // ✅ Convert number to string
             chainId: networkInfo.chainId,
+            // txHash: transactionHash,
             // Don't include transactionHash yet - will be null initially
           },
           files,
@@ -536,8 +537,10 @@ export default function OpenDisputeModal({
         duration: 5000,
       });
 
-      // Reset form and close modal
-      resetFormAndClose();
+      setTimeout(() => {
+        console.log("🔄 Closing modal after success");
+        resetFormAndClose();
+      }, 2000);
     } else if (writeError || isTransactionError) {
       console.log("❌ Transaction failed");
       setTransactionStep("error");

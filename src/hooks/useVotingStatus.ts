@@ -16,10 +16,12 @@ export const useVotingStatus = (
     isLoading: boolean;
     tier?: number;
     weight?: number;
+    isInitialCheck: boolean; // Add this flag
   }>({
     hasVoted: false,
     canVote: false,
     isLoading: true,
+    isInitialCheck: true, // Initial check is in progress
   });
 
   const checkVotingStatus = useCallback(async () => {
@@ -28,12 +30,17 @@ export const useVotingStatus = (
         hasVoted: false,
         canVote: false,
         isLoading: false,
+        isInitialCheck: false,
       });
       return;
     }
 
     try {
-      setVotingStatus((prev) => ({ ...prev, isLoading: true }));
+      setVotingStatus((prev) => ({
+        ...prev,
+        isLoading: true,
+        // Don't reset isInitialCheck if it's already false
+      }));
 
       // Use the new endpoint for eligibility check
       const eligibility = await disputeService.canUserVote(
@@ -50,7 +57,7 @@ export const useVotingStatus = (
       // If we have a saved vote, user has voted
       const hasVotedLocally = !!savedVote;
 
-      // Determine hasVoted status - either from local storage or eligibility check
+      // Determine hasVoted status
       const hasVoted =
         hasVotedLocally ||
         (eligibility.reason?.toLowerCase().includes("already voted") ?? false);
@@ -60,6 +67,7 @@ export const useVotingStatus = (
         canVote: eligibility.canVote && !hasVoted,
         reason: eligibility.reason,
         isLoading: false,
+        isInitialCheck: false, // Mark initial check as complete
         tier: eligibility.tier,
         weight: eligibility.weight,
       });
@@ -70,6 +78,7 @@ export const useVotingStatus = (
         canVote: false,
         reason: "Error checking voting eligibility",
         isLoading: false,
+        isInitialCheck: false,
       });
     }
   }, [disputeId, user]);
