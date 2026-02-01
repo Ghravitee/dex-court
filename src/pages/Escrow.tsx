@@ -1,3 +1,4 @@
+// src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
@@ -54,6 +55,7 @@ import { agreementService } from "../services/agreementServices";
 // import { cleanTelegramUsername } from "../lib/usernameUtils";
 import { isValidAddress } from "../web3/helper";
 import { useAuth } from "../hooks/useAuth";
+import { getAgreementExistOnchain } from "../web3/readContract";
 
 // API Enum Mappings
 const AgreementTypeEnum = {
@@ -142,6 +144,7 @@ type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
 interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   txHash?: string;
   onChainId?: string;
+  chainId?: number;
   includeFunds?: "yes" | "no";
   useEscrow?: boolean;
   escrowAddress?: string;
@@ -472,6 +475,8 @@ export default function Escrow() {
         type: AgreementTypeEnum.ESCROW,
       });
 
+      console.log("escrowAgreementsResponse", escrowAgreementsResponse);
+
       console.log("📄 Fetched escrow agreements response:", {
         totalResults: escrowAgreementsResponse.totalResults,
         totalAgreements: escrowAgreementsResponse.totalAgreements,
@@ -480,52 +485,144 @@ export default function Escrow() {
 
       const escrowAgreementsList = escrowAgreementsResponse.results || [];
 
-      // Log contract address information
-      const contractAddresses = escrowAgreementsList.map((agreement) => ({
-        id: agreement.id,
-        title: agreement.title,
-        escrowContractAddress: agreement.escrowContractAddress,
-        hasEscrowContractAddress: !!agreement.escrowContractAddress,
-      }));
-
-      console.log("🔍 Contract addresses in agreements:", {
-        totalWithAddress: contractAddresses.filter(
-          (a) => a.hasEscrowContractAddress,
-        ).length,
-        totalWithoutAddress: contractAddresses.filter(
-          (a) => !a.hasEscrowContractAddress,
-        ).length,
-        addresses: contractAddresses,
-      });
-
       const transformedEscrows = escrowAgreementsList.map(
         transformApiAgreementToEscrow,
       );
 
-      // Log current contract address for comparison
-      console.log("🎯 Current contract address from config:", {
-        contractAddress,
-        networkChainId: networkInfo.chainId,
-        ESCROW_CA,
+      // Step 1: Immediately include all agreements with status 2+ (signed, completed, etc.)
+      const confirmedAgreements = transformedEscrows.filter(
+        (e) => e.status !== "pending" && e.status !== "pending_approval",
+      );
+
+      console.log("✅ Confirmed agreements (status 2+):", {
+        count: confirmedAgreements.length,
+        statuses: confirmedAgreements.map((e) => e.status),
       });
 
-      setAllEscrows(transformedEscrows);
-      setTotalEscrows(transformedEscrows.length);
+      // Step 2: Only check agreements with status 1 (pending)
+      const pendingAgreements = transformedEscrows.filter(
+        (e) => e.status === "pending" || e.status === "pending_approval",
+      );
 
-      if (process.env.NODE_ENV === "development") {
-        console.log("✅ Loaded escrow agreements:", {
-          count: transformedEscrows.length,
-          escrowAddressCount: transformedEscrows.filter((e) => e.escrowAddress)
-            .length,
-          nullEscrowAddressCount: transformedEscrows.filter(
-            (e) => !e.escrowAddress,
-          ).length,
-          // Show sample of addresses for debugging
-          sampleEscrowAddresses: transformedEscrows
-            .slice(0, 3)
-            .map((e) => ({ id: e.id, escrowAddress: e.escrowAddress })),
-        });
-      }
+      console.log("⏳ Pending agreements (status 1):", {
+        count: pendingAgreements.length,
+      });
+
+      // Step 3: Group ONLY pending agreements by (chainId, escrowContractAddress)
+      const groupedPendingAgreements: Record<
+        string,
+        {
+          chainId: number;
+          escrowContractAddress: string;
+          agreements: OnChainEscrowData[];
+          onChainIds: bigint[];
+        }
+      > = {};
+
+      pendingAgreements.forEach((agreement) => {
+        if (!agreement.onChainId || !agreement.escrowAddress) {
+          console.warn(
+            `⚠️ Pending agreement ${agreement.id} missing onChainId or escrowAddress`,
+          );
+          return;
+        }
+
+        // Use agreement's chainId if available, otherwise use current network
+        const chainId = agreement.chainId || networkInfo.chainId;
+        const escrowAddr = agreement.escrowAddress.toLowerCase();
+        const key = `${chainId}-${escrowAddr}`;
+
+        if (!groupedPendingAgreements[key]) {
+          groupedPendingAgreements[key] = {
+            chainId,
+            escrowContractAddress: escrowAddr,
+            agreements: [],
+            onChainIds: [],
+          };
+        }
+
+        groupedPendingAgreements[key].agreements.push(agreement);
+        groupedPendingAgreements[key].onChainIds.push(
+          BigInt(agreement.onChainId),
+        );
+      });
+
+      console.log("📊 Grouped pending agreements by chain/contract:", {
+        totalGroups: Object.keys(groupedPendingAgreements).length,
+        groups: Object.keys(groupedPendingAgreements).map((key) => ({
+          key,
+          count: groupedPendingAgreements[key].agreements.length,
+          chainId: groupedPendingAgreements[key].chainId,
+          contract: groupedPendingAgreements[key].escrowContractAddress,
+        })),
+      });
+
+      // Step 4: Batch check existence for pending agreements
+      const verifiedPendingAgreements: OnChainEscrowData[] = [];
+
+      const groupPromises = Object.entries(groupedPendingAgreements).map(
+        async ([key, group]) => {
+          try {
+            if (group.onChainIds.length === 0) return;
+
+            console.log(`🔍 Checking pending group ${key}:`, {
+              chainId: group.chainId,
+              contract: group.escrowContractAddress,
+              agreementCount: group.onChainIds.length,
+            });
+
+            const existOnChain = await getAgreementExistOnchain(
+              group.chainId,
+              group.onChainIds,
+              group.escrowContractAddress as `0x${string}`,
+            );
+
+            console.log(`✅ Group ${key} results:`, {
+              existCount: existOnChain.filter(Boolean).length,
+              notExistCount: existOnChain.filter((v) => !v).length,
+            });
+
+            // Add pending agreements that exist on-chain
+            group.agreements.forEach((agreement, index) => {
+              if (existOnChain[index]) {
+                verifiedPendingAgreements.push(agreement);
+              } else {
+                // If pending agreement doesn't exist on-chain, log it
+                console.warn(
+                  `❌ Pending agreement ${agreement.id} doesn't exist on-chain`,
+                );
+              }
+            });
+          } catch (error) {
+            console.error(`❌ Error checking pending group ${key}:`, error);
+            // Skip this group - don't add any pending agreements from it
+          }
+        },
+      );
+
+      await Promise.all(groupPromises);
+
+      console.log("📊 Final results:", {
+        totalAgreements: transformedEscrows.length,
+        confirmedAgreements: confirmedAgreements.length,
+        pendingAgreements: pendingAgreements.length,
+        verifiedPendingAgreements: verifiedPendingAgreements.length,
+        pendingWithoutCheck:
+          pendingAgreements.length - verifiedPendingAgreements.length,
+        groupsProcessed: Object.keys(groupedPendingAgreements).length,
+      });
+
+      // Step 5: Combine confirmed + verified pending
+      const finalEscrows = [
+        ...confirmedAgreements,
+        ...verifiedPendingAgreements,
+      ];
+
+      // Optional: Sort by creation date (newest first)
+      finalEscrows.sort((a, b) => b.createdAt - a.createdAt);
+
+      setAllEscrows(finalEscrows);
+      setTotalEscrows(finalEscrows.length);
     } catch (error: any) {
       console.error("Failed to fetch escrow agreements:", error);
       toast.error(error.message || "Failed to load escrow agreements");
@@ -534,7 +631,7 @@ export default function Escrow() {
     } finally {
       setLoading(false);
     }
-  }, [contractAddress, networkInfo.chainId]); // Add dependencies
+  }, [networkInfo.chainId]); // Add dependencies
 
   // Load agreements on mount
   useEffect(() => {

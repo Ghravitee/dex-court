@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import {
   DISPUTE_STATS_FALLBACK,
   type Agreement,
-  type BatchCreatorsResult,
+  // type BatchCreatorsResult,
   type DisputeStats,
 } from "./interfaces";
 import type { RawAgreementArray } from "./tuples";
 import { ZERO_ADDRESS } from "./config";
-import { getAgreementExistOnchain } from "./readContract";
+// import { getAgreementExistOnchain } from "./readContract";
 
 export function useCountdown(targetTimestamp: bigint) {
   const [timeLeft, setTimeLeft] = useState<string>("");
@@ -247,28 +247,28 @@ export const formatNumberWithCommas = (value: string | undefined): string => {
   return decimalPart ? `${wholePart}.${decimalPart}` : wholePart;
 };
 
-export async function checkMultipleAgreementsExist(
-  chainId: number,
-  agreementIds: bigint[],
-): Promise<BatchCreatorsResult> {
-  try {
-    const creators = await getAgreementExistOnchain(chainId, agreementIds);
+// export async function checkMultipleAgreementsExist(
+//   chainId: number,
+//   agreementIds: bigint[],
+// ): Promise<BatchCreatorsResult> {
+//   try {
+//     const creators = await getAgreementExistOnchain(chainId, agreementIds);
 
-    // Map IDs to their creators
-    const results = agreementIds.map((id, index) => ({
-      id,
-      creator: creators[index] || (ZERO_ADDRESS as `0x${string}`),
-      exists: creators[index] !== undefined && creators[index] !== ZERO_ADDRESS,
-    }));
+//     // Map IDs to their creators
+//     const results = agreementIds.map((id, index) => ({
+//       id,
+//       creator: creators[index] || (ZERO_ADDRESS as `0x${string}`),
+//       exists: creators[index] !== undefined && creators[index] !== ZERO_ADDRESS,
+//     }));
 
-    return results;
-  } catch (error) {
-    console.error("Error checking multiple agreements:", error);
-    // Return fallback results with all false
-    return agreementIds.map((id) => ({
-      id,
-      creator: ZERO_ADDRESS as `0x${string}`,
-      exists: false,
-    }));
-  }
-}
+//     return results;
+//   } catch (error) {
+//     console.error("Error checking multiple agreements:", error);
+//     // Return fallback results with all false
+//     return agreementIds.map((id) => ({
+//       id,
+//       creator: ZERO_ADDRESS as `0x${string}`,
+//       exists: false,
+//     }));
+//   }
+// }

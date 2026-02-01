@@ -915,6 +915,10 @@ export default function OpenDisputeModal({
       toast.error("Please enter your claim");
       return;
     }
+    if (form.evidence.length === 0) {
+      toast.error("Please upload supporting evidence");
+      return;
+    }
 
     const defendant = form.defendant.trim();
     if (!isValidTelegramUsername(defendant) && !isWalletAddress(defendant)) {
@@ -1636,10 +1640,6 @@ export default function OpenDisputeModal({
                     transparency and security for your case.
                   </p>
                   <div className="mt-3 text-xs text-cyan-400">
-                    <div className="flex items-center gap-1">
-                      <span>•</span>
-                      <span>Generated Voting ID: {votingIdToUse}</span>
-                    </div>
                     <div className="flex items-center gap-1">
                       <span>•</span>
                       <span>Network: {networkInfo.chainName}</span>

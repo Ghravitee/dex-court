@@ -69,6 +69,8 @@ export interface AgreementListDTO {
 
 export interface AgreementSummaryDTO {
   id: number;
+  contractAgreementId: number;
+  chainId: number;
   dateCreated: string;
   description: string;
   visibility: number;

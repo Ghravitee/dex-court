@@ -4040,6 +4040,7 @@ export default function AgreementDetails() {
         </div>
       </div>
       {isDisputeModalOpen &&
+        disputeStatus !== "Pending" &&
         (disputeStatus === "Pending Payment" ? (
           <OpenPendingDisputeModal
             isOpen={isDisputeModalOpen}

@@ -496,7 +496,7 @@ export default function OpenPendingDisputeModal({
                   <p className="text-sm text-cyan-200/80">
                     {transactionStep === "pending"
                       ? "Your transaction is being processed on the blockchain. This may take a moment..."
-                      : "Your dispute is ready to be created. Click the button below to proceed."}
+                      : "Your dispute is ready to be created."}
                   </p>
                 </div>
 
