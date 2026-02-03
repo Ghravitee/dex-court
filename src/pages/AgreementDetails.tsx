@@ -28,11 +28,13 @@ import {
   Info,
   Hourglass,
   Download,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
+  // Loader2,
+  // CheckCircle2,
+  // AlertCircle,
   Wallet,
   Scale,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -53,10 +55,12 @@ import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
 import { disputeService } from "../services/disputeServices";
 import OpenPendingDisputeModal from "../components/OpenPendingDisputeModal";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { VOTING_ABI, VOTING_CA } from "../web3/config";
-import { getVoteConfigs } from "../web3/readContract";
+// import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+// import { VOTING_ABI, VOTING_CA } from "../web3/config";
+// import { getVoteConfigs } from "../web3/readContract";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
+import { TransactionStatus } from "../components/TransactionStatus";
 
 // API Enum Mappings
 const AgreementVisibilityEnum = {
@@ -308,29 +312,68 @@ const isCurrentUserCreator = (agreement: any, currentUser: any) => {
 };
 
 // NEW: Enhanced helper to check who initiated delivery using context
-// FIXED: Enhanced helper to check who initiated delivery using context
-const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
+// Timeline-based helper to check who initiated delivery
+const getDeliveryInitiatedByFromTimeline = (
+  agreement: any,
+  currentUser: any,
+) => {
   if (!agreement || !currentUser) return null;
 
-  // Priority 1: Check context.pendingApproval from API
-  if (agreement.context?.pendingApproval) {
-    const { initiatedByUser, initiatedByOther } =
-      agreement.context.pendingApproval;
+  const timeline = agreement.timeline || agreement._raw?.timeline || [];
 
-    // FIXED: The logic was inverted - initiatedByUser means current user initiated
-    if (initiatedByUser) return "user";
-    if (initiatedByOther) return "other";
+  // Find the most recent DELIVERED event (type 4)
+  const deliveryEvents = timeline.filter(
+    (event: any) =>
+      event.type === AgreementEventTypeEnum.DELIVERED ||
+      event.eventType === AgreementEventTypeEnum.DELIVERED,
+  );
+
+  if (deliveryEvents.length === 0) {
+    return null;
   }
 
-  // Priority 2: Fallback to existing logic
-  const deliverySubmittedBy = getDeliverySubmittedBy(agreement);
-  if (!deliverySubmittedBy) return null;
+  // Get the most recent delivery event
+  const latestDelivery = deliveryEvents.sort(
+    (a: any, b: any) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
 
-  const currentUserId = currentUser.id || currentUser.userId;
-  const submittedById = deliverySubmittedBy.id || deliverySubmittedBy;
+  console.log("📊 Timeline-based delivery check:", {
+    deliveryEvent: latestDelivery,
+    actorId: latestDelivery.actor?.id,
+    actorUsername: latestDelivery.actor?.username,
+    currentUserId: currentUser.id,
+    currentUsername: currentUser.username,
+    actorIsCurrentUser:
+      latestDelivery.actor?.id?.toString() === currentUser.id?.toString(),
+  });
 
-  // FIXED: This logic was correct, but the context logic above was the issue
-  return currentUserId === submittedById ? "user" : "other";
+  // Check if current user is the actor who delivered
+  const currentUserId = currentUser.id?.toString();
+  const actorId = latestDelivery.actor?.id?.toString();
+
+  if (currentUserId === actorId) {
+    return "user"; // Current user initiated delivery
+  } else {
+    return "other"; // Other party initiated delivery
+  }
+};
+
+// Enhanced getDeliveryInitiatedBy that uses timeline as primary source
+const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
+  // Priority 1: Use timeline (most reliable)
+  const timelineResult = getDeliveryInitiatedByFromTimeline(
+    agreement,
+    currentUser,
+  );
+  if (timelineResult) {
+    console.log("✅ Using timeline result:", timelineResult);
+    return timelineResult;
+  }
+
+  // Priority 3: Ultimate fallback
+  console.log("❌ No delivery initiation info found");
+  return null;
 };
 
 // NEW: Enhanced helper to check who initiated cancellation using context
@@ -356,55 +399,90 @@ const getCancellationInitiatedBy = (agreement: any, currentUser: any) => {
   return currentUserId === requestedById ? "user" : "other";
 };
 
-// Helper to check who submitted the delivery
-const getDeliverySubmittedBy = (agreement: any) => {
-  if (!agreement) return null;
+// Add this helper function to check who filed the dispute using timeline
+const getDisputeFiledByFromTimeline = (
+  agreement: any,
+  currentUser: any,
+): boolean => {
+  if (!agreement || !currentUser || !agreement._raw?.timeline) return false;
 
-  // Priority 1: Check if we have delivery submission info in the API response
-  if (agreement.deliverySubmittedBy) {
-    return agreement.deliverySubmittedBy;
-  }
+  const timeline = agreement._raw.timeline;
+  const currentUserId = currentUser.id?.toString();
 
-  // Priority 2: Check in _raw data
-  if (agreement._raw?.deliverySubmittedBy) {
-    return agreement._raw.deliverySubmittedBy;
-  }
-
-  // Priority 3: Check context for delivery initiator
-  if (agreement.context?.pendingApproval) {
-    // If context shows who initiated, use that to determine the user
-    const { initiatedByUser, initiatedByOther } =
-      agreement.context.pendingApproval;
-
-    if (initiatedByUser) {
-      // Current user initiated - return current user's ID
-      return { id: agreement._raw?.currentUserId };
-    }
-    if (initiatedByOther) {
-      // Other party initiated - return the other party's ID
-      const currentUserId = agreement._raw?.currentUserId;
-      const firstPartyId = agreement._raw?.firstParty?.id;
-      const counterpartyId = agreement._raw?.counterParty?.id;
-
-      // Return the ID of the party that is NOT the current user
-      return currentUserId === firstPartyId
-        ? { id: counterpartyId }
-        : { id: firstPartyId };
-    }
-  }
-
-  // Priority 4: Fallback: check timeline events for delivery submission
-  if (agreement._raw?.timeline) {
-    const deliveryEvent = agreement._raw.timeline.find(
-      (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
+  // Look for dispute filing events
+  const disputeEvents = timeline.filter((event: any) => {
+    // Check for events that lead to DISPUTED status
+    return (
+      (event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
+        event.type === 6 ||
+        event.type === 17) && // Type 17 is "raised a dispute"
+      event.toStatus === AgreementStatusEnum.DISPUTED
     );
-    if (deliveryEvent) {
-      return deliveryEvent.createdBy || deliveryEvent.userId;
-    }
-  }
+  });
 
-  return null;
+  if (disputeEvents.length === 0) return false;
+
+  // Get the most recent dispute event
+  const latestDisputeEvent = disputeEvents.sort(
+    (a: any, b: any) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
+
+  // Check if current user is the one who filed the dispute
+  const actorId = latestDisputeEvent.actor?.id?.toString();
+
+  return currentUserId === actorId;
 };
+
+// Helper to check who submitted the delivery
+// const getDeliverySubmittedBy = (agreement: any) => {
+//   if (!agreement) return null;
+
+//   // Priority 1: Check if we have delivery submission info in the API response
+//   if (agreement.deliverySubmittedBy) {
+//     return agreement.deliverySubmittedBy;
+//   }
+
+//   // Priority 2: Check in _raw data
+//   if (agreement._raw?.deliverySubmittedBy) {
+//     return agreement._raw.deliverySubmittedBy;
+//   }
+
+//   // Priority 3: Check context for delivery initiator
+//   if (agreement.context?.pendingApproval) {
+//     // If context shows who initiated, use that to determine the user
+//     const { initiatedByUser, initiatedByOther } =
+//       agreement.context.pendingApproval;
+
+//     if (initiatedByUser) {
+//       // Current user initiated - return current user's ID
+//       return { id: agreement._raw?.currentUserId };
+//     }
+//     if (initiatedByOther) {
+//       // Other party initiated - return the other party's ID
+//       const currentUserId = agreement._raw?.currentUserId;
+//       const firstPartyId = agreement._raw?.firstParty?.id;
+//       const counterpartyId = agreement._raw?.counterParty?.id;
+
+//       // Return the ID of the party that is NOT the current user
+//       return currentUserId === firstPartyId
+//         ? { id: counterpartyId }
+//         : { id: firstPartyId };
+//     }
+//   }
+
+//   // Priority 4: Fallback: check timeline events for delivery submission
+//   if (agreement._raw?.timeline) {
+//     const deliveryEvent = agreement._raw.timeline.find(
+//       (event: any) => event.eventType === AgreementEventTypeEnum.DELIVERED,
+//     );
+//     if (deliveryEvent) {
+//       return deliveryEvent.createdBy || deliveryEvent.userId;
+//     }
+//   }
+
+//   return null;
+// };
 
 // NEW: Helper to check which parties have signed the agreement
 // ULTRA SIMPLE: Status-based message display
@@ -540,8 +618,6 @@ const isCancellationPending = (agreement: any): boolean => {
   return hasPendingCancellation;
 };
 
-// NEW: Fixed helper to check if current user should see delivery review buttons
-// FIXED: Helper to check if current user should see delivery review buttons
 const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
   if (
     !agreement ||
@@ -557,16 +633,17 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
     return false;
   }
 
-  // Use the new context-based initiatedBy check
   const initiatedBy = getDeliveryInitiatedBy(agreement, currentUser);
 
-  console.log("🔍 shouldShowDeliveryReviewButtons:", {
-    status: agreement?.status,
-    isDeliveryPending: agreement.context?.pendingApproval?.active,
-    initiatedBy: getDeliveryInitiatedBy(agreement, currentUser),
-    shouldShow: initiatedBy === "other",
+  console.log("🔍 Delivery Review Check:", {
+    status: agreement.status,
+    isDeliveryPending,
+    initiatedBy,
+    currentUsername: currentUser.username,
+    shouldShow: initiatedBy === "other", // Show buttons to the OTHER party
   });
 
+  // Show review buttons to the party that did NOT initiate delivery
   return initiatedBy === "other";
 };
 
@@ -865,7 +942,6 @@ const getDisputeInfo = (
   };
 };
 
-// Reject Delivery Modal Component
 const RejectDeliveryModal = ({
   isOpen,
   onClose,
@@ -880,7 +956,6 @@ const RejectDeliveryModal = ({
   onConfirm: (
     claim: string,
     requestKind: DisputeTypeEnumValue,
-    // contractAgreementId: string,
     chainId?: number,
     votingId?: string,
     transactionHash?: string,
@@ -896,25 +971,15 @@ const RejectDeliveryModal = ({
   const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
 
-  // Wagmi hooks for smart contract interaction
+  // Use the custom hook for transaction management
   const {
-    data: hash,
-    writeContract,
-    isPending: isWritePending,
-    error: writeError,
-    reset: resetWrite,
-  } = useWriteContract();
-
-  const { isSuccess: isTransactionSuccess, isError: isTransactionError } =
-    useWaitForTransactionReceipt({
-      hash,
-    });
-
-  // State for transaction status
-  const [transactionStep, setTransactionStep] = useState<
-    "idle" | "pending" | "success" | "error"
-  >("idle");
-  const [isProcessingPaidDispute, setIsProcessingPaidDispute] = useState(false);
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    createDisputeOnchain,
+    retryTransaction,
+    resetTransaction,
+  } = useDisputeTransaction(networkInfo.chainId);
 
   // Generate voting ID
   const votingIdToUse = useMemo(() => {
@@ -923,171 +988,48 @@ const RejectDeliveryModal = ({
     return 100000 + (array[0] % 900000);
   }, []);
 
-  // console.log("🔍 [RejectDeliveryModal] Modal opened with:", {
-  //   isOpen,
-  //   agreementId: agreement?.id,
-  //   hasAgreement: !!agreement,
-  //   chainId: networkInfo.chainId,
-  //   requestKind: requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
-  //   currentUser: currentUser?.id,
-  //   votingId: votingIdToUse,
-  //   network: networkInfo.chainName,
-  // });
-
-  const handleSubmitAfterTransaction = useCallback(
-    async (transactionHash: string) => {
-      console.log("🔄 [RejectDeliveryModal] Submitting after transaction:", {
-        transactionHash,
-        votingId: votingIdToUse,
-        requestKind:
-          requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
-      });
-
-      try {
-        await onConfirm(
-          claim,
-          requestKind,
-          // agreement?.id,
-          networkInfo.chainId,
-          votingIdToUse.toString(),
-          transactionHash,
-        );
-      } catch (error) {
-        console.error(
-          "❌ [RejectDeliveryModal] Submit after transaction error:",
-          error,
-        );
-      }
-    },
-    [
-      claim,
-      requestKind,
-      // agreement?.id,
-      networkInfo.chainId,
-      votingIdToUse,
-      onConfirm,
-    ],
-  );
-
-  // Handle transaction status changes
+  // Handle transaction success
   useEffect(() => {
-    // console.log("🔄 [RejectDeliveryModal] Transaction effect:", {
-    //   isWritePending,
-    //   isTransactionSuccess,
-    //   writeError,
-    //   isTransactionError,
-    //   isProcessingPaidDispute,
-    //   hash,
-    // });
-
-    if (isWritePending) {
-      console.log("⏳ [RejectDeliveryModal] Transaction pending...");
-      setTransactionStep("pending");
-    } else if (isTransactionSuccess && hash && isProcessingPaidDispute) {
-      console.log("✅ [RejectDeliveryModal] Transaction successful!");
-      setTransactionStep("success");
-      setIsProcessingPaidDispute(false);
-
-      // Call onConfirm with transaction hash
-      handleSubmitAfterTransaction(hash);
-    } else if (writeError || isTransactionError) {
-      console.log("❌ [RejectDeliveryModal] Transaction failed");
-      setTransactionStep("error");
-      setIsProcessingPaidDispute(false);
-
-      toast.error("Transaction failed", {
-        description: "Smart contract transaction failed. Please try again.",
-        duration: 5000,
-      });
-    }
-  }, [
-    isWritePending,
-    isTransactionSuccess,
-    writeError,
-    isTransactionError,
-    isProcessingPaidDispute,
-    hash,
-    handleSubmitAfterTransaction,
-  ]);
-
-  // Smart contract interaction for paid disputes
-  const createDisputeOnchain = useCallback(
-    async (votingId: number): Promise<void> => {
+    if (transactionStep === "success" && transactionHash) {
       console.log(
-        "🟡 [RejectDeliveryModal] createDisputeOnchain STARTED with votingId:",
-        votingId,
+        "✅ [RejectDeliveryModal] Transaction completed, calling onConfirm",
       );
 
-      try {
-        const contractAddress = VOTING_CA[networkInfo.chainId as number];
-        console.log("📝 [RejectDeliveryModal] Contract lookup:", {
-          chainId: networkInfo.chainId,
-          contractAddress,
+      onConfirm(
+        claim,
+        requestKind,
+        networkInfo.chainId,
+        votingIdToUse.toString(),
+        transactionHash,
+      )
+        .then(() => {
+          // Close modal after successful completion
+          setTimeout(() => {
+            onClose();
+            setClaim("");
+            resetTransaction(); // Reset for next use
+          }, 2000);
+        })
+        .catch((error) => {
+          console.error("❌ Error in onConfirm:", error);
+          toast.error("Failed to finalize dispute", {
+            description: error.message || "Please try again.",
+            duration: 5000,
+          });
         });
-
-        if (!contractAddress) {
-          console.error("❌ [RejectDeliveryModal] No contract address found");
-          throw new Error(
-            `No contract address found for chain ID ${networkInfo.chainId}`,
-          );
-        }
-
-        // Fetch fee amount from contract
-        let feeValue = undefined;
-        try {
-          const configs = await getVoteConfigs(networkInfo.chainId);
-          feeValue = configs?.feeAmount;
-          console.log(
-            "💰 [RejectDeliveryModal] Fee amount:",
-            feeValue?.toString(),
-          );
-        } catch (error) {
-          console.warn(
-            error,
-            "⚠️ [RejectDeliveryModal] Could not fetch fee amount, using default",
-          );
-        }
-
-        console.log("🎯 [RejectDeliveryModal] Transaction details:", {
-          contractAddress,
-          functionName: "raiseDispute",
-          args: [BigInt(votingId), false],
-          value: feeValue?.toString(),
-          hasFee: !!feeValue,
-        });
-
-        console.log("⏳ [RejectDeliveryModal] Calling writeContract...");
-
-        writeContract({
-          address: contractAddress,
-          abi: VOTING_ABI.abi,
-          functionName: "raiseDispute",
-          args: [BigInt(votingId), false],
-          value: feeValue,
-        });
-
-        console.log(
-          "✅ [RejectDeliveryModal] writeContract called successfully",
-        );
-      } catch (error: any) {
-        console.error("❌ [RejectDeliveryModal] createDisputeOnchain ERROR:", {
-          name: error.name,
-          message: error.message,
-          code: error.code,
-        });
-
-        toast.error("Failed to initiate smart contract transaction", {
-          description:
-            error.message ||
-            "Please check your wallet connection and try again.",
-        });
-
-        setTransactionStep("error");
-        setIsProcessingPaidDispute(false);
-      }
-    },
-    [networkInfo.chainId, writeContract],
-  );
+    }
+  }, [
+    transactionStep,
+    transactionHash,
+    onConfirm,
+    claim,
+    requestKind,
+    networkInfo.chainId,
+    votingIdToUse,
+    onClose,
+    setClaim,
+    resetTransaction,
+  ]);
 
   const handleSubmit = async () => {
     if (!claim.trim()) {
@@ -1097,52 +1039,76 @@ const RejectDeliveryModal = ({
       });
       return;
     }
-    console.log("🚀 [RejectDeliveryModal] Submitting rejection with:", {
+
+    console.log("🚀 [RejectDeliveryModal] Starting rejection flow:", {
       claim: claim.trim(),
       requestKind:
         requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
-      // contractAgreementId: agreement?.id,
       chainId: networkInfo.chainId,
       votingId: votingIdToUse,
     });
 
     if (requestKind === DisputeTypeEnum.Paid) {
-      // For paid disputes, first initiate smart contract transaction
-      setIsProcessingPaidDispute(true);
-      setTransactionStep("pending");
-
+      // For paid disputes: Create dispute AND trigger payment
       try {
-        console.log("💰 [RejectDeliveryModal] Starting paid dispute flow...");
+        // 1. Create the dispute in backend (with transaction hash placeholder)
+        const payload: AgreementDeliveryRejectedRequest = {
+          votingId: votingIdToUse.toString(),
+          claim: claim.trim(),
+          requestKind: requestKind,
+          chainId: networkInfo.chainId,
+        };
+
+        console.log("📋 [RejectDeliveryModal] Creating dispute in backend...");
+        const response = await agreementService.rejectDelivery(
+          parseInt(agreement.id),
+          payload,
+        );
+        console.log(
+          "✅ [RejectDeliveryModal] Backend dispute created:",
+          response,
+        );
+
+        // 2. Trigger smart contract transaction using custom hook
+        console.log(
+          "💰 [RejectDeliveryModal] Triggering smart contract transaction...",
+        );
         await createDisputeOnchain(votingIdToUse);
-      } catch (error) {
+
+        // The transaction will proceed via the custom hook
+        // Status updates will be handled by useEffect above
+      } catch (error: any) {
         console.error(
-          "❌ [RejectDeliveryModal] Paid dispute flow failed:",
+          "❌ [RejectDeliveryModal] Failed to create paid dispute:",
           error,
         );
-        setIsProcessingPaidDispute(false);
-        setTransactionStep("error");
+        // Error is already handled by the custom hook
       }
     } else {
-      // For pro bono disputes, submit directly
+      // For pro bono disputes: submit directly
       try {
         await onConfirm(
           claim,
           requestKind,
-          // agreement?.id,
           networkInfo.chainId,
           votingIdToUse.toString(),
         );
-      } catch (error) {
+        // Clear claim and close modal
+        setClaim("");
+        onClose();
+      } catch (error: any) {
         console.error("❌ [RejectDeliveryModal] Pro Bono submit error:", error);
+        toast.error("Failed to create dispute", {
+          description: error.message || "Please try again.",
+          duration: 5000,
+        });
       }
     }
   };
 
-  const retryTransaction = () => {
-    setTransactionStep("idle");
-    resetWrite();
+  const handleRetryTransaction = async () => {
     if (requestKind === DisputeTypeEnum.Paid) {
-      createDisputeOnchain(votingIdToUse);
+      await retryTransaction(votingIdToUse);
     }
   };
 
@@ -1150,16 +1116,33 @@ const RejectDeliveryModal = ({
   const getDefendant = () => {
     if (!agreement || !currentUser) return "Unknown";
 
-    const isFirstParty = isCurrentUserFirstParty(agreement._raw, currentUser);
+    // Helper to check if current user is first party
+    const normalizeUsername = (username: string): string => {
+      if (!username) return "";
+      return username.replace(/^@/, "").toLowerCase().trim();
+    };
+
+    const isCurrentUserFirstParty = () => {
+      if (!agreement || !currentUser) return false;
+      const currentUsername = currentUser?.username;
+      if (!currentUsername) return false;
+      const firstPartyUsername = agreement.firstParty?.username;
+      if (!firstPartyUsername || firstPartyUsername === "Unknown") return false;
+      return (
+        normalizeUsername(currentUsername) ===
+        normalizeUsername(firstPartyUsername)
+      );
+    };
+
+    const isFirstParty = isCurrentUserFirstParty();
     return isFirstParty ? agreement.counterparty : agreement.createdBy;
   };
 
   const defendant = getDefendant();
 
-  // console.log("🎯 [RejectDeliveryModal] Parties:", {
-  //   defendant,
-  //   currentUser: currentUser?.username,
-  // });
+  // Disable form when submitting or processing transaction
+  const isDisabled =
+    isSubmitting || isProcessing || transactionStep === "pending";
 
   if (!isOpen) return null;
 
@@ -1170,11 +1153,7 @@ const RejectDeliveryModal = ({
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
-          disabled={
-            isSubmitting ||
-            transactionStep === "pending" ||
-            isProcessingPaidDispute
-          }
+          disabled={isDisabled}
           aria-label="Close modal"
         >
           <X className="h-5 w-5" />
@@ -1195,6 +1174,42 @@ const RejectDeliveryModal = ({
           </div>
         </div>
 
+        {/* Dispute Info Summary */}
+        <div className="mb-6 rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+          <h4 className="mb-2 text-base font-medium text-purple-300">
+            Summary
+          </h4>
+          <div className="space-y-3">
+            {/* Agreement Title */}
+            <div className="space-y-1">
+              <span className="mb-2 text-sm text-purple-200/80">
+                Agreement Title:
+              </span>
+              <p className="text-sm font-medium break-words text-white">
+                {agreement?.title || "No title"}
+              </p>
+            </div>
+
+            {/* Agreement Description */}
+            <div className="space-y-1">
+              <span className="mb-3 text-sm text-purple-200/80">
+                Agreement Description:
+              </span>
+              <p className="text-sm break-words whitespace-pre-line text-white/90">
+                {agreement?.description || "No description provided"}
+              </p>
+            </div>
+
+            {/* Defendant */}
+            <div className="space-y-1">
+              <span className="mb-3 text-sm text-purple-200/80">Defendant</span>
+              <p className="text-sm break-words whitespace-pre-line text-white/90">
+                {defendant}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Dispute Type Selection */}
         <div className="mb-6">
           <label className="mb-3 block text-sm font-medium text-purple-300">
@@ -1206,13 +1221,7 @@ const RejectDeliveryModal = ({
                 requestKind === DisputeTypeEnum.ProBono
                   ? "border-cyan-400/40 bg-cyan-500/20 text-cyan-200"
                   : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-              } ${
-                isSubmitting ||
-                transactionStep === "pending" ||
-                isProcessingPaidDispute
-                  ? "cursor-not-allowed opacity-50"
-                  : ""
-              }`}
+              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -1223,11 +1232,7 @@ const RejectDeliveryModal = ({
                   console.log("📝 [RejectDeliveryModal] Selected Pro Bono");
                   setRequestKind(DisputeTypeEnum.ProBono);
                 }}
-                disabled={
-                  isSubmitting ||
-                  transactionStep === "pending" ||
-                  isProcessingPaidDispute
-                }
+                disabled={isDisabled}
               />
               <Scale className="h-5 w-5" />
               <div>
@@ -1243,13 +1248,7 @@ const RejectDeliveryModal = ({
                 requestKind === DisputeTypeEnum.Paid
                   ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
                   : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-              } ${
-                isSubmitting ||
-                transactionStep === "pending" ||
-                isProcessingPaidDispute
-                  ? "cursor-not-allowed opacity-50"
-                  : ""
-              }`}
+              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -1260,11 +1259,7 @@ const RejectDeliveryModal = ({
                   console.log("📝 [RejectDeliveryModal] Selected Paid");
                   setRequestKind(DisputeTypeEnum.Paid);
                 }}
-                disabled={
-                  isSubmitting ||
-                  transactionStep === "pending" ||
-                  isProcessingPaidDispute
-                }
+                disabled={isDisabled}
               />
               <Wallet className="h-5 w-5" />
               <div>
@@ -1316,19 +1311,6 @@ const RejectDeliveryModal = ({
             </div>
           )}
 
-        {/* Dispute Info Summary */}
-        <div className="mb-6 rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
-          <h4 className="mb-2 text-sm font-medium text-purple-300">
-            Dispute Summary
-          </h4>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-purple-200/80">Defendant:</span>
-              <span className="text-white">{defendant}</span>
-            </div>
-          </div>
-        </div>
-
         {/* Claim input */}
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between">
@@ -1350,11 +1332,7 @@ const RejectDeliveryModal = ({
             }}
             placeholder="Describe why you're rejecting this delivery (optional)"
             className="h-32 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-            disabled={
-              isSubmitting ||
-              transactionStep === "pending" ||
-              isProcessingPaidDispute
-            }
+            disabled={isDisabled}
             required
           />
 
@@ -1362,6 +1340,30 @@ const RejectDeliveryModal = ({
             You can add more details and evidence on the dispute page.
           </p>
         </div>
+
+        {/* Transaction Status Display */}
+        {transactionStep !== "idle" && (
+          <div className="my-4">
+            <TransactionStatus
+              status={transactionStep}
+              onRetry={handleRetryTransaction}
+              title={
+                transactionStep === "pending"
+                  ? "Waiting for Wallet Confirmation..."
+                  : transactionStep === "success"
+                    ? "Payment Successful!"
+                    : "Payment Failed"
+              }
+              description={
+                transactionStep === "pending"
+                  ? "Please confirm the transaction in your wallet to complete the payment."
+                  : transactionStep === "success"
+                    ? "Your paid dispute is being activated..."
+                    : "The transaction could not be completed. You can retry the transaction."
+              }
+            />
+          </div>
+        )}
 
         {/* Log Preview */}
         <div className="mb-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
@@ -1377,12 +1379,10 @@ const RejectDeliveryModal = ({
                     ? "Pro Bono"
                     : "Paid"}
                 </li>
-                {/* <li>• Voting ID: {votingIdToUse} will be registered</li> */}
                 {requestKind === DisputeTypeEnum.Paid && (
                   <li>• Smart contract transaction required</li>
                 )}
-                <p>You can add evidences, witnesses in the Dispute page</p>
-                {/* <li>• You'll be redirected to the dispute page</li> */}
+                <li>• You can add evidence, witnesses in the Dispute page</li>
               </ul>
             </div>
           </div>
@@ -1394,11 +1394,7 @@ const RejectDeliveryModal = ({
             variant="outline"
             onClick={onClose}
             className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 sm:w-auto"
-            disabled={
-              isSubmitting ||
-              transactionStep === "pending" ||
-              isProcessingPaidDispute
-            }
+            disabled={isDisabled}
           >
             Cancel
           </Button>
@@ -1408,25 +1404,16 @@ const RejectDeliveryModal = ({
               requestKind === DisputeTypeEnum.Paid
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
                 : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
-            }`}
+            } ${transactionStep === "success" ? "hidden" : ""}`}
             onClick={handleSubmit}
-            disabled={
-              isSubmitting ||
-              transactionStep === "pending" ||
-              isProcessingPaidDispute
-            }
+            disabled={isDisabled}
           >
-            {transactionStep === "pending" || isProcessingPaidDispute ? (
+            {isSubmitting || transactionStep === "pending" ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
                 {requestKind === DisputeTypeEnum.Paid
                   ? "Confirm in Wallet..."
                   : "Creating Dispute..."}
-              </>
-            ) : isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
               </>
             ) : (
               <>
@@ -1437,81 +1424,493 @@ const RejectDeliveryModal = ({
               </>
             )}
           </Button>
+
+          {/* Success button - only shows when transaction is successful */}
+          {transactionStep === "success" && (
+            <Button
+              variant="outline"
+              className="w-full border-green-500/30 bg-green-500/10 text-green-300 hover:border-green-400 hover:bg-green-500/20 sm:w-auto"
+              disabled={true}
+            >
+              ✓ Transaction Successful
+            </Button>
+          )}
         </div>
-        {/* Transaction Status Display */}
-        {transactionStep !== "idle" && (
-          <div className="my-4">
-            <TransactionStatus
-              status={transactionStep}
-              onRetry={retryTransaction}
-            />
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-// Transaction Status Component (Reuse from OpenDisputeModal)
-const TransactionStatus = ({
-  status,
-  onRetry,
+const RejectPendingDisputeModal = ({
+  isOpen,
+  onClose,
+  votingId,
+  agreement,
+  onDisputeCreated,
 }: {
-  status: "idle" | "pending" | "success" | "error";
-  onRetry?: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+  votingId: number;
+  agreement: any;
+  onDisputeCreated: () => void;
 }) => {
-  if (status === "idle") return null;
+  const networkInfo = useNetworkEnvironment();
+  const [hasInitiatedTransaction, setHasInitiatedTransaction] = useState(false);
+  const [modalState, setModalState] = useState<
+    "initializing" | "active" | "closing"
+  >("initializing");
 
-  const configs = {
-    pending: {
-      icon: Loader2,
-      text: "Processing transaction...",
-      className: "text-yellow-400",
-      iconClassName: "animate-spin",
-    },
-    success: {
-      icon: CheckCircle2,
-      text: "Transaction confirmed!",
-      className: "text-green-400",
-      iconClassName: "",
-    },
-    error: {
-      icon: AlertCircle,
-      text: "Transaction failed",
-      className: "text-red-400",
-      iconClassName: "",
-    },
+  // Use the custom hook for transaction management
+  const {
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    transactionError,
+    createDisputeOnchain,
+    retryTransaction,
+    resetTransaction,
+    isSuccess,
+    isError,
+  } = useDisputeTransaction(networkInfo.chainId);
+
+  // Enhanced logging
+  useEffect(() => {
+    console.log("📊 [RejectPendingDisputeModal] State Update:", {
+      isOpen,
+      votingId,
+      transactionStep,
+      isProcessing,
+      transactionHash,
+      hasInitiatedTransaction,
+      modalState,
+      networkInfo,
+    });
+  }, [
+    isOpen,
+    votingId,
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    hasInitiatedTransaction,
+    modalState,
+    networkInfo,
+  ]);
+
+  // Initialize transaction when modal opens
+  useEffect(() => {
+    if (isOpen && votingId && !hasInitiatedTransaction) {
+      console.log(
+        "🚀 [RejectPendingDisputeModal] Initializing transaction for voting ID:",
+        votingId,
+      );
+      console.log("🔗 Chain ID:", networkInfo.chainId);
+      console.log("📄 Agreement:", {
+        id: agreement?.id,
+        title: agreement?.title,
+        disputeId: agreement?.disputeId,
+      });
+
+      setHasInitiatedTransaction(true);
+      setModalState("active");
+
+      // Start transaction with a small delay
+      const startTransaction = async () => {
+        try {
+          console.log(
+            "⏳ [RejectPendingDisputeModal] Starting transaction in 500ms...",
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          console.log(
+            "💰 [RejectPendingDisputeModal] Calling createDisputeOnchain...",
+          );
+          await createDisputeOnchain(votingId);
+          console.log("✅ [RejectPendingDisputeModal] Transaction initiated");
+        } catch (error) {
+          console.error(
+            "❌ [RejectPendingDisputeModal] Failed to start transaction:",
+            error,
+          );
+        }
+      };
+
+      startTransaction();
+    }
+  }, [
+    isOpen,
+    votingId,
+    hasInitiatedTransaction,
+    createDisputeOnchain,
+    networkInfo.chainId,
+    agreement,
+  ]);
+
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess && transactionHash) {
+      console.log(
+        "✅ [RejectPendingDisputeModal] Transaction successful! Hash:",
+        transactionHash,
+      );
+      console.log(
+        "🔄 [RejectPendingDisputeModal] Will close modal and call onDisputeCreated in 2 seconds",
+      );
+
+      setModalState("closing");
+
+      // Close modal after success with delay
+      const timer = setTimeout(() => {
+        console.log(
+          "🏁 [RejectPendingDisputeModal] Closing modal and calling onDisputeCreated",
+        );
+        onDisputeCreated();
+        onClose();
+        resetTransaction();
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isSuccess, transactionHash, onDisputeCreated, onClose, resetTransaction]);
+
+  // Handle transaction error
+  useEffect(() => {
+    if (isError) {
+      console.error("❌ [RejectPendingDisputeModal] Transaction failed:", {
+        error: transactionError,
+        votingId,
+        chainId: networkInfo.chainId,
+      });
+
+      // Keep modal open for retry
+      setModalState("active");
+    }
+  }, [isError, transactionError, votingId, networkInfo.chainId]);
+
+  // Reset states when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      console.log(
+        "♻️ [RejectPendingDisputeModal] Modal closed, resetting state",
+      );
+      resetTransaction();
+      setHasInitiatedTransaction(false);
+      setModalState("initializing");
+    }
+  }, [isOpen, resetTransaction]);
+
+  const handleRetryPayment = useCallback(async () => {
+    if (!votingId) {
+      console.error(
+        "❌ [RejectPendingDisputeModal] Cannot retry: Missing voting ID",
+      );
+      toast.error("Cannot retry: Missing voting ID");
+      return;
+    }
+
+    console.log(
+      "🔄 [RejectPendingDisputeModal] Retrying payment for voting ID:",
+      votingId,
+    );
+    console.log("🔗 Chain ID:", networkInfo.chainId);
+
+    try {
+      await retryTransaction(votingId);
+      console.log("✅ [RejectPendingDisputeModal] Retry initiated");
+    } catch (error) {
+      console.error("❌ [RejectPendingDisputeModal] Retry failed:", error);
+    }
+  }, [votingId, retryTransaction, networkInfo.chainId]);
+
+  // Get custom status messages based on modal state
+  const getStatusConfig = () => {
+    // If modal is initializing (just opened)
+    if (
+      modalState === "initializing" &&
+      !isProcessing &&
+      transactionStep === "idle"
+    ) {
+      return {
+        title: "Initializing Payment...",
+        description: "Preparing transaction for your dispute.",
+        showSpinner: true,
+        className: "text-blue-400",
+      };
+    }
+
+    // Use transactionStep from custom hook
+    switch (transactionStep) {
+      case "pending":
+        return {
+          title: "Processing Payment...",
+          description:
+            "Confirm the transaction in your wallet to complete payment.",
+          showSpinner: true,
+          className: "text-blue-400",
+        };
+      case "success":
+        return {
+          title: "Payment Successful!",
+          description: "Your dispute is now active. Redirecting...",
+          showSpinner: false,
+          className: "text-green-400",
+        };
+      case "error":
+        return {
+          title: "Payment Failed",
+          description:
+            transactionError?.message ||
+            "The transaction could not be completed.",
+          showSpinner: false,
+          className: "text-red-400",
+        };
+      default:
+        return {
+          title: "Ready for Payment",
+          description: "Please confirm the transaction in your wallet.",
+          showSpinner: false,
+          className: "text-yellow-400",
+        };
+    }
   };
 
-  const config = configs[status];
-  const Icon = config.icon;
+  const statusConfig = getStatusConfig();
+
+  if (!isOpen) {
+    console.log(
+      "🚫 [RejectPendingDisputeModal] Modal not open, returning null",
+    );
+    return null;
+  }
+
+  console.log("🎬 [RejectPendingDisputeModal] Rendering modal with:", {
+    votingId,
+    transactionStep,
+    modalState,
+    statusConfig,
+  });
 
   return (
-    <div
-      className={`rounded-lg border p-3 ${config.className} mt-3 w-fit border-current/20 bg-current/5`}
-    >
-      <div className="flex items-center gap-2">
-        <Icon className={`h-5 w-5 ${config.iconClassName}`} />
-        <span className="text-sm font-medium">{config.text}</span>
-        {status === "error" && onRetry && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRetry}
-            className="ml-auto border-current text-current hover:bg-current/10"
-          >
-            Retry
-          </Button>
-        )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-6 shadow-2xl">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
+          disabled={isProcessing}
+          aria-label="Close modal"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
+            <AlertTriangle className="h-6 w-6 text-purple-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Payment Processing</h2>
+            <p className="text-sm text-purple-300">
+              Complete payment to activate dispute
+            </p>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="mb-6">
+          {/* DEBUG INFO - Remove in production */}
+          <div className="mb-4 rounded-lg border border-gray-500/30 bg-gray-900/50 p-3">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-gray-400" />
+              <span className="text-xs font-medium text-gray-300">
+                Debug Info
+              </span>
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-gray-400">
+              <div className="flex justify-between">
+                <span>Voting ID:</span>
+                <span className="font-mono">{votingId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Status:</span>
+                <span className="font-medium">{transactionStep}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Modal State:</span>
+                <span className="font-medium">{modalState}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Processing:</span>
+                <span>{isProcessing ? "Yes" : "No"}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Transaction Status Display - THIS IS THE KEY COMPONENT */}
+          <div className="mb-6">
+            <TransactionStatus
+              status={transactionStep}
+              onRetry={handleRetryPayment}
+              title={statusConfig.title}
+              description={statusConfig.description}
+              showRetryButton={true}
+              className={statusConfig.className}
+            />
+          </div>
+
+          {/* Progress Indicator for pending state */}
+          {transactionStep === "pending" && (
+            <div className="mb-6">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="text-purple-300">Processing Transaction</span>
+                <span className="font-medium text-purple-200">
+                  Waiting for confirmation...
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-purple-500/20">
+                <div
+                  className="h-full animate-pulse bg-gradient-to-r from-purple-400 to-purple-500"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Transaction Information */}
+          <div className="space-y-4">
+            <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+              <h4 className="mb-2 text-sm font-medium text-purple-300">
+                Transaction Details
+              </h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-purple-200/80">Agreement:</span>
+                  <span className="text-white">
+                    {agreement?.title || "N/A"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200/80">Type:</span>
+                  <span className="text-white">Paid Dispute</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200/80">Voting ID:</span>
+                  <span className="font-mono text-white">{votingId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-200/80">Network:</span>
+                  <span className="text-white">{networkInfo.chainName}</span>
+                </div>
+                {transactionHash && (
+                  <div className="flex justify-between">
+                    <span className="text-purple-200/80">
+                      Transaction Hash:
+                    </span>
+                    <span className="font-mono text-xs text-green-300">
+                      {transactionHash.slice(0, 10)}...
+                      {transactionHash.slice(-8)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Smart Contract Info */}
+            <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                <div className="text-xs text-blue-200">
+                  This transaction records your dispute on the blockchain for
+                  transparency and security. Please confirm the transaction in
+                  your wallet when prompted.
+                </div>
+              </div>
+            </div>
+
+            {/* Error details for debugging */}
+            {transactionError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-900/20 p-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
+                  <div className="text-xs">
+                    <p className="font-medium text-red-300">Error Details:</p>
+                    <p className="mt-1 break-all text-red-200/80">
+                      {transactionError.message || "Unknown error occurred"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end space-x-3">
+          {transactionStep !== "success" && (
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+          )}
+
+          {transactionStep === "error" && (
+            <Button
+              variant="outline"
+              onClick={handleRetryPayment}
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                "Retry Payment"
+              )}
+            </Button>
+          )}
+
+          {transactionStep === "success" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                console.log(
+                  "🎯 [RejectPendingDisputeModal] Continue button clicked",
+                );
+                onDisputeCreated();
+                onClose();
+              }}
+              className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+            >
+              Continue to Dispute
+            </Button>
+          )}
+        </div>
+
+        {/* Footer with helpful info */}
+        <div className="mt-6 border-t border-white/10 pt-4">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <Info className="h-3 w-3" />
+            <span>
+              If you encounter issues, try refreshing the page or check your
+              wallet connection.
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
+
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const networkInfo = useNetworkEnvironment();
+  // const networkInfo = useNetworkEnvironment();
   const [agreement, setAgreement] = useState<Agreement | null>(null);
   const [disputeStatus, setDisputeStatus] = useState<any | null>(null);
   const [disputeVotingId, setDisputeVotingId] = useState<number | null>(null);
@@ -1541,6 +1940,19 @@ export default function AgreementDetails() {
     null,
   );
   const [pollingAttempts, setPollingAttempts] = useState(0);
+
+  const [isRejectPendingModalOpen, setIsRejectPendingModalOpen] =
+    useState(false);
+  const [rejectDisputeVotingId, setRejectDisputeVotingId] = useState<
+    number | null
+  >(null);
+  const [rejectDisputeStatus, setRejectDisputeStatus] = useState<any | null>(
+    null,
+  );
+  const [isPollingRejectDispute, setIsPollingRejectDispute] = useState(false);
+  const [rejectPollingInterval, setRejectPollingInterval] =
+    useState<NodeJS.Timeout | null>(null);
+  const [, setRejectPollingAttempts] = useState(0);
 
   // Get dispute information
   const disputeInfo = agreement
@@ -1760,6 +2172,8 @@ export default function AgreementDetails() {
   }, [id, isRefreshing, disputeVotingId]);
 
   // Updated pollDisputeStatus function with immediate stop on status change
+  // Update the pollDisputeStatus function to properly detect rejection disputes:
+
   const pollDisputeStatus = useCallback(
     async (disputeId: number, maxAttempts = 10) => {
       if (
@@ -1793,6 +2207,18 @@ export default function AgreementDetails() {
 
           console.log("📊 Current dispute status:", transformedDispute.status);
 
+          // 🚨 CRITICAL FIX: Always update both status states
+          // Store status for both regular and rejection disputes
+          setDisputeStatus(transformedDispute.status);
+
+          // ALWAYS set rejectDisputeStatus too when polling for rejection disputes
+          if (isDisputeTriggeredByRejection(agreement)) {
+            console.log(
+              "🔄 This is a rejection dispute, updating rejectDisputeStatus",
+            );
+            setRejectDisputeStatus(transformedDispute.status);
+          }
+
           // CRITICAL: If status is no longer "Pending Payment", stop immediately
           if (transformedDispute.status !== "Pending Payment") {
             console.log(
@@ -1805,8 +2231,6 @@ export default function AgreementDetails() {
             shouldContinuePolling = false;
 
             // Update state
-            setDisputeStatus(transformedDispute.status);
-            setDisputeVotingId(transformedDispute.votingId || null);
             setIsPollingDisputeStatus(false);
             setPollingAttempts(0);
 
@@ -1859,17 +2283,17 @@ export default function AgreementDetails() {
         }
       };
 
-      // Start polling with optimized intervals
+      // Start polling with MUCH LONGER intervals
       const startPolling = () => {
         if (pollingInterval) {
           clearInterval(pollingInterval);
         }
 
-        // Use shorter intervals for initial checks, then longer ones
+        // INCREASED INTERVALS: Start with 5 seconds, then 10, then 15
         const getInterval = (attempt: number) => {
-          if (attempt < 3) return 2000; // First 3 checks every 2 seconds
-          if (attempt < 6) return 4000; // Next 3 checks every 4 seconds
-          return 6000; // Remaining checks every 6 seconds
+          if (attempt < 3) return 5000; // First 3 checks every 5 seconds (was 2)
+          if (attempt < 6) return 10000; // Next 3 checks every 10 seconds (was 4)
+          return 15000; // Remaining checks every 15 seconds (was 6)
         };
 
         const interval = setInterval(async () => {
@@ -1904,39 +2328,55 @@ export default function AgreementDetails() {
       pollingAttempts,
       pollingInterval,
       fetchAgreementDetailsBackground,
+      agreement,
     ],
   );
 
+  const shouldShowPendingModal = useMemo(() => {
+    // Only show pending modal if:
+    // 1. Dispute status is "Pending Payment"
+    // 2. Current user filed the dispute (based on timeline)
+    const isPendingPayment =
+      disputeStatus === "Pending Payment" ||
+      rejectDisputeStatus === "Pending Payment";
+
+    if (!isPendingPayment || !agreement || !user) return false;
+
+    return getDisputeFiledByFromTimeline(agreement, user);
+  }, [disputeStatus, rejectDisputeStatus, agreement, user]);
+
   useEffect(() => {
-    // Only start polling if we have a dispute ID, status is Pending Payment, and we're not already polling
     const disputeId = agreement?.disputeId;
 
     if (
       disputeId &&
-      disputeId.trim() !== "" && // Check it's not empty string
-      disputeStatus === "Pending Payment" &&
-      !isPollingDisputeStatus
+      disputeId.trim() !== "" &&
+      (disputeStatus === "Pending Payment" ||
+        rejectDisputeStatus === "Pending Payment") &&
+      !isPollingDisputeStatus &&
+      !isPollingRejectDispute &&
+      !isRejectPendingModalOpen
     ) {
-      console.log("🚀 Starting polling for dispute");
+      console.log("🚀 Starting polling for dispute (could be from rejection)");
 
-      // Wait 1.5 seconds before starting to give backend time
       const timeoutId = setTimeout(() => {
         const disputeIdNum = parseInt(disputeId);
-
         if (!isNaN(disputeIdNum)) {
-          pollDisputeStatus(disputeIdNum, 6); // Limit to 6 attempts
-        } else {
-          console.error("Invalid dispute ID:", disputeId);
+          // Start polling - the poll function will handle both regular and rejection disputes
+          pollDisputeStatus(disputeIdNum, 10);
         }
-      }, 1500);
+      }, 3000); // Increased from 1500 to 3000 (3 seconds)
 
       return () => clearTimeout(timeoutId);
     }
   }, [
     agreement?.disputeId,
     disputeStatus,
+    rejectDisputeStatus,
     isPollingDisputeStatus,
+    isPollingRejectDispute,
     pollDisputeStatus,
+    isRejectPendingModalOpen,
   ]);
 
   // Cleanup effect
@@ -1975,6 +2415,24 @@ export default function AgreementDetails() {
       }
     }
   }, [disputeStatus, isPollingDisputeStatus, pollingInterval]);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
+      if (rejectPollingInterval) {
+        clearInterval(rejectPollingInterval);
+        setRejectPollingInterval(null);
+      }
+      setIsPollingDisputeStatus(false);
+      setIsPollingRejectDispute(false);
+      setPollingAttempts(0);
+      setRejectPollingAttempts(0);
+    };
+  }, [pollingInterval, rejectPollingInterval]);
 
   // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
   useEffect(() => {
@@ -2297,11 +2755,9 @@ export default function AgreementDetails() {
     setIsRejectModalOpen(true);
   };
 
-  // New function to actually reject with the claim
   const handleConfirmReject = async (
     claim: string,
     requestKind: DisputeTypeEnumValue,
-    // contractAgreementId: string,
     chainId?: number,
     votingId?: string,
     transactionHash?: string,
@@ -2311,71 +2767,70 @@ export default function AgreementDetails() {
     setIsSubmittingReject(true);
     try {
       const agreementId = parseInt(id);
-
-      // Use provided votingId or generate one
       const votingIdToUse = votingId || generateVotingId();
 
-      console.log("🚀 [AgreementDetails] Calling rejectDelivery with:", {
-        agreementId,
-        votingId: votingIdToUse,
-        claim: claim.trim(),
-        requestKind:
-          requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
-        // contractAgreementId,
-        chainId,
-        transactionHash,
-        hasTransactionHash: !!transactionHash,
-        chainName: networkInfo.chainName,
-      });
-
-      // Create the payload
       const payload: AgreementDeliveryRejectedRequest = {
         votingId: votingIdToUse.toString(),
         claim: claim.trim(),
-        // contractAgreementId: contractAgreementId,
         requestKind: requestKind,
         ...(chainId && { chainId: chainId }),
-        ...(transactionHash && { txHash: transactionHash }),
       };
 
-      console.log("📦 [AgreementDetails] Payload:", payload);
+      // Create the dispute via API
+      const response = await agreementService.rejectDelivery(
+        agreementId,
+        payload,
+      );
+      console.log("✅ Dispute created:", response);
 
-      // Call the updated rejectDelivery method
-      await agreementService.rejectDelivery(agreementId, payload);
+      // Store the voting ID for the pending modal
+      setRejectDisputeVotingId(parseInt(votingIdToUse));
 
-      // Show success message based on dispute type
-      const disputeType =
-        requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid";
-      toast.success(`Delivery rejected! ${disputeType} dispute created.`, {
-        description: `Voting ID: ${votingIdToUse}. ${transactionHash ? "Transaction: " + transactionHash.slice(0, 10) + "..." : ""}`,
-        duration: 5000,
-      });
+      // Immediately show pending modal for paid disputes
+      if (requestKind === DisputeTypeEnum.Paid && !transactionHash) {
+        // For paid disputes: close reject modal, status will auto-show pending modal
+        setIsRejectModalOpen(false);
+        setRejectClaim("");
 
-      // Close modal and refresh
-      setIsRejectModalOpen(false);
-      setRejectClaim("");
-      await fetchAgreementDetailsBackground();
+        // 🚨 IMPORTANT: Set both statuses to "Pending Payment" immediately
+        setRejectDisputeStatus("Pending Payment");
+        setDisputeStatus("Pending Payment");
+
+        toast.success(
+          "Dispute created! Please confirm the transaction in your wallet.",
+          {
+            description: "Your paid dispute is being created.",
+            duration: 5000,
+          },
+        );
+
+        // The component will automatically refresh and show RejectPendingDisputeModal
+        // because disputeStatus will become "Pending Payment"
+      } else {
+        // For pro bono disputes
+        toast.success(`Delivery rejected! Dispute created.`, {
+          description: `Voting ID: ${votingIdToUse}.`,
+          duration: 5000,
+        });
+
+        setIsRejectModalOpen(false);
+        setRejectClaim("");
+        await fetchAgreementDetailsBackground();
+      }
     } catch (error: any) {
-      console.error("❌ [AgreementDetails] Failed to reject delivery:", error);
-
-      // Enhanced error handling
+      console.error("❌ Failed to reject delivery:", error);
       const errorMessage =
         error.response?.data?.message ||
         error.message ||
         "Failed to reject delivery. Please try again.";
-
-      console.error("📋 [AgreementDetails] Error details:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: errorMessage,
-      });
 
       toast.error("Failed to reject delivery", {
         description: errorMessage,
         duration: 5000,
       });
 
-      // Re-throw for modal to handle
+      setIsRejectModalOpen(false);
+      setRejectClaim("");
       throw error;
     } finally {
       setIsSubmittingReject(false);
@@ -2419,6 +2874,37 @@ export default function AgreementDetails() {
     isPollingDisputeStatus,
     agreement?.disputeId,
   ]);
+
+  const handleRejectDisputeCreated = useCallback(() => {
+    console.log(
+      "🔄 handleRejectDisputeCreated called - forcing immediate reload",
+    );
+
+    // Force immediate reload of agreement details
+    fetchAgreementDetailsBackground().then(() => {
+      console.log("✅ Agreement details reloaded after paid dispute creation");
+    });
+
+    // Start polling for dispute status update
+    const currentDisputeId = agreement?.disputeId;
+    if (currentDisputeId) {
+      const disputeIdNum = parseInt(currentDisputeId);
+      if (!isNaN(disputeIdNum)) {
+        // Start polling immediately
+        pollDisputeStatus(disputeIdNum, 6);
+      }
+    }
+
+    // Close the pending modal
+    setIsRejectPendingModalOpen(false);
+    setRejectDisputeVotingId(null);
+  }, [
+    fetchAgreementDetailsBackground,
+    agreement?.disputeId,
+    pollDisputeStatus,
+  ]);
+
+  // For the "Mark as Delivered" button condition:
 
   const disputeTriggeredByRejection = agreement
     ? isDisputeTriggeredByRejection(agreement)
@@ -2468,9 +2954,9 @@ export default function AgreementDetails() {
     }
   };
 
-  const getDisputeStatusIcon = () => {
-    return <CheckCircle className="h-5 w-5 text-green-400" />;
-  };
+  // const getDisputeStatusIcon = () => {
+  //   return <CheckCircle className="h-5 w-5 text-green-400" />;
+  // };
 
   const getDisputeStatusColor = () => {
     return "bg-green-500/20 text-green-400 border-green-500/30";
@@ -2742,6 +3228,17 @@ export default function AgreementDetails() {
     }
   };
 
+  const shouldShowMarkAsDelivered =
+    canMarkDelivered && !isCurrentUserInitiatedDelivery;
+
+  console.log("🔍 Mark as Delivered Check:", {
+    canMarkDelivered,
+    isCurrentUserInitiatedDelivery,
+    shouldShow: shouldShowMarkAsDelivered,
+    agreementStatus: agreement?.status,
+    isActive: agreement?.status === "signed",
+  });
+
   if (loading) {
     return (
       <div className="relative flex min-h-screen items-center justify-center">
@@ -2808,36 +3305,21 @@ export default function AgreementDetails() {
             </Button>
 
             <div className="flex items-center space-x-2">
-              {disputeStatus === "Pending Payment" && (
+              {/* Check if dispute is in Pending Payment status */}
+              {disputeStatus === "Pending Payment" ||
+              rejectDisputeStatus === "Pending Payment" ? (
                 <div className="flex items-center space-x-2">
-                  {isPollingDisputeStatus ? (
-                    <>
-                      <div className="relative">
-                        <Loader2 className="h-4 w-4 animate-spin text-yellow-400" />
-                        <div className="absolute -inset-1 animate-ping rounded-full bg-yellow-400/20"></div>
-                      </div>
-                      <span
-                        className={`rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-sm font-medium text-yellow-300`}
-                      >
-                        Finalizing Dispute...
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      {getDisputeStatusIcon()}
-                      <span
-                        className={`rounded-full border px-3 py-1 text-sm font-medium ${getDisputeStatusColor()}`}
-                      >
-                        Dispute Pending Payment
-                      </span>
-                    </>
-                  )}
+                  <Clock className="h-5 w-5 text-yellow-400" />
+                  <span
+                    className={`rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-sm font-medium text-yellow-300`}
+                  >
+                    Dispute Pending Payment
+                  </span>
                 </div>
-              )}
-              {disputeStatus !== "Pending Payment" && (
+              ) : (
+                // Show regular agreement status when not in Pending Payment
                 <div className="flex items-center space-x-2">
                   {getStatusIcon(agreement.status)}
-
                   <span
                     className={`rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(agreement.status)}`}
                   >
@@ -2846,9 +3328,12 @@ export default function AgreementDetails() {
                   </span>
                 </div>
               )}
+
+              {/* View Dispute link - only show when dispute exists and NOT in Pending Payment */}
               {agreement._raw?.disputes &&
                 agreement._raw.disputes.length > 0 &&
-                disputeStatus !== "Pending Payment" && (
+                disputeStatus !== "Pending Payment" &&
+                rejectDisputeStatus !== "Pending Payment" && (
                   <Link
                     to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
                     className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
@@ -3678,7 +4163,7 @@ export default function AgreementDetails() {
 
             {/* NEW: Enhanced Delivery Status Information with Context */}
             {agreement?.status === "pending_approval" && (
-              <div className="glass rounded-xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
+              <div className="card-cyan rounded-xl p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white">
                   Delivery Status
                 </h3>
@@ -4039,25 +4524,25 @@ export default function AgreementDetails() {
           </div>
         </div>
       </div>
-      {isDisputeModalOpen &&
-        disputeStatus !== "Pending" &&
-        (disputeStatus === "Pending Payment" ? (
-          <OpenPendingDisputeModal
-            isOpen={isDisputeModalOpen}
-            onClose={() => setIsDisputeModalOpen(false)}
-            votingId={agreement.disputeVotingId ?? 0}
-            agreement={agreement}
-            onDisputeCreated={handleDisputeCreated}
-          />
-        ) : (
-          <OpenDisputeModal
-            isOpen={isDisputeModalOpen}
-            onClose={() => setIsDisputeModalOpen(false)}
-            agreement={agreement}
-            onDisputeCreated={handleDisputeCreated}
-          />
-        ))}
 
+      {isDisputeModalOpen && disputeStatus !== "Pending Payment" && (
+        <OpenDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => setIsDisputeModalOpen(false)}
+          agreement={agreement}
+          onDisputeCreated={handleDisputeCreated}
+        />
+      )}
+
+      {shouldShowPendingModal && isDisputeModalOpen && (
+        <OpenPendingDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => setIsDisputeModalOpen(false)}
+          votingId={agreement.disputeVotingId ?? 0}
+          agreement={agreement}
+          onDisputeCreated={handleDisputeCreated}
+        />
+      )}
       {/* Evidence Viewer Modal */}
       <EvidenceViewer
         isOpen={evidenceViewerOpen}
@@ -4066,20 +4551,36 @@ export default function AgreementDetails() {
         }}
         selectedEvidence={selectedEvidence}
       />
-
-      {/* Reject Delivery Modal */}
-      <RejectDeliveryModal
-        isOpen={isRejectModalOpen}
-        onClose={() => {
-          setIsRejectModalOpen(false);
-          setRejectClaim("");
-        }}
-        onConfirm={handleConfirmReject}
-        claim={rejectClaim}
-        setClaim={setRejectClaim}
-        isSubmitting={isSubmittingReject}
-        agreement={agreement}
-      />
+      {/* Reject Delivery Modal - Only show if no active dispute */}
+      {isRejectModalOpen &&
+        !disputeStatus && // No dispute status at all
+        !rejectDisputeStatus && (
+          <RejectDeliveryModal
+            isOpen={isRejectModalOpen}
+            onClose={() => {
+              setIsRejectModalOpen(false);
+              setRejectClaim("");
+            }}
+            onConfirm={handleConfirmReject}
+            claim={rejectClaim}
+            setClaim={setRejectClaim}
+            isSubmitting={isSubmittingReject}
+            agreement={agreement}
+          />
+        )}
+      {/* RejectPendingDisputeModal - Show when reject status is pending */}
+      {shouldShowPendingModal && (
+        <RejectPendingDisputeModal
+          isOpen={true}
+          onClose={() => {
+            setIsRejectPendingModalOpen(false);
+            setRejectDisputeVotingId(null);
+          }}
+          votingId={rejectDisputeVotingId ?? agreement?.disputeVotingId ?? 0}
+          agreement={agreement}
+          onDisputeCreated={handleRejectDisputeCreated}
+        />
+      )}
     </div>
   );
 }

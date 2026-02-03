@@ -19,6 +19,7 @@ import {
   Loader2,
   User,
   Users,
+  RefreshCw,
 } from "lucide-react";
 import "react-datepicker/dist/react-datepicker.css";
 import ReactDatePicker from "react-datepicker";
@@ -1316,6 +1317,21 @@ export default function Agreements() {
                 className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm text-white outline-none focus:border-cyan-400/40"
               />
             </div>
+
+            <Button
+              onClick={loadAgreements}
+              variant="outline"
+              className="flex items-center gap-2 border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+              disabled={loading}
+              title="Reload agreements"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">Refetch Agreements</span>
+            </Button>
 
             {/* Status Filter Dropdown */}
             <div className="group relative w-48" ref={tableFilterRef}>

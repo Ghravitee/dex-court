@@ -602,7 +602,6 @@ export default function DisputeDetails() {
         const disputeDetails =
           await disputeService.getDisputeDetails(disputeId);
         console.log("✅ Received dispute details:", disputeDetails);
-        
 
         const transformedDispute =
           disputeService.transformDisputeDetailsToRow(disputeDetails);
@@ -1235,12 +1234,16 @@ export default function DisputeDetails() {
                   Settled
                 </span>
               ) : dispute.status === "Pending" ? (
-                <span className="badge-orange inline-flex items-center rounded-full border px-4 py-1 text-sm">
+                <span className="badge-yellow inline-flex items-center rounded-full border px-4 py-1 text-sm">
                   Pending
                 </span>
               ) : dispute.status === "Dismissed" ? (
                 <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
                   Dismissed
+                </span>
+              ) : dispute.status === "Pending Payment" ? (
+                <span className="badge-orange inline-flex items-center rounded-full px-4 py-1 text-sm">
+                  Pending Payment
                 </span>
               ) : (
                 <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">

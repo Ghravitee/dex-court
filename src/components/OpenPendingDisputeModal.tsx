@@ -2,13 +2,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import {
-  Loader2,
+  // Loader2,
   Scale,
   X,
   Wallet,
   Info,
   Clock,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadedFile } from "../types";

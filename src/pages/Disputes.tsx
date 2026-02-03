@@ -1420,12 +1420,12 @@ export default function Disputes() {
                           {d.status === "Settled" ? (
                             <span className="badge badge-blue">Settled</span>
                           ) : d.status === "Pending" ? (
-                            <span className="badge badge-orange">Pending</span>
+                            <span className="badge badge-yellow">Pending</span>
                           ) : d.status === "Dismissed" ? (
                             <span className="badge badge-red">Dismissed</span>
                           ) : d.status === "Pending Payment" ? (
-                            <span className="badge border-yellow">
-                              pending Payment
+                            <span className="badge badge-orange">
+                              Pending Payment
                             </span>
                           ) : (
                             <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
