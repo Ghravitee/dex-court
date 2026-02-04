@@ -69,7 +69,7 @@ export const TransactionStatus = ({
 
         <div className="flex-1">
           <h4 className="font-semibold">{title || config.defaultTitle}</h4>
-          <p className="mt-1 text-sm opacity-90">
+          <p className="mt-1 max-h-[6rem] overflow-y-scroll text-sm break-all opacity-90">
             {description || config.defaultDescription}
           </p>
 

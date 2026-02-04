@@ -17,7 +17,7 @@ import {
 import { LoginModal } from "../LoginModal";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../UserAvatar";
-import logo from "../../assets/DexCourt-logo.webp";
+import logo from "../../assets/logo.webp";
 
 export function Topbar({
   onMenuClick,

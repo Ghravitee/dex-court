@@ -2,10 +2,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import {
-  // Loader2,
   Scale,
   X,
-  Wallet,
+  // Wallet,
   Info,
   Clock,
   AlertTriangle,
@@ -15,37 +14,29 @@ import { toast } from "sonner";
 import type { UploadedFile } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { VOTING_ABI, VOTING_CA } from "../web3/config";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { getVoteConfigs } from "../web3/readContract";
+import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
+import { TransactionStatus } from "../components/TransactionStatus";
 
 const formatDefendantDisplay = (defendant: string): string => {
-  // First, clean any leading @ symbol
   const cleanDefendant = defendant.replace(/^@/, "");
-
-  // Check if it's a wallet address (after removing @)
   if (isWalletAddress(cleanDefendant)) {
-    // For wallet addresses, don't add @ symbol
     return cleanDefendant;
   }
-  // For Telegram usernames, ensure it has @ symbol for display
   return defendant.startsWith("@") ? defendant : `@${defendant}`;
 };
 
 const isSecondRejection = (agreement: any): boolean => {
   if (!agreement?.timeline) return false;
-
   const rejectionEvents = agreement.timeline.filter(
-    (event: any) => event.eventType === 6, // DELIVERY_REJECTED = 6
+    (event: any) => event.eventType === 6,
   );
-
   return rejectionEvents.length >= 2;
 };
 
 const isWalletAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value);
 
-interface OpenDisputeModalProps {
+interface OpenPendingDisputeModalProps {
   isOpen: boolean;
   onClose: () => void;
   votingId: number;
@@ -59,7 +50,7 @@ export default function OpenPendingDisputeModal({
   votingId,
   agreement,
   onDisputeCreated,
-}: OpenDisputeModalProps) {
+}: OpenPendingDisputeModalProps) {
   const { user: currentUser } = useAuth();
   const networkInfo = useNetworkEnvironment();
   const [form, setForm] = useState({
@@ -72,11 +63,23 @@ export default function OpenPendingDisputeModal({
     witnesses: [""] as string[],
   });
 
-  // Transaction state
-  const [transactionStep, setTransactionStep] = useState<
-    "idle" | "pending" | "success" | "error"
-  >("idle");
-  const [isProcessingPaidDispute, setIsProcessingPaidDispute] = useState(false);
+  // Use the custom hook for transaction management
+  const {
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    transactionError,
+    createDisputeOnchain,
+    retryTransaction,
+    resetTransaction,
+    isSuccess,
+    isError,
+  } = useDisputeTransaction(networkInfo.chainId);
+
+  const [hasInitiatedTransaction, setHasInitiatedTransaction] = useState(false);
+  const [modalState, setModalState] = useState<
+    "initializing" | "active" | "closing"
+  >("initializing");
 
   // Add this ref to track if form has been initialized
   const hasInitialized = useRef(false);
@@ -85,24 +88,6 @@ export default function OpenPendingDisputeModal({
   const formRef = useRef(form);
   const agreementIdRef = useRef(agreement?.id);
   const networkInfoRef = useRef(networkInfo);
-
-  // Refs to prevent duplicate dispute creation
-  const hasCreatedDisputeRef = useRef(false);
-  const lastTransactionHashRef = useRef<string | null>(null);
-
-  // Wagmi hooks for smart contract interaction
-  const {
-    data: hash,
-    writeContract,
-    isPending: isWritePending,
-    error: writeError,
-    reset: resetWrite,
-  } = useWriteContract();
-
-  const { isSuccess: isTransactionSuccess, isError: isTransactionError } =
-    useWaitForTransactionReceipt({
-      hash,
-    });
 
   // Update refs when dependencies change
   useEffect(() => {
@@ -120,19 +105,16 @@ export default function OpenPendingDisputeModal({
   // Initialize form from agreement
   useEffect(() => {
     if (isOpen && agreement && !hasInitialized.current) {
-      // Determine who the defendant should be (the other party)
       const isFirstParty =
         agreement._raw?.firstParty?.username === currentUser?.username;
       const defendant = isFirstParty
         ? agreement.counterparty
         : agreement.createdBy;
 
-      // Format the defendant for display
       const formattedDefendant = defendant
         ? formatDefendantDisplay(defendant)
         : "";
 
-      // Check if this is from a second rejection
       const isFromSecondRejection = isSecondRejection(agreement._raw);
 
       let title = `Dispute from Agreement: ${agreement.title}`;
@@ -143,18 +125,16 @@ export default function OpenPendingDisputeModal({
         description = `This dispute was automatically triggered after the second rejection of delivery for agreement "${agreement.title}".\n\nOriginal Agreement Description:\n${agreement.description}\n\nDispute Details: The delivery has been rejected twice, indicating unresolved issues with the work performed.`;
       }
 
-      // Pre-fill form with agreement data
       setForm({
         title,
-        kind: "Pro Bono",
-        defendant: formattedDefendant, // Use formatted defendant
+        kind: "Paid", // Always "Paid" for pending modal
+        defendant: formattedDefendant,
         description,
         claim: "",
         evidence: [],
         witnesses: [""],
       });
 
-      // Mark as initialized
       hasInitialized.current = true;
     }
   }, [isOpen, agreement, currentUser]);
@@ -163,279 +143,215 @@ export default function OpenPendingDisputeModal({
   useEffect(() => {
     if (!isOpen) {
       hasInitialized.current = false;
-      setTransactionStep("idle");
-      setIsProcessingPaidDispute(false);
-      // Reset duplicate prevention refs
-      hasCreatedDisputeRef.current = false;
-      lastTransactionHashRef.current = null;
-      resetWrite();
+      resetTransaction();
+      setHasInitiatedTransaction(false);
+      setModalState("initializing");
     }
-  }, [isOpen, resetWrite]);
+  }, [isOpen, resetTransaction]);
 
-  // Helper function to reset and close
-  const resetFormAndClose = useCallback(() => {
-    setForm({
-      title: "",
-      kind: "Pro Bono",
-      defendant: "",
-      description: "",
-      claim: "",
-      evidence: [],
-      witnesses: [""],
-    });
-    setTransactionStep("idle");
-    setIsProcessingPaidDispute(false);
-    // Reset the processing ref
-    transactionProcessingRef.current = {
-      hasProcessed: false,
-      transactionHash: null,
-    };
-    resetWrite();
-    onDisputeCreated();
-    onClose();
-  }, [resetWrite, onDisputeCreated, onClose]);
-
-  // Replace the entire transaction handling logic with this:
-
-  // Transaction state ref to prevent multiple executions
-  const transactionProcessingRef = useRef({
-    hasProcessed: false,
-    transactionHash: null as string | null,
-  });
-
-  // Handle transaction status changes - SIMPLE AND RELIABLE VERSION
-  // Handle transaction status changes - UPDATED
+  // Enhanced logging
   useEffect(() => {
-    console.log("🔄 Transaction effect running:", {
-      isWritePending,
-      isTransactionSuccess,
-      writeError,
-      isTransactionError,
-      isProcessingPaidDispute,
-      hash,
-      hasProcessed: transactionProcessingRef.current.hasProcessed,
+    console.log("📊 [OpenPendingDisputeModal] State Update:", {
+      isOpen,
+      votingId,
+      transactionStep,
+      isProcessing,
+      transactionHash,
+      hasInitiatedTransaction,
+      modalState,
+      networkInfo,
     });
-
-    if (isWritePending) {
-      console.log("⏳ Transaction pending...");
-      setTransactionStep("pending");
-      // Reset processing flag when new transaction starts
-      transactionProcessingRef.current = {
-        hasProcessed: false,
-        transactionHash: null,
-      };
-    } else if (isTransactionSuccess && hash && isProcessingPaidDispute) {
-      console.log("✅ Transaction successful!");
-
-      // Mark as processed
-      transactionProcessingRef.current = {
-        hasProcessed: true,
-        transactionHash: hash,
-      };
-
-      console.log("🚀 Transaction confirmed for dispute");
-      setTransactionStep("success");
-      setIsProcessingPaidDispute(false);
-
-      // Show success message
-      toast.success("Transaction confirmed!", {
-        description: "Updating dispute status...",
-        duration: 3000,
-      });
-
-      // IMPORTANT: Wait 2 seconds then close modal
-      setTimeout(() => {
-        resetFormAndClose();
-      }, 2000);
-
-      // Call onDisputeCreated to trigger parent refresh
-      onDisputeCreated();
-    } else if (writeError || isTransactionError) {
-      console.log("❌ Transaction failed");
-      setTransactionStep("error");
-      setIsProcessingPaidDispute(false);
-
-      // Show error but keep the modal open so user can retry
-      toast.error("Transaction failed", {
-        description: "Smart contract transaction failed. Please try again.",
-        duration: 5000,
-      });
-
-      // Reset processing flag on error
-      transactionProcessingRef.current = {
-        hasProcessed: false,
-        transactionHash: null,
-      };
-    }
   }, [
-    isWritePending,
-    isTransactionSuccess,
-    writeError,
-    isTransactionError,
-    isProcessingPaidDispute,
-    hash,
-    resetFormAndClose,
-    onDisputeCreated,
+    isOpen,
+    votingId,
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    hasInitiatedTransaction,
+    modalState,
+    networkInfo,
   ]);
 
-  // Reset processing ref when modal closes
+  // Initialize transaction when modal opens
   useEffect(() => {
-    if (!isOpen) {
-      transactionProcessingRef.current = {
-        hasProcessed: false,
-        transactionHash: null,
-      };
-    }
-  }, [isOpen]);
-
-  const fetchOnchainVoteConfigs = useCallback(
-    async (agreement: any) => {
-      if (!agreement) return;
-
-      console.log("Fetching on-chain vote configs for agreement:", agreement);
-      try {
-        const res = await getVoteConfigs(
-          agreement.chainId || networkInfo.chainId,
-        );
-        return res;
-      } catch (err) {
-        console.error("Failed to fetch getVoteConfig agreement:", err);
-        return null;
-      }
-    },
-    [networkInfo.chainId],
-  );
-
-  // Smart contract interaction for paid disputes - UPDATED
-  const createDisputeOnchain = useCallback(
-    async (votingId: number): Promise<void> => {
+    if (isOpen && votingId && !hasInitiatedTransaction) {
       console.log(
-        "🟡 [DEBUG] createDisputeOnchain STARTED with votingId:",
+        "🚀 [OpenPendingDisputeModal] Initializing transaction for voting ID:",
         votingId,
       );
+      console.log("🔗 Chain ID:", networkInfo.chainId);
+      console.log("📄 Agreement:", {
+        id: agreement?.id,
+        title: agreement?.title,
+        disputeId: agreement?.disputeId,
+      });
 
-      try {
-        console.log("🔍 [DEBUG] Network Info:", {
-          chainId: networkInfo.chainId,
-        });
+      setHasInitiatedTransaction(true);
+      setModalState("active");
 
-        const contractAddress = VOTING_CA[networkInfo.chainId as number];
-        console.log("📝 [DEBUG] Contract lookup:", {
-          chainId: networkInfo.chainId,
-          contractAddress,
-          availableChains: Object.keys(VOTING_ABI),
-        });
-
-        if (!contractAddress) {
-          console.error(
-            "❌ [DEBUG] No contract address found for chain ID",
-            networkInfo.chainId,
+      // Start transaction with a small delay
+      const startTransaction = async () => {
+        try {
+          console.log(
+            "⏳ [OpenPendingDisputeModal] Starting transaction in 500ms...",
           );
-          throw new Error(
-            `No contract address found for chain ID ${networkInfo.chainId}`,
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          console.log(
+            "💰 [OpenPendingDisputeModal] Calling createDisputeOnchain...",
+          );
+          await createDisputeOnchain(votingId);
+          console.log("✅ [OpenPendingDisputeModal] Transaction initiated");
+        } catch (error) {
+          console.error(
+            "❌ [OpenPendingDisputeModal] Failed to start transaction:",
+            error,
           );
         }
+      };
 
-        console.log("🔍 [DEBUG] Before fetchOnchainVoteConfigs");
-        console.log("📋 [DEBUG] Agreement data:", {
-          id: agreement?.id,
-          votingId: agreement?.votingId,
-          blockchain: agreement?.blockchain,
-        });
+      startTransaction();
+    }
+  }, [
+    isOpen,
+    votingId,
+    hasInitiatedTransaction,
+    createDisputeOnchain,
+    networkInfo.chainId,
+    agreement,
+  ]);
 
-        const configs = await fetchOnchainVoteConfigs(agreement);
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess && transactionHash) {
+      console.log(
+        "✅ [OpenPendingDisputeModal] Transaction successful! Hash:",
+        transactionHash,
+      );
+      console.log(
+        "🔄 [OpenPendingDisputeModal] Will close modal and call onDisputeCreated in 2 seconds",
+      );
 
-        console.log("📊 [DEBUG] On-chain configs:", {
-          feeAmount: configs?.feeAmount?.toString(),
-          configsExist: !!configs,
-        });
+      setModalState("closing");
 
-        console.log("🎯 [DEBUG] Voting ID to use:", votingId);
-        console.log("🔢 [DEBUG] BigInt conversion:", {
-          original: votingId,
-          bigInt: BigInt(votingId),
-        });
-
-        const feeValue = configs ? configs.feeAmount : undefined;
-
-        console.log("💰 [DEBUG] Transaction details:", {
-          contractAddress,
-          functionName: "raiseDispute",
-          args: [BigInt(votingId), false],
-          value: feeValue?.toString(),
-          hasFee: !!feeValue,
-        });
-
-        console.log("⏳ [DEBUG] Calling writeContract...");
-
-        writeContract({
-          address: contractAddress,
-          abi: VOTING_ABI.abi,
-          functionName: "raiseDispute",
-          args: [BigInt(votingId), false],
-          value: feeValue,
-        });
-
-        console.log("✅ [DEBUG] writeContract called successfully");
+      // Close modal after success with delay
+      const timer = setTimeout(() => {
         console.log(
-          "🟢 [DEBUG] Transaction initiated - waiting for confirmation",
+          "🏁 [OpenPendingDisputeModal] Closing modal and calling onDisputeCreated",
         );
-      } catch (error: any) {
-        console.error("❌ [DEBUG] createDisputeOnchain ERROR:", {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-          code: error.code,
-          data: error.data,
-        });
+        onDisputeCreated();
+        onClose();
+        resetTransaction();
+      }, 2000);
 
-        console.error("❌ Smart contract interaction failed:", error);
+      return () => clearTimeout(timer);
+    }
+  }, [isSuccess, transactionHash, onDisputeCreated, onClose, resetTransaction]);
 
-        toast.error("Failed to initiate smart contract transaction", {
-          description:
-            error.message ||
-            "Please check your wallet connection and try again.",
-        });
+  // Handle transaction error
+  useEffect(() => {
+    if (isError) {
+      console.error("❌ [OpenPendingDisputeModal] Transaction failed:", {
+        error: transactionError,
+        votingId,
+        chainId: networkInfo.chainId,
+      });
 
-        console.log("🔧 [DEBUG] Setting error state");
-        setTransactionStep("error");
-        setIsProcessingPaidDispute(false);
-        // Reset flags on error
-        hasCreatedDisputeRef.current = false;
-        lastTransactionHashRef.current = null;
+      // Keep modal open for retry
+      setModalState("active");
+    }
+  }, [isError, transactionError, votingId, networkInfo.chainId]);
 
-        console.log("🟢 [DEBUG] Error handled, user notified");
-      } finally {
-        console.log("🔚 [DEBUG] createDisputeOnchain execution complete");
-      }
-    },
-    [agreement, fetchOnchainVoteConfigs, networkInfo.chainId, writeContract],
-  );
+  const handleRetryPayment = useCallback(async () => {
+    if (!votingId) {
+      console.error(
+        "❌ [OpenPendingDisputeModal] Cannot retry: Missing voting ID",
+      );
+      toast.error("Cannot retry: Missing voting ID");
+      return;
+    }
 
-  // Main form submission handler
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    console.log(
+      "🔄 [OpenPendingDisputeModal] Retrying payment for voting ID:",
+      votingId,
+    );
+    console.log("🔗 Chain ID:", networkInfo.chainId);
 
     try {
-      // STEP 2: Now call smart contract with the voting ID
-      await createDisputeOnchain(votingId);
-    } catch (error: any) {
-      console.error("❌ [PAID] Failed to create paid dispute:", error);
-      setIsProcessingPaidDispute(false);
+      await retryTransaction(votingId);
+      console.log("✅ [OpenPendingDisputeModal] Retry initiated");
+    } catch (error) {
+      console.error("❌ [OpenPendingDisputeModal] Retry failed:", error);
+    }
+  }, [votingId, retryTransaction, networkInfo.chainId]);
 
-      const errorMessage = error.message || "Failed to create dispute";
-      toast.error("Submission Failed", {
-        description: errorMessage,
-        duration: 6000,
-      });
+  // Get custom status messages based on modal state
+  const getStatusConfig = () => {
+    if (
+      modalState === "initializing" &&
+      !isProcessing &&
+      transactionStep === "idle"
+    ) {
+      return {
+        title: "Initializing Payment...",
+        description: "Preparing transaction for your dispute.",
+        showSpinner: true,
+        className: "text-blue-400",
+      };
+    }
+
+    switch (transactionStep) {
+      case "pending":
+        return {
+          title: "Processing Payment...",
+          description:
+            "Confirm the transaction in your wallet to complete payment.",
+          showSpinner: true,
+          className: "text-blue-400",
+        };
+      case "success":
+        return {
+          title: "Payment Successful!",
+          description: "Your dispute is now active. Redirecting...",
+          showSpinner: false,
+          className: "text-green-400",
+        };
+      case "error":
+        return {
+          title: "Payment Failed",
+          description:
+            transactionError?.message ||
+            "The transaction could not be completed.",
+          showSpinner: false,
+          className: "text-red-400",
+        };
+      default:
+        return {
+          title: "Ready for Payment",
+          description: "Please confirm the transaction in your wallet.",
+          showSpinner: false,
+          className: "text-yellow-400",
+        };
     }
   };
+
+  const statusConfig = getStatusConfig();
 
   const handleModalClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log("🚫 [OpenPendingDisputeModal] Modal not open, returning null");
+    return null;
+  }
+
+  console.log("🎬 [OpenPendingDisputeModal] Rendering modal with:", {
+    votingId,
+    transactionStep,
+    modalState,
+    statusConfig,
+  });
 
   return (
     <AnimatePresence mode="wait">
@@ -466,9 +382,7 @@ export default function OpenPendingDisputeModal({
               size="sm"
               onClick={onClose}
               className="text-white/70 hover:text-white"
-              disabled={
-                transactionStep === "pending" || isProcessingPaidDispute
-              }
+              disabled={isProcessing}
             >
               <X className="h-5 w-5" />
             </Button>
@@ -476,15 +390,24 @@ export default function OpenPendingDisputeModal({
 
           {/* Content */}
           <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
+            {/* Transaction Status Display */}
+            <div className="mb-6">
+              <TransactionStatus
+                status={transactionStep}
+                onRetry={handleRetryPayment}
+                title={statusConfig.title}
+                description={statusConfig.description}
+                showRetryButton={true}
+                className={statusConfig.className}
+              />
+            </div>
+
             {/* ADD THIS NEW PROCESSING SECTION */}
             <div className="mb-6 rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
               <div className="flex flex-col items-center justify-center text-center">
                 {/* Animated Spinner */}
                 <div className="relative mb-6">
                   <div className="size-20 animate-spin rounded-full border-4 border-cyan-400/20 border-t-cyan-400"></div>
-                  {/* <div className="absolute inset-0 flex items-center justify-center">
-                    <Scale className="h-8 w-8 text-cyan-300" />
-                  </div> */}
                 </div>
 
                 {/* Status Message */}
@@ -562,62 +485,131 @@ export default function OpenPendingDisputeModal({
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Submit Button */}
-              <div className="flex items-center justify-between gap-3 pt-4">
+            {/* Transaction Information */}
+            <div className="space-y-4">
+              <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+                <h4 className="mb-2 text-sm font-medium text-cyan-300">
+                  Transaction Details
+                </h4>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-cyan-200/80">Agreement:</span>
+                    <span className="text-white">
+                      {agreement?.title || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cyan-200/80">Type:</span>
+                    <span className="text-white">Paid Dispute</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cyan-200/80">Voting ID:</span>
+                    <span className="font-mono text-white">{votingId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cyan-200/80">Network:</span>
+                    <span className="text-white">{networkInfo.chainName}</span>
+                  </div>
+                  {transactionHash && (
+                    <div className="flex justify-between">
+                      <span className="text-cyan-200/80">
+                        Transaction Hash:
+                      </span>
+                      <span className="font-mono text-xs text-green-300">
+                        {transactionHash.slice(0, 10)}...
+                        {transactionHash.slice(-8)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Smart Contract Info */}
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+                <div className="flex items-start gap-2">
+                  <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                  <div className="text-xs text-blue-200">
+                    This transaction records your dispute on the blockchain for
+                    transparency and security. Please confirm the transaction in
+                    your wallet when prompted.
+                  </div>
+                </div>
+              </div>
+
+              {/* Error details for debugging */}
+              {transactionError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-900/20 p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
+                    <div className="text-xs">
+                      <p className="font-medium text-red-300">Error Details:</p>
+                      <p className="mt-1 text-sm break-all text-red-200/80">
+                        {transactionError.message || "Unknown error occurred"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-6 flex justify-end space-x-3">
+              {transactionStep !== "success" && (
                 <Button
-                  type="submit"
-                  variant="neon"
-                  className="neon-hover w-full py-3"
-                  disabled={
-                    transactionStep === "pending" || isProcessingPaidDispute
-                  }
+                  variant="outline"
+                  onClick={onClose}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                  disabled={isProcessing}
                 >
-                  {transactionStep === "pending" ? (
+                  Cancel
+                </Button>
+              )}
+
+              {transactionStep === "error" && (
+                <Button
+                  variant="outline"
+                  onClick={handleRetryPayment}
+                  className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {form.kind === "Paid" && transactionStep === "pending"
-                        ? "Processing Transaction..."
-                        : "Creating Dispute..."}
+                      Retrying...
                     </>
                   ) : (
-                    <>
-                      <Scale className="mr-2 h-4 w-4" />
-                      {form.kind === "Paid"
-                        ? "Pay & Open Dispute"
-                        : "Open Dispute"}
-                    </>
+                    "Retry Payment"
                   )}
                 </Button>
-              </div>
-            </form>
+              )}
 
-            {/* Smart Contract Info for Paid Disputes */}
-            {form.kind === "Paid" && transactionStep === "idle" && (
-              <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-4">
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5 text-cyan-300" />
-                  <h4 className="text-sm font-medium text-cyan-200">
-                    Smart Contract Transaction Required
-                  </h4>
-                </div>
-                <p className="mt-2 text-xs text-cyan-300/80">
-                  For paid disputes, you'll need to confirm a transaction in
-                  your wallet to record the dispute on-chain. This ensures
-                  transparency and security for your case.
-                </p>
-                <div className="mt-3 text-xs text-cyan-400">
-                  <div className="flex items-center gap-1">
-                    <span>•</span>
-                    <span>Voting ID: {votingId}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span>•</span>
-                    <span>Network: {networkInfo.chainName}</span>
-                  </div>
-                </div>
+              {transactionStep === "success" && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    console.log(
+                      "🎯 [OpenPendingDisputeModal] Continue button clicked",
+                    );
+                    onDisputeCreated();
+                    onClose();
+                  }}
+                  className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                >
+                  Continue to Dispute
+                </Button>
+              )}
+            </div>
+
+            {/* Footer with helpful info */}
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <Info className="h-3 w-3" />
+                <span>
+                  If you encounter issues, try refreshing the page or check your
+                  wallet connection.
+                </span>
               </div>
-            )}
+            </div>
           </div>
         </motion.div>
       </motion.div>

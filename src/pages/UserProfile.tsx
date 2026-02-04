@@ -94,6 +94,11 @@ const DisputeStatusBadge = ({ status }: { status: string }) => {
       label: "Pending",
       color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
     },
+    "Pending Payment": {
+      // ✅ Fixed: Add the space
+      label: "Pending Payment",
+      color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+    },
     "Vote in Progress": {
       label: "Voting",
       color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
@@ -110,7 +115,7 @@ const DisputeStatusBadge = ({ status }: { status: string }) => {
 
   const config = statusConfig[status as keyof typeof statusConfig] || {
     label: status,
-    color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+    color: "bg-pink-500/20 text-gray-300 border-gray-400/30",
   };
 
   return (
@@ -211,23 +216,49 @@ const getUserRoleInAgreement = (
 ): string => {
   if (!userId && !userWalletAddress) return "Unknown";
 
-  // For escrow agreements, check description for roles
+  // For escrow agreements, use the new payeeWalletAddress and payerWalletAddress fields
   if (isEscrow) {
-    const roles = extractRolesFromDescription(agreement.description || "");
+    // Normalize wallet addresses for comparison
+    const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
+    const payerWallet = agreement.payerWalletAddress?.toLowerCase();
+    const userWallet = userWalletAddress?.toLowerCase();
 
-    if (userWalletAddress) {
-      // Check if user is Service Provider (from wallet address)
-      if (
-        roles.serviceProvider &&
-        roles.serviceProvider.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
+    if (userWallet) {
+      // Check if user is Payee (Service Provider)
+      if (payeeWallet && payeeWallet === userWallet) {
         return "Service Provider";
       }
-      // Check if user is Service Recipient (from wallet address)
-      if (
-        roles.serviceRecipient &&
-        roles.serviceRecipient.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
+      // Check if user is Payer (Service Recipient)
+      if (payerWallet && payerWallet === userWallet) {
+        return "Service Recipient";
+      }
+    }
+
+    // Fallback: Check by user ID from firstParty/counterParty
+    const userIdNum = userId ? Number(userId) : null;
+    const firstPartyId = agreement.firstParty
+      ? Number(agreement.firstParty.id)
+      : null;
+    const counterPartyId = agreement.counterParty
+      ? Number(agreement.counterParty.id)
+      : null;
+
+    if (userIdNum) {
+      if (firstPartyId === userIdNum) return "Service Provider";
+      if (counterPartyId === userIdNum) return "Service Recipient";
+    }
+
+    // If no wallet match and no ID match, try to infer from description as fallback
+    const roles = extractRolesFromDescription(agreement.description || "");
+
+    if (userWallet) {
+      const provider = roles.serviceProvider?.toLowerCase();
+      const recipient = roles.serviceRecipient?.toLowerCase();
+
+      if (provider && provider === userWallet) {
+        return "Service Provider";
+      }
+      if (recipient && recipient === userWallet) {
         return "Service Recipient";
       }
     }
@@ -307,6 +338,8 @@ export default function UserProfile() {
     disputes,
     loading: disputesLoading,
     error: disputesError,
+    hasMore,
+    loadMore,
   } = useDisputesApi(user?.id);
 
   // Decode the URL parameter to handle spaces and special characters
@@ -367,8 +400,6 @@ export default function UserProfile() {
 
   // Transform escrow agreement for display
   const transformEscrowAgreement = (apiAgreement: any) => {
-    const roles = extractRolesFromDescription(apiAgreement.description || "");
-
     const formatWalletAddress = (address: string): string => {
       if (!address) return "Unknown";
       if (address.startsWith("@")) return address;
@@ -378,17 +409,36 @@ export default function UserProfile() {
       return address;
     };
 
+    // Use the new fields if available, otherwise fallback to description extraction
+    const serviceProvider = apiAgreement.payeeWalletAddress
+      ? formatWalletAddress(apiAgreement.payeeWalletAddress)
+      : (() => {
+          const roles = extractRolesFromDescription(
+            apiAgreement.description || "",
+          );
+          return roles.serviceProvider
+            ? formatWalletAddress(roles.serviceProvider)
+            : "Unknown";
+        })();
+
+    const serviceRecipient = apiAgreement.payerWalletAddress
+      ? formatWalletAddress(apiAgreement.payerWalletAddress)
+      : (() => {
+          const roles = extractRolesFromDescription(
+            apiAgreement.description || "",
+          );
+          return roles.serviceRecipient
+            ? formatWalletAddress(roles.serviceRecipient)
+            : "Unknown";
+        })();
+
     return {
       id: `${apiAgreement.id}`,
       title: apiAgreement.title || `Escrow Deal #${apiAgreement.id}`,
-      serviceProvider: roles.serviceProvider
-        ? formatWalletAddress(roles.serviceProvider)
-        : "Unknown",
-      serviceRecipient: roles.serviceRecipient
-        ? formatWalletAddress(roles.serviceRecipient)
-        : "Unknown",
-      rawServiceProvider: roles.serviceProvider,
-      rawServiceRecipient: roles.serviceRecipient,
+      serviceProvider,
+      serviceRecipient,
+      rawServiceProvider: apiAgreement.payeeWalletAddress,
+      rawServiceRecipient: apiAgreement.payerWalletAddress,
       token: apiAgreement.tokenSymbol || "ETH",
       amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
       status: mapAgreementStatusToEscrow(apiAgreement.status),
@@ -400,9 +450,10 @@ export default function UserProfile() {
       createdAt: apiAgreement.dateCreated || apiAgreement.createdAt,
       firstParty: apiAgreement.firstParty,
       counterParty: apiAgreement.counterParty,
+      payeeWalletAddress: apiAgreement.payeeWalletAddress,
+      payerWalletAddress: apiAgreement.payerWalletAddress,
     };
   };
-
   // Transform reputational agreement for display
   const transformReputationalAgreement = (apiAgreement: any) => {
     return {
@@ -447,7 +498,20 @@ export default function UserProfile() {
           return true;
         }
 
-        // Check by wallet address from description
+        // Check by wallet address using the new fields
+        if (userWallet) {
+          const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
+          const payerWallet = agreement.payerWalletAddress?.toLowerCase();
+
+          if (
+            (payeeWallet && payeeWallet === userWallet) ||
+            (payerWallet && payerWallet === userWallet)
+          ) {
+            return true;
+          }
+        }
+
+        // Fallback to description extraction for backward compatibility
         if (userWallet) {
           const roles = extractRolesFromDescription(
             agreement.description || "",
@@ -676,6 +740,93 @@ export default function UserProfile() {
     );
   }, [currentUser, decodedHandle]);
 
+  // Add this function inside the component, before the useEffect
+  const loadUserData = useCallback(async () => {
+    if (!decodedHandle) {
+      setError("No user handle provided");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      let userData: User | null = null;
+
+      if (isOwnProfile) {
+        console.log("🔐 Loading current user's profile");
+        const apiUser = await apiService.getMyAccount();
+        userData = mapApiUserToUser(apiUser);
+      } else {
+        const cleanHandle = decodedHandle.replace(/^@/, "");
+        const isWalletAddress = /^0x[a-fA-F0-9]{40}$/.test(cleanHandle);
+        const isNumericId = !isNaN(Number(cleanHandle));
+
+        if (isWalletAddress) {
+          console.log(`🔐 Handle appears to be wallet address: ${cleanHandle}`);
+
+          try {
+            const apiUser =
+              await apiService.getUserByWalletAddress(cleanHandle);
+            userData = mapApiUserToUser(apiUser);
+          } catch (walletError) {
+            console.log("🔐 Wallet address lookup failed:", walletError);
+            try {
+              const apiUser = await apiService.getUserByUsername(cleanHandle);
+              userData = mapApiUserToUser(apiUser);
+            } catch (usernameError) {
+              console.log("🔐 Username lookup also failed:", usernameError);
+              throw new Error(
+                `User with wallet address ${cleanHandle} not found`,
+              );
+            }
+          }
+        } else if (isNumericId) {
+          console.log(`🔐 Handle appears to be numeric ID: ${cleanHandle}`);
+          try {
+            const apiUser = await apiService.getUserById(cleanHandle);
+            userData = mapApiUserToUser(apiUser);
+          } catch (idError) {
+            console.log("🔐 ID lookup failed:", idError);
+            throw new Error(`User with ID ${cleanHandle} not found`);
+          }
+        } else {
+          console.log(`🔐 Handle appears to be username: ${cleanHandle}`);
+          try {
+            const apiUser = await apiService.getUserByUsername(cleanHandle);
+            userData = mapApiUserToUser(apiUser);
+          } catch (usernameError) {
+            console.log("🔐 Username lookup failed:", usernameError);
+            throw new Error(`User "${cleanHandle}" not found`);
+          }
+        }
+      }
+
+      setUser(userData);
+
+      if (!userData) {
+        setError("User not found");
+      }
+    } catch (err) {
+      console.error("Error loading user data:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load user profile",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [decodedHandle, isOwnProfile]);
+
+  // Then update the useEffect to use this function
+  useEffect(() => {
+    if (decodedHandle && isAuthenticated) {
+      loadUserData();
+    } else if (!isAuthenticated) {
+      setLoading(false);
+    }
+  }, [decodedHandle, isAuthenticated, loadUserData]);
+
   // Load user data
   useEffect(() => {
     const loadUserData = async () => {
@@ -810,53 +961,173 @@ export default function UserProfile() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-cyan-300">Loading profile...</div>
+      <div className="relative flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="relative mx-auto mb-8">
+            <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
+            <div className="absolute inset-0 mx-auto size-32 animate-ping rounded-full border-2 border-cyan-400/40"></div>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-cyan-300">
+              Loading Profile
+            </h3>
+            <p className="text-sm text-cyan-200/70">
+              Preparing {handle ? `${handle}'s` : "user"} profile...
+            </p>
+          </div>
+          <div className="mt-4 flex justify-center space-x-1">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error || !user) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="max-w-md text-center">
-          <div className="mb-4 text-2xl text-white/70">
-            {error || "Profile Not Available"}
-          </div>
-          <div className="mb-4 text-white/50">
-            {error?.includes("not found") ? (
-              <div>
-                <p>User {handle} was not found.</p>
-                <p className="mt-2 text-sm">
-                  Make sure you're using one of these formats:
+      <div className="flex min-h-screen justify-center">
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className="mb-6">
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-cyan-500/10">
+              <FiAlertCircle className="h-10 w-10 text-red-400" />
+            </div>
+            <h2 className="mb-2 text-2xl font-bold text-white">
+              {error?.includes("not found")
+                ? "User Profile Not Found"
+                : "Unable to Load Profile"}
+            </h2>
+            <div className="mb-6 max-w-md text-cyan-200/80">
+              {error?.includes("not found") ? (
+                <p>
+                  The user profile for "{handle}" doesn't exist or may have been
+                  removed. Please check the details and try again.
                 </p>
-                <ul className="mt-2 text-sm text-cyan-300">
-                  <li>• Username: /profile/username</li>
-                  <li>• Telegram: /profile/@telegramUsername</li>
-                  <li>• User ID: /profile/123</li>
-                  <li>• Wallet: /profile/0x123...abc</li>
+              ) : (
+                <p>
+                  We encountered an issue loading this profile. Please try again
+                  or check the troubleshooting tips below.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button
+              onClick={() => {
+                // Try to refetch the user data
+                setLoading(true);
+                setError(null);
+                // Trigger a reload after a short delay
+                setTimeout(() => {
+                  loadUserData();
+                }, 500);
+              }}
+              variant="outline"
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              <Loader2 className="mr-2 h-4 w-4" />
+              Retry Loading Profile
+            </Button>
+            <Button
+              onClick={() => navigate("/profile")}
+              className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
+            >
+              Go to My Profile
+            </Button>
+          </div>
+          <div className="mt-8 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <div className="text-sm text-cyan-300">
+              <p className="mb-1 font-medium">Troubleshooting tips:</p>
+              <ul className="space-y-1">
+                <li>• Check if the username/wallet address is correct</li>
+                <li>• Verify your internet connection</li>
+                <li>• The profile may have been deleted or made private</li>
+                <li>• Try refreshing the page</li>
+              </ul>
+            </div>
+          </div>
+          {/* <div className="mt-6 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <div className="text-sm text-cyan-300">
+              <p className="mb-1 font-medium">Supported Profile URL formats:</p>
+              <ul className="space-y-1">
+                <li>
+                  • Username:{" "}
+                  <code className="ml-1 rounded bg-black/30 px-1.5 py-0.5">
+                    /profile/username
+                  </code>
+                </li>
+                <li>
+                  • Telegram:{" "}
+                  <code className="ml-1 rounded bg-black/30 px-1.5 py-0.5">
+                    /profile/@telegramUsername
+                  </code>
+                </li>
+                <li>
+                  • User ID:{" "}
+                  <code className="ml-1 rounded bg-black/30 px-1.5 py-0.5">
+                    /profile/123
+                  </code>
+                </li>
+                <li>
+                  • Wallet:{" "}
+                  <code className="ml-1 rounded bg-black/30 px-1.5 py-0.5">
+                    /profile/0x123...abc
+                  </code>
+                </li>
+              </ul>
+            </div>
+          </div> */}
+          {/* {currentUser && (
+            <div className="mt-6 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+              <div className="text-sm text-cyan-300">
+                <p className="mb-1 font-medium">Quick links to your profile:</p>
+                <ul className="space-y-1 text-xs">
+                  <li>
+                    <button
+                      onClick={() =>
+                        navigate(
+                          `/profile/${
+                            currentUser?.telegram?.username ||
+                            currentUser?.username
+                          }`,
+                        )
+                      }
+                      className="text-cyan-200 hover:text-cyan-100 hover:underline"
+                    >
+                      • Your profile: /profile/
+                      {currentUser?.telegram?.username || currentUser?.username}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => navigate(`/profile/${currentUser?.id}`)}
+                      className="text-cyan-200 hover:text-cyan-100 hover:underline"
+                    >
+                      • Your profile by ID: /profile/{currentUser?.id}
+                    </button>
+                  </li>
+                  {currentUser?.walletAddress && (
+                    <li>
+                      <button
+                        onClick={() =>
+                          navigate(`/profile/${currentUser.walletAddress}`)
+                        }
+                        className="text-cyan-200 hover:text-cyan-100 hover:underline"
+                      >
+                        • Your profile by wallet: /profile/
+                        {currentUser.walletAddress}
+                      </button>
+                    </li>
+                  )}
                 </ul>
               </div>
-            ) : (
-              <div>
-                <p>Unable to load user profile for {handle}.</p>
-                <div className="mt-4 text-sm text-cyan-300">
-                  <p>Try these URLs instead:</p>
-                  <p>
-                    • Your profile: /profile/
-                    {currentUser?.telegram?.username || currentUser?.username}
-                  </p>
-                  <p>• Your profile by ID: /profile/{currentUser?.id}</p>
-                  {currentUser?.walletAddress && (
-                    <p>
-                      • Your profile by wallet: /profile/
-                      {currentUser.walletAddress}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )} */}
         </div>
       </div>
     );
@@ -1014,6 +1285,7 @@ export default function UserProfile() {
       {/* User's Public Content */}
       <section className="flex flex-col gap-6 lg:grid lg:grid-cols-3">
         {/* User's Disputes */}
+
         <BentoCard
           title={`${formatHandle(user.handle)}'s Disputes`}
           icon={<FiAlertCircle />}
@@ -1022,7 +1294,7 @@ export default function UserProfile() {
           scrollable
           maxHeight="260px"
         >
-          {disputesLoading ? (
+          {disputesLoading && disputes.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
               <span className="ml-2 text-cyan-300">Loading disputes...</span>
@@ -1044,64 +1316,94 @@ export default function UserProfile() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {disputes.map((dispute) => (
-                <div
-                  key={dispute.id}
-                  onClick={() => handleDisputeClick(dispute.id)}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center justify-between">
-                        <h4 className="truncate text-sm font-medium text-white/90">
-                          {dispute.title}
-                        </h4>
-                        <DisputeStatusBadge status={dispute.status} />
-                      </div>
-
-                      <div className="mb-2 text-xs text-white/70">
-                        Created: {formatDate(dispute.createdAt)}
-                      </div>
-
-                      <div className="space-y-1 text-xs text-white/60">
-                        <div className="flex justify-between">
-                          <span>Parties:</span>
-                          <span className="text-white/80">
-                            {formatDisputeParty(dispute.plaintiff)} vs{" "}
-                            {formatDisputeParty(dispute.defendant)}
-                          </span>
+            <>
+              <div className="space-y-3">
+                {disputes.map((dispute) => (
+                  <div
+                    key={dispute.id}
+                    onClick={() => handleDisputeClick(dispute.id)}
+                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between">
+                          <h4 className="max-w-[6rem] truncate text-sm font-medium text-white/90 sm:max-w-[10rem]">
+                            {dispute.title}
+                          </h4>
+                          <DisputeStatusBadge status={dispute.status} />
                         </div>
 
-                        <div className="flex justify-between">
-                          <span>Their Role:</span>
-                          <span
-                            className={
-                              getUserRoleInDispute(dispute) === "Plaintiff"
-                                ? "text-blue-300"
-                                : getUserRoleInDispute(dispute) === "Defendant"
-                                  ? "text-pink-300"
-                                  : "text-cyan-300"
-                            }
-                          >
-                            {getUserRoleInDispute(dispute)}
-                          </span>
+                        <div className="mb-2 text-xs text-white/70">
+                          Created: {formatDate(dispute.createdAt)}
                         </div>
-                        <div className="flex justify-between">
-                          <span>Type:</span>
-                          <span className="text-white/80">
-                            {dispute.request}
-                          </span>
+
+                        <div className="space-y-1 text-xs text-white/60">
+                          <div className="flex justify-between">
+                            <span>Parties:</span>
+                            <span className="text-white/80">
+                              {formatDisputeParty(dispute.plaintiff)} vs{" "}
+                              {formatDisputeParty(dispute.defendant)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span>Their Role:</span>
+                            <span
+                              className={
+                                getUserRoleInDispute(dispute) === "Plaintiff"
+                                  ? "text-blue-300"
+                                  : getUserRoleInDispute(dispute) ===
+                                      "Defendant"
+                                    ? "text-pink-300"
+                                    : "text-cyan-300"
+                              }
+                            >
+                              {getUserRoleInDispute(dispute)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Type:</span>
+                            <span className="text-white/80">
+                              {dispute.request}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
+                ))}
+              </div>
+
+              {/* ADD THE LOAD MORE BUTTON HERE */}
+              {hasMore && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    onClick={loadMore}
+                    disabled={disputesLoading}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    size="sm"
+                  >
+                    {disputesLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More Disputes"
+                    )}
+                  </Button>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Show loading indicator when loading more */}
+              {disputesLoading && disputes.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+                </div>
+              )}
+            </>
           )}
         </BentoCard>
-
         {/* User's Public Agreements (Reputational) */}
         <BentoCard
           title={`${formatHandle(user.handle)}'s Agreements`}
@@ -1219,7 +1521,6 @@ export default function UserProfile() {
             </div>
           )}
         </BentoCard>
-
         {/* Escrow Deals */}
         <BentoCard
           title={`${formatHandle(user.handle)}'s Escrow Deals`}

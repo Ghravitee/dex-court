@@ -25,6 +25,7 @@ import { WalletLinkingModal } from "../components/WalletLinkingModal";
 import TrustMeter from "../components/TrustMeter";
 import useTrustScore from "../hooks/useTrustScore";
 import Admin from "../components/ui/svgcomponents/Admin";
+import { useReputationHistory } from "../hooks/useReputation";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -370,23 +371,49 @@ const getUserRoleInAgreement = (
 ): string => {
   if (!userId && !userWalletAddress) return "Unknown";
 
-  // For escrow agreements, check description for roles
+  // For escrow agreements, use the new payeeWalletAddress and payerWalletAddress fields
   if (isEscrow) {
-    const roles = extractRolesFromDescription(agreement.description || "");
+    // Normalize wallet addresses for comparison
+    const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
+    const payerWallet = agreement.payerWalletAddress?.toLowerCase();
+    const userWallet = userWalletAddress?.toLowerCase();
 
-    if (userWalletAddress) {
-      // Check if user is Service Provider (from wallet address)
-      if (
-        roles.serviceProvider &&
-        roles.serviceProvider.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
+    if (userWallet) {
+      // Check if user is Payee (Service Provider)
+      if (payeeWallet && payeeWallet === userWallet) {
         return "Service Provider";
       }
-      // Check if user is Service Recipient (from wallet address)
-      if (
-        roles.serviceRecipient &&
-        roles.serviceRecipient.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
+      // Check if user is Payer (Service Recipient)
+      if (payerWallet && payerWallet === userWallet) {
+        return "Service Recipient";
+      }
+    }
+
+    // Fallback: Check by user ID from firstParty/counterParty
+    const userIdNum = userId ? Number(userId) : null;
+    const firstPartyId = agreement.firstParty
+      ? Number(agreement.firstParty.id)
+      : null;
+    const counterPartyId = agreement.counterParty
+      ? Number(agreement.counterParty.id)
+      : null;
+
+    if (userIdNum) {
+      if (firstPartyId === userIdNum) return "Service Provider";
+      if (counterPartyId === userIdNum) return "Service Recipient";
+    }
+
+    // If no wallet match and no ID match, try to infer from description as fallback
+    const roles = extractRolesFromDescription(agreement.description || "");
+
+    if (userWallet) {
+      const provider = roles.serviceProvider?.toLowerCase();
+      const recipient = roles.serviceRecipient?.toLowerCase();
+
+      if (provider && provider === userWallet) {
+        return "Service Provider";
+      }
+      if (recipient && recipient === userWallet) {
         return "Service Recipient";
       }
     }
@@ -426,6 +453,96 @@ const getUserRoleInAgreement = (
   return "Creator";
 };
 
+const ReputationEventTypeEnum = {
+  TelegramVerified: 1,
+  AgreementCompleted: 2,
+  AgreementEscrowCompleted: 3,
+  DisputeWon: 4,
+  VotedWinningOutcome: 5,
+  WitnessEvery5Comments: 6,
+  JudgeWinningVote: 7,
+  JudgeCommentAdded: 8,
+  FirstJudgeToVote: 9,
+  FirstCommunityToVote: 10,
+  CommunityVoteLost: 50,
+  JudgeVoteLost: 51,
+  DisputeLostRegular: 52,
+  DisputeLostEscrow: 53,
+  LateDelivery: 54,
+  FrequentCancellationsBanned: 55,
+  SpamAgreementsTempBan: 56,
+};
+
+// Update the formatReputationEvent function:
+const formatReputationEvent = (event: any) => {
+  const getEventTypeDisplay = (eventType: number) => {
+    switch (eventType) {
+      case ReputationEventTypeEnum.TelegramVerified:
+        return "Telegram Verified";
+      case ReputationEventTypeEnum.AgreementCompleted:
+        return "Agreement Completed";
+      case ReputationEventTypeEnum.AgreementEscrowCompleted:
+        return "Escrow Agreement Completed";
+      case ReputationEventTypeEnum.DisputeWon:
+        return "Dispute Won";
+      case ReputationEventTypeEnum.VotedWinningOutcome:
+        return "Voted Winning Outcome";
+      case ReputationEventTypeEnum.WitnessEvery5Comments:
+        return "Witness Contribution";
+      case ReputationEventTypeEnum.JudgeWinningVote:
+        return "Judge Winning Vote";
+      case ReputationEventTypeEnum.JudgeCommentAdded:
+        return "Judge Comment Added";
+      case ReputationEventTypeEnum.FirstJudgeToVote:
+        return "First Judge to Vote";
+      case ReputationEventTypeEnum.FirstCommunityToVote:
+        return "First Community to Vote";
+      case ReputationEventTypeEnum.CommunityVoteLost:
+        return "Community Vote Lost";
+      case ReputationEventTypeEnum.JudgeVoteLost:
+        return "Judge Vote Lost";
+      case ReputationEventTypeEnum.DisputeLostRegular:
+        return "Dispute Lost (Regular)";
+      case ReputationEventTypeEnum.DisputeLostEscrow:
+        return "Dispute Lost (Escrow)";
+      case ReputationEventTypeEnum.LateDelivery:
+        return "Late Delivery";
+      case ReputationEventTypeEnum.FrequentCancellationsBanned:
+        return "Frequent Cancellations";
+      case ReputationEventTypeEnum.SpamAgreementsTempBan:
+        return "Spam Agreements";
+      default:
+        return "Reputation Event";
+    }
+  };
+
+  const getEventIcon = (eventType: number) => {
+    // Positive events
+    if (eventType <= 10) {
+      return "🟢";
+    }
+    // Negative events (50+)
+    if (eventType >= 50) {
+      return "🔴";
+    }
+    return "⚪";
+  };
+
+  const isPositiveEvent = (eventType: number) => {
+    return eventType <= 10; // Positive events are 1-10
+  };
+
+  return {
+    id: event.id,
+    eventType: getEventTypeDisplay(event.eventType),
+    icon: getEventIcon(event.eventType),
+    value: event.value,
+    isPositive: isPositiveEvent(event.eventType),
+    eventId: event.eventId,
+    createdAt: event.createdAt,
+  };
+};
+
 export default function Profile() {
   const { isAuthenticated, user, login } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -449,10 +566,18 @@ export default function Profile() {
   const [agreementsError, setAgreementsError] = useState<string | null>(null);
 
   const {
+    data: reputationHistory,
+    loading: reputationLoading,
+    error: reputationError,
+  } = useReputationHistory(user?.id?.toString() || null);
+
+  const {
     disputes,
     loading: disputesLoading,
     error: disputesError,
-  } = useDisputesApi(user?.id?.toString() || "");
+    hasMore,
+    loadMore,
+  } = useDisputesApi(user?.id);
 
   const {
     updateAccount,
@@ -515,9 +640,9 @@ export default function Profile() {
   }, [isAuthenticated, loadAgreements]);
 
   // Transform escrow agreement for display
+  // Replace the current transformEscrowAgreement function (around line 156):
+  // Transform escrow agreement for display
   const transformEscrowAgreement = (apiAgreement: any) => {
-    const roles = extractRolesFromDescription(apiAgreement.description || "");
-
     const formatWalletAddress = (address: string): string => {
       if (!address) return "Unknown";
       if (address.startsWith("@")) return address;
@@ -527,17 +652,36 @@ export default function Profile() {
       return address;
     };
 
+    // Use the new fields if available, otherwise fallback to description extraction
+    const serviceProvider = apiAgreement.payeeWalletAddress
+      ? formatWalletAddress(apiAgreement.payeeWalletAddress)
+      : (() => {
+          const roles = extractRolesFromDescription(
+            apiAgreement.description || "",
+          );
+          return roles.serviceProvider
+            ? formatWalletAddress(roles.serviceProvider)
+            : "Unknown";
+        })();
+
+    const serviceRecipient = apiAgreement.payerWalletAddress
+      ? formatWalletAddress(apiAgreement.payerWalletAddress)
+      : (() => {
+          const roles = extractRolesFromDescription(
+            apiAgreement.description || "",
+          );
+          return roles.serviceRecipient
+            ? formatWalletAddress(roles.serviceRecipient)
+            : "Unknown";
+        })();
+
     return {
       id: `${apiAgreement.id}`,
       title: apiAgreement.title || `Escrow Deal #${apiAgreement.id}`,
-      serviceProvider: roles.serviceProvider
-        ? formatWalletAddress(roles.serviceProvider)
-        : "Unknown",
-      serviceRecipient: roles.serviceRecipient
-        ? formatWalletAddress(roles.serviceRecipient)
-        : "Unknown",
-      rawServiceProvider: roles.serviceProvider,
-      rawServiceRecipient: roles.serviceRecipient,
+      serviceProvider,
+      serviceRecipient,
+      rawServiceProvider: apiAgreement.payeeWalletAddress,
+      rawServiceRecipient: apiAgreement.payerWalletAddress,
       token: apiAgreement.tokenSymbol || "ETH",
       amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
       status: mapAgreementStatusToEscrow(apiAgreement.status),
@@ -549,6 +693,8 @@ export default function Profile() {
       createdAt: apiAgreement.dateCreated || apiAgreement.createdAt,
       firstParty: apiAgreement.firstParty,
       counterParty: apiAgreement.counterParty,
+      payeeWalletAddress: apiAgreement.payeeWalletAddress,
+      payerWalletAddress: apiAgreement.payerWalletAddress,
     };
   };
 
@@ -580,6 +726,7 @@ export default function Profile() {
       .map(transformReputationalAgreement);
   }, [reputationalAgreements, user?.id]);
 
+  // Replace the current userEscrowDeals filter (around line 189):
   const userEscrowDeals = useMemo(() => {
     if (!user?.id && !user?.walletAddress) return [];
 
@@ -596,7 +743,20 @@ export default function Profile() {
           return true;
         }
 
-        // Check by wallet address from description
+        // Check by wallet address using the new fields
+        if (userWallet) {
+          const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
+          const payerWallet = agreement.payerWalletAddress?.toLowerCase();
+
+          if (
+            (payeeWallet && payeeWallet === userWallet) ||
+            (payerWallet && payerWallet === userWallet)
+          ) {
+            return true;
+          }
+        }
+
+        // Fallback to description extraction for backward compatibility
         if (userWallet) {
           const roles = extractRolesFromDescription(
             agreement.description || "",
@@ -656,6 +816,7 @@ export default function Profile() {
   }, [userEscrowDeals]);
 
   // Memoized disputes stats calculation
+  // Memoized disputes stats calculation
   const disputesStats = useMemo(
     () => ({
       total: disputes.length,
@@ -668,9 +829,14 @@ export default function Profile() {
         .length,
       dismissed: disputes.filter((dispute) => dispute.status === "Dismissed")
         .length,
+      pendingPayment: disputes.filter(
+        (dispute) => dispute.status === "Pending Payment",
+      ).length,
     }),
     [disputes],
   );
+
+  console.log("dispute stats", disputesStats);
 
   const getUserRoleInDispute = useCallback(
     (dispute: DisputeRow) => {
@@ -736,6 +902,11 @@ export default function Profile() {
         label: "Pending",
         color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
       },
+      "Pending Payment": {
+        // ✅ Fixed: Add the space
+        label: "Pending Payment",
+        color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+      },
       "Vote in Progress": {
         label: "Voting",
         color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
@@ -752,7 +923,7 @@ export default function Profile() {
 
     const config = statusConfig[status as keyof typeof statusConfig] || {
       label: status,
-      color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+      color: "bg-pink-500/20 text-gray-300 border-gray-400/30",
     };
 
     return (
@@ -907,6 +1078,26 @@ export default function Profile() {
 
   const [otp, setOtp] = useState("");
   const [loading] = useState(false);
+
+  useEffect(() => {
+    console.log("🔍 Reputation history debug:", {
+      hasUser: !!user,
+      userId: user?.id,
+      reputationHistory,
+      reputationLoading,
+      reputationError,
+      totalResults: reputationHistory?.totalResults,
+      resultsCount: reputationHistory?.results?.length,
+    });
+  }, [reputationHistory, reputationLoading, reputationError, user]);
+
+  // Also add this to debug the BentoCard rendering
+  useEffect(() => {
+    console.log("🎨 BentoCard visibility:", {
+      isAuthenticated,
+      userRoles: userData.roles,
+    });
+  }, [isAuthenticated, userData.roles]);
 
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
@@ -1323,36 +1514,186 @@ export default function Profile() {
               )}
 
             {/* Reputation History - Show for all users */}
+            {/* Replace the "My Reputation History" BentoCard section with this: */}
             <BentoCard
               title="My Reputation History"
               icon={<RiShieldCheckFill />}
               color="cyan"
-              count={0}
+              count={reputationHistory?.totalResults || 0}
               scrollable
               maxHeight="260px"
             >
-              <div className="py-8 text-center">
-                <div className="mb-2 text-lg text-cyan-300">
-                  {userData.roles.admin
-                    ? "Administrator"
-                    : userData.roles.judge
-                      ? "Judge Reputation"
-                      : userData.roles.community
-                        ? "Community Reputation"
-                        : "Building Reputation"}
+              {reputationLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+                  <span className="ml-2 text-cyan-300">
+                    Loading reputation history...
+                  </span>
                 </div>
-                <div className="text-sm text-white/50">
-                  {userData.roles.admin
-                    ? "As an administrator, you have full platform access and oversight capabilities."
-                    : userData.roles.judge
-                      ? "Your reputation as a judge will grow with each fair dispute resolution."
-                      : userData.roles.community
-                        ? "Your community reputation builds with active participation."
-                        : "Your reputation events will appear here as you participate in agreements and disputes."}
+              ) : reputationError ? (
+                <div className="py-8 text-center">
+                  <div className="mb-2 text-lg text-red-300">
+                    Error loading reputation history
+                  </div>
+                  <div className="text-sm text-white/50">{reputationError}</div>
                 </div>
-              </div>
-            </BentoCard>
+              ) : !reputationHistory?.results?.length ? (
+                <div className="py-8 text-center">
+                  <div className="mb-2 text-lg text-cyan-300">
+                    {userData.roles.admin
+                      ? "Administrator Reputation"
+                      : userData.roles.judge
+                        ? "Judge Reputation"
+                        : userData.roles.community
+                          ? "Community Reputation"
+                          : "Building Reputation"}
+                  </div>
+                  <div className="text-sm text-white/50">
+                    {userData.roles.admin
+                      ? "Administrators maintain platform integrity. Your reputation score is based on oversight activities."
+                      : userData.roles.judge
+                        ? "Judges earn reputation through fair dispute resolution and timely decisions."
+                        : userData.roles.community
+                          ? "Community members build reputation by participating in agreements and disputes."
+                          : "Complete agreements, resolve disputes, and participate in the community to build your reputation."}
+                  </div>
+                  <div className="mt-4 text-sm text-cyan-300">
+                    Base Score: {reputationHistory?.baseScore || 50} → Final
+                    Score: {reputationHistory?.finalScore || 50}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Reputation Summary */}
+                  <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-white/80">
+                        <div className="font-medium">Reputation Score</div>
+                        <div className="text-xs text-white/60">
+                          From {reputationHistory?.total || 0} total events
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-cyan-300">
+                          {reputationHistory?.finalScore || 50}
+                        </div>
+                        <div className="text-xs text-white/60">
+                          <span className="text-green-400">
+                            +
+                            {(reputationHistory?.finalScore || 50) -
+                              (reputationHistory?.baseScore || 50)}
+                          </span>{" "}
+                          from base
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Reputation Events List */}
+                  <div className="space-y-2">
+                    {reputationHistory.results.map((event) => {
+                      const formattedEvent = formatReputationEvent(event);
+
+                      return (
+                        <div
+                          key={event.id}
+                          className="rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="text-xl">{formattedEvent.icon}</div>
+                            <div className="flex-1">
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="text-sm font-medium text-white/90">
+                                    {formattedEvent.eventType}
+                                  </div>
+                                  <div className="mt-1 text-xs text-white/60">
+                                    {new Date(
+                                      event.createdAt,
+                                    ).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                    formattedEvent.isPositive
+                                      ? "bg-green-500/20 text-green-300"
+                                      : "bg-red-500/20 text-red-300"
+                                  }`}
+                                >
+                                  {formattedEvent.isPositive ? "+" : ""}
+                                  {formattedEvent.value} pts
+                                </span>
+                              </div>
+
+                              {/* Event-specific details */}
+                              {(event.eventType ===
+                                ReputationEventTypeEnum.AgreementCompleted ||
+                                event.eventType ===
+                                  ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                                event.eventType ===
+                                  ReputationEventTypeEnum.DisputeWon ||
+                                event.eventType ===
+                                  ReputationEventTypeEnum.DisputeLostRegular ||
+                                event.eventType ===
+                                  ReputationEventTypeEnum.DisputeLostEscrow) && (
+                                <div className="mt-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs text-cyan-300 hover:text-cyan-200"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const isEscrow =
+                                        event.eventType ===
+                                          ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                                        event.eventType ===
+                                          ReputationEventTypeEnum.DisputeLostEscrow;
+                                      handleAgreementClick(
+                                        event.eventId.toString(),
+                                        isEscrow,
+                                      );
+                                    }}
+                                  >
+                                    View Event #{event.eventId}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Show more indicator if there are more events */}
+                  {(reputationHistory?.totalResults || 0) >
+                    (reputationHistory?.results?.length || 0) && (
+                    <div className="mt-3 text-center">
+                      <div className="text-xs text-white/60">
+                        Showing {reputationHistory?.results?.length || 0} of{" "}
+                        {reputationHistory?.totalResults || 0} events
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
+                        onClick={() => {
+                          // You could implement pagination here
+                          console.log("Load more reputation events");
+                        }}
+                      >
+                        Load More History
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </BentoCard>
             {showLoginModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                 <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
@@ -1584,61 +1925,90 @@ export default function Profile() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {disputes.map((dispute) => (
-                <div
-                  key={dispute.id}
-                  onClick={() => handleDisputeClick(dispute.id)}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center justify-between">
-                        <h4 className="truncate text-sm font-medium text-white/90">
-                          {dispute.title}
-                        </h4>
+            <>
+              <div className="space-y-3">
+                {disputes.map((dispute) => (
+                  <div
+                    key={dispute.id}
+                    onClick={() => handleDisputeClick(dispute.id)}
+                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between">
+                          <h4 className="max-w-[6rem] truncate text-sm font-medium text-white/90 sm:max-w-[10rem]">
+                            {dispute.title}
+                          </h4>
 
-                        <DisputeStatusBadge status={dispute.status} />
-                      </div>
-
-                      <div className="mb-2 text-xs text-white/70">
-                        Created: {formatDate(dispute.createdAt)}
-                      </div>
-
-                      <div className="space-y-1 text-xs text-white/60">
-                        <div className="flex justify-between">
-                          <span>Parties:</span>
-                          <span className="text-white/80">
-                            @{dispute.plaintiff} vs @{dispute.defendant}
-                          </span>
+                          <DisputeStatusBadge status={dispute.status} />
                         </div>
 
-                        <div className="flex justify-between">
-                          <span>Your Role:</span>
-                          <span
-                            className={
-                              getUserRoleInDispute(dispute) === "Plaintiff"
-                                ? "text-blue-300"
-                                : getUserRoleInDispute(dispute) === "Defendant"
-                                  ? "text-pink-300"
-                                  : "text-cyan-300"
-                            }
-                          >
-                            {getUserRoleInDispute(dispute)}
-                          </span>
+                        <div className="mb-2 text-xs text-white/70">
+                          Created: {formatDate(dispute.createdAt)}
                         </div>
-                        <div className="flex justify-between">
-                          <span>Type:</span>
-                          <span className="text-white/80">
-                            {dispute.request}
-                          </span>
+
+                        <div className="space-y-1 text-xs text-white/60">
+                          <div className="flex justify-between">
+                            <span>Parties:</span>
+                            <span className="text-white/80">
+                              @{dispute.plaintiff} vs @{dispute.defendant}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span>Your Role:</span>
+                            <span
+                              className={
+                                getUserRoleInDispute(dispute) === "Plaintiff"
+                                  ? "text-blue-300"
+                                  : getUserRoleInDispute(dispute) ===
+                                      "Defendant"
+                                    ? "text-pink-300"
+                                    : "text-cyan-300"
+                              }
+                            >
+                              {getUserRoleInDispute(dispute)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Type:</span>
+                            <span className="text-white/80">
+                              {dispute.request}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
+                ))}
+              </div>
+              {hasMore && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    onClick={loadMore}
+                    disabled={disputesLoading}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    size="sm"
+                  >
+                    {disputesLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More Disputes"
+                    )}
+                  </Button>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Show loading indicator when loading more */}
+              {disputesLoading && disputes.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+                </div>
+              )}
+            </>
           )}
         </BentoCard>
 

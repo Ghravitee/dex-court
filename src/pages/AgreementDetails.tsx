@@ -92,7 +92,9 @@ const AgreementEventTypeEnum = {
   CANCEL_REJECTED: 9,
   EXPIRED: 10,
   AUTO_CANCELLED: 11,
-  CANCELLED: 12,
+  DISPUTED: 12,
+  COMPLETED: 13,
+  DISPUTERAISED: 17,
 } as const;
 
 const DisputeTypeEnum = {
@@ -153,7 +155,7 @@ const formatCreatorUsername = (username: string | undefined): string => {
   const cleanUsername = username.startsWith("@") ? username.slice(1) : username;
 
   // Check if it's a wallet address (starts with 0x and is hex)
-  if (cleanUsername.startsWith("0x") && cleanUsername.length === 42) {
+  if (cleanUsername.startsWith("@0x") && cleanUsername.length === 42) {
     // Slice the wallet address: first 5 chars + "..." + last 4 chars
     return `${cleanUsername.slice(0, 5)}...${cleanUsername.slice(-4)}`;
   }
@@ -338,15 +340,15 @@ const getDeliveryInitiatedByFromTimeline = (
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )[0];
 
-  console.log("📊 Timeline-based delivery check:", {
-    deliveryEvent: latestDelivery,
-    actorId: latestDelivery.actor?.id,
-    actorUsername: latestDelivery.actor?.username,
-    currentUserId: currentUser.id,
-    currentUsername: currentUser.username,
-    actorIsCurrentUser:
-      latestDelivery.actor?.id?.toString() === currentUser.id?.toString(),
-  });
+  // console.log("📊 Timeline-based delivery check:", {
+  //   deliveryEvent: latestDelivery,
+  //   actorId: latestDelivery.actor?.id,
+  //   actorUsername: latestDelivery.actor?.username,
+  //   currentUserId: currentUser.id,
+  //   currentUsername: currentUser.username,
+  //   actorIsCurrentUser:
+  //     latestDelivery.actor?.id?.toString() === currentUser.id?.toString(),
+  // });
 
   // Check if current user is the actor who delivered
   const currentUserId = currentUser.id?.toString();
@@ -367,12 +369,12 @@ const getDeliveryInitiatedBy = (agreement: any, currentUser: any) => {
     currentUser,
   );
   if (timelineResult) {
-    console.log("✅ Using timeline result:", timelineResult);
+    // console.log("✅ Using timeline result:", timelineResult);
     return timelineResult;
   }
 
   // Priority 3: Ultimate fallback
-  console.log("❌ No delivery initiation info found");
+  // console.log("❌ No delivery initiation info found");
   return null;
 };
 
@@ -414,8 +416,9 @@ const getDisputeFiledByFromTimeline = (
     // Check for events that lead to DISPUTED status
     return (
       (event.eventType === AgreementEventTypeEnum.DELIVERY_REJECTED ||
+        event.eventType === AgreementEventTypeEnum.DISPUTERAISED ||
         event.type === 6 ||
-        event.type === 17) && // Type 17 is "raised a dispute"
+        event.type === 17) && // Type 1 is "raised a dispute"
       event.toStatus === AgreementStatusEnum.DISPUTED
     );
   });
@@ -794,7 +797,7 @@ const getCancellationDate = (agreement: any): string | null => {
   if (agreement.timeline) {
     const cancellationEvents = agreement.timeline.filter(
       (event: any) =>
-        event.eventType === AgreementEventTypeEnum.CANCELLED ||
+        // event.eventType === AgreementEventTypeEnum.CANCELLED ||
         event.eventType === AgreementEventTypeEnum.CANCEL_CONFIRMED ||
         event.eventType === AgreementEventTypeEnum.REJECTED ||
         event.eventType === AgreementEventTypeEnum.EXPIRED ||
@@ -1833,7 +1836,7 @@ const RejectPendingDisputeModal = ({
                   <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
                   <div className="text-xs">
                     <p className="font-medium text-red-300">Error Details:</p>
-                    <p className="mt-1 break-all text-red-200/80">
+                    <p className="mt-1 max-h-[6rem] overflow-y-scroll text-sm break-all text-red-200/80 opacity-90">
                       {transactionError.message || "Unknown error occurred"}
                     </p>
                   </div>
@@ -2959,7 +2962,7 @@ export default function AgreementDetails() {
   // };
 
   const getDisputeStatusColor = () => {
-    return "bg-green-500/20 text-green-400 border-green-500/30";
+    return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
   };
 
   const formatDate = (dateString: string) => {
@@ -3271,19 +3274,63 @@ export default function AgreementDetails() {
 
   if (!agreement || !canViewAgreement) {
     return (
-      <div className="justify-center0 flex min-h-screen items-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg text-white">
-            {!agreement
-              ? "Agreement not found"
-              : "You don't have permission to view this agreement"}
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center justify-center text-center">
+          <div className="mb-6">
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-cyan-500/10">
+              <AlertTriangle className="h-10 w-10 text-red-400" />
+            </div>
+            <h2 className="mb-2 text-2xl font-bold text-white">
+              {!agreement ? "Agreement Not Found" : "Access Restricted"}
+            </h2>
+            <div className="mb-6 max-w-md text-cyan-200/80">
+              {!agreement ? (
+                <p>
+                  The agreement you're looking for doesn't exist or may have
+                  been removed. Please check the agreement ID and try again.
+                </p>
+              ) : (
+                <p>
+                  You don't have permission to view this agreement. Only
+                  participants and the creator can view private agreements.
+                </p>
+              )}
+            </div>
           </div>
-          <Button
-            onClick={() => navigate("/agreements")}
-            className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-          >
-            Back to Agreements
-          </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            {!agreement && (
+              <Button
+                onClick={() => {
+                  // Refresh the page
+                  window.location.reload();
+                }}
+                variant="outline"
+                className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              >
+                <Loader2 className="mr-2 h-4 w-4" />
+                Refresh & Retry
+              </Button>
+            )}
+            <Button
+              onClick={() => navigate("/agreements")}
+              className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
+            >
+              Back to Agreements
+            </Button>
+          </div>
+          {!agreement && (
+            <div className="mt-8 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+              <div className="text-sm text-cyan-300">
+                <p className="mb-1 font-medium">Troubleshooting tips:</p>
+                <ul className="space-y-1">
+                  <li>• Check if the agreement ID is correct</li>
+                  <li>• Verify your internet connection</li>
+                  <li>• The agreement may have been deleted</li>
+                  <li>• Try refreshing the page</li>
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

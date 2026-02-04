@@ -1,4 +1,4 @@
-// hooks/useDisputesApi.ts - FIXED VERSION
+// hooks/useDisputesApi.ts - UPDATE THIS FILE
 import { useState, useEffect, useCallback } from "react";
 import { disputeService } from "../services/disputeServices";
 import type { DisputeRow, DisputeListItem } from "../types";
@@ -7,61 +7,110 @@ export function useDisputesApi(userId?: string) {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const DISPUTES_PER_PAGE = 10; // Load 10 disputes at a time
 
-  // Wrap fetchUserDisputes in useCallback to prevent unnecessary recreations
-  const fetchUserDisputes = useCallback(async () => {
-    if (!userId) return;
+  // Function to fetch disputes for a specific page
+  const fetchUserDisputes = useCallback(
+    async (pageNum = 1, reset = false) => {
+      if (!userId) return;
 
-    setLoading(true);
-    setError(null);
-    try {
-      // Get all disputes
-      const response = await disputeService.getDisputes();
-      const allDisputes: DisputeListItem[] = response.results || [];
+      // If resetting, show loading for first page only
+      if (reset || pageNum === 1) {
+        setLoading(true);
+      }
+      setError(null);
 
-      // First, transform all disputes
-      const transformedDisputes = allDisputes.map(
-        (dispute: DisputeListItem) => {
-          return disputeService.transformDisputeListItemToRow(dispute);
-        },
-      );
+      try {
+        // Get disputes with pagination
+        const response = await disputeService.getDisputes({
+          top: DISPUTES_PER_PAGE,
+          skip: (pageNum - 1) * DISPUTES_PER_PAGE,
+          sort: "desc",
+        });
 
-      // Then filter by user involvement using the transformed data
-      const userDisputes = transformedDisputes.filter((dispute: DisputeRow) => {
-        const isPlaintiff = dispute.plaintiffData?.userId === userId;
-        const isDefendant = dispute.defendantData?.userId === userId;
+        const allDisputes: DisputeListItem[] = response.results || [];
 
-        // Check witness involvement using the properly typed transformed data
-        let isWitness = false;
-        if (dispute.witnesses && typeof dispute.witnesses === "object") {
-          const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
-          const defendantWitnesses = dispute.witnesses.defendant || [];
+        // Transform disputes...
+        const transformedDisputes = allDisputes.map(
+          (dispute: DisputeListItem) => {
+            return disputeService.transformDisputeListItemToRow(dispute);
+          },
+        );
 
-          isWitness =
-            plaintiffWitnesses.some((w) => w.id?.toString() === userId) ||
-            defendantWitnesses.some((w) => w.id?.toString() === userId);
+        // Filter by user involvement
+        const userDisputes = transformedDisputes.filter(
+          (dispute: DisputeRow) => {
+            const isPlaintiff = dispute.plaintiffData?.userId === userId;
+            const isDefendant = dispute.defendantData?.userId === userId;
+
+            let isWitness = false;
+            if (dispute.witnesses && typeof dispute.witnesses === "object") {
+              const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
+              const defendantWitnesses = dispute.witnesses.defendant || [];
+
+              isWitness =
+                plaintiffWitnesses.some((w) => w.id?.toString() === userId) ||
+                defendantWitnesses.some((w) => w.id?.toString() === userId);
+            }
+
+            return isPlaintiff || isDefendant || isWitness;
+          },
+        );
+
+        // Update disputes state
+        if (reset || pageNum === 1) {
+          setDisputes(userDisputes);
+        } else {
+          setDisputes((prev) => [...prev, ...userDisputes]);
         }
 
-        return isPlaintiff || isDefendant || isWitness;
-      });
+        // Check if we have more disputes to load
+        setHasMore(userDisputes.length === DISPUTES_PER_PAGE);
+        setPage(pageNum);
+      } catch (err) {
+        console.error("Error fetching user disputes:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to load disputes",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [userId],
+  );
 
-      setDisputes(userDisputes);
-    } catch (err) {
-      console.error("Error fetching user disputes:", err);
-      setError(err instanceof Error ? err.message : "Failed to load disputes");
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]); // Add userId as dependency since it's used inside the callback
-
+  // Initial load
   useEffect(() => {
-    fetchUserDisputes();
-  }, [fetchUserDisputes]); // Now fetchUserDisputes is stable between renders
+    if (userId) {
+      fetchUserDisputes(1, true);
+    } else {
+      setDisputes([]);
+      setHasMore(false);
+    }
+  }, [userId, fetchUserDisputes]);
+
+  // Function to load more disputes
+  const loadMore = useCallback(() => {
+    if (!loading && hasMore && userId) {
+      fetchUserDisputes(page + 1, false);
+    }
+  }, [loading, hasMore, page, userId, fetchUserDisputes]);
+
+  // Function to refresh disputes
+  const refetch = useCallback(() => {
+    if (userId) {
+      fetchUserDisputes(1, true);
+    }
+  }, [userId, fetchUserDisputes]);
 
   return {
     disputes,
     loading,
     error,
-    refetch: fetchUserDisputes,
+    hasMore,
+    loadMore,
+    refetch,
   };
 }
