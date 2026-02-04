@@ -1102,24 +1102,24 @@ export default function Profile() {
     });
   }, [isAuthenticated, userData.roles]);
 
-  const DebugInfo = () => {
-    if (!reputationHistory) return null;
+  // const DebugInfo = () => {
+  //   if (!reputationHistory) return null;
 
-    return (
-      <div className="fixed right-4 bottom-4 z-50 rounded-lg border border-cyan-400/30 bg-black/90 p-4 text-xs">
-        <div className="mb-2 font-bold text-cyan-300">Reputation Debug</div>
-        <div className="space-y-1">
-          <div>Total: {reputationHistory.totalResults}</div>
-          <div>Shown: {reputationHistory.results.length}</div>
-          <div>Has More: {reputationHistory.hasMore ? "✅ YES" : "❌ NO"}</div>
-          <div>Loading More: {reputationLoadingMore ? "🔄" : "✅"}</div>
-          <div>
-            Page: {Math.floor(reputationHistory.results.length / 60) + 1}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  //   return (
+  //     <div className="fixed right-4 bottom-4 z-50 rounded-lg border border-cyan-400/30 bg-black/90 p-4 text-xs">
+  //       <div className="mb-2 font-bold text-cyan-300">Reputation Debug</div>
+  //       <div className="space-y-1">
+  //         <div>Total: {reputationHistory.totalResults}</div>
+  //         <div>Shown: {reputationHistory.results.length}</div>
+  //         <div>Has More: {reputationHistory.hasMore ? "✅ YES" : "❌ NO"}</div>
+  //         <div>Loading More: {reputationLoadingMore ? "🔄" : "✅"}</div>
+  //         <div>
+  //           Page: {Math.floor(reputationHistory.results.length / 60) + 1}
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // };
 
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
@@ -1160,7 +1160,7 @@ export default function Profile() {
 
   return (
     <div className="relative space-y-8">
-      {process.env.NODE_ENV === "development" && <DebugInfo />}
+      {/* {process.env.NODE_ENV === "development" && <DebugInfo />} */}
       {/* Toaster Component */}
       <Toaster
         message={toaster.message}
@@ -1185,7 +1185,7 @@ export default function Profile() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
-          <div className="card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
+          <div className="row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-3">
             <div className="flex items-center gap-2">
               <div className="relative">
                 <UserAvatar
@@ -1272,7 +1272,7 @@ export default function Profile() {
           </div>
 
           {/* Verifications Section */}
-          <section className="card-cyan h-fit rounded-2xl p-4 lg:p-6">
+          <section className="h-fit rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-4 lg:p-6">
             <div className="space text-muted-foreground mb-4 text-lg">
               Verifications
             </div>
@@ -1669,7 +1669,7 @@ export default function Profile() {
             color="cyan"
             count={reputationHistory?.total || 0} // Use 'total' not 'totalResults'
             scrollable
-            maxHeight="260px"
+            maxHeight="330px"
           >
             {reputationLoading ? (
               <div className="flex items-center justify-center py-8">

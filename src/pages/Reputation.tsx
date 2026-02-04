@@ -488,7 +488,7 @@ export default function Reputation() {
     return (
       <div className="relative space-y-6">
         <div className="absolute inset-0 -z-[50] bg-cyan-500/13 blur-3xl"></div>
-        <div className="glass card-cyan p-6 text-center">
+        <div className="card-cyan p-6 text-center">
           <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-rose-400" />
           <h3 className="mb-2 text-lg font-semibold text-white/90">
             Error Loading Data
@@ -532,7 +532,7 @@ export default function Reputation() {
         {/* LEFT COLUMN */}
         <div className="space-y-6 lg:col-span-2">
           {/* Leaderboard */}
-          <section className="glass card-cyan">
+          <section className="rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent">
             <div className="flex items-center justify-between border-b border-white/10 p-5">
               <div>
                 <h3 className="space font-semibold text-white/90">
@@ -716,7 +716,7 @@ export default function Reputation() {
 
           {/* Reputation History - Only show when a profile is selected */}
           {selectedProfile && selectedUserHistory && (
-            <section className="glass card-cyan">
+            <section className="rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
               <div className="flex flex-col items-start justify-between gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center">
                 <div>
                   <h3 className="text-sm font-semibold text-white/90">
@@ -996,7 +996,7 @@ export default function Reputation() {
             </div>
           </section> */}
 
-          <section className="glass card-cyan max-h-[500px] overflow-y-auto p-5 ring-1 ring-white/10">
+          <section className="max-h-[500px] overflow-y-auto rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div>
                 <h3 className="text-sm font-semibold text-white/90">
@@ -1032,7 +1032,7 @@ export default function Reputation() {
                     return (
                       <div
                         key={update.id}
-                        className="rounded-lg border border-white/10 bg-white/5 p-3"
+                        className="rounded-lg border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-3"
                       >
                         <div className="flex items-start gap-3">
                           <div
@@ -1110,7 +1110,7 @@ export default function Reputation() {
           {/* Profile, Trust score, Reputation - Only show when a profile is selected */}
           {selectedProfile ? (
             <>
-              <div className="glass card-cyan flex items-center gap-4 p-6 ring-1 ring-white/10">
+              <div className="flex items-center gap-4 rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                 <UserAvatar
                   userId={selectedProfile.id.toString()}
                   avatarId={selectedProfile.avatarId || null}
@@ -1138,7 +1138,7 @@ export default function Reputation() {
               </div>
 
               <section className="grid grid-cols-1 gap-2">
-                <div className="glass card-cyan flex items-center justify-between px-6 py-2 ring-1 ring-white/10">
+                <div className="flex items-center justify-between rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-2">
                   <div>
                     <div className="text-muted-foreground text-xs">
                       30-Day Change
@@ -1163,7 +1163,7 @@ export default function Reputation() {
                   <TrustMeter score={selectedProfile.finalScore || 0} />
                 </div>
 
-                <div className="glass card-cyan p-6">
+                <div className="rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
                   <div className="text-muted-foreground">Profile Summary</div>
                   <div className="mt-4 grid grid-cols-2 gap-4">
                     <div className="space-y-3">

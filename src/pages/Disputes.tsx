@@ -9,6 +9,9 @@ import {
   AlertCircle,
   X,
   Wallet,
+  RefreshCw,
+  // FilterX,
+  // RefreshCcw,
 } from "lucide-react";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
@@ -305,6 +308,9 @@ export default function Disputes() {
   const defendantSearchRef = useRef<HTMLDivElement>(null);
   const witnessSearchRef = useRef<HTMLDivElement>(null);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isRefetching, setIsRefetching] = useState(false);
+
   // Transaction states
   const [transactionStep, setTransactionStep] = useState<
     "idle" | "pending" | "success" | "error"
@@ -375,101 +381,141 @@ export default function Disputes() {
   }, []);
 
   // Load disputes with server-side filtering, searching, and pagination
-  const loadDisputes = useCallback(async () => {
-    try {
-      setLoading(true);
+  const loadDisputes = useCallback(
+    async (manualRetry = false) => {
+      try {
+        setLoading(manualRetry ? false : true); // Don't show loading spinner for manual retry
+        setIsRefetching(manualRetry);
+        setFetchError(null); // Clear any previous errors
 
-      // Build query parameters for API
-      const queryParams: any = {
-        top: pageSize,
-        skip: (currentPage - 1) * pageSize,
-        sort: sortOrder,
-      };
-
-      // Add status filter if not "All"
-      if (status !== "All") {
-        const statusMap: Record<string, number> = {
-          Pending: DisputeStatusEnum.Pending,
-          "Vote in Progress": DisputeStatusEnum.VoteInProgress,
-          Settled: DisputeStatusEnum.Settled,
-          Dismissed: DisputeStatusEnum.Dismissed,
-          pendingPayment: DisputeStatusEnum.PendingPayment,
-        };
-
-        if (statusMap[status]) {
-          queryParams.status = statusMap[status];
-        }
-      }
-
-      // Add date range filter
-      if (dateRange !== "All") {
-        const rangeMap = {
-          "7d": "last7d" as const,
-          "30d": "last30d" as const,
-        };
-        queryParams.range =
-          rangeMap[dateRange as keyof typeof rangeMap] || undefined;
-      }
-
-      // Add search query if provided
-      if (searchQuery.trim()) {
-        queryParams.search = searchQuery;
-      }
-
-      console.log("🔍 Disputes API Request Params:", queryParams);
-
-      // Get paginated disputes with filters from API
-      const disputesResponse = await disputeService.getDisputes(queryParams);
-      const pageDisputes = disputesResponse.results || [];
-
-      console.log("📊 Disputes API Response:", {
-        page: currentPage,
-        pageSize: pageSize,
-        totalDisputes: disputesResponse.totalDisputes,
-        totalResults: disputesResponse.totalResults,
-        returnedCount: pageDisputes.length,
-        filters: {
-          status: status,
-          search: searchQuery,
+        // Build query parameters for API
+        const queryParams: any = {
+          top: pageSize,
+          skip: (currentPage - 1) * pageSize,
           sort: sortOrder,
-          dateRange: dateRange,
-        },
-      });
+        };
 
-      // Transform API disputes to DisputeRow format
-      const transformedDisputes = pageDisputes.map((dispute: any) =>
-        disputeService.transformDisputeListItemToRow(dispute),
-      );
+        // Add status filter if not "All"
+        if (status !== "All") {
+          const statusMap: Record<string, number> = {
+            Pending: DisputeStatusEnum.Pending,
+            "Vote in Progress": DisputeStatusEnum.VoteInProgress,
+            Settled: DisputeStatusEnum.Settled,
+            Dismissed: DisputeStatusEnum.Dismissed,
+            pendingPayment: DisputeStatusEnum.PendingPayment,
+          };
 
-      // Set disputes immediately for display
-      setDisputes(transformedDisputes);
-      setTotalDisputes(disputesResponse.totalDisputes || 0);
-      setTotalResults(disputesResponse.totalResults || 0);
+          if (statusMap[status]) {
+            queryParams.status = statusMap[status];
+          }
+        }
 
-      console.log("✅ Displaying", transformedDisputes.length, "disputes");
-    } catch (error: any) {
-      console.error("Failed to fetch disputes:", error);
+        // Add date range filter
+        if (dateRange !== "All") {
+          const rangeMap = {
+            "7d": "last7d" as const,
+            "30d": "last30d" as const,
+          };
+          queryParams.range =
+            rangeMap[dateRange as keyof typeof rangeMap] || undefined;
+        }
 
-      if (error.message?.includes("timeout") || error.code === "ECONNABORTED") {
-        toast.error("Request timed out", {
-          description:
-            "Please try again with fewer results or a smaller page size",
+        // Add search query if provided
+        if (searchQuery.trim()) {
+          queryParams.search = searchQuery;
+        }
+
+        console.log("🔍 Disputes API Request Params:", queryParams);
+
+        // Get paginated disputes with filters from API
+        const disputesResponse = await disputeService.getDisputes(queryParams);
+        const pageDisputes = disputesResponse.results || [];
+
+        console.log("📊 Disputes API Response:", {
+          page: currentPage,
+          pageSize: pageSize,
+          totalDisputes: disputesResponse.totalDisputes,
+          totalResults: disputesResponse.totalResults,
+          returnedCount: pageDisputes.length,
+          filters: {
+            status: status,
+            search: searchQuery,
+            sort: sortOrder,
+            dateRange: dateRange,
+          },
         });
-      } else {
-        toast.error(error.message || "Failed to load disputes");
-      }
 
-      setDisputes([]);
-      setTotalDisputes(0);
-      setTotalResults(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, pageSize, status, searchQuery, sortOrder, dateRange]);
+        // Transform API disputes to DisputeRow format
+        const transformedDisputes = pageDisputes.map((dispute: any) =>
+          disputeService.transformDisputeListItemToRow(dispute),
+        );
+
+        // Set disputes immediately for display
+        setDisputes(transformedDisputes);
+        setTotalDisputes(disputesResponse.totalDisputes || 0);
+        setTotalResults(disputesResponse.totalResults || 0);
+
+        console.log("✅ Displaying", transformedDisputes.length, "disputes");
+      } catch (error: any) {
+        console.error("Failed to fetch disputes:", error);
+
+        // Set error message
+        let errorMessage = "Failed to load disputes";
+        let detailedMessage = error.message || "Unknown error occurred";
+
+        if (
+          error.message?.includes("timeout") ||
+          error.code === "ECONNABORTED"
+        ) {
+          errorMessage = "Request timed out";
+          detailedMessage =
+            "Please check your internet connection and try again";
+          setFetchError(
+            "Connection timeout. Please check your internet connection.",
+          );
+        } else if (error.message?.includes("Network Error")) {
+          errorMessage = "Network error";
+          detailedMessage =
+            "Unable to connect to the server. Please check your internet connection.";
+          setFetchError("Network error. Unable to connect to the server.");
+        } else if (
+          error.message?.includes("500") ||
+          error.message?.includes("502") ||
+          error.message?.includes("503") ||
+          error.message?.includes("504")
+        ) {
+          errorMessage = "Server error";
+          detailedMessage =
+            "The server is temporarily unavailable. Please try again later.";
+          setFetchError("Server temporarily unavailable. Please try again.");
+        } else {
+          setFetchError("Failed to load disputes. Please try again.");
+        }
+
+        toast.error(errorMessage, {
+          description: detailedMessage,
+        });
+
+        setDisputes([]);
+        setTotalDisputes(0);
+        setTotalResults(0);
+      } finally {
+        setLoading(false);
+        setIsRefetching(false);
+      }
+    },
+    [currentPage, pageSize, status, searchQuery, sortOrder, dateRange],
+  );
 
   useEffect(() => {
     loadDisputes();
   }, [loadDisputes]);
+
+  const handleRefetchDisputes = () => {
+    // Reset to first page when manually refetching
+    setCurrentPage(1);
+    loadDisputes(true); // Pass true to indicate manual retry
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1125,11 +1171,28 @@ export default function Disputes() {
   // Show loading state
   if (loading && currentPage === 1) {
     return (
-      <div className="relative space-y-8">
-        <div className="flex h-64 items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-            <p className="text-muted-foreground">Loading disputes...</p>
+      <div className="relative flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="relative mx-auto mb-8">
+            <div className="mx-auto size-24 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
+            <div className="absolute inset-0 mx-auto size-24 animate-ping rounded-full border-2 border-cyan-400/40"></div>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-cyan-300">
+              Loading Disputes
+            </h3>
+            <p className="text-sm text-cyan-200/70">
+              Preparing your disputes list...
+            </p>
+          </div>
+          <div className="mt-4 flex justify-center space-x-1">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -1211,6 +1274,24 @@ export default function Disputes() {
                 </div>
               )}
             </div>
+            <Button
+              variant="outline"
+              onClick={handleRefetchDisputes}
+              disabled={isRefetching}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              {isRefetching ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Refetching...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refetch Disputes
+                </>
+              )}
+            </Button>
 
             {/* Date Range and Sort Controls */}
             <div className="ml-auto flex items-center gap-2">
@@ -1439,11 +1520,39 @@ export default function Disputes() {
                 </tbody>
               </table>
 
-              {disputes.length === 0 && !loading && (
-                <div className="py-8 text-center">
-                  <p className="text-muted-foreground">
-                    No disputes found matching your criteria.
-                  </p>
+              {/* Error state display */}
+              {fetchError && !loading && (
+                <div className="px-5 py-6 text-center">
+                  <div className="mx-auto max-w-md">
+                    <div className="mb-4 flex justify-center">
+                      <AlertCircle className="h-12 w-12 text-red-400" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-white">
+                      Unable to Load Disputes
+                    </h3>
+                    <p className="mb-4 text-cyan-300">{fetchError}</p>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={handleRefetchDisputes}
+                        disabled={isRefetching}
+                        className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                      >
+                        {isRefetching ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Refetching...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Refetch Disputes
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
