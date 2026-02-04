@@ -24,6 +24,7 @@ export interface ReputationHistoryResponse {
   baseScore: number;
   finalScore: number;
   results: ReputationEvent[];
+  hasMore?: boolean;
 }
 
 export interface DisputesStats {
@@ -91,21 +92,50 @@ class ReputationService {
     console.log("🔐 Reputation service token cleared");
   }
 
+  // services/ReputationServices.ts - Update the getReputationHistory method
+  // services/ReputationServices.ts - Update the getReputationHistory method
   async getReputationHistory(
     accountId: string,
-    top: number = 50,
+    top: number = 30,
     skip: number = 0,
   ): Promise<ReputationHistoryResponse> {
-    console.log(`🔍 Fetching reputation history for account ${accountId}`);
+    console.log(`🔍 Fetching reputation history for account ${accountId}`, {
+      top,
+      skip,
+    });
 
     const response = await api.get(`/accounts/${accountId}/reputation`, {
       params: { top, skip },
     });
 
-    console.log(
-      `✅ Reputation history fetched: ${response.data.results?.length} events`,
-    );
-    return response.data;
+    const data = response.data;
+
+    console.log("📊 API Response Structure:", {
+      total: data.total,
+      totalResults: data.totalResults,
+      resultsLength: data.results?.length,
+      top,
+      skip,
+    });
+
+    // Use 'total' field for total count (110 in your example)
+    // Use 'totalResults' for the count returned in this page (10 in your example)
+    // Calculate hasMore based on whether we've received fewer items than requested
+    const hasMore = data.results.length === top;
+
+    console.log(`✅ Reputation history fetched:`, {
+      resultsCount: data.results?.length,
+      total: data.total,
+      totalResults: data.totalResults,
+      skip,
+      hasMore,
+      calculation: `hasMore = (${data.results?.length} === ${top}) = ${hasMore}`,
+    });
+
+    return {
+      ...data,
+      hasMore,
+    };
   }
 
   async getLeaderboard(

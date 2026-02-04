@@ -30,11 +30,11 @@ import { Link } from "react-router-dom";
 import TrustMeter from "../components/TrustMeter";
 import { UserAvatar } from "../components/UserAvatar";
 import {
-  useLeaderboard,
-  useGlobalUpdates,
-  useReputationHistory,
-  type DisputesStats,
-} from "../services/ReputationServices";
+  useLeaderboard as useCustomLeaderboard,
+  useGlobalUpdates as useCustomGlobalUpdates,
+  useReputationHistory as useCustomReputationHistory,
+} from "../hooks/useReputation";
+import type { DisputesStats } from "../services/ReputationServices";
 import { calculate30DayChange } from "../lib/reputationHelpers";
 
 // Reputation Event Type Enum
@@ -436,26 +436,43 @@ export default function Reputation() {
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
   const [viewMode, setViewMode] = useState<"table" | "timeline">("timeline");
 
-  // Use TanStack Query hooks directly from service
   const {
     data: leaderboardData = [],
-    isLoading: leaderboardLoading,
+    loading: leaderboardLoading,
+    loadingMore: leaderboardLoadingMore,
     error: leaderboardError,
-  } = useLeaderboard(sortDir, query);
+    loadMore: loadMoreLeaderboard,
+    hasMore: leaderboardHasMore,
+  } = useCustomLeaderboard(sortDir, query, 10); // Added limit parameter
 
   const {
-    data: globalUpdatesData,
-    isLoading: updatesLoading,
+    data: globalUpdatesData = [],
+    loading: updatesLoading,
+    loadingMore: updatesLoadingMore,
     error: updatesError,
-  } = useGlobalUpdates();
+    loadMore: loadMoreGlobalUpdates,
+    hasMore: updatesHasMore,
+    total: updatesTotal,
+  } = useCustomGlobalUpdates(5);
 
+  // Use your custom reputation history hook with load more functionality
   const {
     data: selectedUserHistory,
-    isLoading: historyLoading,
+    loading: historyLoading,
+    loadingMore: historyLoadingMore,
     error: historyError,
-  } = useReputationHistory(selectedProfile?.id?.toString() || null);
+    loadMoreHistory,
+    hasMore: historyHasMore,
+  } = useCustomReputationHistory(selectedProfile?.id?.toString() || null);
 
-  const globalUpdates = globalUpdatesData?.results || [];
+  // const globalUpdates = globalUpdatesData?.results || [];
+
+  const getEventsShownInfo = () => {
+    if (!selectedUserHistory) return "";
+    const totalShown = selectedUserHistory.results?.length || 0;
+    const total = selectedUserHistory.total || 0;
+    return `Showing ${totalShown} of ${total} events`;
+  };
 
   const handleRowClick = (user: any) => {
     setSelectedProfile(user);
@@ -476,7 +493,7 @@ export default function Reputation() {
           <h3 className="mb-2 text-lg font-semibold text-white/90">
             Error Loading Data
           </h3>
-          <p className="text-white/70">{error.message}</p>
+          <p className="text-white/70">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-4 rounded-md bg-cyan-500 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600"
@@ -648,7 +665,7 @@ export default function Reputation() {
                                 >
                                   {recentChange > 0 ? "↗" : "↘"}{" "}
                                   {recentChange > 0 ? "+" : ""}
-                                  {recentChange} today
+                                  {recentChange} recently
                                 </div>
                               )}
                             </div>
@@ -677,6 +694,24 @@ export default function Reputation() {
                 </tbody>
               </table>
             </div>
+            {leaderboardHasMore && (
+              <div className="flex justify-center border-t border-white/10 p-4">
+                <button
+                  onClick={loadMoreLeaderboard}
+                  disabled={leaderboardLoadingMore}
+                  className="flex items-center gap-2 rounded-md border border-cyan-400/30 px-4 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/10 disabled:opacity-50"
+                >
+                  {leaderboardLoadingMore ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
+                      Loading more users...
+                    </>
+                  ) : (
+                    "Load More Users"
+                  )}
+                </button>
+              </div>
+            )}
           </section>
 
           {/* Reputation History - Only show when a profile is selected */}
@@ -689,8 +724,8 @@ export default function Reputation() {
                     {getDisplayName(selectedProfile.username)}
                   </h3>
                   <div className="text-muted-foreground text-xs">
-                    {selectedUserHistory.totalResults || 0} total events • Base
-                    Score: {selectedUserHistory.baseScore} → Final Score:{" "}
+                    {getEventsShownInfo()} • Base Score:{" "}
+                    {selectedUserHistory.baseScore} → Final Score:{" "}
                     {selectedUserHistory.finalScore}
                   </div>
                 </div>
@@ -741,91 +776,134 @@ export default function Reputation() {
                     </div>
                   </div>
                 ) : viewMode === "table" ? (
-                  <div className="max-h-[20rem] overflow-x-auto overflow-y-auto">
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="text-muted-foreground text-left">
-                          <th className="w-[5%] px-4 py-3">#</th>
-                          <th className="px-4 py-3">Event Type</th>
-                          <th className="px-4 py-3">Event ID</th>
-                          <th className="px-4 py-3">Reputation Change</th>
-                          <th className="px-4 py-3">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(selectedUserHistory.results || []).map(
-                          (event: any, i: number) => {
-                            const eventDetails = getEventTypeDetails(
-                              event.eventType,
-                            );
-                            const isPositive = eventDetails.isPositive;
+                  <>
+                    <div className="max-h-[20rem] overflow-x-auto overflow-y-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-muted-foreground text-left">
+                            <th className="w-[5%] px-4 py-3">#</th>
+                            <th className="px-4 py-3">Event Type</th>
+                            <th className="px-4 py-3">Event ID</th>
+                            <th className="px-4 py-3">Reputation Change</th>
+                            <th className="px-4 py-3">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedUserHistory.results || []).map(
+                            (event: any, i: number) => {
+                              const eventDetails = getEventTypeDetails(
+                                event.eventType,
+                              );
+                              const isPositive = eventDetails.isPositive;
 
-                            return (
-                              <tr
-                                key={event.id}
-                                className="border-t border-white/10 transition hover:bg-white/5"
-                              >
-                                <td className="text-muted-foreground px-4 py-4">
-                                  {i + 1}
-                                </td>
+                              return (
+                                <tr
+                                  key={event.id}
+                                  className="border-t border-white/10 transition hover:bg-white/5"
+                                >
+                                  <td className="text-muted-foreground px-4 py-4">
+                                    {i + 1}
+                                  </td>
 
-                                <td className="px-4 py-4">
-                                  <div className="flex items-center gap-2">
-                                    <eventDetails.icon
-                                      className={`h-4 w-4 ${eventDetails.color}`}
-                                    />
-                                    <span className="text-white/80">
-                                      {eventDetails.text}
+                                  <td className="px-4 py-4">
+                                    <div className="flex items-center gap-2">
+                                      <eventDetails.icon
+                                        className={`h-4 w-4 ${eventDetails.color}`}
+                                      />
+                                      <span className="text-white/80">
+                                        {eventDetails.text}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  <td className="px-4 py-4 text-cyan-300">
+                                    #{event.eventId}
+                                  </td>
+
+                                  <td className="px-4 py-4">
+                                    <span
+                                      className={`font-medium ${
+                                        isPositive
+                                          ? "text-emerald-400"
+                                          : "text-rose-400"
+                                      }`}
+                                    >
+                                      {isPositive ? "+" : ""}
+                                      {event.value}
                                     </span>
-                                  </div>
-                                </td>
+                                  </td>
 
-                                <td className="px-4 py-4 text-cyan-300">
-                                  #{event.eventId}
-                                </td>
-
-                                <td className="px-4 py-4">
-                                  <span
-                                    className={`font-medium ${
-                                      isPositive
-                                        ? "text-emerald-400"
-                                        : "text-rose-400"
-                                    }`}
-                                  >
-                                    {isPositive ? "+" : ""}
-                                    {event.value}
-                                  </span>
-                                </td>
-
-                                <td className="text-muted-foreground px-4 py-4 text-xs">
-                                  {new Date(event.createdAt).toLocaleDateString(
-                                    "en-US",
-                                    {
+                                  <td className="text-muted-foreground px-4 py-4 text-xs">
+                                    {new Date(
+                                      event.createdAt,
+                                    ).toLocaleDateString("en-US", {
                                       month: "short",
                                       day: "numeric",
                                       year: "numeric",
-                                    },
-                                  )}
-                                  <div className="text-white/40">
-                                    {new Date(
-                                      event.createdAt,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
                                     })}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          },
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                    <div className="text-white/40">
+                                      {new Date(
+                                        event.createdAt,
+                                      ).toLocaleTimeString("en-US", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            },
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Load More Button for Table View */}
+                    {historyHasMore && (
+                      <div className="mt-4 flex justify-center border-t border-white/10 pt-4">
+                        <button
+                          onClick={loadMoreHistory}
+                          disabled={historyLoadingMore}
+                          className="flex items-center gap-2 rounded-md border border-cyan-400/30 px-4 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/10 disabled:opacity-50"
+                        >
+                          {historyLoadingMore ? (
+                            <>
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
+                              Loading more events...
+                            </>
+                          ) : (
+                            "Load More Events"
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <ReputationTimeline
-                    events={selectedUserHistory.results || []}
-                  />
+                  <>
+                    <ReputationTimeline
+                      events={selectedUserHistory.results || []}
+                    />
+
+                    {/* Load More Button for Timeline View */}
+                    {historyHasMore && (
+                      <div className="mt-4 flex justify-center border-t border-white/10 pt-4">
+                        <button
+                          onClick={loadMoreHistory}
+                          disabled={historyLoadingMore}
+                          className="flex items-center gap-2 rounded-md border border-cyan-400/30 px-4 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/10 disabled:opacity-50"
+                        >
+                          {historyLoadingMore ? (
+                            <>
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
+                              Loading more events...
+                            </>
+                          ) : (
+                            "Load More Events"
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -834,7 +912,7 @@ export default function Reputation() {
 
         {/* RIGHT COLUMN */}
         <aside className="space-y-2">
-          <section className="glass card-cyan max-h-[500px] overflow-y-auto p-5 ring-1 ring-white/10">
+          {/* <section className="glass card-cyan max-h-[500px] overflow-y-auto p-5 ring-1 ring-white/10">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <h3 className="text-sm font-semibold text-white/90">
                 Recent Reputation Updates
@@ -843,19 +921,19 @@ export default function Reputation() {
             </div>
 
             <div className="mt-4 space-y-4">
-              {updatesLoading ? (
+              {updatesLoading && !updatesLoadingMore ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
                   <span className="ml-2 text-sm text-white/60">
                     Loading updates...
                   </span>
                 </div>
-              ) : globalUpdates.length === 0 ? (
+              ) : globalUpdatesData.length === 0 ? (
                 <div className="py-8 text-center text-white/60">
                   No recent updates
                 </div>
               ) : (
-                globalUpdates.map((update) => {
+                globalUpdatesData.map((update) => {
                   const eventDetails = getEventTypeDetails(update.eventType);
                   const EventIcon = eventDetails.icon;
                   const isPositive = eventDetails.isPositive;
@@ -914,6 +992,117 @@ export default function Reputation() {
                     </div>
                   );
                 })
+              )}
+            </div>
+          </section> */}
+
+          <section className="glass card-cyan max-h-[500px] overflow-y-auto p-5 ring-1 ring-white/10">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <div>
+                <h3 className="text-sm font-semibold text-white/90">
+                  Recent Reputation Updates
+                </h3>
+                <div className="text-xs text-white/50">
+                  {updatesTotal > 0 && `Total: ${updatesTotal} updates`}
+                </div>
+              </div>
+              <span className="text-xs text-white/50">Live updates</span>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {updatesLoading && !updatesLoadingMore ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
+                  <span className="ml-2 text-sm text-white/60">
+                    Loading updates...
+                  </span>
+                </div>
+              ) : globalUpdatesData.length === 0 ? (
+                <div className="py-8 text-center text-white/60">
+                  No recent updates
+                </div>
+              ) : (
+                <>
+                  {globalUpdatesData.map((update) => {
+                    const eventDetails = getEventTypeDetails(update.eventType);
+                    const EventIcon = eventDetails.icon;
+                    const isPositive = eventDetails.isPositive;
+                    const displayName = getDisplayName(update.account.username);
+
+                    return (
+                      <div
+                        key={update.id}
+                        className="rounded-lg border border-white/10 bg-white/5 p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`rounded-lg ${eventDetails.bgColor} p-2`}
+                          >
+                            <EventIcon
+                              className={`h-4 w-4 ${eventDetails.color}`}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between">
+                              <div
+                                className="font-medium text-cyan-300"
+                                title={
+                                  update.account.username.startsWith("0x")
+                                    ? update.account.username
+                                    : undefined
+                                }
+                              >
+                                {displayName}
+                              </div>
+                              <span
+                                className={`text-sm font-semibold ${
+                                  isPositive
+                                    ? "text-emerald-400"
+                                    : "text-rose-400"
+                                }`}
+                              >
+                                {isPositive ? "+" : ""}
+                                {update.value}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-white/60">
+                              {eventDetails.text}
+                            </p>
+                            <div className="mt-2 text-xs text-white/40">
+                              {new Date(update.createdAt).toLocaleTimeString(
+                                "en-US",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Add Load More button for global updates */}
+                  {updatesHasMore && (
+                    <div className="border-t border-white/10 pt-4">
+                      <button
+                        onClick={loadMoreGlobalUpdates}
+                        disabled={updatesLoadingMore}
+                        className="flex w-full items-center justify-center gap-2 rounded-md border border-cyan-400/30 px-4 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/10 disabled:opacity-50"
+                      >
+                        {updatesLoadingMore ? (
+                          <>
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent"></div>
+                            Loading more updates...
+                          </>
+                        ) : (
+                          "Load More Updates"
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>

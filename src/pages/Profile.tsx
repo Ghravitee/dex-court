@@ -569,6 +569,9 @@ export default function Profile() {
     data: reputationHistory,
     loading: reputationLoading,
     error: reputationError,
+    loadingMore: reputationLoadingMore, // Renamed to avoid conflict
+    loadMoreHistory, // Use the new name
+    // hasMore: reputationHasMore,
   } = useReputationHistory(user?.id?.toString() || null);
 
   const {
@@ -1099,6 +1102,25 @@ export default function Profile() {
     });
   }, [isAuthenticated, userData.roles]);
 
+  const DebugInfo = () => {
+    if (!reputationHistory) return null;
+
+    return (
+      <div className="fixed right-4 bottom-4 z-50 rounded-lg border border-cyan-400/30 bg-black/90 p-4 text-xs">
+        <div className="mb-2 font-bold text-cyan-300">Reputation Debug</div>
+        <div className="space-y-1">
+          <div>Total: {reputationHistory.totalResults}</div>
+          <div>Shown: {reputationHistory.results.length}</div>
+          <div>Has More: {reputationHistory.hasMore ? "✅ YES" : "❌ NO"}</div>
+          <div>Loading More: {reputationLoadingMore ? "🔄" : "✅"}</div>
+          <div>
+            Page: {Math.floor(reputationHistory.results.length / 60) + 1}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
@@ -1138,6 +1160,7 @@ export default function Profile() {
 
   return (
     <div className="relative space-y-8">
+      {process.env.NODE_ENV === "development" && <DebugInfo />}
       {/* Toaster Component */}
       <Toaster
         message={toaster.message}
@@ -1515,185 +1538,6 @@ export default function Profile() {
 
             {/* Reputation History - Show for all users */}
             {/* Replace the "My Reputation History" BentoCard section with this: */}
-            <BentoCard
-              title="My Reputation History"
-              icon={<RiShieldCheckFill />}
-              color="cyan"
-              count={reputationHistory?.totalResults || 0}
-              scrollable
-              maxHeight="260px"
-            >
-              {reputationLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
-                  <span className="ml-2 text-cyan-300">
-                    Loading reputation history...
-                  </span>
-                </div>
-              ) : reputationError ? (
-                <div className="py-8 text-center">
-                  <div className="mb-2 text-lg text-red-300">
-                    Error loading reputation history
-                  </div>
-                  <div className="text-sm text-white/50">{reputationError}</div>
-                </div>
-              ) : !reputationHistory?.results?.length ? (
-                <div className="py-8 text-center">
-                  <div className="mb-2 text-lg text-cyan-300">
-                    {userData.roles.admin
-                      ? "Administrator Reputation"
-                      : userData.roles.judge
-                        ? "Judge Reputation"
-                        : userData.roles.community
-                          ? "Community Reputation"
-                          : "Building Reputation"}
-                  </div>
-                  <div className="text-sm text-white/50">
-                    {userData.roles.admin
-                      ? "Administrators maintain platform integrity. Your reputation score is based on oversight activities."
-                      : userData.roles.judge
-                        ? "Judges earn reputation through fair dispute resolution and timely decisions."
-                        : userData.roles.community
-                          ? "Community members build reputation by participating in agreements and disputes."
-                          : "Complete agreements, resolve disputes, and participate in the community to build your reputation."}
-                  </div>
-                  <div className="mt-4 text-sm text-cyan-300">
-                    Base Score: {reputationHistory?.baseScore || 50} → Final
-                    Score: {reputationHistory?.finalScore || 50}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* Reputation Summary */}
-                  <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-white/80">
-                        <div className="font-medium">Reputation Score</div>
-                        <div className="text-xs text-white/60">
-                          From {reputationHistory?.total || 0} total events
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-cyan-300">
-                          {reputationHistory?.finalScore || 50}
-                        </div>
-                        <div className="text-xs text-white/60">
-                          <span className="text-green-400">
-                            +
-                            {(reputationHistory?.finalScore || 50) -
-                              (reputationHistory?.baseScore || 50)}
-                          </span>{" "}
-                          from base
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Reputation Events List */}
-                  <div className="space-y-2">
-                    {reputationHistory.results.map((event) => {
-                      const formattedEvent = formatReputationEvent(event);
-
-                      return (
-                        <div
-                          key={event.id}
-                          className="rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="text-xl">{formattedEvent.icon}</div>
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="text-sm font-medium text-white/90">
-                                    {formattedEvent.eventType}
-                                  </div>
-                                  <div className="mt-1 text-xs text-white/60">
-                                    {new Date(
-                                      event.createdAt,
-                                    ).toLocaleDateString("en-US", {
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </div>
-                                </div>
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                    formattedEvent.isPositive
-                                      ? "bg-green-500/20 text-green-300"
-                                      : "bg-red-500/20 text-red-300"
-                                  }`}
-                                >
-                                  {formattedEvent.isPositive ? "+" : ""}
-                                  {formattedEvent.value} pts
-                                </span>
-                              </div>
-
-                              {/* Event-specific details */}
-                              {(event.eventType ===
-                                ReputationEventTypeEnum.AgreementCompleted ||
-                                event.eventType ===
-                                  ReputationEventTypeEnum.AgreementEscrowCompleted ||
-                                event.eventType ===
-                                  ReputationEventTypeEnum.DisputeWon ||
-                                event.eventType ===
-                                  ReputationEventTypeEnum.DisputeLostRegular ||
-                                event.eventType ===
-                                  ReputationEventTypeEnum.DisputeLostEscrow) && (
-                                <div className="mt-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 text-xs text-cyan-300 hover:text-cyan-200"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const isEscrow =
-                                        event.eventType ===
-                                          ReputationEventTypeEnum.AgreementEscrowCompleted ||
-                                        event.eventType ===
-                                          ReputationEventTypeEnum.DisputeLostEscrow;
-                                      handleAgreementClick(
-                                        event.eventId.toString(),
-                                        isEscrow,
-                                      );
-                                    }}
-                                  >
-                                    View Event #{event.eventId}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Show more indicator if there are more events */}
-                  {(reputationHistory?.totalResults || 0) >
-                    (reputationHistory?.results?.length || 0) && (
-                    <div className="mt-3 text-center">
-                      <div className="text-xs text-white/60">
-                        Showing {reputationHistory?.results?.length || 0} of{" "}
-                        {reputationHistory?.totalResults || 0} events
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
-                        onClick={() => {
-                          // You could implement pagination here
-                          console.log("Load more reputation events");
-                        }}
-                      >
-                        Load More History
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </BentoCard>
             {showLoginModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                 <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
@@ -1763,7 +1607,6 @@ export default function Profile() {
               </div>
             </section>
           )}
-
           {/* Show Judged Disputes only for judges (and not admins who aren't judges) */}
           {userData.roles.judge && !userData.roles.admin && (
             <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -1781,7 +1624,6 @@ export default function Profile() {
               </div>
             </section>
           )}
-
           {/* Show Community Stats for community members (and not admins/judges) */}
           {userData.roles.community &&
             !userData.roles.judge &&
@@ -1800,7 +1642,6 @@ export default function Profile() {
                 </div>
               </section>
             )}
-
           {/* Show welcome for basic users (no special roles) */}
           {userData.roles.user &&
             !userData.roles.admin &&
@@ -1821,38 +1662,192 @@ export default function Profile() {
                 </div>
               </section>
             )}
-
           {/* Reputation History - Show for all users */}
           <BentoCard
             title="My Reputation History"
             icon={<RiShieldCheckFill />}
             color="cyan"
-            count={0}
+            count={reputationHistory?.total || 0} // Use 'total' not 'totalResults'
             scrollable
             maxHeight="260px"
           >
-            <div className="py-8 text-center">
-              <div className="mb-2 text-lg text-cyan-300">
-                {userData.roles.admin
-                  ? "Administrator"
-                  : userData.roles.judge
-                    ? "Judge Reputation"
-                    : userData.roles.community
-                      ? "Community Reputation"
-                      : "Building Reputation"}
+            {reputationLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+                <span className="ml-2 text-cyan-300">
+                  Loading reputation history...
+                </span>
               </div>
-              <div className="text-sm text-white/50">
-                {userData.roles.admin
-                  ? "As an administrator, you have full platform access and oversight capabilities."
-                  : userData.roles.judge
-                    ? "Your reputation as a judge will grow with each fair dispute resolution."
-                    : userData.roles.community
-                      ? "Your community reputation builds with active participation."
-                      : "Your reputation events will appear here as you participate in agreements and disputes."}
+            ) : reputationError ? (
+              <div className="py-8 text-center">
+                <div className="mb-2 text-lg text-red-300">
+                  Error loading reputation history
+                </div>
+                <div className="text-sm text-white/50">{reputationError}</div>
               </div>
-            </div>
-          </BentoCard>
+            ) : !reputationHistory?.results?.length ? (
+              <div className="py-8 text-center">
+                <div className="mb-2 text-lg text-cyan-300">
+                  {userData.roles.admin
+                    ? "Administrator Reputation"
+                    : userData.roles.judge
+                      ? "Judge Reputation"
+                      : userData.roles.community
+                        ? "Community Reputation"
+                        : "Building Reputation"}
+                </div>
+                <div className="text-sm text-white/50">
+                  {userData.roles.admin
+                    ? "Administrators maintain platform integrity. Your reputation score is based on oversight activities."
+                    : userData.roles.judge
+                      ? "Judges earn reputation through fair dispute resolution and timely decisions."
+                      : userData.roles.community
+                        ? "Community members build reputation by participating in agreements and disputes."
+                        : "Complete agreements, resolve disputes, and participate in the community to build your reputation."}
+                </div>
+                <div className="mt-4 text-sm text-cyan-300">
+                  Base Score: {reputationHistory?.baseScore || 50} → Final
+                  Score: {reputationHistory?.finalScore || 50}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Reputation Summary */}
+                <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-white/80">
+                      <div className="font-medium">Reputation Score</div>
+                      <div className="text-xs text-white/60">
+                        {reputationHistory.results.length} of{" "}
+                        {reputationHistory.total} events shown
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-cyan-300">
+                        {reputationHistory.finalScore || 50}
+                      </div>
+                      <div className="text-xs text-white/60">
+                        <span className="text-green-400">
+                          +
+                          {(reputationHistory.finalScore || 50) -
+                            (reputationHistory.baseScore || 50)}
+                        </span>{" "}
+                        from base
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
+                {/* Reputation Events List */}
+                <div className="space-y-2">
+                  {reputationHistory.results.map((event) => {
+                    const formattedEvent = formatReputationEvent(event);
+
+                    return (
+                      <div
+                        key={event.id}
+                        className="rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="text-xl">{formattedEvent.icon}</div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-white/90">
+                                  {formattedEvent.eventType}
+                                </div>
+                                <div className="mt-1 text-xs text-white/60">
+                                  {new Date(event.createdAt).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
+                                </div>
+                              </div>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                  formattedEvent.isPositive
+                                    ? "bg-green-500/20 text-green-300"
+                                    : "bg-red-500/20 text-red-300"
+                                }`}
+                              >
+                                {formattedEvent.isPositive ? "+" : ""}
+                                {formattedEvent.value} pts
+                              </span>
+                            </div>
+
+                            {/* Event-specific details */}
+                            {(event.eventType ===
+                              ReputationEventTypeEnum.AgreementCompleted ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeWon ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeLostRegular ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeLostEscrow) && (
+                              <div className="mt-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs text-cyan-300 hover:text-cyan-200"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isEscrow =
+                                      event.eventType ===
+                                        ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                                      event.eventType ===
+                                        ReputationEventTypeEnum.DisputeLostEscrow;
+                                    handleAgreementClick(
+                                      event.eventId.toString(),
+                                      isEscrow,
+                                    );
+                                  }}
+                                >
+                                  View Event #{event.eventId}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Load More Button */}
+                {reputationHistory.hasMore && (
+                  <div className="mt-4 text-center">
+                    <div className="mb-2 text-xs text-white/60">
+                      Showing {reputationHistory.results.length} of{" "}
+                      {reputationHistory.total} events
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
+                      onClick={() => loadMoreHistory()}
+                      disabled={reputationLoadingMore}
+                    >
+                      {reputationLoadingMore ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Load More History"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </BentoCard>
           {showLoginModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
