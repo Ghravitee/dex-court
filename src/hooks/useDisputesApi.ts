@@ -1,74 +1,83 @@
-// hooks/useDisputesApi.ts - UPDATE THIS FILE
-import { useState, useEffect, useCallback } from "react";
+// hooks/useDisputesApi.ts - FIXED VERSION
+import { useState, useEffect, useCallback, useRef } from "react";
 import { disputeService } from "../services/disputeServices";
 import type { DisputeRow, DisputeListItem } from "../types";
 
 export function useDisputesApi(userId?: string) {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
+  const [, setAllDisputes] = useState<DisputeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
-  const DISPUTES_PER_PAGE = 10; // Load 10 disputes at a time
+  const [totalUserDisputes, setTotalUserDisputes] = useState(0);
+  const DISPUTES_PER_PAGE = 10;
 
-  // Function to fetch disputes for a specific page
-  const fetchUserDisputes = useCallback(
-    async (pageNum = 1, reset = false) => {
-      if (!userId) return;
+  // Use refs for stable references
+  const allDisputesRef = useRef<DisputeRow[]>([]);
+  const hasFetchedRef = useRef(false);
 
-      // If resetting, show loading for first page only
-      if (reset || pageNum === 1) {
-        setLoading(true);
-      }
-      setError(null);
+  // Function to fetch ALL user disputes once
+  const fetchAllUserDisputes = useCallback(async () => {
+    if (!userId) return [];
 
-      try {
-        // Get disputes with pagination
-        const response = await disputeService.getDisputes({
-          top: DISPUTES_PER_PAGE,
-          skip: (pageNum - 1) * DISPUTES_PER_PAGE,
-          sort: "desc",
-        });
+    try {
+      const response = await disputeService.getDisputes({
+        top: 500,
+        skip: 0,
+        sort: "desc",
+      });
 
-        const allDisputes: DisputeListItem[] = response.results || [];
+      const allDisputesData: DisputeListItem[] = response.results || [];
 
-        // Transform disputes...
-        const transformedDisputes = allDisputes.map(
-          (dispute: DisputeListItem) => {
-            return disputeService.transformDisputeListItemToRow(dispute);
-          },
-        );
+      const transformedDisputes = allDisputesData.map(
+        (dispute: DisputeListItem) => {
+          return disputeService.transformDisputeListItemToRow(dispute);
+        },
+      );
 
-        // Filter by user involvement
-        const userDisputes = transformedDisputes.filter(
-          (dispute: DisputeRow) => {
-            const isPlaintiff = dispute.plaintiffData?.userId === userId;
-            const isDefendant = dispute.defendantData?.userId === userId;
+      const userDisputes = transformedDisputes.filter((dispute: DisputeRow) => {
+        const isPlaintiff = dispute.plaintiffData?.userId === userId;
+        const isDefendant = dispute.defendantData?.userId === userId;
 
-            let isWitness = false;
-            if (dispute.witnesses && typeof dispute.witnesses === "object") {
-              const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
-              const defendantWitnesses = dispute.witnesses.defendant || [];
+        let isWitness = false;
+        if (dispute.witnesses && typeof dispute.witnesses === "object") {
+          const plaintiffWitnesses = dispute.witnesses.plaintiff || [];
+          const defendantWitnesses = dispute.witnesses.defendant || [];
 
-              isWitness =
-                plaintiffWitnesses.some((w) => w.id?.toString() === userId) ||
-                defendantWitnesses.some((w) => w.id?.toString() === userId);
-            }
-
-            return isPlaintiff || isDefendant || isWitness;
-          },
-        );
-
-        // Update disputes state
-        if (reset || pageNum === 1) {
-          setDisputes(userDisputes);
-        } else {
-          setDisputes((prev) => [...prev, ...userDisputes]);
+          isWitness =
+            plaintiffWitnesses.some((w) => w.id?.toString() === userId) ||
+            defendantWitnesses.some((w) => w.id?.toString() === userId);
         }
 
-        // Check if we have more disputes to load
-        setHasMore(userDisputes.length === DISPUTES_PER_PAGE);
-        setPage(pageNum);
+        return isPlaintiff || isDefendant || isWitness;
+      });
+
+      return userDisputes;
+    } catch (err) {
+      console.error("Error fetching user disputes:", err);
+      return [];
+    }
+  }, [userId]); // Only depend on userId
+
+  // Initial load - should only run once per userId
+  useEffect(() => {
+    const fetchInitialDisputes = async () => {
+      if (!userId || hasFetchedRef.current) return;
+
+      hasFetchedRef.current = true;
+      setLoading(true);
+
+      try {
+        const allUserDisputes = await fetchAllUserDisputes();
+        allDisputesRef.current = allUserDisputes;
+        setAllDisputes(allUserDisputes);
+        setTotalUserDisputes(allUserDisputes.length);
+
+        // Get first page
+        const firstPageDisputes = allUserDisputes.slice(0, DISPUTES_PER_PAGE);
+        setDisputes(firstPageDisputes);
+        setHasMore(allUserDisputes.length > DISPUTES_PER_PAGE);
       } catch (err) {
         console.error("Error fetching user disputes:", err);
         setError(
@@ -77,39 +86,67 @@ export function useDisputesApi(userId?: string) {
       } finally {
         setLoading(false);
       }
-    },
-    [userId],
-  );
+    };
 
-  // Initial load
-  useEffect(() => {
-    if (userId) {
-      fetchUserDisputes(1, true);
-    } else {
-      setDisputes([]);
-      setHasMore(false);
-    }
-  }, [userId, fetchUserDisputes]);
+    fetchInitialDisputes();
 
-  // Function to load more disputes
+    // Reset when userId changes
+    return () => {
+      hasFetchedRef.current = false;
+    };
+  }, [userId, fetchAllUserDisputes]);
+
+  // Function to load more disputes (stable reference)
   const loadMore = useCallback(() => {
     if (!loading && hasMore && userId) {
-      fetchUserDisputes(page + 1, false);
+      setLoading(true);
+
+      const nextPage = page + 1;
+      const startIndex = (nextPage - 1) * DISPUTES_PER_PAGE;
+      const endIndex = startIndex + DISPUTES_PER_PAGE;
+      const nextDisputes = allDisputesRef.current.slice(startIndex, endIndex);
+
+      setDisputes((prev) => [...prev, ...nextDisputes]);
+      setHasMore(endIndex < allDisputesRef.current.length);
+      setPage(nextPage);
+
+      setLoading(false);
     }
-  }, [loading, hasMore, page, userId, fetchUserDisputes]);
+  }, [loading, hasMore, page, userId]);
 
   // Function to refresh disputes
-  const refetch = useCallback(() => {
-    if (userId) {
-      fetchUserDisputes(1, true);
+  const refetch = useCallback(async () => {
+    if (!userId) return;
+
+    setLoading(true);
+    hasFetchedRef.current = false;
+
+    try {
+      const allUserDisputes = await fetchAllUserDisputes();
+      allDisputesRef.current = allUserDisputes;
+      setAllDisputes(allUserDisputes);
+      setTotalUserDisputes(allUserDisputes.length);
+
+      const firstPageDisputes = allUserDisputes.slice(0, DISPUTES_PER_PAGE);
+      setDisputes(firstPageDisputes);
+      setHasMore(allUserDisputes.length > DISPUTES_PER_PAGE);
+      setPage(1);
+    } catch (err) {
+      console.error("Error refetching disputes:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to refetch disputes",
+      );
+    } finally {
+      setLoading(false);
     }
-  }, [userId, fetchUserDisputes]);
+  }, [userId, fetchAllUserDisputes]);
 
   return {
     disputes,
     loading,
     error,
     hasMore,
+    totalUserDisputes,
     loadMore,
     refetch,
   };

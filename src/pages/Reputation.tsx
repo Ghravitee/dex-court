@@ -665,7 +665,7 @@ export default function Reputation() {
                                 >
                                   {recentChange > 0 ? "↗" : "↘"}{" "}
                                   {recentChange > 0 ? "+" : ""}
-                                  {recentChange} recently
+                                  {recentChange}
                                 </div>
                               )}
                             </div>
