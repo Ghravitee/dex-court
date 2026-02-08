@@ -94,7 +94,7 @@ export const getAgreement = async (
 export const getAgreementExistOnchain = async (
   chainId: number,
   contractAgreementIds: bigint[],
-  escrowContractAddress: `0x${string}`,
+  escrowContractAddress: `0x${string}`
 ): Promise<boolean[]> => {
   // Changed return type
   const publicClient: PublicClient = getClientForChain(chainId);
@@ -108,6 +108,7 @@ export const getAgreementExistOnchain = async (
   }
 
   if (contractAgreementIds.length === 0) return [];
+
 
   try {
     const raw = await publicClient.readContract({
@@ -125,7 +126,7 @@ export const getAgreementExistOnchain = async (
   } catch (err) {
     console.error(
       `getAgreementExistOnchain failed (chain=${chainId}, ids=${contractAgreementIds}):`,
-      err,
+      err
     );
     // Return false for all on error
     return contractAgreementIds.map(() => false);
