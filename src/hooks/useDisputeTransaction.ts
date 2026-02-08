@@ -28,7 +28,7 @@ export const useDisputeTransaction = (chainId: number) => {
 
   // Main function to create dispute on-chain
   const createDisputeOnchain = useCallback(
-    async (votingId: number): Promise<string | undefined> => {
+    async (votingId: number | string) => {
       console.log(
         "🟡 [useDisputeTransaction] Creating on-chain dispute with votingId:",
         votingId,
@@ -113,7 +113,7 @@ export const useDisputeTransaction = (chainId: number) => {
 
   // Retry transaction function
   const retryTransaction = useCallback(
-    async (votingId: number): Promise<string | undefined> => {
+    async (votingId: number | string): Promise<string | undefined> => {
       console.log(
         "🔄 [useDisputeTransaction] Retrying transaction for votingId:",
         votingId,
