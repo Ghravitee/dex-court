@@ -17,7 +17,7 @@ import {
 import { LoginModal } from "../LoginModal";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../UserAvatar";
-import logo from "../../assets/DexCourt-logo.webp";
+import logo from "../../assets/logo.webp";
 
 export function Topbar({
   onMenuClick,
@@ -38,6 +38,32 @@ export function Topbar({
     getWalletValidationStatus,
     resetLoginAttempt,
   } = useWalletLogin();
+
+  const StatusIndicators = () => (
+    <div className="hidden items-center gap-3 lg:flex">
+      {/* Wallet Connection Status */}
+      <div className="flex items-center gap-2">
+        <div
+          className={`size-5 rounded-full border-2 border-white/10 ${
+            isConnected ? "animate-pulse bg-green-500" : "bg-red-500"
+          }`}
+          title={isConnected ? "Wallet connected ✓" : "Wallet disconnected ✗"}
+        />
+        <span className="text-xs text-gray-400">Wallet</span>
+      </div>
+
+      {/* Authentication Status */}
+      <div className="flex items-center gap-2">
+        <div
+          className={`size-5 rounded-full border-2 border-white/10 ${
+            isAuthenticated ? "bg-green-500" : "bg-red-500"
+          }`}
+          title={isAuthenticated ? "Authenticated ✓" : "Not authenticated ✗"}
+        />
+        <span className="text-xs text-gray-400">Auth</span>
+      </div>
+    </div>
+  );
 
   // Refs to track state without causing re-renders
   const autoLoginInProgressRef = useRef(false);
@@ -306,8 +332,30 @@ export function Topbar({
           </div>
         )}
 
-        {/* Center Spacer */}
-        <div className="flex-1" />
+        {/* ADD STATUS INDICATORS HERE - Desktop */}
+        <div className="hidden flex-1 items-center lg:flex">
+          <StatusIndicators />
+        </div>
+
+        {/* Mobile status indicators - shown next to menu button */}
+        <div className="mr-2 flex flex-1 items-center justify-end gap-2 lg:hidden">
+          <div className="flex items-center gap-1">
+            <div
+              className={`size-2.5 rounded-full ${
+                isConnected ? "bg-green-500" : "bg-red-500"
+              }`}
+              title={isConnected ? "Wallet connected" : "Wallet disconnected"}
+            />
+            <span className="text-xs text-gray-400">Wallet</span>
+            <div
+              className={`size-2.5 rounded-full ${
+                isAuthenticated ? "bg-green-500" : "bg-red-500"
+              }`}
+              title={isAuthenticated ? "Authenticated" : "Not authenticated"}
+            />
+            <span className="text-xs text-gray-400">Auth</span>
+          </div>
+        </div>
 
         {/* Right: Desktop Buttons */}
         <div className="hidden items-center gap-3 lg:flex">
@@ -322,7 +370,14 @@ export function Topbar({
               </div>
             )}
 
-          {/* Telegram Login/Logout Button */}
+          {/* Telegram Login/Logout Button
+          <div
+            className={`h-2.5 w-2.5 rounded-full ${
+              isConnected ? "animate-pulse bg-green-500" : "bg-red-500"
+            }`}
+            title={isConnected ? "Wallet connected" : "Wallet disconnected"}
+          /> */}
+
           <button
             onClick={handleTelegramAuth}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${getTelegramButtonVariant()}`}

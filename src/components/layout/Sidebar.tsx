@@ -16,6 +16,7 @@ import {
   Loader2,
   ArrowRight,
   ChevronDown,
+  Star,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
@@ -26,7 +27,7 @@ import { useWalletLogin } from "../../hooks/useWalletLogin";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../../components/UserAvatar";
 import { useEffect, useRef } from "react";
-import logo from "../../assets/DexCourt-logo.webp";
+import logo from "../../assets/logo.webp";
 
 export function Sidebar({
   expanded,
@@ -242,6 +243,7 @@ export function Sidebar({
     { to: "/escrow", label: "Escrow", icon: <BadgeDollarSign size={18} /> },
     { to: "/disputes", label: "Disputes", icon: <Scale size={18} /> },
     { to: "/voting", label: "Voting", icon: <Vote size={18} /> },
+    { to: "/reputation", label: "Reputation", icon: <Star size={18} /> },
     ...(isAdmin
       ? [
           {
@@ -280,7 +282,7 @@ export function Sidebar({
           <img
             src={logo}
             alt="DexCourt Logo"
-            className="size-10 object-cover"
+            className="size-10 object-contain"
           />
           {expanded && (
             <span className="glow-text font-semibold text-cyan-300">

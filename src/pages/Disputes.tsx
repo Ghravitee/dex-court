@@ -9,6 +9,9 @@ import {
   AlertCircle,
   X,
   Wallet,
+  RefreshCw,
+  // FilterX,
+  // RefreshCcw,
 } from "lucide-react";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
@@ -78,7 +81,7 @@ const getTotalFileSize = (files: UploadedFile[]): string => {
 const isValidWalletAddress = (value: string) =>
   /^0x[a-fA-F0-9]{40}$/.test(value);
 
-// User Search Result Component - FIXED
+// User Search Result Component
 const UserSearchResult = ({
   user,
   onSelect,
@@ -96,7 +99,6 @@ const UserSearchResult = ({
 }) => {
   const { user: currentUser } = useAuth();
 
-  // 🚨 FIXED: Look for telegramUsername field (from API response)
   const telegramUsername = cleanTelegramUsername(
     user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
@@ -105,7 +107,6 @@ const UserSearchResult = ({
 
   if (!telegramUsername && !wallet) return null;
 
-  // PRESERVES ORIGINAL CASE: No .toLowerCase() here
   const displayUsername = telegramUsername
     ? `@${telegramUsername}`
     : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
@@ -116,8 +117,9 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername, field, index)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${isCurrentUser ? "opacity-80" : ""
-        }`}
+      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
+        isCurrentUser ? "opacity-80" : ""
+      }`}
     >
       <UserAvatar
         userId={user.id}
@@ -131,7 +133,7 @@ const UserSearchResult = ({
         </div>
         {telegramUsername && (
           <div className="truncate text-xs text-cyan-300">
-            @{telegramUsername} {/* PRESERVES ORIGINAL CASE */}
+            @{telegramUsername}
           </div>
         )}
         {user.bio && (
@@ -144,79 +146,6 @@ const UserSearchResult = ({
       <ChevronRight className="h-4 w-4 flex-shrink-0 text-cyan-400" />
     </div>
   );
-};
-
-// Custom hook for fetching disputes
-const useDisputes = (filters: {
-  status?: string;
-  search?: string;
-  range?: string;
-  sort?: string;
-}) => {
-  const [data, setData] = useState<DisputeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDisputes = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Properly type the range parameter
-      const rangeValue =
-        filters.range === "All"
-          ? ("all" as const)
-          : filters.range === "7d"
-            ? ("last7d" as const)
-            : filters.range === "30d"
-              ? ("last30d" as const)
-              : ("all" as const);
-
-      const apiParams = {
-        status:
-          filters.status === "All"
-            ? undefined
-            : filters.status === "Pending"
-              ? DisputeStatusEnum.Pending
-              : filters.status === "Vote in Progress"
-                ? DisputeStatusEnum.VoteInProgress
-                : filters.status === "Settled"
-                  ? DisputeStatusEnum.Settled
-                  : filters.status === "Dismissed"
-                    ? DisputeStatusEnum.Dismissed
-                    : filters.status === "pendingPayment"
-                      ? DisputeStatusEnum.PendingPayment
-                      : undefined,
-        // REMOVE search from here
-        // search: filters.search,
-        range: rangeValue,
-        sort: filters.sort === "asc" ? ("asc" as const) : ("desc" as const),
-        top: 100, // Increase to fetch more disputes for client-side pagination
-        skip: 0,
-      };
-
-      const response = await disputeService.getDisputes(apiParams);
-      const transformedData = response.results.map((item) =>
-        disputeService.transformDisputeListItemToRow(item),
-      );
-
-      console.log("Fetched disputes:", transformedData.length);
-      console.log("response", response);
-
-      setData(transformedData);
-    } catch (err: any) {
-      setError(err.message);
-      console.error("Failed to fetch disputes:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.status, filters.range, filters.sort]); // Remove filters.search from dependencies
-
-  useEffect(() => {
-    fetchDisputes();
-  }, [filters.status, filters.range, filters.sort, fetchDisputes]);
-
-  return { data, loading, error, refetch: fetchDisputes };
 };
 
 // Debounce hook
@@ -237,7 +166,6 @@ const useDebounce = (value: string, delay: number) => {
 };
 
 const formatPartyDisplay = (username: string) => {
-  // Check if it's a wallet address (starts with 0x and is 42 chars)
   if (username.startsWith("0x") && username.length === 42) {
     return `${username.slice(0, 4)}...${username.slice(-6)}`;
   }
@@ -328,12 +256,24 @@ export default function Disputes() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const networkInfo = useNetworkEnvironment();
-  const [query, setQuery] = useState("");
+
+  // Server-side states
+  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalDisputes, setTotalDisputes] = useState(0);
+  const [, setTotalResults] = useState(0);
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState<DisputeRow["status"] | "All">("All");
   const [dateRange, setDateRange] = useState("All");
-  const [sortAsc, setSortAsc] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Modal and form states
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     title: "",
     kind: "Pro Bono" as "Pro Bono" | "Paid",
@@ -344,14 +284,12 @@ export default function Disputes() {
     witnesses: [""] as string[],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [recentDisputesFilter, setRecentDisputesFilter] =
-    useState<string>("All");
-  const [isRecentDisputesFilterOpen, setIsRecentDisputesFilterOpen] =
-    useState(false);
+
+  // Dropdown refs
   const dropdownRef = useRef<HTMLDivElement>(null);
   const recentDisputesDropdownRef = useRef<HTMLDivElement>(null);
 
-  // User search state - SIMPLIFIED LIKE OpenDisputeModal
+  // User search states
   const [defendantSearchQuery, setDefendantSearchQuery] = useState("");
   const [defendantSearchResults, setDefendantSearchResults] = useState<any[]>(
     [],
@@ -360,7 +298,6 @@ export default function Disputes() {
     useState(false);
   const [showDefendantSuggestions, setShowDefendantSuggestions] =
     useState(false);
-
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
   const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
   const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
@@ -371,14 +308,10 @@ export default function Disputes() {
   const defendantSearchRef = useRef<HTMLDivElement>(null);
   const witnessSearchRef = useRef<HTMLDivElement>(null);
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [allDisputes, setAllDisputes] = useState<DisputeRow[]>([]);
-  const [paginatedDisputes, setPaginatedDisputes] = useState<DisputeRow[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isRefetching, setIsRefetching] = useState(false);
 
-  const debouncedDefendantQuery = useDebounce(defendantSearchQuery, 300);
-  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+  // Transaction states
   const [transactionStep, setTransactionStep] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -403,30 +336,27 @@ export default function Disputes() {
     return 100000 + (array[0] % 900000);
   }, []);
 
-  // Use the custom hook for data fetching
-  const { data, loading, error, refetch } = useDisputes({
-    status: status,
-    range: dateRange,
-    sort: sortAsc ? "asc" : "desc",
-  });
+  const debouncedDefendantQuery = useDebounce(defendantSearchQuery, 300);
+  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
+  // Filter options
   const filterOptions = [
     { label: "All", value: "All" },
     { label: "Pending", value: "Pending" },
     { label: "Vote in Progress", value: "Vote in Progress" },
     { label: "Settled", value: "Settled" },
     { label: "Dismissed", value: "Dismissed" },
-    { label: "pendingPayment", value: "pending Payment" },
+    { label: "Pending Payment", value: "pendingPayment" },
   ];
 
-  const recentDisputesFilterOptions = [
-    { label: "All", value: "All" },
-    { label: "Pending", value: "Pending" },
-    { label: "Vote in Progress", value: "Vote in Progress" },
-    { label: "Settled", value: "Settled" },
-    { label: "Dismissed", value: "Dismissed" },
-    { label: "Dismissed", value: "pending Payment" },
-  ];
+  // const recentDisputesFilterOptions = [
+  //   { label: "All", value: "All" },
+  //   { label: "Pending", value: "Pending" },
+  //   { label: "Vote in Progress", value: "Vote in Progress" },
+  //   { label: "Settled", value: "Settled" },
+  //   { label: "Dismissed", value: "Dismissed" },
+  //   { label: "Pending Payment", value: "pendingPayment" },
+  // ];
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -442,7 +372,6 @@ export default function Disputes() {
         !witnessSearchRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
-        setIsRecentDisputesFilterOpen(false);
         setShowDefendantSuggestions(false);
         setShowWitnessSuggestions(false);
       }
@@ -451,10 +380,159 @@ export default function Disputes() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Defendant search function - SEPARATE from witnesses
+  // Load disputes with server-side filtering, searching, and pagination
+  const loadDisputes = useCallback(
+    async (manualRetry = false) => {
+      try {
+        setLoading(manualRetry ? false : true); // Don't show loading spinner for manual retry
+        setIsRefetching(manualRetry);
+        setFetchError(null); // Clear any previous errors
+
+        // Build query parameters for API
+        const queryParams: any = {
+          top: pageSize,
+          skip: (currentPage - 1) * pageSize,
+          sort: sortOrder,
+        };
+
+        // Add status filter if not "All"
+        if (status !== "All") {
+          const statusMap: Record<string, number> = {
+            Pending: DisputeStatusEnum.Pending,
+            "Vote in Progress": DisputeStatusEnum.VoteInProgress,
+            Settled: DisputeStatusEnum.Settled,
+            Dismissed: DisputeStatusEnum.Dismissed,
+            pendingPayment: DisputeStatusEnum.PendingPayment,
+          };
+
+          if (statusMap[status]) {
+            queryParams.status = statusMap[status];
+          }
+        }
+
+        // Add date range filter
+        if (dateRange !== "All") {
+          const rangeMap = {
+            "7d": "last7d" as const,
+            "30d": "last30d" as const,
+          };
+          queryParams.range =
+            rangeMap[dateRange as keyof typeof rangeMap] || undefined;
+        }
+
+        // Add search query if provided
+        if (searchQuery.trim()) {
+          queryParams.search = searchQuery;
+        }
+
+        console.log("🔍 Disputes API Request Params:", queryParams);
+
+        // Get paginated disputes with filters from API
+        const disputesResponse = await disputeService.getDisputes(queryParams);
+        const pageDisputes = disputesResponse.results || [];
+
+        console.log("📊 Disputes API Response:", {
+          page: currentPage,
+          pageSize: pageSize,
+          totalDisputes: disputesResponse.totalDisputes,
+          totalResults: disputesResponse.totalResults,
+          returnedCount: pageDisputes.length,
+          filters: {
+            status: status,
+            search: searchQuery,
+            sort: sortOrder,
+            dateRange: dateRange,
+          },
+        });
+
+        // Transform API disputes to DisputeRow format
+        const transformedDisputes = pageDisputes.map((dispute: any) =>
+          disputeService.transformDisputeListItemToRow(dispute),
+        );
+
+        // Set disputes immediately for display
+        setDisputes(transformedDisputes);
+        setTotalDisputes(disputesResponse.totalDisputes || 0);
+        setTotalResults(disputesResponse.totalResults || 0);
+
+        console.log("✅ Displaying", transformedDisputes.length, "disputes");
+      } catch (error: any) {
+        console.error("Failed to fetch disputes:", error);
+
+        // Set error message
+        let errorMessage = "Failed to load disputes";
+        let detailedMessage = error.message || "Unknown error occurred";
+
+        if (
+          error.message?.includes("timeout") ||
+          error.code === "ECONNABORTED"
+        ) {
+          errorMessage = "Request timed out";
+          detailedMessage =
+            "Please check your internet connection and try again";
+          setFetchError(
+            "Connection timeout. Please check your internet connection.",
+          );
+        } else if (error.message?.includes("Network Error")) {
+          errorMessage = "Network error";
+          detailedMessage =
+            "Unable to connect to the server. Please check your internet connection.";
+          setFetchError("Network error. Unable to connect to the server.");
+        } else if (
+          error.message?.includes("500") ||
+          error.message?.includes("502") ||
+          error.message?.includes("503") ||
+          error.message?.includes("504")
+        ) {
+          errorMessage = "Server error";
+          detailedMessage =
+            "The server is temporarily unavailable. Please try again later.";
+          setFetchError("Server temporarily unavailable. Please try again.");
+        } else {
+          setFetchError("Failed to load disputes. Please try again.");
+        }
+
+        toast.error(errorMessage, {
+          description: detailedMessage,
+        });
+
+        setDisputes([]);
+        setTotalDisputes(0);
+        setTotalResults(0);
+      } finally {
+        setLoading(false);
+        setIsRefetching(false);
+      }
+    },
+    [currentPage, pageSize, status, searchQuery, sortOrder, dateRange],
+  );
+
+  useEffect(() => {
+    loadDisputes();
+  }, [loadDisputes]);
+
+  const handleRefetchDisputes = () => {
+    // Reset to first page when manually refetching
+    setCurrentPage(1);
+    loadDisputes(true); // Pass true to indicate manual retry
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [status, searchQuery, sortOrder, dateRange]);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
+
+  // Defendant search function
   const handleDefendantSearch = useCallback(
     async (query: string) => {
-      // Remove @ symbol from query for searching
       const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
 
       if (cleanQuery.length < 1) {
@@ -467,15 +545,14 @@ export default function Disputes() {
       setShowDefendantSuggestions(true);
 
       try {
-        // Search with the cleaned query (without @)
         const results = await disputeService.searchUsers(cleanQuery);
 
         const currentUserTelegram = getCurrentUserTelegram(currentUser);
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-            resultUser.telegram?.username ||
-            resultUser.telegramInfo,
+              resultUser.telegram?.username ||
+              resultUser.telegramInfo,
           );
 
           return (
@@ -495,10 +572,9 @@ export default function Disputes() {
     [currentUser],
   );
 
-  // Witness search function - SEPARATE from defendant
+  // Witness search function
   const handleWitnessSearch = useCallback(
     async (query: string) => {
-      // Remove @ symbol from query for searching
       const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
 
       if (cleanQuery.length < 2) {
@@ -511,15 +587,14 @@ export default function Disputes() {
       setShowWitnessSuggestions(true);
 
       try {
-        // Search with the cleaned query (without @)
         const results = await disputeService.searchUsers(cleanQuery);
 
         const currentUserTelegram = getCurrentUserTelegram(currentUser);
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
-            resultUser.telegram?.username ||
-            resultUser.telegramInfo,
+              resultUser.telegram?.username ||
+              resultUser.telegramInfo,
           );
 
           return (
@@ -564,119 +639,18 @@ export default function Disputes() {
     field: "defendant" | "witness",
     index?: number,
   ) => {
-    // Display with @ symbol, but store without it
     const valueWithAt = `@${username}`;
 
     if (field === "defendant") {
       setForm((prev) => ({ ...prev, defendant: valueWithAt }));
       setShowDefendantSuggestions(false);
-      setDefendantSearchQuery(""); // Clear search query
+      setDefendantSearchQuery("");
     } else if (field === "witness" && index !== undefined) {
       updateWitness(index, valueWithAt);
       setShowWitnessSuggestions(false);
-      setWitnessSearchQuery(""); // Clear search query
+      setWitnessSearchQuery("");
     }
   };
-
-  // Filter and sort disputes
-  const filteredDisputes = useMemo(() => {
-    if (!data.length) return [];
-
-    let result = data.filter((d) => {
-      // Status filter
-      if (status !== "All" && d.status !== status) return false;
-
-      // Date range filter
-      if (dateRange !== "All") {
-        const days = dateRange === "7d" ? 7 : 30;
-        const dtime = new Date(d.createdAt).getTime();
-        if (Date.now() - dtime > days * 24 * 60 * 60 * 1000) return false;
-      }
-
-      // Search query filter - search across multiple fields
-      if (query.trim()) {
-        const searchTerm = query.toLowerCase().trim();
-
-        // Get all searchable fields
-        const searchableText = [
-          d.title || "",
-          d.plaintiff || "",
-          d.defendant || "",
-          d.claim || "",
-          d.parties || "",
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return searchableText.includes(searchTerm);
-      }
-
-      return true;
-    });
-
-    // Sort by date
-    result = result.sort((a, b) => {
-      const parseDate = (dateStr: string): Date => {
-        const date = new Date(dateStr);
-        return isNaN(date.getTime()) ? new Date(0) : date;
-      };
-
-      const aDate = parseDate(a.createdAt);
-      const bDate = parseDate(b.createdAt);
-
-      return sortAsc
-        ? aDate.getTime() - bDate.getTime()
-        : bDate.getTime() - aDate.getTime();
-    });
-
-    return result;
-  }, [data, status, dateRange, query, sortAsc]);
-
-  // Store all filtered disputes
-  useEffect(() => {
-    setAllDisputes(filteredDisputes);
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [filteredDisputes]);
-
-  // Apply pagination
-  const applyPagination = useCallback(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const paginated = allDisputes.slice(startIndex, endIndex);
-    setPaginatedDisputes(paginated);
-  }, [allDisputes, currentPage, pageSize]);
-
-  // Apply pagination when dependencies change
-  useEffect(() => {
-    applyPagination();
-  }, [applyPagination]);
-
-  // Calculate pagination info
-  const totalPages = Math.ceil(allDisputes.length / pageSize);
-  const startItem = (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(currentPage * pageSize, allDisputes.length);
-
-  // Handle page change
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-  };
-
-  // Handle page size change
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCurrentPage(1);
-  };
-
-  // Add this computed value near your other filtered data
-  const filteredRecentDisputes = useMemo(() => {
-    return data
-      .slice(0, 5) // Show only recent 5 disputes
-      .filter((d) =>
-        recentDisputesFilter === "All"
-          ? true
-          : d.status === recentDisputesFilter,
-      );
-  }, [data, recentDisputesFilter]);
 
   // File upload handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -685,7 +659,6 @@ export default function Disputes() {
 
     const newFiles: UploadedFile[] = [];
 
-    // Calculate current total size
     const currentTotalSize = form.evidence.reduce(
       (total, file) => total + file.file.size,
       0,
@@ -695,7 +668,6 @@ export default function Disputes() {
       const fileSizeMB = file.size / 1024 / 1024;
       const fileType = file.type.startsWith("image/") ? "image" : "document";
 
-      // Apply file size limits based on file type
       if (fileType === "image" && fileSizeMB > 2) {
         toast.error(
           `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
@@ -710,7 +682,6 @@ export default function Disputes() {
         return;
       }
 
-      // Check if adding this file would exceed total size limit
       if (currentTotalSize + file.size > MAX_TOTAL_SIZE) {
         toast.error(
           `Adding "${file.name}" would exceed total 50MB limit. Current total: ${(currentTotalSize / 1024 / 1024).toFixed(2)}MB`,
@@ -718,7 +689,6 @@ export default function Disputes() {
         return;
       }
 
-      // Validate file type
       if (
         !ALLOWED_IMAGE_TYPES.includes(file.type) &&
         !ALLOWED_DOCUMENT_TYPES.includes(file.type)
@@ -739,12 +709,10 @@ export default function Disputes() {
 
       newFiles.push(newFile);
 
-      // Create preview for images
       if (fileType === "image") {
         const reader = new FileReader();
         reader.onload = (e) => {
           newFile.preview = e.target?.result as string;
-          // Update the specific file with preview
           setForm((prev) => ({
             ...prev,
             evidence: prev.evidence.map((f) =>
@@ -756,7 +724,6 @@ export default function Disputes() {
       }
     });
 
-    // Add all valid files to evidence
     if (newFiles.length > 0) {
       setForm((prev) => ({
         ...prev,
@@ -796,16 +763,13 @@ export default function Disputes() {
     input.type = "file";
     input.multiple = true;
     input.accept = "image/*,.pdf,.doc,.docx,.txt";
-    // Create a DataTransfer to set files
     const dataTransfer = new DataTransfer();
     Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
     input.files = dataTransfer.files;
 
-    // Trigger the file input change event
     const event = new Event("change", { bubbles: true });
     input.dispatchEvent(event);
 
-    // Use our existing file handler
     handleFileSelect({
       target: { files: dataTransfer.files },
     } as React.ChangeEvent<HTMLInputElement>);
@@ -842,7 +806,7 @@ export default function Disputes() {
 
       try {
         console.log("🚀 Creating paid dispute after transaction...", {
-          txHash: transactionHash, // Use it here
+          txHash: transactionHash,
         });
 
         const cleanedDefendant = isValidWalletAddress(form.defendant)
@@ -862,12 +826,11 @@ export default function Disputes() {
           defendant: cleanedDefendant,
           claim: form.claim,
           witnesses: cleanedWitnesses,
-          chainId: networkInfo.chainId, // Send chainId for paid disputes
+          chainId: networkInfo.chainId,
         };
 
         const files = form.evidence.map((uf) => uf.file);
 
-        // Call the updated createDispute method with chainId
         const result = await disputeService.createDispute(
           createDisputeData,
           files,
@@ -879,8 +842,7 @@ export default function Disputes() {
           description: `${form.title} has been recorded on-chain and in our system`,
         });
 
-        // Reset form
-        setOpen(false);
+        setIsModalOpen(false);
         setForm({
           title: "",
           kind: "Pro Bono",
@@ -891,7 +853,8 @@ export default function Disputes() {
           witnesses: [""],
         });
 
-        refetch();
+        // Refresh disputes list
+        loadDisputes();
       } catch (error: any) {
         console.error("❌ Dispute creation failed after transaction:", error);
         toast.error("Failed to create dispute", {
@@ -903,20 +866,7 @@ export default function Disputes() {
         setIsSubmitting(false);
       }
     },
-    [
-      form.title,
-      form.description,
-      form.defendant,
-      form.claim,
-      form.witnesses,
-      form.evidence,
-      networkInfo.chainId,
-      refetch,
-      setOpen,
-      setForm,
-      setIsSubmitting,
-      // Note: Add any other dependencies that are used inside the function
-    ],
+    [form, networkInfo.chainId, loadDisputes],
   );
 
   // Handle transaction status changes
@@ -941,7 +891,6 @@ export default function Disputes() {
     } else if (isTransactionSuccess && hash && isProcessingPaidDispute) {
       console.log("✅ Transaction successful!");
 
-      // Check if we've already processed this transaction
       if (
         transactionProcessingRef.current.hasProcessed &&
         transactionProcessingRef.current.transactionHash === hash
@@ -950,7 +899,6 @@ export default function Disputes() {
         return;
       }
 
-      // Mark as processed
       transactionProcessingRef.current = {
         hasProcessed: true,
         transactionHash: hash,
@@ -960,7 +908,6 @@ export default function Disputes() {
       setTransactionStep("success");
       setIsProcessingPaidDispute(false);
 
-      // Create the dispute after successful transaction
       createDisputeAfterTransaction(hash);
     } else if (writeError || isTransactionError) {
       console.log("❌ Transaction failed");
@@ -983,7 +930,7 @@ export default function Disputes() {
 
   // Reset processing ref when modal closes
   useEffect(() => {
-    if (!open) {
+    if (!isModalOpen) {
       transactionProcessingRef.current = {
         hasProcessed: false,
         transactionHash: null,
@@ -992,11 +939,9 @@ export default function Disputes() {
       setIsProcessingPaidDispute(false);
       resetWrite();
     }
-  }, [open, resetWrite]);
+  }, [isModalOpen, resetWrite]);
 
-  // Function to create dispute after successful transaction
-
-  // Function to create dispute on-chain (for paid disputes)
+  // Function to create dispute on-chain
   const createDisputeOnchain = useCallback(async (): Promise<void> => {
     console.log("🟡 [DEBUG] createDisputeOnchain STARTED");
 
@@ -1022,7 +967,6 @@ export default function Disputes() {
         );
       }
 
-      // Fetch on-chain vote configs for fee amount
       const configs = await getVoteConfigs(networkInfo.chainId);
 
       console.log("📊 [DEBUG] On-chain configs:", {
@@ -1083,11 +1027,10 @@ export default function Disputes() {
     }
   }, [form.kind, createDisputeOnchain, resetWrite]);
 
-  // Replace your existing submit function with this updated version
+  // Submit function
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Form validation (same as before)
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -1109,7 +1052,6 @@ export default function Disputes() {
       return;
     }
 
-    // Validate file sizes and types
     const totalSize = form.evidence.reduce(
       (total, file) => total + file.file.size,
       0,
@@ -1123,7 +1065,6 @@ export default function Disputes() {
       return;
     }
 
-    // Check individual file sizes and types
     for (const file of form.evidence) {
       if (file.file.size > MAX_FILE_SIZE) {
         toast.error(`File ${file.file.name} exceeds 10MB size limit`);
@@ -1142,7 +1083,6 @@ export default function Disputes() {
       }
     }
 
-    // Validate Telegram usernames
     const cleanedDefendantInput = cleanTelegramUsername(form.defendant);
     if (
       !isValidTelegramUsername(cleanedDefendantInput) &&
@@ -1162,13 +1102,10 @@ export default function Disputes() {
       return;
     }
 
-    // Handle based on dispute type
     if (form.kind === "Paid") {
-      // For paid disputes, FIRST call smart contract
       setIsProcessingPaidDispute(true);
       await createDisputeOnchain();
     } else {
-      // For pro bono disputes, create directly
       setIsSubmitting(true);
 
       try {
@@ -1195,7 +1132,6 @@ export default function Disputes() {
 
         const files = form.evidence.map((uf) => uf.file);
 
-        // Call service method for pro bono dispute (without chainId)
         const result = await disputeService.createDispute(
           createDisputeData,
           files,
@@ -1206,8 +1142,7 @@ export default function Disputes() {
           description: `${form.title} has been submitted for review`,
         });
 
-        // Reset form
-        setOpen(false);
+        setIsModalOpen(false);
         setForm({
           title: "",
           kind: "Pro Bono",
@@ -1218,7 +1153,7 @@ export default function Disputes() {
           witnesses: [""],
         });
 
-        refetch();
+        loadDisputes();
       } catch (error: any) {
         console.error("❌ Submission failed:", error);
         toast.error("Failed to submit dispute", { description: error.message });
@@ -1228,30 +1163,36 @@ export default function Disputes() {
     }
   }
 
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="relative space-y-8">
-        <div className="flex h-64 items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-            <p className="text-muted-foreground">Loading disputes...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Calculate pagination info
+  const totalPages = Math.ceil(totalDisputes / pageSize);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalDisputes);
 
-  // Show error state
-  if (error) {
+  // Show loading state
+  if (loading && currentPage === 1) {
     return (
-      <div className="relative space-y-8">
-        <div className="flex h-64 items-center justify-center">
-          <div className="text-center">
-            <p className="mb-4 text-red-400">Failed to load disputes</p>
-            <Button onClick={() => refetch()} variant="outline">
-              Try Again
-            </Button>
+      <div className="relative flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="relative mx-auto mb-8">
+            <div className="mx-auto size-24 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
+            <div className="absolute inset-0 mx-auto size-24 animate-ping rounded-full border-2 border-cyan-400/40"></div>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-cyan-300">
+              Loading Disputes
+            </h3>
+            <p className="text-sm text-cyan-200/70">
+              Preparing your disputes list...
+            </p>
+          </div>
+          <div className="mt-4 flex justify-center space-x-1">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -1260,20 +1201,14 @@ export default function Disputes() {
 
   return (
     <div className="relative space-y-8">
-      {/* <div className="absolute block size-[20rem] rounded-full bg-cyan-500/20 blur-3xl lg:top-28 lg:right-20 lg:size-[30rem]"></div>
-      <div className="absolute -top-20 -left-6 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[25rem]"></div>
-      <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div> */}
-
-      {/* Intro section */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* left column */}
         <div className="col-span-5 lg:col-span-3">
           <div className="mb-3 flex items-center justify-between">
             <h1 className="text-xl text-white">Disputes</h1>
             <Button
               variant="neon"
               className="neon-hover"
-              onClick={() => setOpen(true)}
+              onClick={() => setIsModalOpen(true)}
             >
               <Scale className="mr-2 h-4 w-4" />
               Raise New Dispute
@@ -1284,13 +1219,13 @@ export default function Disputes() {
 
         <section className="col-span-5 mt-10 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
+            {/* Search Input */}
             <div className="relative grow sm:max-w-xs">
               <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
               <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  // Prevent Enter key from submitting forms
                   if (e.key === "Enter") {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1300,8 +1235,9 @@ export default function Disputes() {
                 className="placeholder:text-muted-foreground w-full rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-9 text-sm ring-0 outline-none focus:border-cyan-400/40"
               />
             </div>
+
+            {/* Status Filter Dropdown */}
             <div className="relative w-48" ref={dropdownRef}>
-              {/* Dropdown Trigger */}
               <div
                 onClick={() => setIsOpen((prev) => !prev)}
                 className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:border-cyan-400/30"
@@ -1311,12 +1247,12 @@ export default function Disputes() {
                     "All"}
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""
-                    }`}
+                  className={`h-4 w-4 transition-transform ${
+                    isOpen ? "rotate-180" : ""
+                  }`}
                 />
               </div>
 
-              {/* Dropdown Menu */}
               {isOpen && (
                 <div className="absolute top-[110%] right-0 z-50 w-full overflow-hidden rounded-md border border-white/10 bg-cyan-900/80 shadow-lg backdrop-blur-md">
                   {filterOptions.map((option) => (
@@ -1326,10 +1262,11 @@ export default function Disputes() {
                         setStatus(option.value as DisputeRow["status"] | "All");
                         setIsOpen(false);
                       }}
-                      className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${status === option.value
-                        ? "bg-cyan-500/20 text-cyan-200"
-                        : ""
-                        }`}
+                      className={`cursor-pointer px-4 py-2 text-sm text-white/80 transition-colors hover:bg-cyan-500/30 hover:text-white ${
+                        status === option.value
+                          ? "bg-cyan-500/20 text-cyan-200"
+                          : ""
+                      }`}
                     >
                       {option.label}
                     </div>
@@ -1337,6 +1274,26 @@ export default function Disputes() {
                 </div>
               )}
             </div>
+            <Button
+              variant="outline"
+              onClick={handleRefetchDisputes}
+              disabled={isRefetching}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              {isRefetching ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Refetching...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refetch Disputes
+                </>
+              )}
+            </Button>
+
+            {/* Date Range and Sort Controls */}
             <div className="ml-auto flex items-center gap-2">
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -1375,11 +1332,11 @@ export default function Disputes() {
                 variant="outline"
                 className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
                 onClick={(e) => {
-                  e.preventDefault(); // Add this line
-                  setSortAsc((v) => !v);
+                  e.preventDefault();
+                  setSortOrder(sortOrder === "asc" ? "desc" : "asc");
                 }}
               >
-                {sortAsc ? (
+                {sortOrder === "asc" ? (
                   <SortAsc className="mr-2 h-4 w-4" />
                 ) : (
                   <SortDesc className="mr-2 h-4 w-4" />
@@ -1394,8 +1351,7 @@ export default function Disputes() {
             <div className="flex items-center justify-between border-b border-white/10 p-5">
               <h3 className="font-semibold text-white/90">Disputes</h3>
               <div className="text-sm text-cyan-300">
-                {allDisputes.length}{" "}
-                {allDisputes.length === 1 ? "dispute" : "disputes"}
+                {totalDisputes} {totalDisputes === 1 ? "dispute" : "disputes"}
               </div>
             </div>
 
@@ -1445,7 +1401,7 @@ export default function Disputes() {
                         <DisputeSkeleton key={index} />
                       ))}
                     </>
-                  ) : paginatedDisputes.length === 0 ? (
+                  ) : disputes.length === 0 ? (
                     <tr>
                       <td
                         colSpan={6}
@@ -1455,7 +1411,7 @@ export default function Disputes() {
                       </td>
                     </tr>
                   ) : (
-                    paginatedDisputes.map((d) => (
+                    disputes.map((d) => (
                       <tr
                         key={d.id}
                         onClick={() => navigate(`/disputes/${d.id}`)}
@@ -1497,8 +1453,7 @@ export default function Disputes() {
                                 }}
                                 className="text-cyan-300 hover:text-cyan-200 hover:underline"
                               >
-                                {formatPartyDisplay(d.plaintiff)}{" "}
-                                {/* Updated here */}
+                                {formatPartyDisplay(d.plaintiff)}
                               </button>
                             </div>
 
@@ -1530,8 +1485,7 @@ export default function Disputes() {
                                 }}
                                 className="text-cyan-300 hover:text-cyan-200 hover:underline"
                               >
-                                {formatPartyDisplay(d.defendant)}{" "}
-                                {/* Updated here */}
+                                {formatPartyDisplay(d.defendant)}
                               </button>
                             </div>
                           </div>
@@ -1547,17 +1501,18 @@ export default function Disputes() {
                           {d.status === "Settled" ? (
                             <span className="badge badge-blue">Settled</span>
                           ) : d.status === "Pending" ? (
-                            <span className="badge badge-orange">Pending</span>
+                            <span className="badge badge-yellow">Pending</span>
                           ) : d.status === "Dismissed" ? (
                             <span className="badge badge-red">Dismissed</span>
                           ) : d.status === "Pending Payment" ? (
-                            <span className="badge border-yellow" >pending Payment</span>
-                          )
-                            : (
-                              <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
-                                Vote in Progress
-                              </span>
-                            )}
+                            <span className="badge badge-orange">
+                              Pending Payment
+                            </span>
+                          ) : (
+                            <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
+                              Vote in Progress
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1565,21 +1520,48 @@ export default function Disputes() {
                 </tbody>
               </table>
 
-              {paginatedDisputes.length === 0 && !loading && (
-                <div className="py-8 text-center">
-                  <p className="text-muted-foreground">
-                    No disputes found matching your criteria.
-                  </p>
+              {/* Error state display */}
+              {fetchError && !loading && (
+                <div className="px-5 py-6 text-center">
+                  <div className="mx-auto max-w-md">
+                    <div className="mb-4 flex justify-center">
+                      <AlertCircle className="h-12 w-12 text-red-400" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-white">
+                      Unable to Load Disputes
+                    </h3>
+                    <p className="mb-4 text-cyan-300">{fetchError}</p>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={handleRefetchDisputes}
+                        disabled={isRefetching}
+                        className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                      >
+                        {isRefetching ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Refetching...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Refetch Disputes
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
 
             {/* Pagination Controls */}
-            {!loading && allDisputes.length > 0 && (
+            {!loading && totalDisputes > 0 && (
               <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-5">
                 <div className="text-sm whitespace-nowrap text-cyan-300">
-                  Showing {startItem} to {endItem} of {allDisputes.length}{" "}
-                  disputes
+                  Showing {startItem} to {endItem} of {totalDisputes} disputes
                 </div>
 
                 <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
@@ -1617,10 +1599,11 @@ export default function Disputes() {
                           variant={currentPage === pageNum ? "neon" : "outline"}
                           size="sm"
                           onClick={() => handlePageChange(pageNum)}
-                          className={`${currentPage === pageNum
-                            ? "neon-hover"
-                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                            } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                          className={`${
+                            currentPage === pageNum
+                              ? "neon-hover"
+                              : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                         >
                           {pageNum}
                         </Button>
@@ -1649,104 +1632,10 @@ export default function Disputes() {
             )}
           </div>
         </section>
-
-        {/* Recent Disputes Sidebar */}
-        <div className="col-span-2 hidden">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-semibold text-white/90">Recent Disputes</h3>
-            <div
-              className="group relative w-[10rem]"
-              ref={recentDisputesDropdownRef}
-            >
-              <div
-                onClick={() =>
-                  setIsRecentDisputesFilterOpen(!isRecentDisputesFilterOpen)
-                }
-                className="flex cursor-pointer items-center justify-between rounded-md bg-white px-3 py-1 text-sm text-black transition-all dark:bg-[#d5f2f80a] dark:text-white"
-              >
-                {
-                  recentDisputesFilterOptions.find(
-                    (f) => f.value === recentDisputesFilter,
-                  )?.label
-                }
-                <div className="bg-Primary flex h-8 w-8 items-center justify-center rounded-md">
-                  <ChevronDown
-                    className={`transform text-2xl text-white transition-transform duration-300 ${isRecentDisputesFilterOpen ? "rotate-180" : ""
-                      }`}
-                  />
-                </div>
-              </div>
-
-              {isRecentDisputesFilterOpen && (
-                <div className="absolute top-[110%] right-0 z-50 w-full rounded-xl bg-cyan-800 shadow-md">
-                  {recentDisputesFilterOptions.map((option, idx) => (
-                    <div
-                      key={option.value}
-                      onClick={() => {
-                        setRecentDisputesFilter(option.value);
-                        setIsRecentDisputesFilterOpen(false);
-                      }}
-                      className={`cursor-pointer px-3 py-1.5 text-sm transition-colors hover:bg-cyan-300 hover:text-white ${idx === 0 ? "rounded-t-xl" : ""
-                        } ${idx === recentDisputesFilterOptions.length - 1
-                          ? "rounded-b-xl"
-                          : ""
-                        }`}
-                    >
-                      {option.label}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="card-cyan border p-4">
-            <ul className="space-y-3 text-sm">
-              {filteredRecentDisputes.length === 0 ? (
-                <li className="text-muted-foreground py-3 text-center text-xs">
-                  No disputes found.
-                </li>
-              ) : (
-                filteredRecentDisputes.map((dispute) => (
-                  <li
-                    key={dispute.id}
-                    className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-medium text-white">
-                        {dispute.title}
-                      </div>
-                      <div className="text-muted-foreground mt-1 text-xs">
-                        {dispute.parties.replace(" vs ", " ↔ ")}
-                      </div>
-                      <div className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                        {dispute.claim}
-                      </div>
-                    </div>
-                    <span
-                      className={`badge ml-2 text-xs ${dispute.status === "Pending"
-                        ? "badge-orange"
-                        : dispute.status === "Vote in Progress"
-                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                          : dispute.status === "Settled"
-                            ? "badge-blue"
-                            : dispute.status === "Dismissed"
-                              ? "badge-red"
-                              : ""
-                        }`}
-                    >
-                      {dispute.status}
-                    </span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-        </div>
       </div>
 
       {/* Create Dispute Modal */}
-      {open && (
+      {isModalOpen && (
         <AnimatePresence mode="wait">
           <motion.div
             initial={{ opacity: 0 }}
@@ -1754,7 +1643,7 @@ export default function Disputes() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
             onClick={() =>
-              !isSubmitting && !isProcessingPaidDispute && setOpen(false)
+              !isSubmitting && !isProcessingPaidDispute && setIsModalOpen(false)
             }
           >
             <motion.div
@@ -1775,7 +1664,7 @@ export default function Disputes() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setOpen(false)}
+                  onClick={() => setIsModalOpen(false)}
                   className="text-white/70 hover:text-white"
                   disabled={
                     isSubmitting ||
@@ -1865,15 +1754,17 @@ export default function Disputes() {
                       {(["Pro Bono", "Paid"] as const).map((kind) => (
                         <label
                           key={kind}
-                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
-                            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                            : "border-white/10 bg-white/5"
-                            } ${isSubmitting ||
-                              transactionStep === "pending" ||
-                              isProcessingPaidDispute
+                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                            form.kind === kind
+                              ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                              : "border-white/10 bg-white/5"
+                          } ${
+                            isSubmitting ||
+                            transactionStep === "pending" ||
+                            isProcessingPaidDispute
                               ? "cursor-not-allowed opacity-50"
                               : ""
-                            }`}
+                          }`}
                         >
                           <input
                             type="radio"
@@ -1945,7 +1836,7 @@ export default function Disputes() {
                             />
                           ))
                         ) : defendantSearchQuery.replace(/^@/, "").trim()
-                          .length >= 1 && !isDefendantSearchLoading ? (
+                            .length >= 1 && !isDefendantSearchLoading ? (
                           <div className="px-4 py-3 text-center text-sm text-cyan-300">
                             No users found for "
                             {defendantSearchQuery.replace(/^@/, "")}"
@@ -1957,10 +1848,10 @@ export default function Disputes() {
 
                         {defendantSearchQuery.replace(/^@/, "").trim().length <
                           1 && (
-                            <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                              Type at least 1 character to search
-                            </div>
-                          )}
+                          <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                            Type at least 1 character to search
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2028,15 +1919,17 @@ export default function Disputes() {
 
                     {/* Drag and Drop Area */}
                     <div
-                      className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                        ? "border-cyan-400/60 bg-cyan-500/20"
-                        : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                        } ${isSubmitting ||
-                          transactionStep === "pending" ||
-                          isProcessingPaidDispute
+                      className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                        isDragOver
+                          ? "border-cyan-400/60 bg-cyan-500/20"
+                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                      } ${
+                        isSubmitting ||
+                        transactionStep === "pending" ||
+                        isProcessingPaidDispute
                           ? "cursor-not-allowed opacity-50"
                           : ""
-                        }`}
+                      }`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
@@ -2056,12 +1949,13 @@ export default function Disputes() {
                       />
                       <label
                         htmlFor="evidence-upload"
-                        className={`flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center ${isSubmitting ||
+                        className={`flex cursor-pointer flex-col items-center justify-center px-4 py-8 text-center ${
+                          isSubmitting ||
                           transactionStep === "pending" ||
                           isProcessingPaidDispute
-                          ? "cursor-not-allowed"
-                          : ""
-                          }`}
+                            ? "cursor-not-allowed"
+                            : ""
+                        }`}
                       >
                         <Upload className="mb-3 h-8 w-8 text-cyan-400" />
                         <div className="text-sm text-cyan-300">
@@ -2289,7 +2183,7 @@ export default function Disputes() {
                         toast.message("Draft saved", {
                           description: "Your dispute has been saved as draft",
                         });
-                        setOpen(false);
+                        setIsModalOpen(false);
                       }}
                       disabled={
                         isSubmitting ||
@@ -2341,8 +2235,9 @@ function JudgesIntro() {
 
   return (
     <section
-      className={`card-cyan relative col-span-2 overflow-hidden rounded-2xl p-6 transition-all duration-300 ${expanded ? "h-auto" : "lg:h-[14rem]"
-        }`}
+      className={`card-cyan relative col-span-2 overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
+        expanded ? "h-auto" : "lg:h-[14rem]"
+      }`}
     >
       {/* Cyan glow effect */}
       <div className="absolute top-0 -right-10 block rounded-full bg-cyan-500/20 blur-3xl lg:size-[20rem]"></div>

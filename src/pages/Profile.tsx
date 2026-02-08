@@ -16,7 +16,7 @@ import { useAccountUpdate, useAvatarUpload } from "../hooks/useAccountApi";
 import type { AccountUpdateRequest } from "../services/apiService";
 import { UserAvatar } from "../components/UserAvatar";
 import { Loader2, UploadCloud, Wallet } from "lucide-react";
-import { agreementService } from "../services/agreementServices";
+// import { agreementService } from "../services/agreementServices";
 
 import { useNavigate } from "react-router-dom";
 import { useDisputesApi } from "../hooks/useDisputesApi";
@@ -25,6 +25,8 @@ import { WalletLinkingModal } from "../components/WalletLinkingModal";
 import TrustMeter from "../components/TrustMeter";
 import useTrustScore from "../hooks/useTrustScore";
 import Admin from "../components/ui/svgcomponents/Admin";
+import { useReputationHistory } from "../hooks/useReputation";
+import { useProfileAgreementsApi } from "../hooks/useProfileAgreementsApi";
 
 // Add AgreementStatusBadge component
 const AgreementStatusBadge = ({ status }: { status: number }) => {
@@ -332,98 +334,96 @@ const mapAgreementStatusToEscrow = (status: number): EscrowStatus => {
   }
 };
 
-// NEW: Helper function to extract roles from description
-const extractRolesFromDescription = (description: string) => {
-  if (!description) return { serviceProvider: null, serviceRecipient: null };
+// NEW: Helper function to determine user's role in agreement
 
-  // Look for Service Provider pattern
-  const serviceProviderMatch = description.match(
-    /Service Provider:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
-  );
-  // Look for Service Recipient pattern
-  const serviceRecipientMatch = description.match(
-    /Service Recipient:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
-  );
-
-  // Look for alternative patterns
-  const alternativeProviderMatch = description.match(
-    /Provider:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
-  );
-  const alternativeRecipientMatch = description.match(
-    /Recipient:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
-  );
-
-  return {
-    serviceProvider:
-      serviceProviderMatch?.[1] || alternativeProviderMatch?.[1] || null,
-    serviceRecipient:
-      serviceRecipientMatch?.[1] || alternativeRecipientMatch?.[1] || null,
-  };
+const ReputationEventTypeEnum = {
+  TelegramVerified: 1,
+  AgreementCompleted: 2,
+  AgreementEscrowCompleted: 3,
+  DisputeWon: 4,
+  VotedWinningOutcome: 5,
+  WitnessEvery5Comments: 6,
+  JudgeWinningVote: 7,
+  JudgeCommentAdded: 8,
+  FirstJudgeToVote: 9,
+  FirstCommunityToVote: 10,
+  CommunityVoteLost: 50,
+  JudgeVoteLost: 51,
+  DisputeLostRegular: 52,
+  DisputeLostEscrow: 53,
+  LateDelivery: 54,
+  FrequentCancellationsBanned: 55,
+  SpamAgreementsTempBan: 56,
 };
 
-// NEW: Helper function to determine user's role in agreement
-const getUserRoleInAgreement = (
-  agreement: any,
-  userId: string | undefined,
-  userWalletAddress: string | undefined,
-  isEscrow: boolean = false,
-): string => {
-  if (!userId && !userWalletAddress) return "Unknown";
-
-  // For escrow agreements, check description for roles
-  if (isEscrow) {
-    const roles = extractRolesFromDescription(agreement.description || "");
-
-    if (userWalletAddress) {
-      // Check if user is Service Provider (from wallet address)
-      if (
-        roles.serviceProvider &&
-        roles.serviceProvider.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
-        return "Service Provider";
-      }
-      // Check if user is Service Recipient (from wallet address)
-      if (
-        roles.serviceRecipient &&
-        roles.serviceRecipient.toLowerCase() === userWalletAddress.toLowerCase()
-      ) {
-        return "Service Recipient";
-      }
+// Update the formatReputationEvent function:
+const formatReputationEvent = (event: any) => {
+  const getEventTypeDisplay = (eventType: number) => {
+    switch (eventType) {
+      case ReputationEventTypeEnum.TelegramVerified:
+        return "Telegram Verified";
+      case ReputationEventTypeEnum.AgreementCompleted:
+        return "Agreement Completed";
+      case ReputationEventTypeEnum.AgreementEscrowCompleted:
+        return "Escrow Agreement Completed";
+      case ReputationEventTypeEnum.DisputeWon:
+        return "Dispute Won";
+      case ReputationEventTypeEnum.VotedWinningOutcome:
+        return "Voted Winning Outcome";
+      case ReputationEventTypeEnum.WitnessEvery5Comments:
+        return "Witness Contribution";
+      case ReputationEventTypeEnum.JudgeWinningVote:
+        return "Judge Winning Vote";
+      case ReputationEventTypeEnum.JudgeCommentAdded:
+        return "Judge Comment Added";
+      case ReputationEventTypeEnum.FirstJudgeToVote:
+        return "First Judge to Vote";
+      case ReputationEventTypeEnum.FirstCommunityToVote:
+        return "First Community to Vote";
+      case ReputationEventTypeEnum.CommunityVoteLost:
+        return "Community Vote Lost";
+      case ReputationEventTypeEnum.JudgeVoteLost:
+        return "Judge Vote Lost";
+      case ReputationEventTypeEnum.DisputeLostRegular:
+        return "Dispute Lost (Regular)";
+      case ReputationEventTypeEnum.DisputeLostEscrow:
+        return "Dispute Lost (Escrow)";
+      case ReputationEventTypeEnum.LateDelivery:
+        return "Late Delivery";
+      case ReputationEventTypeEnum.FrequentCancellationsBanned:
+        return "Frequent Cancellations";
+      case ReputationEventTypeEnum.SpamAgreementsTempBan:
+        return "Spam Agreements";
+      default:
+        return "Reputation Event";
     }
+  };
 
-    // Check by Telegram username
-    const userTelegram = userId ? `@user${userId}` : null;
-    if (userTelegram) {
-      if (
-        roles.serviceProvider &&
-        roles.serviceProvider.toLowerCase() === userTelegram.toLowerCase()
-      ) {
-        return "Service Provider";
-      }
-      if (
-        roles.serviceRecipient &&
-        roles.serviceRecipient.toLowerCase() === userTelegram.toLowerCase()
-      ) {
-        return "Service Recipient";
-      }
+  const getEventIcon = (eventType: number) => {
+    // Positive events
+    if (eventType <= 10) {
+      return "🟢";
     }
-  }
+    // Negative events (50+)
+    if (eventType >= 50) {
+      return "🔴";
+    }
+    return "⚪";
+  };
 
-  // For regular agreements, check by user ID
-  const userIdNum = userId ? Number(userId) : null;
-  const firstPartyId = agreement.firstParty
-    ? Number(agreement.firstParty.id)
-    : null;
-  const counterPartyId = agreement.counterParty
-    ? Number(agreement.counterParty.id)
-    : null;
+  const isPositiveEvent = (eventType: number) => {
+    return eventType <= 10; // Positive events are 1-10
+  };
 
-  if (userIdNum) {
-    if (firstPartyId === userIdNum) return "First Party";
-    if (counterPartyId === userIdNum) return "Counter Party";
-  }
-
-  return "Creator";
+  return {
+    id: event.id,
+    eventType: getEventTypeDisplay(event.eventType),
+    icon: getEventIcon(event.eventType),
+    value: event.value,
+    isPositive: isPositiveEvent(event.eventType),
+    eventId: event.eventId,
+    createdAt: event.createdAt,
+  };
 };
 
 export default function Profile() {
@@ -441,18 +441,31 @@ export default function Profile() {
   const navigate = useNavigate();
 
   // NEW: State for agreements with type-based filtering
-  const [reputationalAgreements, setReputationalAgreements] = useState<any[]>(
-    [],
-  );
-  const [escrowAgreements, setEscrowAgreements] = useState<any[]>([]);
-  const [agreementsLoading, setAgreementsLoading] = useState(true);
-  const [agreementsError, setAgreementsError] = useState<string | null>(null);
+  // const [reputationalAgreements, setReputationalAgreements] = useState<any[]>(
+  //   [],
+  // );
+  // const [escrowAgreements, setEscrowAgreements] = useState<any[]>([]);
+  // const [agreementsLoading, setAgreementsLoading] = useState(true);
+  // const [agreementsError, setAgreementsError] = useState<string | null>(null);
 
+  const {
+    data: reputationHistory,
+    loading: reputationLoading,
+    error: reputationError,
+    loadingMore: reputationLoadingMore, // Renamed to avoid conflict
+    loadMoreHistory, // Use the new name
+    // hasMore: reputationHasMore,
+  } = useReputationHistory(user?.id?.toString() || null);
+
+  // Update the useDisputesApi destructuring:
   const {
     disputes,
     loading: disputesLoading,
     error: disputesError,
-  } = useDisputesApi(user?.id?.toString() || "");
+    hasMore,
+    totalUserDisputes, // Add this
+    loadMore,
+  } = useDisputesApi(user?.id);
 
   const {
     updateAccount,
@@ -467,198 +480,157 @@ export default function Profile() {
     success: uploadSuccess,
   } = useAvatarUpload();
 
-  // NEW: Load agreements with type-based filtering
-  const loadAgreements = useCallback(async () => {
-    try {
-      setAgreementsLoading(true);
-      setAgreementsError(null);
+  const {
+    reputationalDisplay,
+    escrowDisplay,
+    loading: agreementsLoading,
+    error: agreementsError,
+    hasMoreReputational,
+    hasMoreEscrow,
+    loadMoreReputational,
+    loadMoreEscrow,
+    totalReputationalAgreements,
+    totalEscrowAgreements,
+  } = useProfileAgreementsApi(user?.id, user?.walletAddress);
 
-      // Fetch all agreements (we'll filter by type)
-      const allAgreementsResponse = await agreementService.getAgreements({
-        top: 100,
-        skip: 0,
-        sort: "desc",
-      });
+  const getUserRoleInAgreement = useCallback(
+    (
+      agreement: any,
+      userId: string | undefined,
+      userWalletAddress: string | undefined,
+      isEscrow: boolean = false,
+    ): string => {
+      if (!userId && !userWalletAddress) return "Unknown";
 
-      const allAgreements = allAgreementsResponse.results || [];
+      if (isEscrow) {
+        const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
+        const payerWallet = agreement.payerWalletAddress?.toLowerCase();
+        const userWallet = userWalletAddress?.toLowerCase();
 
-      // Separate agreements by type
-      const reputational = allAgreements.filter(
-        (agreement: any) => agreement.type === 1, // Type 1 = Reputational
-      );
-      const escrow = allAgreements.filter(
-        (agreement: any) => agreement.type === 2, // Type 2 = Escrow
-      );
-
-      console.log("🔍 Agreement types loaded:", {
-        total: allAgreements.length,
-        reputational: reputational.length,
-        escrow: escrow.length,
-      });
-
-      setReputationalAgreements(reputational);
-      setEscrowAgreements(escrow);
-    } catch (error: any) {
-      console.error("Failed to fetch agreements:", error);
-      setAgreementsError(error.message || "Failed to load agreements");
-      setReputationalAgreements([]);
-      setEscrowAgreements([]);
-    } finally {
-      setAgreementsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadAgreements();
-    }
-  }, [isAuthenticated, loadAgreements]);
-
-  // Transform escrow agreement for display
-  const transformEscrowAgreement = (apiAgreement: any) => {
-    const roles = extractRolesFromDescription(apiAgreement.description || "");
-
-    const formatWalletAddress = (address: string): string => {
-      if (!address) return "Unknown";
-      if (address.startsWith("@")) return address;
-      if (address.startsWith("0x") && address.length === 42) {
-        return `${address.slice(0, 6)}...${address.slice(-4)}`;
-      }
-      return address;
-    };
-
-    return {
-      id: `${apiAgreement.id}`,
-      title: apiAgreement.title || `Escrow Deal #${apiAgreement.id}`,
-      serviceProvider: roles.serviceProvider
-        ? formatWalletAddress(roles.serviceProvider)
-        : "Unknown",
-      serviceRecipient: roles.serviceRecipient
-        ? formatWalletAddress(roles.serviceRecipient)
-        : "Unknown",
-      rawServiceProvider: roles.serviceProvider,
-      rawServiceRecipient: roles.serviceRecipient,
-      token: apiAgreement.tokenSymbol || "ETH",
-      amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
-      status: mapAgreementStatusToEscrow(apiAgreement.status),
-      statusNumber: apiAgreement.status,
-      deadline: apiAgreement.deadline
-        ? new Date(apiAgreement.deadline).toISOString().split("T")[0]
-        : "No deadline",
-      description: apiAgreement.description || "",
-      createdAt: apiAgreement.dateCreated || apiAgreement.createdAt,
-      firstParty: apiAgreement.firstParty,
-      counterParty: apiAgreement.counterParty,
-    };
-  };
-
-  // Transform reputational agreement for display
-  const transformReputationalAgreement = (apiAgreement: any) => {
-    return {
-      id: apiAgreement.id,
-      title: apiAgreement.title || `Agreement #${apiAgreement.id}`,
-      status: apiAgreement.status,
-      dateCreated: apiAgreement.dateCreated || apiAgreement.createdAt,
-      firstParty: apiAgreement.firstParty,
-      counterParty: apiAgreement.counterParty,
-      description: apiAgreement.description || "",
-    };
-  };
-
-  // Filter agreements where user is involved
-  const userReputationalAgreements = useMemo(() => {
-    if (!user?.id) return [];
-
-    return reputationalAgreements
-      .filter((agreement: any) => {
-        const userId = user.id.toString();
-        const firstPartyId = agreement.firstParty?.id?.toString();
-        const counterPartyId = agreement.counterParty?.id?.toString();
-
-        return firstPartyId === userId || counterPartyId === userId;
-      })
-      .map(transformReputationalAgreement);
-  }, [reputationalAgreements, user?.id]);
-
-  const userEscrowDeals = useMemo(() => {
-    if (!user?.id && !user?.walletAddress) return [];
-
-    const userId = user.id?.toString();
-    const userWallet = user.walletAddress?.toLowerCase();
-
-    return escrowAgreements
-      .filter((agreement: any) => {
-        // Check by user ID
-        const firstPartyId = agreement.firstParty?.id?.toString();
-        const counterPartyId = agreement.counterParty?.id?.toString();
-
-        if (userId && (firstPartyId === userId || counterPartyId === userId)) {
-          return true;
+        if (userWallet) {
+          if (payeeWallet && payeeWallet === userWallet) {
+            return "Service Provider";
+          }
+          if (payerWallet && payerWallet === userWallet) {
+            return "Service Recipient";
+          }
         }
 
-        // Check by wallet address from description
+        const userIdNum = userId ? Number(userId) : null;
+        const firstPartyId = agreement.firstParty
+          ? Number(agreement.firstParty.id)
+          : null;
+        const counterPartyId = agreement.counterParty
+          ? Number(agreement.counterParty.id)
+          : null;
+
+        if (userIdNum) {
+          if (firstPartyId === userIdNum) return "Service Provider";
+          if (counterPartyId === userIdNum) return "Service Recipient";
+        }
+
+        // For agreements from the hook, the wallet addresses are already in the transformed data
+        const roles = {
+          serviceProvider: agreement.rawServiceProvider,
+          serviceRecipient: agreement.rawServiceRecipient,
+        };
+
         if (userWallet) {
-          const roles = extractRolesFromDescription(
-            agreement.description || "",
-          );
           const provider = roles.serviceProvider?.toLowerCase();
           const recipient = roles.serviceRecipient?.toLowerCase();
 
-          return provider === userWallet || recipient === userWallet;
+          if (provider && provider === userWallet) {
+            return "Service Provider";
+          }
+          if (recipient && recipient === userWallet) {
+            return "Service Recipient";
+          }
         }
 
-        return false;
-      })
-      .map(transformEscrowAgreement);
-  }, [escrowAgreements, user?.id, user?.walletAddress]);
+        const userTelegram = userId ? `@user${userId}` : null;
+        if (userTelegram) {
+          if (
+            roles.serviceProvider &&
+            roles.serviceProvider.toLowerCase() === userTelegram.toLowerCase()
+          ) {
+            return "Service Provider";
+          }
+          if (
+            roles.serviceRecipient &&
+            roles.serviceRecipient.toLowerCase() === userTelegram.toLowerCase()
+          ) {
+            return "Service Recipient";
+          }
+        }
+      }
 
-  // Calculate stats
+      // For regular agreements
+      const userIdNum = userId ? Number(userId) : null;
+      const firstPartyId = agreement.firstParty
+        ? Number(agreement.firstParty.id)
+        : null;
+      const counterPartyId = agreement.counterParty
+        ? Number(agreement.counterParty.id)
+        : null;
+
+      if (userIdNum) {
+        if (firstPartyId === userIdNum) return "First Party";
+        if (counterPartyId === userIdNum) return "Counter Party";
+      }
+
+      return "Creator";
+    },
+    [],
+  );
+
   const agreementStats = useMemo(() => {
     return {
-      total: userReputationalAgreements.length,
-      active: userReputationalAgreements.filter(
-        (agreement) => agreement.status === 2,
+      total: totalReputationalAgreements,
+      active: reputationalDisplay.filter(
+        (agreement: any) => agreement.status === 2,
       ).length,
-      completed: userReputationalAgreements.filter(
-        (agreement) => agreement.status === 3,
+      completed: reputationalDisplay.filter(
+        (agreement: any) => agreement.status === 3,
       ).length,
-      disputed: userReputationalAgreements.filter(
-        (agreement) => agreement.status === 4,
+      disputed: reputationalDisplay.filter(
+        (agreement: any) => agreement.status === 4,
       ).length,
     };
-  }, [userReputationalAgreements]);
+  }, [reputationalDisplay, totalReputationalAgreements]);
 
   const escrowStats = useMemo(() => {
     return {
-      total: userEscrowDeals.length,
-      active: userEscrowDeals.filter(
-        (agreement) => agreement.status === "signed",
+      total: totalEscrowAgreements,
+      active: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 2,
       ).length,
-      completed: userEscrowDeals.filter(
-        (agreement) => agreement.status === "completed",
+      completed: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 3,
       ).length,
-      disputed: userEscrowDeals.filter(
-        (agreement) => agreement.status === "disputed",
+      disputed: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 4,
       ).length,
-      pending: userEscrowDeals.filter(
-        (agreement) => agreement.status === "pending",
+      pending: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 1,
       ).length,
-      pending_approval: userEscrowDeals.filter(
-        (agreement) => agreement.status === "pending_approval",
+      pending_approval: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 7,
       ).length,
-      expired: userEscrowDeals.filter(
-        (agreement) => agreement.status === "expired",
+      expired: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 6,
       ).length,
-      cancelled: userEscrowDeals.filter(
-        (agreement) => agreement.status === "cancelled",
+      cancelled: escrowDisplay.filter(
+        (agreement: any) => agreement.statusNumber === 5,
       ).length,
     };
-  }, [userEscrowDeals]);
+  }, [escrowDisplay, totalEscrowAgreements]);
 
   // Memoized disputes stats calculation
+  // Memoized disputes stats calculation
+  // In the Profile.tsx component, update the disputesStats calculation:
   const disputesStats = useMemo(
     () => ({
-      total: disputes.length,
+      total: totalUserDisputes, // Use totalUserDisputes instead of disputes.length
       pending: disputes.filter((dispute) => dispute.status === "Pending")
         .length,
       inProgress: disputes.filter(
@@ -668,8 +640,11 @@ export default function Profile() {
         .length,
       dismissed: disputes.filter((dispute) => dispute.status === "Dismissed")
         .length,
+      pendingPayment: disputes.filter(
+        (dispute) => dispute.status === "Pending Payment",
+      ).length,
     }),
-    [disputes],
+    [disputes, totalUserDisputes], // Add totalUserDisputes as dependency
   );
 
   const getUserRoleInDispute = useCallback(
@@ -736,6 +711,11 @@ export default function Profile() {
         label: "Pending",
         color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
       },
+      "Pending Payment": {
+        // ✅ Fixed: Add the space
+        label: "Pending Payment",
+        color: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+      },
       "Vote in Progress": {
         label: "Voting",
         color: "bg-blue-500/20 text-blue-300 border-blue-400/30",
@@ -752,7 +732,7 @@ export default function Profile() {
 
     const config = statusConfig[status as keyof typeof statusConfig] || {
       label: status,
-      color: "bg-gray-500/20 text-gray-300 border-gray-400/30",
+      color: "bg-pink-500/20 text-gray-300 border-gray-400/30",
     };
 
     return (
@@ -908,6 +888,45 @@ export default function Profile() {
   const [otp, setOtp] = useState("");
   const [loading] = useState(false);
 
+  useEffect(() => {
+    console.log("🔍 Reputation history debug:", {
+      hasUser: !!user,
+      userId: user?.id,
+      reputationHistory,
+      reputationLoading,
+      reputationError,
+      totalResults: reputationHistory?.totalResults,
+      resultsCount: reputationHistory?.results?.length,
+    });
+  }, [reputationHistory, reputationLoading, reputationError, user]);
+
+  // Also add this to debug the BentoCard rendering
+  useEffect(() => {
+    console.log("🎨 BentoCard visibility:", {
+      isAuthenticated,
+      userRoles: userData.roles,
+    });
+  }, [isAuthenticated, userData.roles]);
+
+  // const DebugInfo = () => {
+  //   if (!reputationHistory) return null;
+
+  //   return (
+  //     <div className="fixed right-4 bottom-4 z-50 rounded-lg border border-cyan-400/30 bg-black/90 p-4 text-xs">
+  //       <div className="mb-2 font-bold text-cyan-300">Reputation Debug</div>
+  //       <div className="space-y-1">
+  //         <div>Total: {reputationHistory.totalResults}</div>
+  //         <div>Shown: {reputationHistory.results.length}</div>
+  //         <div>Has More: {reputationHistory.hasMore ? "✅ YES" : "❌ NO"}</div>
+  //         <div>Loading More: {reputationLoadingMore ? "🔄" : "✅"}</div>
+  //         <div>
+  //           Page: {Math.floor(reputationHistory.results.length / 60) + 1}
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // };
+
   // If not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
@@ -947,6 +966,7 @@ export default function Profile() {
 
   return (
     <div className="relative space-y-8">
+      {/* {process.env.NODE_ENV === "development" && <DebugInfo />} */}
       {/* Toaster Component */}
       <Toaster
         message={toaster.message}
@@ -971,7 +991,7 @@ export default function Profile() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {/* Profile Summary */}
         <div className="space-y-4">
-          <div className="card-cyan row-span-1 flex h-fit flex-col justify-between rounded-2xl px-6 py-3 ring-1 ring-white/10">
+          <div className="row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-3">
             <div className="flex items-center gap-2">
               <div className="relative">
                 <UserAvatar
@@ -1058,7 +1078,7 @@ export default function Profile() {
           </div>
 
           {/* Verifications Section */}
-          <section className="card-cyan h-fit rounded-2xl p-4 lg:p-6">
+          <section className="h-fit rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-4 lg:p-6">
             <div className="space text-muted-foreground mb-4 text-lg">
               Verifications
             </div>
@@ -1323,36 +1343,7 @@ export default function Profile() {
               )}
 
             {/* Reputation History - Show for all users */}
-            <BentoCard
-              title="My Reputation History"
-              icon={<RiShieldCheckFill />}
-              color="cyan"
-              count={0}
-              scrollable
-              maxHeight="260px"
-            >
-              <div className="py-8 text-center">
-                <div className="mb-2 text-lg text-cyan-300">
-                  {userData.roles.admin
-                    ? "Administrator"
-                    : userData.roles.judge
-                      ? "Judge Reputation"
-                      : userData.roles.community
-                        ? "Community Reputation"
-                        : "Building Reputation"}
-                </div>
-                <div className="text-sm text-white/50">
-                  {userData.roles.admin
-                    ? "As an administrator, you have full platform access and oversight capabilities."
-                    : userData.roles.judge
-                      ? "Your reputation as a judge will grow with each fair dispute resolution."
-                      : userData.roles.community
-                        ? "Your community reputation builds with active participation."
-                        : "Your reputation events will appear here as you participate in agreements and disputes."}
-                </div>
-              </div>
-            </BentoCard>
-
+            {/* Replace the "My Reputation History" BentoCard section with this: */}
             {showLoginModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                 <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
@@ -1422,7 +1413,6 @@ export default function Profile() {
               </div>
             </section>
           )}
-
           {/* Show Judged Disputes only for judges (and not admins who aren't judges) */}
           {userData.roles.judge && !userData.roles.admin && (
             <section className="rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-6">
@@ -1440,7 +1430,6 @@ export default function Profile() {
               </div>
             </section>
           )}
-
           {/* Show Community Stats for community members (and not admins/judges) */}
           {userData.roles.community &&
             !userData.roles.judge &&
@@ -1459,7 +1448,6 @@ export default function Profile() {
                 </div>
               </section>
             )}
-
           {/* Show welcome for basic users (no special roles) */}
           {userData.roles.user &&
             !userData.roles.admin &&
@@ -1480,38 +1468,192 @@ export default function Profile() {
                 </div>
               </section>
             )}
-
           {/* Reputation History - Show for all users */}
           <BentoCard
             title="My Reputation History"
             icon={<RiShieldCheckFill />}
             color="cyan"
-            count={0}
+            count={reputationHistory?.total || 0} // Use 'total' not 'totalResults'
             scrollable
-            maxHeight="260px"
+            maxHeight="330px"
           >
-            <div className="py-8 text-center">
-              <div className="mb-2 text-lg text-cyan-300">
-                {userData.roles.admin
-                  ? "Administrator"
-                  : userData.roles.judge
-                    ? "Judge Reputation"
-                    : userData.roles.community
-                      ? "Community Reputation"
-                      : "Building Reputation"}
+            {reputationLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+                <span className="ml-2 text-cyan-300">
+                  Loading reputation history...
+                </span>
               </div>
-              <div className="text-sm text-white/50">
-                {userData.roles.admin
-                  ? "As an administrator, you have full platform access and oversight capabilities."
-                  : userData.roles.judge
-                    ? "Your reputation as a judge will grow with each fair dispute resolution."
-                    : userData.roles.community
-                      ? "Your community reputation builds with active participation."
-                      : "Your reputation events will appear here as you participate in agreements and disputes."}
+            ) : reputationError ? (
+              <div className="py-8 text-center">
+                <div className="mb-2 text-lg text-red-300">
+                  Error loading reputation history
+                </div>
+                <div className="text-sm text-white/50">{reputationError}</div>
               </div>
-            </div>
-          </BentoCard>
+            ) : !reputationHistory?.results?.length ? (
+              <div className="py-8 text-center">
+                <div className="mb-2 text-lg text-cyan-300">
+                  {userData.roles.admin
+                    ? "Administrator Reputation"
+                    : userData.roles.judge
+                      ? "Judge Reputation"
+                      : userData.roles.community
+                        ? "Community Reputation"
+                        : "Building Reputation"}
+                </div>
+                <div className="text-sm text-white/50">
+                  {userData.roles.admin
+                    ? "Administrators maintain platform integrity. Your reputation score is based on oversight activities."
+                    : userData.roles.judge
+                      ? "Judges earn reputation through fair dispute resolution and timely decisions."
+                      : userData.roles.community
+                        ? "Community members build reputation by participating in agreements and disputes."
+                        : "Complete agreements, resolve disputes, and participate in the community to build your reputation."}
+                </div>
+                <div className="mt-4 text-sm text-cyan-300">
+                  Base Score: {reputationHistory?.baseScore || 50} → Final
+                  Score: {reputationHistory?.finalScore || 50}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Reputation Summary */}
+                <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-white/80">
+                      <div className="font-medium">Reputation Score</div>
+                      <div className="text-xs text-white/60">
+                        {reputationHistory.results.length} of{" "}
+                        {reputationHistory.total} events shown
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-cyan-300">
+                        {reputationHistory.finalScore || 50}
+                      </div>
+                      <div className="text-xs text-white/60">
+                        <span className="text-green-400">
+                          +
+                          {(reputationHistory.finalScore || 50) -
+                            (reputationHistory.baseScore || 50)}
+                        </span>{" "}
+                        from base
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
+                {/* Reputation Events List */}
+                <div className="space-y-2">
+                  {reputationHistory.results.map((event) => {
+                    const formattedEvent = formatReputationEvent(event);
+
+                    return (
+                      <div
+                        key={event.id}
+                        className="rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="text-xl">{formattedEvent.icon}</div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-white/90">
+                                  {formattedEvent.eventType}
+                                </div>
+                                <div className="mt-1 text-xs text-white/60">
+                                  {new Date(event.createdAt).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
+                                </div>
+                              </div>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                  formattedEvent.isPositive
+                                    ? "bg-green-500/20 text-green-300"
+                                    : "bg-red-500/20 text-red-300"
+                                }`}
+                              >
+                                {formattedEvent.isPositive ? "+" : ""}
+                                {formattedEvent.value} pts
+                              </span>
+                            </div>
+
+                            {/* Event-specific details */}
+                            {(event.eventType ===
+                              ReputationEventTypeEnum.AgreementCompleted ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeWon ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeLostRegular ||
+                              event.eventType ===
+                                ReputationEventTypeEnum.DisputeLostEscrow) && (
+                              <div className="mt-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs text-cyan-300 hover:text-cyan-200"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isEscrow =
+                                      event.eventType ===
+                                        ReputationEventTypeEnum.AgreementEscrowCompleted ||
+                                      event.eventType ===
+                                        ReputationEventTypeEnum.DisputeLostEscrow;
+                                    handleAgreementClick(
+                                      event.eventId.toString(),
+                                      isEscrow,
+                                    );
+                                  }}
+                                >
+                                  View Event #{event.eventId}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Load More Button */}
+                {reputationHistory.hasMore && (
+                  <div className="mt-4 text-center">
+                    <div className="mb-2 text-xs text-white/60">
+                      Showing {reputationHistory.results.length} of{" "}
+                      {reputationHistory.total} events
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
+                      onClick={() => loadMoreHistory()}
+                      disabled={reputationLoadingMore}
+                    >
+                      {reputationLoadingMore ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Load More History"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </BentoCard>
           {showLoginModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="card-cyan w-[90%] max-w-sm rounded-xl p-6 text-white shadow-lg">
@@ -1563,7 +1705,7 @@ export default function Profile() {
           scrollable
           maxHeight="260px"
         >
-          {disputesLoading ? (
+          {disputesLoading && disputes.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
               <span className="ml-2 text-cyan-300">Loading disputes...</span>
@@ -1584,64 +1726,104 @@ export default function Profile() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {disputes.map((dispute) => (
-                <div
-                  key={dispute.id}
-                  onClick={() => handleDisputeClick(dispute.id)}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center justify-between">
-                        <h4 className="truncate text-sm font-medium text-white/90">
-                          {dispute.title}
-                        </h4>
+            <>
+              {/* Add this count display */}
+              <div className="mb-4 text-sm text-white/70">
+                Showing {disputes.length} of {totalUserDisputes} disputes
+              </div>
 
-                        <DisputeStatusBadge status={dispute.status} />
-                      </div>
+              <div className="space-y-3">
+                {disputes.map((dispute) => (
+                  <div
+                    key={dispute.id}
+                    onClick={() => handleDisputeClick(dispute.id)}
+                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between">
+                          <h4 className="max-w-[6rem] truncate text-sm font-medium text-white/90 sm:max-w-[10rem]">
+                            {dispute.title}
+                          </h4>
 
-                      <div className="mb-2 text-xs text-white/70">
-                        Created: {formatDate(dispute.createdAt)}
-                      </div>
-
-                      <div className="space-y-1 text-xs text-white/60">
-                        <div className="flex justify-between">
-                          <span>Parties:</span>
-                          <span className="text-white/80">
-                            @{dispute.plaintiff} vs @{dispute.defendant}
-                          </span>
+                          <DisputeStatusBadge status={dispute.status} />
                         </div>
 
-                        <div className="flex justify-between">
-                          <span>Your Role:</span>
-                          <span
-                            className={
-                              getUserRoleInDispute(dispute) === "Plaintiff"
-                                ? "text-blue-300"
-                                : getUserRoleInDispute(dispute) === "Defendant"
-                                  ? "text-pink-300"
-                                  : "text-cyan-300"
-                            }
-                          >
-                            {getUserRoleInDispute(dispute)}
-                          </span>
+                        <div className="mb-2 text-xs text-white/70">
+                          Created: {formatDate(dispute.createdAt)}
                         </div>
-                        <div className="flex justify-between">
-                          <span>Type:</span>
-                          <span className="text-white/80">
-                            {dispute.request}
-                          </span>
+
+                        <div className="space-y-1 text-xs text-white/60">
+                          <div className="flex justify-between">
+                            <span>Parties:</span>
+                            <span className="text-white/80">
+                              @{dispute.plaintiff} vs @{dispute.defendant}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span>Your Role:</span>
+                            <span
+                              className={
+                                getUserRoleInDispute(dispute) === "Plaintiff"
+                                  ? "text-blue-300"
+                                  : getUserRoleInDispute(dispute) ===
+                                      "Defendant"
+                                    ? "text-pink-300"
+                                    : "text-cyan-300"
+                              }
+                            >
+                              {getUserRoleInDispute(dispute)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Type:</span>
+                            <span className="text-white/80">
+                              {dispute.request}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
+                ))}
+              </div>
+
+              {/* Update the load more section */}
+              {hasMore && (
+                <div className="mt-4 flex flex-col items-center">
+                  <div className="mb-2 text-sm text-white/60">
+                    Showing {disputes.length} of {totalUserDisputes} disputes
+                  </div>
+                  <Button
+                    onClick={loadMore}
+                    disabled={disputesLoading}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    size="sm"
+                  >
+                    {disputesLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More Disputes"
+                    )}
+                  </Button>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Show loading indicator when loading more */}
+              {disputesLoading && disputes.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+                </div>
+              )}
+            </>
           )}
         </BentoCard>
 
+        {/* My Agreements (Reputational) */}
         {/* My Agreements (Reputational) */}
         <BentoCard
           title="My Agreements"
@@ -1651,7 +1833,7 @@ export default function Profile() {
           scrollable
           maxHeight="260px"
         >
-          {agreementsLoading ? (
+          {agreementsLoading && reputationalDisplay.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
               <span className="ml-2 text-cyan-300">Loading agreements...</span>
@@ -1663,7 +1845,7 @@ export default function Profile() {
               </div>
               <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          ) : userReputationalAgreements.length === 0 ? (
+          ) : reputationalDisplay.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
                 No reputational agreements yet
@@ -1673,83 +1855,124 @@ export default function Profile() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {userReputationalAgreements.map((agreement) => {
-                const userRole = getUserRoleInAgreement(
-                  agreement,
-                  user?.id?.toString(),
-                  user?.walletAddress?.toLowerCase(),
-                  false,
-                );
+            <>
+              {/* Show count */}
+              <div className="mb-4 text-sm text-white/70">
+                Showing {reputationalDisplay.length} of{" "}
+                {totalReputationalAgreements} agreements
+              </div>
 
-                return (
-                  <div
-                    key={agreement.id}
-                    onClick={() =>
-                      handleAgreementClick(agreement.id.toString(), false)
-                    }
-                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
-                          <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
-                            {agreement.title}
-                          </h4>
+              <div className="space-y-3">
+                {reputationalDisplay.map((agreement) => {
+                  const userRole = getUserRoleInAgreement(
+                    agreement,
+                    user?.id?.toString(),
+                    user?.walletAddress?.toLowerCase(),
+                    false,
+                  );
 
-                          <AgreementStatusBadge status={agreement.status} />
-                        </div>
+                  return (
+                    <div
+                      key={agreement.id}
+                      onClick={() =>
+                        handleAgreementClick(agreement.id.toString(), false)
+                      }
+                      className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/10"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                            <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
+                              {agreement.title}
+                            </h4>
 
-                        <div className="mb-2 text-xs text-white/70">
-                          Created: {formatDate(agreement.dateCreated)}
-                        </div>
-
-                        <div className="space-y-1 text-xs text-white/60">
-                          <div className="flex justify-between">
-                            <span>First Party:</span>
-                            <span className="text-white/80">
-                              {agreement.firstParty?.telegramUsername
-                                ? `@${agreement.firstParty.telegramUsername}`
-                                : agreement.firstParty?.wallet
-                                  ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
-                                  : "Unknown User"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Counter Party:</span>
-                            <span className="text-white/80">
-                              {agreement.counterParty?.telegramUsername
-                                ? `@${agreement.counterParty.telegramUsername}`
-                                : agreement.counterParty?.wallet
-                                  ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
-                                  : "Unknown User"}
-                            </span>
+                            <AgreementStatusBadge status={agreement.status} />
                           </div>
 
-                          <div className="flex justify-between">
-                            <span>Your Role:</span>
-                            <span
-                              className={
-                                userRole === "First Party"
-                                  ? "text-blue-300"
-                                  : userRole === "Counter Party"
-                                    ? "text-pink-300"
-                                    : "text-purple-300"
-                              }
-                            >
-                              {userRole}
-                            </span>
+                          <div className="mb-2 text-xs text-white/70">
+                            Created: {formatDate(agreement.dateCreated)}
+                          </div>
+
+                          <div className="space-y-1 text-xs text-white/60">
+                            <div className="flex justify-between">
+                              <span>First Party:</span>
+                              <span className="text-white/80">
+                                {agreement.firstParty?.telegramUsername
+                                  ? `@${agreement.firstParty.telegramUsername}`
+                                  : agreement.firstParty?.wallet
+                                    ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
+                                    : "Unknown User"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Counter Party:</span>
+                              <span className="text-white/80">
+                                {agreement.counterParty?.telegramUsername
+                                  ? `@${agreement.counterParty.telegramUsername}`
+                                  : agreement.counterParty?.wallet
+                                    ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
+                                    : "Unknown User"}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between">
+                              <span>Your Role:</span>
+                              <span
+                                className={
+                                  userRole === "First Party"
+                                    ? "text-blue-300"
+                                    : userRole === "Counter Party"
+                                      ? "text-pink-300"
+                                      : "text-purple-300"
+                                }
+                              >
+                                {userRole}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+
+              {/* Load more button for reputational agreements */}
+              {hasMoreReputational && (
+                <div className="mt-4 flex flex-col items-center">
+                  <div className="mb-2 text-sm text-white/60">
+                    Showing {reputationalDisplay.length} of{" "}
+                    {totalReputationalAgreements} agreements
                   </div>
-                );
-              })}
-            </div>
+                  <Button
+                    onClick={loadMoreReputational}
+                    disabled={agreementsLoading}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    size="sm"
+                  >
+                    {agreementsLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More Agreements"
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Show loading indicator when loading more */}
+              {agreementsLoading && reputationalDisplay.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+                </div>
+              )}
+            </>
           )}
         </BentoCard>
 
+        {/* Escrow Deals */}
         {/* Escrow Deals */}
         <BentoCard
           title="Escrow Deals"
@@ -1759,7 +1982,7 @@ export default function Profile() {
           scrollable
           maxHeight="260px"
         >
-          {agreementsLoading ? (
+          {agreementsLoading && escrowDisplay.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
               <span className="ml-2 text-cyan-300">
@@ -1773,7 +1996,7 @@ export default function Profile() {
               </div>
               <div className="text-sm text-white/50">{agreementsError}</div>
             </div>
-          ) : userEscrowDeals.length === 0 ? (
+          ) : escrowDisplay.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mb-2 text-lg text-cyan-300">
                 No escrow deals yet
@@ -1784,79 +2007,119 @@ export default function Profile() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {userEscrowDeals.map((agreement) => {
-                const userRole = getUserRoleInAgreement(
-                  agreement,
-                  user?.id?.toString(),
-                  user?.walletAddress?.toLowerCase(),
-                  true,
-                );
+            <>
+              {/* Show count */}
+              <div className="mb-4 text-sm text-white/70">
+                Showing {escrowDisplay.length} of {totalEscrowAgreements} escrow
+                deals
+              </div>
 
-                const roleColor =
-                  userRole === "Service Recipient"
-                    ? "text-blue-300"
-                    : userRole === "Service Provider"
-                      ? "text-pink-300"
-                      : userRole === "Creator"
-                        ? "text-purple-300"
-                        : "text-gray-300";
+              <div className="space-y-3">
+                {escrowDisplay.map((agreement: any) => {
+                  const userRole = getUserRoleInAgreement(
+                    agreement,
+                    user?.id?.toString(),
+                    user?.walletAddress?.toLowerCase(),
+                    true,
+                  );
 
-                return (
-                  <div
-                    key={agreement.id}
-                    onClick={() =>
-                      handleAgreementClick(agreement.id.toString(), true)
-                    }
-                    className="cursor-pointer rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/20"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
-                          <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
-                            {agreement.title}
-                          </h4>
-                          <div className="flex items-center gap-1">
-                            <AgreementStatusBadge
-                              status={agreement.statusNumber || 1}
-                            />
+                  const roleColor =
+                    userRole === "Service Recipient"
+                      ? "text-blue-300"
+                      : userRole === "Service Provider"
+                        ? "text-pink-300"
+                        : userRole === "Creator"
+                          ? "text-purple-300"
+                          : "text-gray-300";
+
+                  return (
+                    <div
+                      key={agreement.id}
+                      onClick={() =>
+                        handleAgreementClick(agreement.id.toString(), true)
+                      }
+                      className="cursor-pointer rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 transition-colors hover:border-emerald-400/50 hover:bg-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/20"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                            <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
+                              {agreement.title}
+                            </h4>
+                            <div className="flex items-center gap-1">
+                              <AgreementStatusBadge
+                                status={agreement.statusNumber || 1}
+                              />
+                            </div>
                           </div>
-                        </div>
-                        <div className="mb-2 text-xs text-white/70">
-                          Created: {formatDate(agreement.createdAt)}
-                        </div>
-
-                        <div className="space-y-1 text-xs text-white/60">
-                          <div className="flex justify-between">
-                            <span>Service Provider:</span>
-                            <span className="text-white/80">
-                              {agreement.serviceProvider}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Service Recipient:</span>
-                            <span className="text-white/80">
-                              {agreement.serviceRecipient}
-                            </span>
+                          <div className="mb-2 text-xs text-white/70">
+                            Created: {formatDate(agreement.createdAt)}
                           </div>
 
-                          <div className="flex justify-between">
-                            <span>Amount:</span>
-                            <span className="text-emerald-300">
-                              {agreement.amount} {agreement.token}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Your Role:</span>
-                            <span className={roleColor}>{userRole}</span>
+                          <div className="space-y-1 text-xs text-white/60">
+                            <div className="flex justify-between">
+                              <span>Service Provider:</span>
+                              <span className="text-white/80">
+                                {agreement.serviceProvider}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Service Recipient:</span>
+                              <span className="text-white/80">
+                                {agreement.serviceRecipient}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between">
+                              <span>Amount:</span>
+                              <span className="text-emerald-300">
+                                {agreement.amount} {agreement.token}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Your Role:</span>
+                              <span className={roleColor}>{userRole}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+
+              {/* Load more button for escrow deals */}
+              {hasMoreEscrow && (
+                <div className="mt-4 flex flex-col items-center">
+                  <div className="mb-2 text-sm text-white/60">
+                    Showing {escrowDisplay.length} of {totalEscrowAgreements}{" "}
+                    escrow deals
                   </div>
-                );
-              })}
-            </div>
+                  <Button
+                    onClick={loadMoreEscrow}
+                    disabled={agreementsLoading}
+                    className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-50"
+                    size="sm"
+                  >
+                    {agreementsLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More Escrow Deals"
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Show loading indicator when loading more */}
+              {agreementsLoading && escrowDisplay.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+                </div>
+              )}
+            </>
           )}
         </BentoCard>
       </section>

@@ -33,6 +33,8 @@ import {
   X,
   Search,
   Trash2,
+  Scale,
+  Wallet,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -77,6 +79,8 @@ import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
 } from "../types";
+import { TransactionStatus } from "../components/TransactionStatus";
+import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -1422,7 +1426,7 @@ const RaiseDisputeModal = ({
 };
 
 // Reject Delivery Modal Component
-// Reject Delivery Modal Component - Updated with dispute type info
+// Reject Delivery Modal Component - Updated to match AgreementDetails version
 const RejectDeliveryModal = ({
   isOpen,
   onClose,
@@ -1430,185 +1434,496 @@ const RejectDeliveryModal = ({
   claim,
   setClaim,
   isSubmitting,
-  transactionHash,
+  agreement,
+  votingId,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (claim: string, proBono: boolean) => Promise<void>;
+  onConfirm: (
+    claim: string,
+    requestKind: DisputeTypeEnum,
+    chainId?: number,
+    votingId?: string,
+    transactionHash?: string,
+  ) => Promise<void>;
   claim: string;
   setClaim: (claim: string) => void;
   isSubmitting: boolean;
-  transactionHash?: `0x${string}` | null;
+  agreement: any;
+  votingId?: string;
 }) => {
-  const [proBono, setProBono] = useState(false);
+  const [requestKind, setRequestKind] = useState<DisputeTypeEnum>(
+    DisputeTypeEnum.ProBono,
+  );
+  const networkInfo = useNetworkEnvironment();
+  const { user: currentUser } = useAuth();
+
+  // Use the custom hook for transaction management
+  const {
+    transactionStep,
+    isProcessing,
+    transactionHash,
+    createDisputeOnchain,
+    retryTransaction,
+    resetTransaction,
+  } = useDisputeTransaction(networkInfo.chainId);
+
+  // Generate voting ID
+  const votingIdToUse = useMemo(() => {
+    // Use the passed votingId if available, otherwise generate one
+    if (votingId) {
+      return votingId; // Already a string
+    }
+
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    // Return as string to match API format
+    return (100000 + (array[0] % 900000)).toString();
+  }, [votingId]);
+
+  // Handle transaction success
+  useEffect(() => {
+    if (transactionStep === "success" && transactionHash) {
+      console.log(
+        "✅ [RejectDeliveryModal] Transaction completed, calling onConfirm",
+      );
+
+      onConfirm(
+        claim,
+        requestKind,
+        networkInfo.chainId,
+        votingIdToUse.toString(),
+        transactionHash,
+      )
+        .then(() => {
+          // Close modal after successful completion
+          setTimeout(() => {
+            onClose();
+            setClaim("");
+            resetTransaction(); // Reset for next use
+          }, 2000);
+        })
+        .catch((error) => {
+          console.error("❌ Error in onConfirm:", error);
+          toast.error("Failed to finalize dispute", {
+            description: error.message || "Please try again.",
+            duration: 5000,
+          });
+        });
+    }
+  }, [
+    transactionStep,
+    transactionHash,
+    onConfirm,
+    claim,
+    requestKind,
+    networkInfo.chainId,
+    votingIdToUse,
+    onClose,
+    setClaim,
+    resetTransaction,
+  ]);
+
+  // Update the handleSubmit function in RejectDeliveryModal
+  const handleSubmit = async () => {
+    if (!claim.trim()) {
+      toast.error("Claim description is required", {
+        description: "Please provide a reason for rejecting the delivery.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    console.log("🚀 [RejectDeliveryModal] Starting rejection flow:", {
+      claim: claim.trim(),
+      requestKind:
+        requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
+      chainId: networkInfo.chainId,
+      votingId: votingIdToUse.toString(),
+    });
+
+    if (requestKind === DisputeTypeEnum.Paid) {
+      // For paid disputes: Create dispute AND trigger payment
+      try {
+        // 1. Create the dispute in backend
+        console.log("📋 [RejectDeliveryModal] Creating dispute in backend...");
+
+        // Call onConfirm with the correct parameters
+        await onConfirm(
+          claim.trim(),
+          requestKind,
+          networkInfo.chainId,
+          votingIdToUse.toString(),
+        );
+
+        console.log("✅ [RejectDeliveryModal] Backend dispute created");
+
+        // 2. Trigger smart contract transaction using custom hook
+        console.log(
+          "💰 [RejectDeliveryModal] Triggering smart contract transaction...",
+        );
+        await createDisputeOnchain(votingIdToUse);
+
+        // The transaction will proceed via the custom hook
+        // Status updates will be handled by useEffect above
+      } catch (error: any) {
+        console.error(
+          "❌ [RejectDeliveryModal] Failed to create paid dispute:",
+          error,
+        );
+        // Error is already handled by the custom hook
+      }
+    } else {
+      // For pro bono disputes: submit directly
+      try {
+        await onConfirm(
+          claim.trim(),
+          requestKind,
+          networkInfo.chainId,
+          votingIdToUse.toString(),
+        );
+        // Clear claim and close modal
+        setClaim("");
+        onClose();
+      } catch (error: any) {
+        console.error("❌ [RejectDeliveryModal] Pro Bono submit error:", error);
+        toast.error("Failed to create dispute", {
+          description: error.message || "Please try again.",
+          duration: 5000,
+        });
+      }
+    }
+  };
+
+  const handleRetryTransaction = async () => {
+    if (requestKind === DisputeTypeEnum.Paid) {
+      await retryTransaction(votingIdToUse);
+    }
+  };
+
+  // Determine the other party as defendant
+  const getDefendant = () => {
+    if (!agreement || !currentUser) return "Unknown";
+
+    // Helper to check if current user is first party
+    const normalizeUsername = (username: string): string => {
+      if (!username) return "";
+      return username.replace(/^@/, "").toLowerCase().trim();
+    };
+
+    const isCurrentUserFirstParty = () => {
+      if (!agreement || !currentUser) return false;
+      const currentUsername = currentUser?.username;
+      if (!currentUsername) return false;
+      const firstPartyUsername = agreement.firstParty?.username;
+      if (!firstPartyUsername || firstPartyUsername === "Unknown") return false;
+      return (
+        normalizeUsername(currentUsername) ===
+        normalizeUsername(firstPartyUsername)
+      );
+    };
+
+    const isFirstParty = isCurrentUserFirstParty();
+    return isFirstParty ? agreement.counterparty : agreement.createdBy;
+  };
+
+  const defendant = getDefendant();
+
+  // Disable form when submitting or processing transaction
+  const isDisabled =
+    isSubmitting || isProcessing || transactionStep === "pending";
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[90vh] w-full max-w-[20rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:max-w-md sm:p-6">
+      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-6 shadow-2xl sm:max-w-[40rem]">
         {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
-          disabled={isSubmitting}
+          disabled={isDisabled}
           aria-label="Close modal"
         >
           <X className="h-5 w-5" />
         </button>
 
         {/* Header */}
-        <div className="mb-4 flex items-center gap-3 sm:mb-6">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20 sm:h-10 sm:w-10">
-            <AlertTriangle className="h-5 w-5 text-purple-400 sm:h-6 sm:w-6" />
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
+            <AlertTriangle className="h-6 w-6 text-purple-400" />
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold text-white sm:text-xl">
-              Reject Delivery
+          <div>
+            <h2 className="text-xl font-bold text-white">
+              Reject Delivery & Open Dispute
             </h2>
-            <p className="text-xs text-red-300 sm:text-sm">
-              This will open a dispute immediately
+            <p className="text-sm text-red-300">
+              This will create a dispute with the other party
             </p>
           </div>
         </div>
 
-        {/* Warning message with dispute type info */}
-        <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 sm:mb-6 sm:p-4">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
-            <div className="min-w-0">
-              <p className="text-xs text-red-200 sm:text-sm">
-                <span className="font-semibold">Important:</span> Rejecting the
-                delivery will:
+        {/* Dispute Info Summary */}
+        <div className="mb-6 rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+          <h4 className="mb-2 text-base font-medium text-purple-300">
+            Summary
+          </h4>
+          <div className="space-y-3">
+            {/* Agreement Title */}
+            <div className="space-y-1">
+              <span className="mb-2 text-sm text-purple-200/80">
+                Agreement Title:
+              </span>
+              <p className="text-sm font-medium break-words text-white">
+                {agreement?.title || "No title"}
               </p>
-              <ul className="mt-1 space-y-1 text-xs text-red-200/80 sm:mt-2">
-                <li>• Immediately create a dispute</li>
-                <li>
-                  • Require dispute resolution through voting or manually
-                  settling the dispute by you.
-                </li>
-                <li>
-                  •{" "}
-                  <span className="font-medium text-yellow-300">
-                    Important:
-                  </span>{" "}
-                  You'll need to choose the dispute type (Pro Bono or Paid) on
-                  the Dispute Details page by editing plaintiff information.
-                </li>
-                <li>• You can add more evidence on the dispute page later</li>
-              </ul>
+            </div>
+
+            {/* Agreement Description */}
+            <div className="space-y-1">
+              <span className="mb-3 text-sm text-purple-200/80">
+                Agreement Description:
+              </span>
+              <p className="text-sm break-words whitespace-pre-line text-white/90">
+                {agreement?.description || "No description provided"}
+              </p>
+            </div>
+
+            {/* Defendant */}
+            <div className="space-y-1">
+              <span className="mb-3 text-sm text-purple-200/80">Defendant</span>
+              <p className="text-sm break-words whitespace-pre-line text-white/90">
+                {defendant}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Claim input */}
-        <div className="mb-4 sm:mb-6">
-          <label className="mb-1 block text-sm font-medium text-purple-300 sm:mb-2">
-            <div className="flex items-center gap-2">
-              <span>Claim Description (Optional)</span>
-              <div className="group relative hidden sm:inline-block">
-                <Info className="h-4 w-4 text-gray-400 hover:text-purple-300" />
-                <div className="invisible absolute top-1/2 left-6 z-10 w-64 -translate-y-1/2 rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-200 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:opacity-100">
-                  <p className="font-medium text-white">What is a Claim?</p>
-                  <p className="mt-1">
-                    A claim is your formal statement explaining why you're
-                    rejecting the delivery. This helps voters understand your
-                    position. You can leave this empty if you prefer to add
-                    details later on the dispute page.
-                  </p>
-                  <p className="mt-2 font-medium text-white">Examples:</p>
-                  <ul className="mt-1 list-inside list-disc space-y-1">
-                    <li>"Work does not meet quality standards"</li>
-                    <li>"Delivered after deadline"</li>
-                    <li>"Incomplete deliverables"</li>
-                  </ul>
+        {/* Dispute Type Selection */}
+        <div className="mb-6">
+          <label className="mb-3 block text-sm font-medium text-purple-300">
+            Dispute Type <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${
+                requestKind === DisputeTypeEnum.ProBono
+                  ? "border-cyan-400/40 bg-cyan-500/20 text-cyan-200"
+                  : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
+              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+            >
+              <input
+                type="radio"
+                name="disputeType"
+                className="hidden"
+                checked={requestKind === DisputeTypeEnum.ProBono}
+                onChange={() => {
+                  console.log("📝 [RejectDeliveryModal] Selected Pro Bono");
+                  setRequestKind(DisputeTypeEnum.ProBono);
+                }}
+                disabled={isDisabled}
+              />
+              <Scale className="h-5 w-5" />
+              <div>
+                <div className="font-medium">Pro Bono</div>
+                <div className="text-xs opacity-80">
+                  Free dispute resolution
                 </div>
               </div>
+            </label>
+
+            <label
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${
+                requestKind === DisputeTypeEnum.Paid
+                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                  : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
+              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+            >
+              <input
+                type="radio"
+                name="disputeType"
+                className="hidden"
+                checked={requestKind === DisputeTypeEnum.Paid}
+                onChange={() => {
+                  console.log("📝 [RejectDeliveryModal] Selected Paid");
+                  setRequestKind(DisputeTypeEnum.Paid);
+                }}
+                disabled={isDisabled}
+              />
+              <Wallet className="h-5 w-5" />
+              <div>
+                <div className="font-medium">Paid</div>
+                <div className="text-xs opacity-80">Priority resolution</div>
+              </div>
+            </label>
+          </div>
+
+          {/* Dispute Type Info */}
+          <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
+            <div className="flex items-start gap-2">
+              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
+              <div className="text-xs text-cyan-200">
+                {requestKind === DisputeTypeEnum.ProBono ? (
+                  <span>
+                    <span className="font-medium">Pro Bono:</span> No fee
+                    required. Judges will handle your case when available. May
+                    have longer wait times.
+                  </span>
+                ) : (
+                  <span>
+                    <span className="font-medium">Paid:</span> A fee is required
+                    to initiate your dispute. This fee helps prioritize your
+                    case and notifies all judges to begin reviewing it
+                    immediately.
+                  </span>
+                )}
+              </div>
             </div>
-          </label>
+          </div>
+        </div>
+
+        {/* Smart Contract Info for Paid Disputes */}
+        {requestKind === DisputeTypeEnum.Paid &&
+          transactionStep === "idle" &&
+          !isSubmitting && (
+            <div className="mb-6 rounded-lg border border-emerald-400/20 bg-emerald-500/10 p-4">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-emerald-300" />
+                <h4 className="text-sm font-medium text-emerald-200">
+                  Smart Contract Transaction Required
+                </h4>
+              </div>
+              <p className="mt-2 text-xs text-emerald-300/80">
+                For paid disputes, you'll need to confirm a transaction in your
+                wallet to record the dispute on-chain.
+              </p>
+            </div>
+          )}
+
+        {/* Claim input */}
+        <div className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-muted-foreground text-sm">
+              Claim <span className="text-red-500">*</span>
+            </label>
+            <div className="group relative cursor-help">
+              <Info className="h-4 w-4 text-cyan-300" />
+              <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                Make sure it's reasonable, as that might help your case when the
+                judges look into it.
+              </div>
+            </div>
+          </div>
           <textarea
             value={claim}
-            onChange={(e) => setClaim(e.target.value)}
-            placeholder="Briefly describe why you're rejecting this delivery (optional)"
-            className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none sm:h-32"
-            disabled={isSubmitting}
+            onChange={(e) => {
+              setClaim(e.target.value);
+            }}
+            placeholder="Describe why you're rejecting this delivery (optional)"
+            className="h-32 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+            disabled={isDisabled}
+            required
           />
+
           <p className="mt-1 text-xs text-gray-400">
             You can add more details and evidence on the dispute page.
           </p>
         </div>
 
-        <div className="mb-4 sm:mb-6">
-          <label className="mb-1 block text-sm font-medium text-purple-300">
-            Dispute Type
-          </label>
-          <div className="flex items-center justify-center gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-green-200/90 select-none">
-              <input
-                type="checkbox"
-                checked={proBono}
-                onChange={(e) => setProBono(e.target.checked)}
-                className="h-4 w-4 rounded border-green-300/40 bg-transparent"
-              />
-              <span>Pro Bono (no fee)</span>
-            </label>
+        {/* Transaction Status Display */}
+        {transactionStep !== "idle" && (
+          <div className="my-4">
+            <TransactionStatus
+              status={transactionStep}
+              onRetry={handleRetryTransaction}
+              title={
+                transactionStep === "pending"
+                  ? "Waiting for Wallet Confirmation..."
+                  : transactionStep === "success"
+                    ? "Payment Successful!"
+                    : "Payment Failed"
+              }
+              description={
+                transactionStep === "pending"
+                  ? "Please confirm the transaction in your wallet to complete the payment."
+                  : transactionStep === "success"
+                    ? "Your paid dispute is being activated..."
+                    : "The transaction could not be completed. You can retry the transaction."
+              }
+            />
           </div>
-          <p className="mt-1 text-xs text-gray-400">
-            Pro Bono disputes don't require a fee. If unchecked, a small fee
-            will be required.
-          </p>
-        </div>
+        )}
 
-        {/* Additional information about dispute setup */}
-        <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 sm:mb-6">
-          <div className="flex items-start gap-3">
+        {/* Log Preview */}
+        <div className="mb-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+          <div className="flex items-start gap-2">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-yellow-300 sm:text-sm">
-                Next Steps After Creating Dispute:
-              </p>
-              <ul className="mt-1 space-y-1 text-xs text-yellow-200/80 sm:mt-2">
-                <li>1. Visit the Dispute Details page</li>
-                <li>2. Click "Edit Plaintiff Info"</li>
-                <li>3. Choose between Pro Bono or Paid dispute type</li>
+            <div className="text-xs">
+              <p className="font-medium text-yellow-300">What will happen:</p>
+              <ul className="mt-1 space-y-1 text-yellow-200/80">
+                <li>• Dispute will be created with {defendant}</li>
                 <li>
-                  4. For Paid disputes, ensure you have sufficient funds (0.01
-                  ETH)
+                  • Type:{" "}
+                  {requestKind === DisputeTypeEnum.ProBono
+                    ? "Pro Bono"
+                    : "Paid"}
                 </li>
+                {requestKind === DisputeTypeEnum.Paid && (
+                  <li>• Smart contract transaction required</li>
+                )}
+                <li>• You can add evidence, witnesses in the Dispute page</li>
               </ul>
             </div>
           </div>
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row sm:gap-3">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button
             variant="outline"
             onClick={onClose}
-            className="w-full border-gray-600 py-2 text-sm text-gray-300 hover:bg-gray-800 sm:w-auto sm:text-base"
-            disabled={isSubmitting}
+            className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 sm:w-auto"
+            disabled={isDisabled}
           >
             Cancel
           </Button>
           <Button
             variant="outline"
-            className="w-full border-purple-500/30 bg-purple-500/10 py-2 text-sm text-purple-300 hover:border-purple-400 hover:bg-purple-500/20 sm:w-auto sm:text-base"
-            onClick={() => onConfirm(claim, proBono)}
-            disabled={isSubmitting}
+            className={`w-full py-2 sm:w-auto ${
+              requestKind === DisputeTypeEnum.Paid
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+                : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+            } ${transactionStep === "success" ? "hidden" : ""}`}
+            onClick={handleSubmit}
+            disabled={isDisabled}
           >
-            {isSubmitting ? (
+            {isSubmitting || transactionStep === "pending" ? (
               <>
-                <Clock className="mr-2 h-4 w-4 animate-spin" />
-                {transactionHash
-                  ? "Confirming Transaction..."
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                {requestKind === DisputeTypeEnum.Paid
+                  ? "Confirm in Wallet..."
                   : "Creating Dispute..."}
               </>
             ) : (
               <>
                 <Ban className="mr-2 h-4 w-4" />
-                Reject Delivery & Open Dispute
+                Reject &{" "}
+                {requestKind === DisputeTypeEnum.Paid ? "Pay for " : ""}Open
+                Dispute
               </>
             )}
           </Button>
+
+          {/* Success button - only shows when transaction is successful */}
+          {transactionStep === "success" && (
+            <Button
+              variant="outline"
+              className="w-full border-green-500/30 bg-green-500/10 text-green-300 hover:border-green-400 hover:bg-green-500/20 sm:w-auto"
+              disabled={true}
+            >
+              ✓ Transaction Successful
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -1786,6 +2101,12 @@ export default function EscrowDetails() {
       description: "Agreement cancelled",
     },
   };
+
+  const votingIdToUse = useMemo(() => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return 100000 + (array[0] % 900000);
+  }, []);
 
   // Handler functions for file viewing
   const handleViewEvidence = (evidence: any) => {
@@ -2674,7 +2995,10 @@ export default function EscrowDetails() {
   // Updated function to handle rejecting delivery with claim
   const handleConfirmRejectDelivery = async (
     claim: string,
-    probono: boolean,
+    requestKind: DisputeTypeEnum,
+    chainId?: number,
+    votingId?: string,
+    transactionHash?: string,
   ) => {
     setIsSubmittingReject(true);
     setLoading("rejectDelivery", true);
@@ -2745,15 +3069,20 @@ export default function EscrowDetails() {
       }
 
       const agreementId = parseInt(id);
-      const generatedVotingId = votingId;
+      // Use the passed votingId or generate a new one if undefined
+      const generatedVotingId = votingId || votingIdToUse.toString();
+
+      // Ensure it's a string (not undefined)
+      const votingIdString = generatedVotingId.toString();
 
       console.log("🚀 Starting delivery rejection process:", {
         agreementId,
         contractAgreementId: onChainAgreement.id,
-        votingId: generatedVotingId,
+        votingId: votingIdString,
         claim: claim.trim(),
+        requestKind,
+        chainId,
       });
-
       // Store the claim data temporarily to use after transaction success
       const pendingClaimData = {
         agreementId,
@@ -2767,11 +3096,14 @@ export default function EscrowDetails() {
       // STEP 1: First save the claim to backend
       try {
         console.log("📤 Making API call to save claim...");
-        await agreementService.rejectDelivery(
-          agreementId,
-          claim.trim(),
-          generatedVotingId.toString(),
-        );
+        await agreementService.rejectDelivery(agreementId, {
+          votingId: generatedVotingId.toString(),
+          claim: claim.trim(),
+          requestKind: requestKind, // This is DisputeTypeEnum
+          chainId: networkInfo.chainId,
+          contractAgreementId: onChainAgreement?.id?.toString(),
+          txHash: transactionHash, // If you have transaction hash from blockchain
+        });
         console.log("✅ Claim saved to backend successfully");
       } catch (apiError: any) {
         console.error("❌ Failed to save claim to backend:", apiError);
@@ -2831,7 +3163,12 @@ export default function EscrowDetails() {
         address: contractAddress,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
-        args: [onChainAgreement.id, false, BigInt(generatedVotingId), probono],
+        args: [
+          onChainAgreement.id,
+          false,
+          BigInt(generatedVotingId),
+          requestKind === DisputeTypeEnum.ProBono,
+        ],
       });
 
       // Don't close modal yet - wait for transaction success
@@ -5168,7 +5505,6 @@ export default function EscrowDetails() {
         }}
         selectedEvidence={selectedEvidence}
       />
-
       {/* Add this at the end of your JSX, before the closing </div> */}
       {isDisputeModalOpen && (
         // Update the modal to accept full agreement data
@@ -5188,19 +5524,20 @@ export default function EscrowDetails() {
           isSubmitting={isSubmittingDispute || loadingStates.raiseDispute}
         />
       )}
-
       {/* Reject Delivery Modal */}
+
       <RejectDeliveryModal
         isOpen={isRejectModalOpen}
         onClose={() => {
           setIsRejectModalOpen(false);
           setRejectClaim("");
         }}
+        votingId={votingId.toString()}
         onConfirm={handleConfirmRejectDelivery}
         claim={rejectClaim}
         setClaim={setRejectClaim}
         isSubmitting={isSubmittingReject || loadingStates.rejectDelivery}
-        transactionHash={hash}
+        agreement={escrow?._raw || onChainAgreement} // Pass agreement data
       />
     </div>
   );
