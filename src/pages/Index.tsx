@@ -423,7 +423,7 @@ function StatsGrid() {
 
   return (
     <section className="card-cyan justify-center gap-8 rounded-2xl border border-cyan-400/60 px-4 py-4 lg:p-6">
-      <h3 className="space mb-6 text-center text-lg font-semibold text-white/90 lg:text-xl">
+      <h3 className="space mb-6 text-center text-xl font-semibold text-white/90 lg:text-xl">
         Statistics
       </h3>
       <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
@@ -478,9 +478,9 @@ export function KPIChart() {
   if (loading) {
     return (
       <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col items-center justify-between">
           <div>
-            <h3 className="text-xl font-bold text-white">Network Growth</h3>
+            <h3 className="font-bold text-white lg:text-xl">Network Growth</h3>
             <p className="text-sm text-cyan-200/60">
               Cumulative agreements over time
             </p>
@@ -504,7 +504,7 @@ export function KPIChart() {
   if (chartData.length === 0) {
     return (
       <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-white">Network Growth</h3>
             <p className="text-sm text-cyan-200/60">
@@ -541,8 +541,8 @@ export function KPIChart() {
   //     : 100;
 
   return (
-    <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 sm:p-5">
+      <div className="mb-4 flex flex-col justify-between gap-2 p-4 sm:flex-row sm:items-center sm:p-0">
         <div className="">
           <h3 className="text-xl font-bold text-white">Network Growth</h3>
           {/* <p className="text-sm text-cyan-200/60">
@@ -563,7 +563,7 @@ export function KPIChart() {
         </Tabs>
       </div>
 
-      <div className="min-h-[300px] flex-1">
+      <div className="min-h-[300px] flex-1 p-4 sm:p-0">
         <ResponsiveContainer
           width="100%"
           height="100%"

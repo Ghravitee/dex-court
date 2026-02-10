@@ -42,25 +42,72 @@ export function Topbar({
   const StatusIndicators = () => (
     <div className="hidden items-center gap-3 lg:flex">
       {/* Wallet Connection Status */}
-      <div className="flex items-center gap-2">
+      <div className="group relative flex items-center gap-2">
         <div
-          className={`size-5 rounded-full border-2 border-white/10 ${
-            isConnected ? "animate-pulse bg-green-500" : "bg-red-500"
+          className={`relative flex size-6 items-center justify-center rounded-lg ${
+            isConnected
+              ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+              : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
           }`}
-          title={isConnected ? "Wallet connected ✓" : "Wallet disconnected ✗"}
-        />
-        <span className="text-xs text-gray-400">Wallet</span>
+        >
+          {isConnected ? (
+            <Wallet className="size-4 text-green-400" />
+          ) : (
+            <Wallet className="size-4 text-red-400" />
+          )}
+          <div
+            className={`absolute -top-1 -right-1 size-2 rounded-full border-2 border-gray-900 ${
+              isConnected ? "bg-green-400" : "bg-red-400"
+            }`}
+          />
+        </div>
+        <div className="text-xs whitespace-nowrap text-white">
+          {isConnected ? "connected ✓" : "disconnected ✗"}
+        </div>
       </div>
 
       {/* Authentication Status */}
-      <div className="flex items-center gap-2">
+      <div className="group relative flex items-center gap-2">
         <div
-          className={`size-5 rounded-full border-2 border-white/10 ${
-            isAuthenticated ? "bg-green-500" : "bg-red-500"
+          className={`relative flex size-6 items-center justify-center rounded-lg ${
+            isAuthenticated
+              ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+              : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
           }`}
-          title={isAuthenticated ? "Authenticated ✓" : "Not authenticated ✗"}
-        />
-        <span className="text-xs text-gray-400">Auth</span>
+        >
+          {isAuthenticated ? (
+            <svg
+              className="size-4 text-green-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="size-4 text-red-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"
+              />
+            </svg>
+          )}
+        </div>
+        <div className="text-xs whitespace-nowrap text-white">
+          {isAuthenticated ? "auth ✓" : "no auth ✗"}
+        </div>
       </div>
     </div>
   );
@@ -324,9 +371,9 @@ export function Topbar({
             <img
               src={logo}
               alt="DexCourt Logo"
-              className="size-10 object-cover"
+              className="size-8 object-contain sm:size-10"
             />
-            <span className="glow-text leading-none font-semibold text-cyan-300">
+            <span className="glow-text hidden leading-none font-semibold text-cyan-300 sm:block">
               DexCourt
             </span>
           </div>
@@ -339,24 +386,77 @@ export function Topbar({
 
         {/* Mobile status indicators - shown next to menu button */}
         <div className="mr-2 flex flex-1 items-center justify-end gap-2 lg:hidden">
-          <div className="flex items-center gap-1">
-            <div
-              className={`size-2.5 rounded-full ${
-                isConnected ? "bg-green-500" : "bg-red-500"
-              }`}
-              title={isConnected ? "Wallet connected" : "Wallet disconnected"}
-            />
-            <span className="text-xs text-gray-400">Wallet</span>
-            <div
-              className={`size-2.5 rounded-full ${
-                isAuthenticated ? "bg-green-500" : "bg-red-500"
-              }`}
-              title={isAuthenticated ? "Authenticated" : "Not authenticated"}
-            />
-            <span className="text-xs text-gray-400">Auth</span>
+          <div className="flex items-center gap-2">
+            {/* Wallet Status Badge */}
+            <div className="flex items-center gap-1">
+              <div
+                className={`relative flex size-5 items-center justify-center rounded-md ${
+                  isConnected
+                    ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+                    : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
+                }`}
+              >
+                {isConnected ? (
+                  <Wallet className="size-4 text-green-400" />
+                ) : (
+                  <Wallet className="size-4 text-red-400" />
+                )}
+                <div
+                  className={`absolute -top-1 -right-1 size-1.5 rounded-full border border-gray-900 ${
+                    isConnected ? "bg-green-400" : "bg-red-400"
+                  }`}
+                />
+              </div>
+              <div className="text-xs whitespace-nowrap text-white">
+                {isConnected ? "connected ✓" : "disconnected ✗"}
+              </div>
+            </div>
+
+            {/* Auth Status Badge */}
+            <div className="flex items-center gap-1">
+              <div
+                className={`relative flex size-5 items-center justify-center rounded-md ${
+                  isAuthenticated
+                    ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+                    : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
+                }`}
+              >
+                {isAuthenticated ? (
+                  <svg
+                    className="size-3 text-green-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="size-3 text-red-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"
+                    />
+                  </svg>
+                )}
+              </div>
+              <div className="text-xs whitespace-nowrap text-white">
+                {isAuthenticated ? "Auth ✓" : "No Auth ✗"}
+              </div>
+            </div>
           </div>
         </div>
-
         {/* Right: Desktop Buttons */}
         <div className="hidden items-center gap-3 lg:flex">
           {/* Wallet validation warning */}

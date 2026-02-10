@@ -29,24 +29,26 @@ interface InfiniteMovingAgreementsProps {
   showControls?: boolean;
 }
 
+const isWalletAddress = (value?: string) => {
+  if (!value) return false;
+
+  const clean = value.startsWith("@") ? value.slice(1) : value;
+  return clean.startsWith("0x") && clean.length > 20;
+};
+
 // Utility function to format wallet addresses
-const formatWalletAddress = (address: string | undefined): string => {
-  if (!address) return "";
+const formatWallet = (value?: string) => {
+  if (!value) return "";
 
-  // Remove @ symbol if present
-  const formatted = address.startsWith("@") ? address.substring(1) : address;
+  const clean = value.startsWith("@") ? value.slice(1) : value;
 
-  // If it looks like a wallet address (starts with 0x and has length > 20), slice it
-  if (formatted.startsWith("0x") && formatted.length > 20) {
-    return `${formatted.slice(0, 6)}...${formatted.slice(-4)}`;
-  }
+  return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
+};
 
-  // If it's still too long (like a long username), slice it
-  if (formatted.length > 15) {
-    return `${formatted.slice(0, 12)}...`;
-  }
+const formatTelegram = (value?: string) => {
+  if (!value) return "";
 
-  return formatted;
+  return value.startsWith("@") ? value : `@${value}`;
 };
 
 export const InfiniteMovingAgreements = ({
@@ -269,7 +271,7 @@ export const InfiniteMovingAgreements = ({
           {items.map((item, idx) => (
             <li
               className={cn(
-                "card-cyan relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 px-8 py-4 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px]",
+                "card-cyan relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 px-4 py-4 transition-all duration-300 hover:border-cyan-400/50 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] md:px-8",
                 "cursor-pointer",
               )}
               key={`${item.id}-${idx}`}
@@ -306,7 +308,9 @@ export const InfiniteMovingAgreements = ({
                         size="md"
                       />
                       <span className="max-w-[130px] text-xs text-cyan-300">
-                        {formatWalletAddress(item.createdBy)}
+                        {isWalletAddress(item.createdBy)
+                          ? formatWallet(item.createdBy)
+                          : formatTelegram(item.createdBy)}
                       </span>
                     </div>
 
@@ -324,7 +328,9 @@ export const InfiniteMovingAgreements = ({
                         size="md"
                       />
                       <span className="max-w-[130px] text-xs text-cyan-300">
-                        {formatWalletAddress(item.counterparty)}
+                        {isWalletAddress(item.counterparty)
+                          ? formatWallet(item.counterparty)
+                          : formatTelegram(item.counterparty)}
                       </span>
                     </div>
                   </div>
