@@ -1671,7 +1671,7 @@ export default function Agreements() {
           </div>
         </div>
 
-        <aside className="w-full space-y-4 sm:w-[50%]">
+        <aside className="hidden w-full space-y-4 sm:w-[50%]">
           <div className="flex items-center justify-between">
             <h1 className="space mb-2 text-xl text-white">
               Agreements Turned Sour
@@ -1722,7 +1722,7 @@ export default function Agreements() {
           </div>
 
           {/* Swiping Card Section */}
-          <div className="glass relative overflow-hidden border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
+          <div className="glass relative hidden overflow-hidden border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin text-cyan-400" />

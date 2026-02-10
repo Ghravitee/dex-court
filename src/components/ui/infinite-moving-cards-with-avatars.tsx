@@ -580,7 +580,7 @@ export const InfiniteMovingCardsWithAvatars = ({
           {items.map((item, idx) => (
             <li
               className={cn(
-                "relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 from-cyan-500/20 to-transparent px-8 py-6 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] dark:bg-gradient-to-br",
+                "relative w-[350px] max-w-full shrink-0 rounded-2xl border border-b-0 border-cyan-400/60 from-cyan-500/20 to-transparent p-4 transition-all duration-300 hover:border-cyan-400/60 hover:shadow-lg hover:shadow-cyan-500/20 md:w-[450px] md:px-8 md:py-6 dark:bg-gradient-to-br",
                 "cursor-pointer",
               )}
               key={`${item.name}-${idx}`}

@@ -1447,11 +1447,6 @@ export default function DisputeDetails() {
           dispute.votingId ||
           dispute.contractAgreementId) && (
           <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
-            <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
-              <FileText className="h-5 w-5" />
-              Agreement & Contract Details
-            </h3>
-
             <div className="flex flex-wrap gap-2">
               {/* Agreement Type Card */}
               {dispute.agreement?.type && (
@@ -1519,7 +1514,7 @@ export default function DisputeDetails() {
             </div>
 
             {/* Additional Information Row */}
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-4 flex flex-col gap-3">
               {/* Chain ID */}
               {dispute.chainId && (
                 <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
