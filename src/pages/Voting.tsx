@@ -32,7 +32,7 @@ import { calculateVoteResults } from "../lib/voteCalculations";
 import { getAgreement } from "../web3/readContract";
 import { useAuth } from "../hooks/useAuth";
 import { useVotingStatus } from "../hooks/useVotingStatus";
-import { agreementService } from "@/services/agreementServices";
+import { agreementService } from "../services/agreementServices";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
