@@ -32,6 +32,7 @@ import { calculateVoteResults } from "../lib/voteCalculations";
 import { getAgreement } from "../web3/readContract";
 import { useAuth } from "../hooks/useAuth";
 import { useVotingStatus } from "../hooks/useVotingStatus";
+import { agreementService } from "@/services/agreementServices";
 
 // Constants
 const VOTING_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
@@ -305,13 +306,12 @@ const VoteOption = ({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex flex-col items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${
-        disabled
-          ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50"
-          : active
-            ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/40 active:scale-[0.98]"
-            : "border-white/10 bg-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/20 active:scale-[0.98]"
-      }`}
+      className={`flex flex-col items-center justify-center gap-2 rounded-md border px-3 py-5 text-center text-xs shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-transform ${disabled
+        ? "cursor-not-allowed border-white/5 bg-white/5 opacity-50"
+        : active
+          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/40 active:scale-[0.98]"
+          : "border-white/10 bg-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/20 active:scale-[0.98]"
+        }`}
     >
       {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
       {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
@@ -403,17 +403,25 @@ const LiveCaseCard = ({
   // Check if vote has been started
   const voteStarted = isVoteStarted(c.id);
 
-  // Fetch on-chain agreement data for escrow disputes
   useEffect(() => {
-    if (c.agreement?.type === 2 && c.contractAgreementId && c.chainId) {
+    if (c.agreement?.type === 2 && c.agreement.id && c.contractAgreementId && c.chainId) {
+      const agreementId = c.agreement.id;
+      const chainId = c.chainId;
+      const contractAgreementId = c.contractAgreementId;
+
       const fetchOnChainData = async () => {
         try {
           setOnChainLoading(true);
-          const res = await getAgreement(
-            c.chainId!,
-            BigInt(c.contractAgreementId!),
-          );
-          setOnChainAgreement(res);
+          const agreementData = await agreementService.getAgreementDetails(agreementId);
+          const escrowAddress = agreementData.escrowContractAddress as `0x${string}`;
+          if (escrowAddress) {
+            const res = await getAgreement(
+              escrowAddress,
+              chainId,
+              BigInt(contractAgreementId),
+            );
+            setOnChainAgreement(res);
+          }
         } catch (err) {
           console.error("Failed to fetch on-chain agreement:", err);
           setOnChainAgreement(null);
@@ -424,7 +432,12 @@ const LiveCaseCard = ({
 
       fetchOnChainData();
     }
-  }, [c.agreement?.type, c.contractAgreementId, c.chainId]);
+  }, [
+    c.agreement?.type,
+    c.agreement?.id,
+    c.contractAgreementId,
+    c.chainId,
+  ]);
 
   // Check if on-chain vote can be started (for escrow disputes)
   const canStartOnChainVote = useMemo(() => {
@@ -537,9 +550,8 @@ const LiveCaseCard = ({
 
   return (
     <div
-      className={`relative rounded-xl border p-0 ${
-        isExpired ? "border-yellow-400/30 bg-yellow-500/5" : "border-white/10"
-      }`}
+      className={`relative rounded-xl border p-0 ${isExpired ? "border-yellow-400/30 bg-yellow-500/5" : "border-white/10"
+        }`}
     >
       <Accordion type="single" collapsible>
         <AccordionItem value="item-1">
@@ -610,11 +622,10 @@ const LiveCaseCard = ({
                 {/* Agreement Type Badge */}
                 {c.agreement?.type && (
                   <span
-                    className={`ml-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${
-                      c.agreement.type === 2
-                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                        : "border-blue-400/30 bg-blue-500/10 text-blue-300"
-                    }`}
+                    className={`ml-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${c.agreement.type === 2
+                      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                      : "border-blue-400/30 bg-blue-500/10 text-blue-300"
+                      }`}
                   >
                     {c.agreement.type === 2 ? "Escrow" : "Reputational"}
                   </span>
@@ -624,18 +635,16 @@ const LiveCaseCard = ({
             <div className="text-right">
               <div className="mb-1 flex items-center justify-end gap-2">
                 <Clock
-                  className={`mt-1 ml-10 size-3 lg:size-5 ${
-                    isExpired ? "text-yellow-400" : "text-cyan-300"
-                  }`}
+                  className={`mt-1 ml-10 size-3 lg:size-5 ${isExpired ? "text-yellow-400" : "text-cyan-300"
+                    }`}
                 />
                 <p className="text-muted-foreground text-sm sm:text-base">
                   {isExpired ? "Voting ended" : "Voting ends"}
                 </p>
               </div>
               <div
-                className={`font-mono text-lg ${
-                  isExpired ? "text-yellow-400" : "text-cyan-300"
-                }`}
+                className={`font-mono text-lg ${isExpired ? "text-yellow-400" : "text-cyan-300"
+                  }`}
               >
                 {isExpired ? "00:00:00" : formattedTime}
               </div>
@@ -1043,13 +1052,12 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
               <div className="text-white/90">
                 Verdict:{" "}
                 <span
-                  className={`${
-                    c.winner === "dismissed"
-                      ? "text-yellow-400"
-                      : c.winner === "plaintiff"
-                        ? "text-cyan-300"
-                        : "text-pink-300"
-                  }`}
+                  className={`${c.winner === "dismissed"
+                    ? "text-yellow-400"
+                    : c.winner === "plaintiff"
+                      ? "text-cyan-300"
+                      : "text-pink-300"
+                    }`}
                 >
                   {c.winner === "dismissed"
                     ? "Dismissed"
@@ -1079,13 +1087,12 @@ const DoneCaseCard = ({ c }: { c: DoneCase }) => {
                   Final Verdict
                 </div>
                 <div
-                  className={`mb-2 text-2xl font-bold ${
-                    c.winner === "plaintiff"
-                      ? "text-cyan-300"
-                      : c.winner === "defendant"
-                        ? "text-pink-300"
-                        : "text-yellow-300"
-                  }`}
+                  className={`mb-2 text-2xl font-bold ${c.winner === "plaintiff"
+                    ? "text-cyan-300"
+                    : c.winner === "defendant"
+                      ? "text-pink-300"
+                      : "text-yellow-300"
+                    }`}
                 >
                   {c.winner === "plaintiff"
                     ? "Plaintiff Wins"
@@ -1936,21 +1943,19 @@ export default function Voting() {
         <div className="flex w-fit rounded-md bg-white/5 p-1">
           <button
             onClick={() => handleTabChange("live")}
-            className={`rounded-md px-4 py-1.5 text-sm transition ${
-              tab === "live"
-                ? "bg-cyan-500/20 text-cyan-300"
-                : "text-muted-foreground hover:text-white/80"
-            }`}
+            className={`rounded-md px-4 py-1.5 text-sm transition ${tab === "live"
+              ? "bg-cyan-500/20 text-cyan-300"
+              : "text-muted-foreground hover:text-white/80"
+              }`}
           >
             LIVE
           </button>
           <button
             onClick={() => handleTabChange("done")}
-            className={`rounded-md px-4 py-1.5 text-sm transition ${
-              tab === "done"
-                ? "bg-cyan-500/20 text-cyan-300"
-                : "text-muted-foreground hover:text-white/80"
-            }`}
+            className={`rounded-md px-4 py-1.5 text-sm transition ${tab === "done"
+              ? "bg-cyan-500/20 text-cyan-300"
+              : "text-muted-foreground hover:text-white/80"
+              }`}
           >
             CONCLUDED
           </button>
@@ -2078,11 +2083,10 @@ export default function Voting() {
                     variant={currentPage === pageNum ? "neon" : "outline"}
                     size="sm"
                     onClick={() => handlePageChange(pageNum)}
-                    className={`${
-                      currentPage === pageNum
-                        ? "neon-hover"
-                        : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                    } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                    className={`${currentPage === pageNum
+                      ? "neon-hover"
+                      : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                      } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                   >
                     {pageNum}
                   </Button>

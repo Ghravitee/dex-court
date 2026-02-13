@@ -1,4 +1,5 @@
 // Updated useNetworkEnvironment hook
+
 // import { useAccount, useChainId } from "wagmi";
 import { ALL_CHAINS } from "./config";
 import { useMemo } from "react";

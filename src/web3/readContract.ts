@@ -1,4 +1,5 @@
 // src/web3/readContract.ts
+
 import type { PublicClient, Abi } from "viem";
 import { getTransactionCount as viemGetTransactionCount } from "viem/actions";
 import { getClientForChain } from "../config/publicConfig";
