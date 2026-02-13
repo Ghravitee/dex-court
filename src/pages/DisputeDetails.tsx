@@ -54,10 +54,10 @@ import SettleConfirmationModal from "../components/disputes/modals/SettleConfirm
 import DisputeChat from "./DisputeChat";
 import type { DisputeChatRole } from "./DisputeChat/types/dto";
 import { useVotingStatus } from "../hooks/useVotingStatus";
-import { ESCROW_ABI, ESCROW_CA } from "../web3/config";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
+import { ESCROW_ABI } from "../web3/config";
 
 import { getAgreement } from "../web3/readContract";
+import { agreementService } from "../services/agreementServices";
 // import { formatDateWithTime } from "../web3/helper";
 
 // Add this helper function near your other imports
@@ -376,6 +376,7 @@ export default function DisputeDetails() {
   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
   const [onChainLoading, setOnChainLoading] = useState(false);
+  const [escrowContractAddress, setEscrowContractAddress] = useState<`0x${string}` | null>(null);
 
   const {
     data: hash,
@@ -561,11 +562,12 @@ export default function DisputeDetails() {
     };
   }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
 
-  const fetchOnChainAgreement = useCallback(async (agreementData: any) => {
+  const fetchOnChainAgreement = useCallback(async (agreementData: any, escrowAddress?: `0x${string}`) => {
     if (!agreementData) return;
 
     try {
       const res = await getAgreement(
+        escrowAddress as `0x${string}`,
         agreementData.chainId,
         BigInt(agreementData.contractAgreementId), // Use the contractAgreementId here
       );
@@ -609,7 +611,14 @@ export default function DisputeDetails() {
 
         setDispute(transformedDispute);
         if (transformedDispute.agreement?.type == 2) {
-          fetchOnChainAgreement(transformedDispute);
+          const agreementData =
+            await agreementService.getAgreementDetails(transformedDispute.agreement.id);
+
+          const escrowAddress = agreementData.escrowContractAddress;
+          if (escrowAddress) {
+            setEscrowContractAddress(escrowAddress as `0x${string}`); // ✅ store it
+            fetchOnChainAgreement(transformedDispute, escrowAddress as `0x${string}`);
+          }
         }
       } catch (error: any) {
         console.error("❌ Failed to fetch dispute details:", error);
@@ -701,15 +710,15 @@ export default function DisputeDetails() {
   const safeDescription = dispute?.description || "No description provided.";
   const safeClaim = dispute?.claim || "No claim specified.";
 
-  const networkInfo = useNetworkEnvironment();
+  // const networkInfo = useNetworkEnvironment();
 
-  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+  // const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
   const defendantEvidence = dispute?.defendantResponse
     ? processEvidence(
-        dispute.defendantResponse.evidence || [],
-        dispute?.id || id || "",
-      )
+      dispute.defendantResponse.evidence || [],
+      dispute?.id || id || "",
+    )
     : [];
 
   // Function to handle evidence viewing
@@ -930,11 +939,16 @@ export default function DisputeDetails() {
         return;
       }
 
+      if (!escrowContractAddress) {
+        toast.error("Escrow contract address not loaded yet");
+        return;
+      }
+
       // Set transaction type
       setPendingTransactionType("settle");
 
       writeContract({
-        address: contractAddress,
+        address: escrowContractAddress, // use the correct escrow contract address from the api response
         abi: ESCROW_ABI.abi,
         functionName: "settleDispute",
         args: [BigInt(dispute.contractAgreementId)],
@@ -949,7 +963,7 @@ export default function DisputeDetails() {
       });
       setPendingTransactionType(null);
     }
-  }, [dispute, contractAddress, writeContract]);
+  }, [dispute, escrowContractAddress, writeContract]);
 
   // UPDATED: Handle settling reputational disputes - using API
   const handleSettleDispute = useCallback(async () => {
@@ -1386,7 +1400,7 @@ export default function DisputeDetails() {
                     variant="outline"
                     className="border-green-400/30 text-green-300 hover:bg-green-500/10"
                     onClick={() => setSettleModalOpen(true)}
-                    disabled={pendingTransactionType === "settle" && isPending}
+                    disabled={!escrowContractAddress || (pendingTransactionType === "settle" && isPending)}
                   >
                     {pendingTransactionType === "settle" && isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1395,7 +1409,9 @@ export default function DisputeDetails() {
                     )}
                     {pendingTransactionType === "settle" && isPending
                       ? "Settling..."
-                      : "Settle Escrow Dispute"}
+                      : !escrowContractAddress
+                        ? "Loading contract..."
+                        : "Settle Escrow Dispute"}
                   </Button>
                 )}
               {dispute.status === "Pending" &&
@@ -1446,146 +1462,146 @@ export default function DisputeDetails() {
         {(dispute.agreement?.type ||
           dispute.votingId ||
           dispute.contractAgreementId) && (
-          <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
-            <div className="flex flex-wrap gap-2">
-              {/* Agreement Type Card */}
-              {dispute.agreement?.type && (
-                <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
-                      <FileText className="h-4 w-4 text-blue-300" />
+            <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
+              <div className="flex flex-wrap gap-2">
+                {/* Agreement Type Card */}
+                {dispute.agreement?.type && (
+                  <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
+                        <FileText className="h-4 w-4 text-blue-300" />
+                      </div>
+                      <span className="text-sm font-medium text-blue-300">
+                        Agreement Type
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-blue-300">
-                      Agreement Type
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-blue-200">
-                      {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
-                    </span>
-                  </div>
-                  {dispute.agreement.status && (
-                    <div className="mt-2 text-xs text-blue-300/70">
-                      Status: {dispute.agreement.status}
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold text-blue-200">
+                        {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
+                      </span>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Voting ID Card */}
-              {dispute.votingId && (
-                <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
-                      <Vote className="h-4 w-4 text-purple-300" />
-                    </div>
-                    <span className="text-sm font-medium text-purple-300">
-                      Voting ID
-                    </span>
-                  </div>
-                  <div className="font-mono text-lg font-bold text-purple-200">
-                    #{dispute.votingId}
-                  </div>
-                  <div className="mt-1 text-xs text-purple-300/70">
-                    Unique voting identifier
-                  </div>
-                </div>
-              )}
-
-              {/* Contract Agreement ID Card */}
-              {dispute.contractAgreementId && (
-                <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                      <span className="text-lg">📜</span>
-                    </div>
-                    <span className="text-sm font-medium text-green-300">
-                      Contract ID
-                    </span>
-                  </div>
-                  <div className="font-mono text-lg font-bold text-green-200">
-                    {dispute.contractAgreementId}
-                  </div>
-                  <div className="mt-1 text-xs text-green-300/70">
-                    On-chain contract reference
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Additional Information Row */}
-            <div className="mt-4 flex flex-col gap-3">
-              {/* Chain ID */}
-              {dispute.chainId && (
-                <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
-                  <span className="text-sm text-cyan-300">Chain ID</span>
-                  <span className="font-mono text-sm font-bold text-cyan-200">
-                    {dispute.chainId}
-                  </span>
-                </div>
-              )}
-
-              {/* Transaction Hash */}
-              {dispute.txnhash && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
-                  <span className="text-sm text-amber-300">
-                    Transaction Hash
-                  </span>
-                  <span className="truncate font-mono text-xs text-amber-200">
-                    {dispute.txnhash.slice(0, 6)}...{dispute.txnhash.slice(-4)}
-                  </span>
-                </div>
-              )}
-
-              {/* Dispute Type */}
-              {dispute.type !== undefined && (
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
-                  <span className="text-sm text-indigo-300">Dispute Type</span>
-                  <span className="text-sm font-bold text-indigo-200">
-                    {dispute.type === 1 ? "Pro Bono" : "Paid"}
-                  </span>
-                </div>
-              )}
-
-              {/* Vote Timings */}
-              {onChainAgreement && !onChainLoading && (
-                <div className="flex flex-col gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
-                  <span className="text-sm text-violet-300">
-                    Vote Scheduled
-                  </span>
-                  <span className="text-sm font-bold text-violet-200">
-                    {formatBigIntTimestamp(onChainAgreement.voteStartedAt)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Debug Info (remove in production) */}
-            {process.env.NODE_ENV === "development" && (
-              <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
-                <details className="text-xs">
-                  <summary className="cursor-pointer text-gray-300">
-                    Debug Info
-                  </summary>
-                  <pre className="mt-2 overflow-auto text-gray-400">
-                    {JSON.stringify(
-                      {
-                        votingId: dispute.votingId,
-                        contractAgreementId: dispute.contractAgreementId,
-                        chainId: dispute.chainId,
-                        agreement: dispute.agreement,
-                        type: dispute.type,
-                        result: dispute.result,
-                      },
-                      null,
-                      2,
+                    {dispute.agreement.status && (
+                      <div className="mt-2 text-xs text-blue-300/70">
+                        Status: {dispute.agreement.status}
+                      </div>
                     )}
-                  </pre>
-                </details>
+                  </div>
+                )}
+
+                {/* Voting ID Card */}
+                {dispute.votingId && (
+                  <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+                        <Vote className="h-4 w-4 text-purple-300" />
+                      </div>
+                      <span className="text-sm font-medium text-purple-300">
+                        Voting ID
+                      </span>
+                    </div>
+                    <div className="font-mono text-lg font-bold text-purple-200">
+                      #{dispute.votingId}
+                    </div>
+                    <div className="mt-1 text-xs text-purple-300/70">
+                      Unique voting identifier
+                    </div>
+                  </div>
+                )}
+
+                {/* Contract Agreement ID Card */}
+                {dispute.contractAgreementId && (
+                  <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
+                        <span className="text-lg">📜</span>
+                      </div>
+                      <span className="text-sm font-medium text-green-300">
+                        Contract ID
+                      </span>
+                    </div>
+                    <div className="font-mono text-lg font-bold text-green-200">
+                      {dispute.contractAgreementId}
+                    </div>
+                    <div className="mt-1 text-xs text-green-300/70">
+                      On-chain contract reference
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Additional Information Row */}
+              <div className="mt-4 flex flex-col gap-3">
+                {/* Chain ID */}
+                {dispute.chainId && (
+                  <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
+                    <span className="text-sm text-cyan-300">Chain ID</span>
+                    <span className="font-mono text-sm font-bold text-cyan-200">
+                      {dispute.chainId}
+                    </span>
+                  </div>
+                )}
+
+                {/* Transaction Hash */}
+                {dispute.txnhash && (
+                  <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
+                    <span className="text-sm text-amber-300">
+                      Transaction Hash
+                    </span>
+                    <span className="truncate font-mono text-xs text-amber-200">
+                      {dispute.txnhash.slice(0, 6)}...{dispute.txnhash.slice(-4)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Dispute Type */}
+                {dispute.type !== undefined && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
+                    <span className="text-sm text-indigo-300">Dispute Type</span>
+                    <span className="text-sm font-bold text-indigo-200">
+                      {dispute.type === 1 ? "Pro Bono" : "Paid"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Vote Timings */}
+                {onChainAgreement && !onChainLoading && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
+                    <span className="text-sm text-violet-300">
+                      Vote Scheduled
+                    </span>
+                    <span className="text-sm font-bold text-violet-200">
+                      {formatBigIntTimestamp(onChainAgreement.voteStartedAt)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Debug Info (remove in production) */}
+              {process.env.NODE_ENV === "development" && (
+                <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-gray-300">
+                      Debug Info
+                    </summary>
+                    <pre className="mt-2 overflow-auto text-gray-400">
+                      {JSON.stringify(
+                        {
+                          votingId: dispute.votingId,
+                          contractAgreementId: dispute.contractAgreementId,
+                          chainId: dispute.chainId,
+                          agreement: dispute.agreement,
+                          type: dispute.type,
+                          result: dispute.result,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </div>
+          )}
       </div>
       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
         <div className="card-cyan rounded-2xl p-6 shadow-lg">
@@ -1705,11 +1721,10 @@ export default function DisputeDetails() {
 
                       {/* Agreement Type Badge */}
                       <span
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
-                          dispute.agreement.type === 2
-                            ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                            : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
-                        }`}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${dispute.agreement.type === 2
+                          ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                          : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
+                          }`}
                       >
                         <FileText className="h-3.5 w-3.5" />
                         {dispute.agreement.type === 2
@@ -2118,8 +2133,8 @@ export default function DisputeDetails() {
         isOpen={voteOutcomeModalOpen}
         onClose={() => setVoteOutcomeModalOpen(false)}
         disputeId={parseInt(id!)}
-        // Optional: You can also pass voteOutcome data directly if you already have it
-        // voteOutcome={yourVoteOutcomeData}
+      // Optional: You can also pass voteOutcome data directly if you already have it
+      // voteOutcome={yourVoteOutcomeData}
       />
       {/* Vote Modal */}
       <VoteModal

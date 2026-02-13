@@ -47,11 +47,13 @@ export const getTransactionCount = async (
  * Typed getAgreement wrapper.
  */
 export const getAgreement = async (
+  escrowCA: `0x${string}`,
   chainId: number,
   agreementId: bigint,
 ): Promise<Agreement> => {
   const publicClient: PublicClient = getClientForChain(chainId);
-  const contractAddr = ESCROW_CA[chainId];
+  const contractAddr = escrowCA;
+  console.log(`getAgreement: chainId=${chainId}, agreementId=${agreementId}, contractAddr=${contractAddr}`);
 
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);
@@ -134,12 +136,13 @@ export const getAgreementExistOnchain = async (
 };
 
 export const getEscrowConfigs = async (
+  escrowAddress: `0x${string}`,
   chainId: number,
   // escrowContractAddr: `0x${string}`,
 ): Promise<Escrow_Configs> => {
   const publicClient: PublicClient = getClientForChain(chainId);
   // const contractAddr = escrowContractAddr[chainId] as `0x${string}`;
-  const contractAddr = ESCROW_CA[chainId] as `0x${string}`;
+  const contractAddr = escrowAddress;
 
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);

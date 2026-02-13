@@ -57,7 +57,7 @@ import {
   getTokenDecimals,
   getTokenSymbol,
 } from "../web3/readContract";
-import { ERC20_ABI, ESCROW_ABI, ESCROW_CA, ZERO_ADDRESS } from "../web3/config";
+import { ERC20_ABI, ESCROW_ABI, ZERO_ADDRESS } from "../web3/config";
 import {
   formatAmount,
   formatDateWithTime,
@@ -172,9 +172,8 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${
-        isCurrentUser ? "opacity-80" : ""
-      }`}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${isCurrentUser ? "opacity-80" : ""
+        }`}
     >
       <UserAvatar
         userId={user.id}
@@ -487,11 +486,10 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -502,11 +500,10 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-      value
-        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-    }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
+      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+      }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -1064,11 +1061,10 @@ const RaiseDisputeModal = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <label
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
-                    proBono
-                      ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
-                      : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
-                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${proBono
+                    ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
+                    : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                    } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
                 >
                   <input
                     type="radio"
@@ -1079,18 +1075,16 @@ const RaiseDisputeModal = ({
                     disabled={isSubmitting}
                   />
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      proBono
-                        ? "border border-blue-400/50 bg-blue-500/30"
-                        : "border border-purple-400/30 bg-purple-500/20"
-                    }`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${proBono
+                      ? "border border-blue-400/50 bg-blue-500/30"
+                      : "border border-purple-400/30 bg-purple-500/20"
+                      }`}
                   >
                     <div
-                      className={`h-4 w-4 rounded-full ${
-                        proBono
-                          ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                          : "border border-purple-400"
-                      }`}
+                      className={`h-4 w-4 rounded-full ${proBono
+                        ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                        : "border border-purple-400"
+                        }`}
                     ></div>
                   </div>
                   <span className="font-medium">Pro Bono</span>
@@ -1100,11 +1094,10 @@ const RaiseDisputeModal = ({
                 </label>
 
                 <label
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
-                    !proBono
-                      ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
-                      : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
-                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${!proBono
+                    ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
+                    : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                    } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
                 >
                   <input
                     type="radio"
@@ -1115,18 +1108,16 @@ const RaiseDisputeModal = ({
                     disabled={isSubmitting}
                   />
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      !proBono
-                        ? "border border-green-400/50 bg-green-500/30"
-                        : "border border-purple-400/30 bg-purple-500/20"
-                    }`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${!proBono
+                      ? "border border-green-400/50 bg-green-500/30"
+                      : "border border-purple-400/30 bg-purple-500/20"
+                      }`}
                   >
                     <div
-                      className={`h-4 w-4 rounded-full ${
-                        !proBono
-                          ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
-                          : "border border-purple-400"
-                      }`}
+                      className={`h-4 w-4 rounded-full ${!proBono
+                        ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
+                        : "border border-purple-400"
+                        }`}
                     ></div>
                   </div>
                   <span className="font-medium">Paid</span>
@@ -1278,11 +1269,10 @@ const RaiseDisputeModal = ({
               </label>
               <div className="mb-2">
                 <div
-                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
-                    isDragOver
-                      ? "border-purple-500/60 bg-purple-500/20"
-                      : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
-                  }`}
+                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${isDragOver
+                    ? "border-purple-500/60 bg-purple-500/20"
+                    : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
+                    }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -1298,9 +1288,8 @@ const RaiseDisputeModal = ({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${
-                      isSubmitting ? "cursor-not-allowed opacity-50" : ""
-                    }`}
+                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${isSubmitting ? "cursor-not-allowed opacity-50" : ""
+                      }`}
                   >
                     <Upload className="mb-2 h-5 w-5 text-purple-400" />
                     <span className="text-purple-300">
@@ -1706,11 +1695,10 @@ const RejectDeliveryModal = ({
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${
-                requestKind === DisputeTypeEnum.ProBono
-                  ? "border-cyan-400/40 bg-cyan-500/20 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${requestKind === DisputeTypeEnum.ProBono
+                ? "border-cyan-400/40 bg-cyan-500/20 text-cyan-200"
+                : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
+                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -1733,11 +1721,10 @@ const RejectDeliveryModal = ({
             </label>
 
             <label
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${
-                requestKind === DisputeTypeEnum.Paid
-                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                  : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${requestKind === DisputeTypeEnum.Paid
+                ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
+                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -1889,11 +1876,10 @@ const RejectDeliveryModal = ({
           </Button>
           <Button
             variant="outline"
-            className={`w-full py-2 sm:w-auto ${
-              requestKind === DisputeTypeEnum.Paid
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
-                : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
-            } ${transactionStep === "success" ? "hidden" : ""}`}
+            className={`w-full py-2 sm:w-auto ${requestKind === DisputeTypeEnum.Paid
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+              : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+              } ${transactionStep === "success" ? "hidden" : ""}`}
             onClick={handleSubmit}
             disabled={isDisabled}
           >
@@ -2005,7 +1991,7 @@ export default function EscrowDetails() {
 
   const [refetchTrigger, setRefetchTrigger] = useState(0);
 
-  const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+  // const contractAddress = ESCROW_CA[networkInfo.chainId as number];
 
   const [onChainTokenDecimalsState, setOnChainTokenDecimalsState] = useState<
     number | null
@@ -2248,6 +2234,7 @@ export default function EscrowDetails() {
     setRefetchTrigger((prev) => prev + 1);
   }, []);
 
+  // @note
   const fetchOnChainAgreement = useCallback(
     async (agreementData: any) => {
       if (!agreementData) return;
@@ -2256,6 +2243,8 @@ export default function EscrowDetails() {
         return;
       }
 
+      console.log("Received agreement data for on-chain fetch:", agreementData);
+
       // FIX: Use contractAgreementId instead of the database ID
       const onChainId = agreementData.contractAgreementId;
       if (!onChainId) {
@@ -2263,9 +2252,17 @@ export default function EscrowDetails() {
         return;
       }
 
+      const escrowCA = agreementData.escrowContractAddress;
+      console.log("Using escrow contract address for on-chain fetch:", escrowCA);
+      if (!escrowCA) {
+        console.warn("No escrowContractAddress found - skipping on-chain fetch");
+        return;
+      }
+
       setOnChainLoading(true);
       try {
         const res = await getAgreement(
+          escrowCA,
           networkInfo.chainId as number,
           BigInt(onChainId), // Use the contractAgreementId here
         );
@@ -2320,7 +2317,7 @@ export default function EscrowDetails() {
         includeFunds: agreementData.includesFunds ? "yes" : "no",
         useEscrow: agreementData.type === AgreementTypeEnum.ESCROW,
         secureTheFunds: agreementData.hasSecuredFunds || false,
-        escrowAddress: agreementData.customTokenAddress || undefined,
+        escrowAddress: agreementData.escrowContractAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
         fromAvatarId: getAvatarIdFromParty(agreementData.firstParty), // FIXED: Mystyri's avatar
@@ -2387,7 +2384,7 @@ export default function EscrowDetails() {
         includeFunds: agreementData.includesFunds ? "yes" : "no",
         useEscrow: agreementData.type === AgreementTypeEnum.ESCROW,
         secureTheFunds: agreementData.hasSecuredFunds || false,
-        escrowAddress: agreementData.customTokenAddress || undefined,
+        escrowAddress: agreementData.escrowContractAddress || undefined,
         files: agreementData.files?.length || 0,
         images: agreementData.files?.map((file: any) => file.fileName) || [],
         // FIXED: Match avatar IDs with the "from" and "to" assignments
@@ -2423,13 +2420,13 @@ export default function EscrowDetails() {
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceProvider.toString().toLowerCase();
+    onChainAgreement.serviceProvider.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceRecipient.toString().toLowerCase();
+    onChainAgreement.serviceRecipient.toString().toLowerCase();
   const now = currentTime;
 
   const switchToTokenChain = useCallback(async () => {
@@ -2485,18 +2482,13 @@ export default function EscrowDetails() {
     );
 
     return Array.from({ length: count }, (_, i) => ({
-      address: contractAddress as `0x${string}`,
+      // address: contractAddress as `0x${string}`,
+      address: escrow?.escrowAddress as `0x${string}`,
       abi: ESCROW_ABI.abi,
       functionName: "getMilestone" as const,
       args: [onChainAgreement.id, BigInt(i)],
     }));
-  }, [
-    manageMilestoneCount,
-    onChainAgreement?.id,
-    onChainAgreement?.vesting,
-    refetchTrigger,
-    contractAddress,
-  ]);
+  }, [manageMilestoneCount, onChainAgreement?.id, onChainAgreement?.vesting, refetchTrigger, escrow?.escrowAddress]);
 
   // Fetch all milestones
   const { data: rawMilestonesData, refetch: refetchMilestonesData } =
@@ -2526,7 +2518,8 @@ export default function EscrowDetails() {
       if (now > onChainAgreement.grace1Ends && !onChainAgreement.completed)
         return setUiError("Can not claim after cancellation expired");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "claimMilestone",
         args: [onChainAgreement.id, BigInt(index)],
@@ -2568,7 +2561,8 @@ export default function EscrowDetails() {
       );
 
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "setMilestoneHold",
         args: [onChainAgreement.id, BigInt(index), hold],
@@ -2613,8 +2607,10 @@ export default function EscrowDetails() {
         return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
+      console.log("EscrowAdress", escrow?.escrowAddress);
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "signAgreement",
         args: [onChainAgreement.id],
@@ -2650,7 +2646,8 @@ export default function EscrowDetails() {
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
 
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "submitDelivery",
         args: [onChainAgreement.id],
@@ -2689,7 +2686,8 @@ export default function EscrowDetails() {
         return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
         args: [onChainAgreement.id, final, BigInt(votingId), true],
@@ -2738,7 +2736,8 @@ export default function EscrowDetails() {
           address: onChainAgreement.token as `0x${string}`,
           abi: ERC20_ABI.abi,
           functionName: "approve",
-          args: [contractAddress as `0x${string}`, amount],
+          // args: [contractAddress as `0x${string}`, amount],
+          args: [escrow?.escrowAddress as `0x${string}`, amount],
         });
       } else {
         depositDirectly();
@@ -2767,7 +2766,8 @@ export default function EscrowDetails() {
       const isERC20 = onChainAgreement.token !== ZERO_ADDRESS;
 
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "depositFunds",
         args: [onChainAgreement.id],
@@ -2790,7 +2790,7 @@ export default function EscrowDetails() {
       );
       console.error("Error depositing funds:", error);
     }
-  }, [onChainAgreement, contractAddress, writeContract]);
+  }, [onChainAgreement, writeContract, escrow?.escrowAddress]);
 
   const handleCancelOrder = () => {
     resetMessages();
@@ -2814,7 +2814,8 @@ export default function EscrowDetails() {
         return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "cancelOrder",
         args: [onChainAgreement.id],
@@ -2866,7 +2867,8 @@ export default function EscrowDetails() {
       )
         return setUiError("You can't reject your own cancellation request");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "approveCancellation",
         args: [BigInt(onChainAgreement?.id), final],
@@ -2907,7 +2909,8 @@ export default function EscrowDetails() {
       if (remaining / 2n === 0n)
         return setUiError("Not enough funds to partial release");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "partialAutoRelease",
         args: [BigInt(onChainAgreement?.id)],
@@ -2937,7 +2940,8 @@ export default function EscrowDetails() {
         return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "enforceCancellationTimeout",
         args: [BigInt(onChainAgreement?.id)],
@@ -2972,7 +2976,8 @@ export default function EscrowDetails() {
         return setUiError("The agreement is completed");
       if (onChainAgreement.frozen) return setUiError("The agreement is frozen");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "finalAutoRelease",
         args: [BigInt(onChainAgreement?.id)],
@@ -3160,7 +3165,8 @@ export default function EscrowDetails() {
       // STEP 2: Then do the blockchain transaction
       console.log("🔗 Calling blockchain contract to reject delivery...");
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrow?.escrowAddress as `0x${string}`,
         abi: ESCROW_ABI.abi,
         functionName: "approveDelivery",
         args: [
@@ -3199,12 +3205,13 @@ export default function EscrowDetails() {
   };
 
   const fetchOnchainEscrowConfigs = useCallback(
-    async (agreement: any) => {
+    async (escrowAddress: `0x${string}`, agreement: any) => {
       if (!agreement) return;
 
       console.log("Fetching on-chain vote configs for agreement:", agreement);
       try {
         const res = await getEscrowConfigs(
+          escrowAddress,
           agreement.chainId || networkInfo.chainId,
         );
         console.log("getEscrowConfigs data:", res);
@@ -3320,11 +3327,13 @@ export default function EscrowDetails() {
       const votingIdToUse = disputeResponse.votingId || votingId;
 
       // Get contract configs for fee calculation
-      const configs = await fetchOnchainEscrowConfigs(onChainAgreement);
+      const escrowAddress = escrow?.escrowAddress as `0x${string}`;
+      const configs = await fetchOnchainEscrowConfigs(escrowAddress, onChainAgreement);
 
       // Call blockchain to raise dispute
       writeContract({
-        address: contractAddress,
+        // address: contractAddress,
+        address: escrowAddress,
         abi: ESCROW_ABI.abi,
         functionName: "raiseDispute",
         args: [
@@ -3643,8 +3652,8 @@ export default function EscrowDetails() {
 
   const tokenAddress =
     onChainAgreement &&
-    onChainAgreement.token &&
-    onChainAgreement.token !== ZERO_ADDRESS
+      onChainAgreement.token &&
+      onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
@@ -3749,9 +3758,9 @@ export default function EscrowDetails() {
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-        (new Date(escrow.deadline).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24),
-      )
+      (new Date(escrow.deadline).getTime() - Date.now()) /
+      (1000 * 60 * 60 * 24),
+    )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -3845,13 +3854,12 @@ export default function EscrowDetails() {
               {statusInfo.label}
             </span>
             <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${
-                isOverdue
-                  ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                  : isUrgent
-                    ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                    : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-              }`}
+              className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
+                ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                : isUrgent
+                  ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                  : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                }`}
             >
               {isOverdue ? "Overdue" : `${daysRemaining} days left`}
             </span>
@@ -4228,11 +4236,10 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                              onChainAgreement.funded
-                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                            }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
+                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                              }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -4402,7 +4409,7 @@ export default function EscrowDetails() {
                           Pending Order Cancellation:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                            // onComplete={refetchAgreement}
+                          // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -4463,7 +4470,7 @@ export default function EscrowDetails() {
                           Pending Delivery [Grace period 1]:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                            // onComplete={refetchAgreement}
+                          // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
@@ -4499,56 +4506,56 @@ export default function EscrowDetails() {
 
                 {/* Check if any action buttons are available */}
                 {(isServiceProvider || isServiceRecipient) &&
-                ((((isServiceProvider &&
-                  !onChainAgreement.acceptedByServiceProvider) ||
-                  (isServiceRecipient &&
-                    !onChainAgreement.acceptedByServiceRecipient)) &&
-                  onChainAgreement.funded) ||
-                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    isServiceProvider &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    isServiceRecipient &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.deliverySubmited) ||
-                  (now < onChainAgreement.grace1Ends &&
-                    onChainAgreement.signed &&
-                    onChainAgreement.pendingCancellation &&
-                    address &&
-                    address.toLowerCase() !==
+                  ((((isServiceProvider &&
+                    !onChainAgreement.acceptedByServiceProvider) ||
+                    (isServiceRecipient &&
+                      !onChainAgreement.acceptedByServiceRecipient)) &&
+                    onChainAgreement.funded) ||
+                    (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                    (onChainAgreement.signed &&
+                      isServiceProvider &&
+                      !onChainAgreement.frozen &&
+                      !onChainAgreement.pendingCancellation &&
+                      !onChainAgreement.deliverySubmited) ||
+                    (onChainAgreement.signed &&
+                      isServiceRecipient &&
+                      !onChainAgreement.pendingCancellation &&
+                      onChainAgreement.deliverySubmited) ||
+                    (now < onChainAgreement.grace1Ends &&
+                      onChainAgreement.signed &&
+                      onChainAgreement.pendingCancellation &&
+                      address &&
+                      address.toLowerCase() !==
                       String(
                         onChainAgreement.grace1EndsCalledBy,
                       ).toLowerCase() &&
-                    !onChainAgreement.deliverySubmited) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.pendingCancellation &&
-                    !onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.frozen) ||
-                  (onChainAgreement.grace1Ends !== BigInt(0) &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.funded &&
-                    !onChainAgreement.pendingCancellation &&
-                    onChainAgreement.signed) ||
-                  (onChainAgreement.signed &&
-                    !onChainAgreement.vesting &&
-                    now > onChainAgreement.grace2Ends &&
-                    onChainAgreement.grace2Ends !== BigInt(0) &&
-                    onChainAgreement.funded &&
-                    onChainAgreement.pendingCancellation) ||
-                  (onChainAgreement.signed &&
-                    now > onChainAgreement.grace1Ends &&
-                    onChainAgreement.pendingCancellation &&
-                    onChainAgreement.grace1Ends !== BigInt(0)) ||
-                  (onChainAgreement.funded &&
-                    onChainAgreement.signed &&
-                    !onChainAgreement.disputed &&
-                    !onChainAgreement.completed &&
-                    !onChainAgreement.frozen &&
-                    !onChainAgreement.pendingCancellation)) ? (
+                      !onChainAgreement.deliverySubmited) ||
+                    (onChainAgreement.signed &&
+                      !onChainAgreement.pendingCancellation &&
+                      !onChainAgreement.deliverySubmited &&
+                      !onChainAgreement.frozen) ||
+                    (onChainAgreement.grace1Ends !== BigInt(0) &&
+                      !onChainAgreement.vesting &&
+                      now > onChainAgreement.grace1Ends &&
+                      onChainAgreement.funded &&
+                      !onChainAgreement.pendingCancellation &&
+                      onChainAgreement.signed) ||
+                    (onChainAgreement.signed &&
+                      !onChainAgreement.vesting &&
+                      now > onChainAgreement.grace2Ends &&
+                      onChainAgreement.grace2Ends !== BigInt(0) &&
+                      onChainAgreement.funded &&
+                      onChainAgreement.pendingCancellation) ||
+                    (onChainAgreement.signed &&
+                      now > onChainAgreement.grace1Ends &&
+                      onChainAgreement.pendingCancellation &&
+                      onChainAgreement.grace1Ends !== BigInt(0)) ||
+                    (onChainAgreement.funded &&
+                      onChainAgreement.signed &&
+                      !onChainAgreement.disputed &&
+                      !onChainAgreement.completed &&
+                      !onChainAgreement.frozen &&
+                      !onChainAgreement.pendingCancellation)) ? (
                   <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
@@ -4717,9 +4724,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                          String(
-                            onChainAgreement.grace1EndsCalledBy,
-                          ).toLowerCase() &&
+                        String(
+                          onChainAgreement.grace1EndsCalledBy,
+                        ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(true)}
@@ -4751,9 +4758,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                          String(
-                            onChainAgreement.grace1EndsCalledBy,
-                          ).toLowerCase() &&
+                        String(
+                          onChainAgreement.grace1EndsCalledBy,
+                        ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(false)}
@@ -5064,9 +5071,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                      normalizeUsername(
-                                        disputeInfo.filedBy,
-                                      ) && (
+                                    normalizeUsername(
+                                      disputeInfo.filedBy,
+                                    ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -5165,7 +5172,7 @@ export default function EscrowDetails() {
                     </div>
                     <div className="text-sm text-cyan-300">
                       {onChainAgreement?.acceptedByServiceProvider &&
-                      onChainAgreement?.acceptedByServiceRecipient
+                        onChainAgreement?.acceptedByServiceRecipient
                         ? "Fully Executed"
                         : "Partially Signed"}
                     </div>

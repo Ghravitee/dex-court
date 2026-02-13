@@ -391,6 +391,7 @@ export interface DisputeDetails {
     type: number;
     status: number;
     title: string;
+    escrowContractAddress?: string | null;
   } | null;
 }
 
