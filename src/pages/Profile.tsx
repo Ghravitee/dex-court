@@ -428,25 +428,6 @@ const formatReputationEvent = (event: any) => {
 
 export default function Profile() {
   const { isAuthenticated, user, login } = useAuth();
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
-  const { trustScore, loading: trustScoreLoading } = useTrustScore(
-    user?.id?.toString() || null,
-  );
-  const [showLinkModal, setShowLinkModal] = useState<{
-    type: "telegram" | "wallet";
-    open: boolean;
-  }>({ type: "telegram", open: false });
-
-  const navigate = useNavigate();
-
-  // NEW: State for agreements with type-based filtering
-  // const [reputationalAgreements, setReputationalAgreements] = useState<any[]>(
-  //   [],
-  // );
-  // const [escrowAgreements, setEscrowAgreements] = useState<any[]>([]);
-  // const [agreementsLoading, setAgreementsLoading] = useState(true);
-  // const [agreementsError, setAgreementsError] = useState<string | null>(null);
 
   const {
     data: reputationHistory,
@@ -492,6 +473,17 @@ export default function Profile() {
     totalReputationalAgreements,
     totalEscrowAgreements,
   } = useProfileAgreementsApi(user?.id, user?.walletAddress);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showProfileUpdateModal, setShowProfileUpdateModal] = useState(false);
+  const { trustScore, loading: trustScoreLoading } = useTrustScore(
+    user?.id?.toString() || null,
+  );
+  const [showLinkModal, setShowLinkModal] = useState<{
+    type: "telegram" | "wallet";
+    open: boolean;
+  }>({ type: "telegram", open: false });
+
+  const navigate = useNavigate();
 
   const getUserRoleInAgreement = useCallback(
     (

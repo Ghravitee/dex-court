@@ -827,23 +827,38 @@ class AgreementService {
   // Update the rejectDelivery function to accept a claim parameter
   async rejectDelivery(
     agreementId: number,
-    data: AgreementDeliveryRejectedRequest,
+    data: AgreementDeliveryRejectedRequest | FormData,
   ): Promise<void> {
     try {
-      const payload: AgreementDeliveryRejectedRequest = {
-        votingId: data.votingId,
-        claim: data.claim.trim(),
-        contractAgreementId: data.contractAgreementId,
-        requestKind: data.requestKind,
-        ...(data.chainId && { chainId: data.chainId }),
-      };
+      let response;
 
-      console.log("📤 Rejecting delivery with payload:", payload);
+      if (data instanceof FormData) {
+        // If it's FormData, send as multipart/form-data
+        response = await api.patch(
+          `/agreement/${agreementId}/delivery/reject`,
+          data,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          },
+        );
+      } else {
+        // Regular JSON payload
+        const payload: AgreementDeliveryRejectedRequest = {
+          votingId: data.votingId,
+          claim: data.claim.trim(),
+          contractAgreementId: data.contractAgreementId,
+          requestKind: data.requestKind,
+          ...(data.chainId && { chainId: data.chainId }),
+          ...(data.txHash && { txHash: data.txHash }),
+        };
 
-      const response = await api.patch(
-        `/agreement/${agreementId}/delivery/reject`,
-        payload,
-      );
+        response = await api.patch(
+          `/agreement/${agreementId}/delivery/reject`,
+          payload,
+        );
+      }
 
       console.log("✅ Delivery rejected successfully:", response.data);
       return response.data;

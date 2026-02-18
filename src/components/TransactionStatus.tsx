@@ -69,7 +69,7 @@ export const TransactionStatus = ({
 
         <div className="flex-1">
           <h4 className="font-semibold">{title || config.defaultTitle}</h4>
-          <p className="mt-1 max-h-[6rem] overflow-y-scroll text-sm break-all opacity-90">
+          <p className="mt-1 max-h-[4rem] overflow-y-scroll text-sm break-all opacity-90">
             {description || config.defaultDescription}
           </p>
 
@@ -80,7 +80,7 @@ export const TransactionStatus = ({
                 variant="outline"
                 size="sm"
                 onClick={onRetry}
-                className="border-current text-current hover:bg-current/10"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300"
               >
                 Retry Transaction
               </Button>

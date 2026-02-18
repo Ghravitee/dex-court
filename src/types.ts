@@ -298,6 +298,7 @@ export const DisputeStatusEnum = {
   Settled: 3,
   Dismissed: 4,
   PendingPayment: 5,
+  PendingLockingFunds: 6,
 } as const;
 export type DisputeStatusEnum =
   (typeof DisputeStatusEnum)[keyof typeof DisputeStatusEnum];
@@ -482,7 +483,8 @@ export interface DisputeRow {
     | "Vote in Progress"
     | "Settled"
     | "Dismissed"
-    | "Pending Payment";
+    | "Pending Payment"
+    | "Pending Locking Funds"; // Add this line
   claim: string;
   plaintiff: string;
   defendant: string;

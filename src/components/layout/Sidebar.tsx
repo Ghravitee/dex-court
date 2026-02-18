@@ -274,11 +274,11 @@ export function Sidebar({
       )}
     >
       {/* Glow */}
-      <div className="absolute top-[300px] right-0 rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]" />
+      <div className="absolute top-[300px] right-0 -z-10 rounded-full bg-cyan-500/30 blur-3xl lg:size-[20rem]" />
 
       {/* Header */}
       <div className="relative flex h-16 items-center justify-between gap-3 px-4">
-        <div className="flex items-center gap-2 overflow-hidden">
+        <div className="hidden items-center gap-2 overflow-hidden lg:flex">
           <img
             src={logo}
             alt="DexCourt Logo"

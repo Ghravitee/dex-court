@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -33,7 +33,7 @@ import {
   X,
   Search,
   Trash2,
-  Scale,
+  // Scale,
   Wallet,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -46,6 +46,8 @@ import { Image, Paperclip } from "lucide-react";
 import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
 import { api } from "../lib/apiClient";
+import { connectSocket } from "../services/socket";
+import { Socket } from "socket.io-client";
 
 // Use the same services as Escrow.tsx
 import { agreementService } from "../services/agreementServices";
@@ -81,6 +83,54 @@ import {
 } from "../types";
 import { TransactionStatus } from "../components/TransactionStatus";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
+import EscrowPendingDisputeModal from "../components/EscrowPendingDisputeModal";
+// import { RejectPendingDisputeModal } from "../components/RejectPendingDisputeModal";
+
+// Add this component for displaying pending payment status messages
+const PendingPaymentStatusMessage = ({ status }: { status: string }) => {
+  if (status === "pending_payment") {
+    return (
+      <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+        <div className="flex items-start gap-3">
+          <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-400" />
+          <div className="flex-1">
+            <h4 className="font-medium text-yellow-300">
+              Dispute Pending Payment
+            </h4>
+            <p className="mt-1 text-sm text-yellow-200">
+              Your dispute has been created but is awaiting payment
+              confirmation. Please complete the transaction in your wallet. The
+              dispute will become active once the payment is confirmed on the
+              blockchain.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "pending_locking_funds") {
+    return (
+      <div className="mt-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+        <div className="flex items-start gap-3">
+          <Lock className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" />
+          <div className="flex-1">
+            <h4 className="font-medium text-blue-300">
+              Pro Bono Dispute - Pending Fund Locking
+            </h4>
+            <p className="mt-1 text-sm text-blue-200">
+              Your pro bono dispute has been created and is awaiting fund
+              locking on the blockchain. This is a necessary step to ensure the
+              integrity of the dispute resolution process.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -103,6 +153,71 @@ const AgreementStatusEnum = {
   EXPIRED: 6,
   PARTY_SUBMITTED_DELIVERY: 7,
 } as const;
+
+const DisputeStatusEnum = {
+  Pending: 1,
+  VoteInProgress: 2,
+  Settled: 3,
+  Dismissed: 4,
+  PendingPayment: 5,
+  PendingLockingFunds: 6,
+} as const;
+
+const POLLING_CONFIG = {
+  INITIAL_DELAY: 2000, // 2 seconds
+  MAX_DELAY: 30000, // 30 seconds
+  BACKOFF_MULTIPLIER: 1.5, // Multiply delay by this each time
+  MAX_ATTEMPTS: 20, // Maximum number of polling attempts
+  JITTER_FACTOR: 0.1, // Add 10% randomness to prevent thundering herd
+};
+
+// ============= WEBSOCKET TYPES =============
+export type AgreementEventType =
+  | 1 // Created
+  | 2 // Signed
+  | 3 // Rejected
+  | 4 // Delivered
+  | 5 // DeliveryConfirmed
+  | 6 // DeliveryRejected
+  | 7 // CancelRequested
+  | 8 // CancelConfirmed
+  | 9 // CancelRejected
+  | 10 // Expired
+  | 11 // AutoCancelled
+  | 13 // Completed
+  | 14 // FundDeposited
+  | 15 // MilestoneClaimed
+  | 16 // MilestoneHoldUpdated
+  | 17 // DisputeRaised
+  | 18; // DisputeSettled
+
+interface ServerToClientEvents {
+  "agreement:event": (payload: AgreementSocketEventPayload) => void;
+}
+
+interface ClientToServerEvents {
+  "agreement:join": (
+    payload: AgreementSocketJoinRequest,
+    ack: (res: AgreementSocketJoinDTO) => void,
+  ) => void;
+}
+
+type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+export interface AgreementSocketEventPayload {
+  agreementId: number;
+  type: AgreementEventType;
+  eventId: number | null;
+}
+
+export interface AgreementSocketJoinRequest {
+  agreementId: number;
+}
+
+export interface AgreementSocketJoinDTO {
+  ok: boolean;
+  error?: number;
+}
 
 // Helper function to convert API status to frontend status
 const apiStatusToFrontend = (status: number): string => {
@@ -172,8 +287,9 @@ const UserSearchResult = ({
   return (
     <div
       onClick={() => onSelect(telegramUsername)}
-      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${isCurrentUser ? "opacity-80" : ""
-        }`}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${
+        isCurrentUser ? "opacity-80" : ""
+      }`}
     >
       <UserAvatar
         userId={user.id}
@@ -384,11 +500,48 @@ const formatUsernameForDisplay = (username: string): string => {
   return username;
 };
 
-const getDisputeRaisedEvent = (timeline: any[] | undefined) => {
+// Replace getDisputeRaisedEvent with this:
+// Replace your getDisputeEvents function with this:
+const getDisputeEvents = (timeline: any[] | undefined) => {
   if (!timeline || !Array.isArray(timeline)) return null;
 
-  // Find the DisputeRaised event (type 17 based on your data)
-  return timeline.find((event) => event.type === 17);
+  // First, find ALL dispute-related events
+  // For rejection flow: type 6 (toStatus: 7) + type 17 (toStatus: 4)
+  // For raise flow: type 17 (toStatus: 4)
+  const disputeEvents = timeline.filter(
+    (event) =>
+      // Type 6 (DELIVERY_REJECTED) - this starts the dispute process
+      event.type === 6 ||
+      // Type 17 (RAISE_DISPUTE) - this finalizes the dispute
+      (event.type === 17 && event.toStatus === 4),
+  );
+
+  if (disputeEvents.length === 0) return null;
+
+  // Log what we found for debugging
+  console.log("📊 Timeline analysis:", {
+    totalEvents: timeline.length,
+    disputeEventsCount: disputeEvents.length,
+    disputeEventTypes: disputeEvents.map((e) => ({
+      type: e.type,
+      id: e.id,
+      toStatus: e.toStatus,
+      note: e.note,
+    })),
+  });
+
+  // Determine if this dispute came from a rejection
+  // Look for a type 6 event anywhere in the dispute events
+  const hasRejectionEvent = disputeEvents.some((event) => event.type === 6);
+
+  // Get the raise event (type 17) for display purposes
+  const raiseEvent =
+    disputeEvents.find((event) => event.type === 17) || disputeEvents[0];
+
+  return {
+    ...raiseEvent,
+    filedViaRejection: hasRejectionEvent, // Add this flag
+  };
 };
 
 // Helper to get actor info from event
@@ -409,6 +562,7 @@ const getEventNote = (event: any) => {
 };
 
 // Add this helper function to get dispute information from timeline
+// Update the getDisputeInfo function to ensure proper detection
 const getDisputeInfo = (
   escrowData: any,
 ): {
@@ -416,6 +570,7 @@ const getDisputeInfo = (
   filedBy: string | null;
   filedById: number | null;
   filedByAvatarId: number | null;
+  filedViaRejection: boolean;
 } => {
   if (!escrowData?._raw?.timeline)
     return {
@@ -423,30 +578,83 @@ const getDisputeInfo = (
       filedBy: null,
       filedById: null,
       filedByAvatarId: null,
+      filedViaRejection: false,
     };
 
-  // Look for dispute events (type 17 or DELIVERY_REJECTED type 6 that leads to DISPUTED status)
-  const disputeEvent = escrowData._raw.timeline.find(
+  // Look for dispute events
+  const disputeEvents = escrowData._raw.timeline.filter(
     (event: any) =>
-      (event.eventType === 6 || // DELIVERY_REJECTED
-        event.type === 17) && // Type 17 is "raised a dispute"
-      event.toStatus === AgreementStatusEnum.DISPUTED,
+      event.type === 6 || // DELIVERY_REJECTED
+      (event.type === 17 && event.toStatus === AgreementStatusEnum.DISPUTED), // RAISE_DISPUTE
   );
 
-  if (!disputeEvent)
+  if (disputeEvents.length === 0)
     return {
       filedAt: null,
       filedBy: null,
       filedById: null,
       filedByAvatarId: null,
+      filedViaRejection: false,
     };
 
+  // Use the RAISE event (type 17) for the filing info
+  const raiseEvent =
+    disputeEvents.find((event: { type: number }) => event.type === 17) ||
+    disputeEvents[0];
+
+  // CRITICAL: Check if there's a REJECT event anywhere to determine the flow
+  const hasRejectionEvent = disputeEvents.some(
+    (event: { type: number }) => event.type === 6,
+  );
+
+  console.log("📋 Dispute info extracted:", {
+    hasRejectionEvent,
+    usingRaiseEvent: raiseEvent.type === 17,
+    actor: raiseEvent.actor?.username,
+    allEvents: disputeEvents.map((e: any) => ({ type: e.type, id: e.id })),
+  });
+
   return {
-    filedAt: disputeEvent.createdAt || null,
-    filedBy: disputeEvent.actor?.username || null,
-    filedById: disputeEvent.actor?.id || null,
-    filedByAvatarId: disputeEvent.actor?.avatarId || null,
+    filedAt: raiseEvent.createdAt || null,
+    filedBy: raiseEvent.actor?.username || null,
+    filedById: raiseEvent.actor?.id || null,
+    filedByAvatarId: raiseEvent.actor?.avatarId || null,
+    filedViaRejection: hasRejectionEvent, // This must be true when there's a type 6 event
   };
+};
+
+// Add this helper function to get dispute status from dispute data
+// Add this helper function to get dispute status from dispute data
+const getDisputeStatusFromAgreement = (agreement: any): string | null => {
+  if (!agreement?._raw?.disputes || agreement._raw.disputes.length === 0) {
+    return null;
+  }
+
+  // Get the most recent dispute
+  const latestDispute = agreement._raw.disputes[0];
+
+  // If we have dispute status from the dispute object
+  if (latestDispute.status) {
+    // Map API dispute status to our frontend status using the enum
+    switch (latestDispute.status) {
+      case DisputeStatusEnum.Pending: // 1
+        return "pending";
+      case DisputeStatusEnum.VoteInProgress: // 2
+        return "voting";
+      case DisputeStatusEnum.Settled: // 3
+        return "settled";
+      case DisputeStatusEnum.Dismissed: // 4
+        return "dismissed";
+      case DisputeStatusEnum.PendingPayment: // 5
+        return "pending_payment";
+      case DisputeStatusEnum.PendingLockingFunds: // 6
+        return "pending_locking_funds";
+      default:
+        return "disputed";
+    }
+  }
+
+  return "disputed";
 };
 
 // Also add the normalizeUsername helper if not already there
@@ -486,10 +694,11 @@ interface EscrowDetailsData {
 // Helper badge components for better styling
 const StatusBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-      ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-      : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
-      }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+        : "border border-amber-400/30 bg-amber-500/20 text-amber-300"
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-emerald-400" : "bg-amber-400"}`}
@@ -500,10 +709,11 @@ const StatusBadge = ({ value }: { value: boolean }) => (
 
 const SafetyBadge = ({ value }: { value: boolean }) => (
   <div
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${value
-      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-      : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-      }`}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+      value
+        ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+        : "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+    }`}
   >
     <div
       className={`h-1.5 w-1.5 rounded-full ${value ? "bg-rose-400" : "bg-emerald-400"}`}
@@ -549,7 +759,7 @@ const RaiseDisputeModal = ({
   onChainAgreement?: any; // For contractAgreementId
   networkInfo?: any;
 }) => {
-  const [proBono, setProBono] = useState(false);
+  const [proBono, setProBono] = useState<boolean | null>(null);
   const [localTitle, setLocalTitle] = useState(title || agreement?.title || "");
   const [localDescription, setLocalDescription] = useState(
     description || agreement?.description || "",
@@ -865,6 +1075,11 @@ const RaiseDisputeModal = ({
       return;
     }
 
+    if (proBono === null) {
+      toast.error("Please select Pro Bono or Paid dispute type");
+      return;
+    }
+
     // Validate file sizes and types
     const maxTotalSize = 50 * 1024 * 1024; // 50MB
     const totalSize = localFiles.reduce((total, file) => total + file.size, 0);
@@ -893,7 +1108,7 @@ const RaiseDisputeModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[90vh] w-full max-w-[32rem] overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:p-6">
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-4 shadow-2xl sm:p-6">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white"
@@ -1012,79 +1227,41 @@ const RaiseDisputeModal = ({
                   Request Kind <span className="text-red-500">*</span>
                 </label>
                 <div className="flex items-center gap-3 text-xs">
-                  <div className="group relative cursor-pointer">
-                    <span className="cursor-help rounded border border-blue-400/20 bg-blue-500/10 px-2 py-0.5 text-blue-300">
-                      Pro Bono
-                    </span>
-                    <div className="absolute top-full right-0 z-10 mt-2 hidden w-60 rounded-md border border-blue-400/30 bg-blue-950/90 px-3 py-2 text-xs text-white shadow-lg backdrop-blur-sm group-hover:block">
-                      <div className="flex items-start gap-2">
-                        <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500/20">
-                          <div className="h-2 w-2 rounded-full bg-blue-400"></div>
-                        </div>
-                        <div>
-                          <p className="font-medium text-blue-300">
-                            No Payment Required
-                          </p>
-                          <p className="mt-1 text-blue-200">
-                            Judges will handle your case pro bono when
-                            available.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="group relative cursor-pointer">
-                    <span className="cursor-help rounded border border-green-400/20 bg-green-500/10 px-2 py-0.5 text-green-300">
-                      Paid
-                    </span>
-                    <div className="absolute top-full right-0 z-10 mt-2 hidden w-60 rounded-md border border-green-400/30 bg-green-950/90 px-3 py-2 text-xs text-white shadow-lg backdrop-blur-sm group-hover:block">
-                      <div className="flex items-start gap-2">
-                        <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-500/20">
-                          <div className="h-2 w-2 rounded-full bg-green-400"></div>
-                        </div>
-                        <div>
-                          <p className="font-medium text-green-300">
-                            Priority Handling
-                          </p>
-                          <p className="mt-1 text-green-200">
-                            A fee is required to initiate your dispute. The fee
-                            helps prioritize your case This helps prioritize
-                            your case and notifies all judges to bigin reviewing
-                            immediately.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Tooltips remain the same */}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${proBono
-                    ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
-                    : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
-                    } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    proBono === true
+                      ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
+                      : proBono === false
+                        ? "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                        : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
                 >
                   <input
                     type="radio"
                     name="feeOption"
-                    checked={proBono}
-                    onChange={(e) => setProBono(e.target.checked)}
+                    checked={proBono === true}
+                    onChange={() => setProBono(true)}
                     className="hidden"
                     disabled={isSubmitting}
                   />
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${proBono
-                      ? "border border-blue-400/50 bg-blue-500/30"
-                      : "border border-purple-400/30 bg-purple-500/20"
-                      }`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      proBono === true
+                        ? "border border-blue-400/50 bg-blue-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
                   >
                     <div
-                      className={`h-4 w-4 rounded-full ${proBono
-                        ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                        : "border border-purple-400"
-                        }`}
+                      className={`h-4 w-4 rounded-full ${
+                        proBono === true
+                          ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                          : "border border-purple-400"
+                      }`}
                     ></div>
                   </div>
                   <span className="font-medium">Pro Bono</span>
@@ -1094,30 +1271,35 @@ const RaiseDisputeModal = ({
                 </label>
 
                 <label
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${!proBono
-                    ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
-                    : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
-                    } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    proBono === false
+                      ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
+                      : proBono === true
+                        ? "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                        : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isSubmitting ? "cursor-not-allowed opacity-50" : ""}`}
                 >
                   <input
                     type="radio"
                     name="feeOption"
-                    checked={!proBono}
-                    onChange={(e) => setProBono(!e.target.checked)}
+                    checked={proBono === false}
+                    onChange={() => setProBono(false)}
                     className="hidden"
                     disabled={isSubmitting}
                   />
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${!proBono
-                      ? "border border-green-400/50 bg-green-500/30"
-                      : "border border-purple-400/30 bg-purple-500/20"
-                      }`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      proBono === false
+                        ? "border border-green-400/50 bg-green-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
                   >
                     <div
-                      className={`h-4 w-4 rounded-full ${!proBono
-                        ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
-                        : "border border-purple-400"
-                        }`}
+                      className={`h-4 w-4 rounded-full ${
+                        proBono === false
+                          ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
+                          : "border border-purple-400"
+                      }`}
                     ></div>
                   </div>
                   <span className="font-medium">Paid</span>
@@ -1125,30 +1307,46 @@ const RaiseDisputeModal = ({
                 </label>
               </div>
 
-              <div className="mt-3 space-y-2">
-                <div className="flex items-start gap-2 rounded-lg bg-purple-500/10 p-2">
-                  <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
-                    <Info className="h-3 w-3 text-purple-400" />
+              {/* Show validation message if no option selected */}
+              {proBono === null && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-yellow-500/10 p-2">
+                  <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-yellow-500/20">
+                    <Info className="h-3 w-3 text-yellow-400" />
                   </div>
-                  <p className="text-xs text-purple-300/90">
-                    {proBono
-                      ? "Pro Bono disputes may have longer wait times as judges volunteer their time. You can change this later if needed."
-                      : "Paid disputes ensure faster processing and immediate notification to all available judges."}
+                  <p className="text-xs text-yellow-300/90">
+                    Please select Pro Bono or Paid to continue.
                   </p>
                 </div>
+              )}
 
-                {!proBono && (
-                  <div className="flex items-start gap-2 rounded-lg bg-green-500/10 p-2">
-                    <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20">
-                      <DollarSign className="h-3 w-3 text-green-400" />
+              {/* Conditional info messages based on selection */}
+              {proBono !== null && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-start gap-2 rounded-lg bg-purple-500/10 p-2">
+                    <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
+                      <Info className="h-3 w-3 text-purple-400" />
                     </div>
-                    <p className="text-xs text-green-300/90">
-                      A small fee will be required when you confirm the dispute.
-                      Ensure you have sufficient funds in your wallet.
+                    <p className="text-xs text-purple-300/90">
+                      {proBono
+                        ? "Pro Bono disputes may have longer wait times as judges volunteer their time. You can change this later if needed."
+                        : "Paid disputes ensure faster processing and immediate notification to all available judges."}
                     </p>
                   </div>
-                )}
-              </div>
+
+                  {!proBono && (
+                    <div className="flex items-start gap-2 rounded-lg bg-green-500/10 p-2">
+                      <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20">
+                        <DollarSign className="h-3 w-3 text-green-400" />
+                      </div>
+                      <p className="text-xs text-green-300/90">
+                        A small fee will be required when you confirm the
+                        dispute. Ensure you have sufficient funds in your
+                        wallet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Witnesses - WITH SEARCH */}
@@ -1269,10 +1467,11 @@ const RaiseDisputeModal = ({
               </label>
               <div className="mb-2">
                 <div
-                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${isDragOver
-                    ? "border-purple-500/60 bg-purple-500/20"
-                    : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
-                    }`}
+                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
+                    isDragOver
+                      ? "border-purple-500/60 bg-purple-500/20"
+                      : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
+                  }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -1288,8 +1487,9 @@ const RaiseDisputeModal = ({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${isSubmitting ? "cursor-not-allowed opacity-50" : ""
-                      }`}
+                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${
+                      isSubmitting ? "cursor-not-allowed opacity-50" : ""
+                    }`}
                   >
                     <Upload className="mb-2 h-5 w-5 text-purple-400" />
                     <span className="text-purple-300">
@@ -1377,6 +1577,36 @@ const RaiseDisputeModal = ({
                 </div>
               )}
             </div>
+
+            {/* What will happen summary section - ADDED HERE */}
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
+                <div className="text-xs">
+                  <p className="font-medium text-yellow-300">
+                    What will happen:
+                  </p>
+                  <ul className="mt-1 space-y-1 text-yellow-200/80">
+                    <li>• Dispute will be created with {localDefendant}</li>
+                    <li>
+                      • {localWitnesses.length} witness(es) will be invited
+                    </li>
+                    <li>
+                      • {localFiles.length} evidence file(s) will be uploaded
+                    </li>
+                    <li>
+                      • Type:{" "}
+                      {proBono === null
+                        ? "Not selected"
+                        : proBono
+                          ? "Pro Bono"
+                          : "Paid"}
+                    </li>
+                    {proBono === false && <li>• Small fee will be required</li>}
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1415,7 +1645,7 @@ const RaiseDisputeModal = ({
 };
 
 // Reject Delivery Modal Component
-// Reject Delivery Modal Component - Updated to match AgreementDetails version
+// Reject Delivery Modal Component - Updated with all fields from RaiseDisputeModal
 const RejectDeliveryModal = ({
   isOpen,
   onClose,
@@ -1441,9 +1671,26 @@ const RejectDeliveryModal = ({
   agreement: any;
   votingId?: string;
 }) => {
-  const [requestKind, setRequestKind] = useState<DisputeTypeEnum>(
-    DisputeTypeEnum.ProBono,
+  const [requestKind, setRequestKind] = useState<DisputeTypeEnum | null>(null);
+  const [localTitle, setLocalTitle] = useState(agreement?.title || "");
+  const [localDescription, setLocalDescription] = useState(
+    agreement?.description || "",
   );
+  const [localDefendant, setLocalDefendant] = useState("");
+  const [localWitnesses, setLocalWitnesses] = useState<string[]>([]);
+  const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const [witnessInput, setWitnessInput] = useState("");
+
+  // Search states for witnesses
+  const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
+  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
+  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
+  const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
+
+  // File upload state
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
+
   const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
 
@@ -1452,24 +1699,288 @@ const RejectDeliveryModal = ({
     transactionStep,
     isProcessing,
     transactionHash,
-    createDisputeOnchain,
+    // createDisputeOnchain,
     retryTransaction,
     resetTransaction,
   } = useDisputeTransaction(networkInfo.chainId);
 
   // Generate voting ID
   const votingIdToUse = useMemo(() => {
-    // Use the passed votingId if available, otherwise generate one
     if (votingId) {
-      return votingId; // Already a string
+      return votingId;
     }
-
     const array = new Uint32Array(1);
     crypto.getRandomValues(array);
-    // Return as string to match API format
     return (100000 + (array[0] % 900000)).toString();
   }, [votingId]);
 
+  // Auto-set defendant based on the other party
+  useEffect(() => {
+    if (agreement && currentUser && !localDefendant) {
+      const normalizeUsername = (username: string): string => {
+        if (!username) return "";
+        return username.replace(/^@/, "").toLowerCase().trim();
+      };
+
+      const currentUsername = currentUser?.username;
+      if (!currentUsername) return;
+
+      const firstPartyUsername = agreement.firstParty?.username;
+      const counterPartyUsername = agreement.counterParty?.username;
+
+      if (
+        firstPartyUsername &&
+        normalizeUsername(currentUsername) ===
+          normalizeUsername(firstPartyUsername)
+      ) {
+        // Current user is first party, defendant is counterparty
+        setLocalDefendant(counterPartyUsername || "Unknown");
+      } else if (
+        counterPartyUsername &&
+        normalizeUsername(currentUsername) ===
+          normalizeUsername(counterPartyUsername)
+      ) {
+        // Current user is counterparty, defendant is first party
+        setLocalDefendant(firstPartyUsername || "Unknown");
+      }
+    }
+  }, [agreement, currentUser, localDefendant]);
+
+  // Handle witness search
+  const handleWitnessSearch = useCallback(
+    async (query: string) => {
+      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
+
+      if (cleanQuery.length < 2) {
+        setWitnessSearchResults([]);
+        setShowWitnessSuggestions(false);
+        return;
+      }
+
+      setIsWitnessSearchLoading(true);
+      setShowWitnessSuggestions(true);
+
+      try {
+        const results = await disputeService.searchUsers(cleanQuery);
+
+        const currentUserTelegram = currentUser?.username || "";
+        const filteredResults = results.filter((resultUser) => {
+          const resultTelegram =
+            resultUser.telegramUsername || resultUser.username;
+          return (
+            resultTelegram &&
+            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
+          );
+        });
+
+        setWitnessSearchResults(filteredResults);
+      } catch (error) {
+        console.error("Witness search failed:", error);
+        setWitnessSearchResults([]);
+      } finally {
+        setIsWitnessSearchLoading(false);
+      }
+    },
+    [currentUser],
+  );
+
+  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+
+  useEffect(() => {
+    if (debouncedWitnessQuery.length >= 2) {
+      handleWitnessSearch(debouncedWitnessQuery);
+    } else {
+      setWitnessSearchResults([]);
+      setShowWitnessSuggestions(false);
+    }
+  }, [debouncedWitnessQuery, handleWitnessSearch]);
+
+  // Handle witness selection
+  const handleWitnessSelect = (username: string) => {
+    const formattedUsername = username.startsWith("@")
+      ? username
+      : `@${username}`;
+    addWitness(formattedUsername);
+    setShowWitnessSuggestions(false);
+    setWitnessSearchQuery("");
+  };
+
+  const handleWitnessInputChange = (value: string) => {
+    setWitnessInput(value);
+    setWitnessSearchQuery(value);
+  };
+
+  // File upload handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: Record<string, string> = {};
+
+    Array.from(selectedFiles).forEach((file) => {
+      const fileSizeMB = file.size / 1024 / 1024;
+      const fileType = file.type.startsWith("image/") ? "image" : "document";
+
+      // Apply file size limits based on file type
+      if (fileType === "image" && fileSizeMB > 2) {
+        toast.error(
+          `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      if (fileType === "document" && fileSizeMB > 3) {
+        toast.error(
+          `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
+        );
+        return;
+      }
+
+      // Check total files limit
+      if (localFiles.length + newFiles.length >= 10) {
+        toast.error("Maximum 10 files allowed");
+        return;
+      }
+
+      // Calculate total size
+      const currentTotal = localFiles.reduce((total, f) => total + f.size, 0);
+      const newTotal = currentTotal + file.size;
+      const maxTotalSize = 50 * 1024 * 1024; // 50MB
+
+      if (newTotal > maxTotalSize) {
+        toast.error("Total file size too large", {
+          description: `Adding this file would exceed 50MB total limit`,
+          duration: 8000,
+        });
+        return;
+      }
+
+      // Validate file types
+      const allowedImageTypes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+      ];
+      const allowedDocumentTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+      ];
+
+      if (
+        !allowedImageTypes.includes(file.type) &&
+        !allowedDocumentTypes.includes(file.type)
+      ) {
+        toast.error(
+          `File "${file.name}" has unsupported type. Allowed: images (JPEG, PNG, GIF, WebP), PDFs, Word docs, text files`,
+        );
+        return;
+      }
+
+      newFiles.push(file);
+
+      // Create preview for images
+      if (fileType === "image") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newPreviews[file.name] = e.target?.result as string;
+          setFilePreviews((prev) => ({
+            ...prev,
+            [file.name]: e.target?.result as string,
+          }));
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    if (newFiles.length > 0) {
+      setLocalFiles([...localFiles, ...newFiles]);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = "image/*,.pdf,.doc,.docx,.txt";
+    const dataTransfer = new DataTransfer();
+    Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
+    input.files = dataTransfer.files;
+
+    const event = new Event("change", { bubbles: true });
+    input.dispatchEvent(event);
+
+    handleFileUpload({
+      target: { files: dataTransfer.files },
+    } as React.ChangeEvent<HTMLInputElement>);
+  };
+
+  const removeFile = (index: number) => {
+    const newFiles = [...localFiles];
+    const removedFile = newFiles[index];
+    newFiles.splice(index, 1);
+    setLocalFiles(newFiles);
+
+    // Remove preview if exists
+    if (filePreviews[removedFile.name]) {
+      const newPreviews = { ...filePreviews };
+      delete newPreviews[removedFile.name];
+      setFilePreviews(newPreviews);
+    }
+  };
+
+  const addWitness = (witness?: string) => {
+    const trimmed = witness || witnessInput.trim();
+    if (
+      trimmed &&
+      !localWitnesses.includes(trimmed) &&
+      localWitnesses.length < 5
+    ) {
+      const formattedWitness = trimmed.startsWith("@")
+        ? trimmed
+        : `@${trimmed}`;
+      setLocalWitnesses([...localWitnesses, formattedWitness]);
+      setWitnessInput("");
+      setWitnessSearchQuery("");
+      setShowWitnessSuggestions(false);
+    } else if (localWitnesses.length >= 5) {
+      toast.error("Maximum 5 witnesses allowed");
+    }
+  };
+
+  const removeWitness = (index: number) => {
+    setLocalWitnesses(localWitnesses.filter((_, i) => i !== index));
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addWitness();
+    }
+  };
+
+  // Handle transaction success
   // Handle transaction success
   useEffect(() => {
     if (transactionStep === "success" && transactionHash) {
@@ -1477,9 +1988,18 @@ const RejectDeliveryModal = ({
         "✅ [RejectDeliveryModal] Transaction completed, calling onConfirm",
       );
 
+      // Create a local variable with a type guard
+      const currentRequestKind = requestKind;
+
+      if (currentRequestKind === null) {
+        console.error("❌ requestKind is null when trying to call onConfirm");
+        toast.error("Error: Dispute type not selected");
+        return;
+      }
+
       onConfirm(
         claim,
-        requestKind,
+        currentRequestKind, // Now TypeScript knows this is DisputeTypeEnum, not null
         networkInfo.chainId,
         votingIdToUse.toString(),
         transactionHash,
@@ -1513,75 +2033,73 @@ const RejectDeliveryModal = ({
     resetTransaction,
   ]);
 
-  // Update the handleSubmit function in RejectDeliveryModal
   const handleSubmit = async () => {
+    // Validate required fields (same as before)
+    if (!localTitle.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    if (!localDescription.trim()) {
+      toast.error("Description is required");
+      return;
+    }
+
+    if (!localDefendant.trim()) {
+      toast.error("Defendant is required");
+      return;
+    }
+
+    if (localFiles.length === 0) {
+      toast.error("At least one evidence file is required");
+      return;
+    }
+
     if (!claim.trim()) {
-      toast.error("Claim description is required", {
-        description: "Please provide a reason for rejecting the delivery.",
-        duration: 3000,
+      toast.error("Claim description is required");
+      return;
+    }
+
+    if (requestKind === null) {
+      toast.error("Please select a dispute type");
+      return;
+    }
+
+    // Validate file sizes and types
+    const maxTotalSize = 50 * 1024 * 1024; // 50MB
+    const totalSize = localFiles.reduce((total, file) => total + file.size, 0);
+
+    if (totalSize > maxTotalSize) {
+      toast.error("Total file size too large", {
+        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
+        duration: 8000,
       });
       return;
     }
 
     console.log("🚀 [RejectDeliveryModal] Starting rejection flow:", {
+      title: localTitle,
+      description: localDescription,
       claim: claim.trim(),
+      defendant: localDefendant,
+      witnesses: localWitnesses,
+      files: localFiles.map((f) => f.name),
       requestKind:
         requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
       chainId: networkInfo.chainId,
       votingId: votingIdToUse.toString(),
     });
 
-    if (requestKind === DisputeTypeEnum.Paid) {
-      // For paid disputes: Create dispute AND trigger payment
-      try {
-        // 1. Create the dispute in backend
-        console.log("📋 [RejectDeliveryModal] Creating dispute in backend...");
+    // Just call onConfirm with the data - let the parent handle loading states, errors, etc.
+    await onConfirm(
+      claim,
+      requestKind,
+      networkInfo.chainId,
+      votingIdToUse.toString(),
+    );
 
-        // Call onConfirm with the correct parameters
-        await onConfirm(
-          claim.trim(),
-          requestKind,
-          networkInfo.chainId,
-          votingIdToUse.toString(),
-        );
-
-        console.log("✅ [RejectDeliveryModal] Backend dispute created");
-
-        // 2. Trigger smart contract transaction using custom hook
-        console.log(
-          "💰 [RejectDeliveryModal] Triggering smart contract transaction...",
-        );
-        await createDisputeOnchain(votingIdToUse);
-
-        // The transaction will proceed via the custom hook
-        // Status updates will be handled by useEffect above
-      } catch (error: any) {
-        console.error(
-          "❌ [RejectDeliveryModal] Failed to create paid dispute:",
-          error,
-        );
-        // Error is already handled by the custom hook
-      }
-    } else {
-      // For pro bono disputes: submit directly
-      try {
-        await onConfirm(
-          claim.trim(),
-          requestKind,
-          networkInfo.chainId,
-          votingIdToUse.toString(),
-        );
-        // Clear claim and close modal
-        setClaim("");
-        onClose();
-      } catch (error: any) {
-        console.error("❌ [RejectDeliveryModal] Pro Bono submit error:", error);
-        toast.error("Failed to create dispute", {
-          description: error.message || "Please try again.",
-          duration: 5000,
-        });
-      }
-    }
+    // The parent will close this modal and handle everything else
+    onClose();
   };
 
   const handleRetryTransaction = async () => {
@@ -1589,34 +2107,6 @@ const RejectDeliveryModal = ({
       await retryTransaction(votingIdToUse);
     }
   };
-
-  // Determine the other party as defendant
-  const getDefendant = () => {
-    if (!agreement || !currentUser) return "Unknown";
-
-    // Helper to check if current user is first party
-    const normalizeUsername = (username: string): string => {
-      if (!username) return "";
-      return username.replace(/^@/, "").toLowerCase().trim();
-    };
-
-    const isCurrentUserFirstParty = () => {
-      if (!agreement || !currentUser) return false;
-      const currentUsername = currentUser?.username;
-      if (!currentUsername) return false;
-      const firstPartyUsername = agreement.firstParty?.username;
-      if (!firstPartyUsername || firstPartyUsername === "Unknown") return false;
-      return (
-        normalizeUsername(currentUsername) ===
-        normalizeUsername(firstPartyUsername)
-      );
-    };
-
-    const isFirstParty = isCurrentUserFirstParty();
-    return isFirstParty ? agreement.counterparty : agreement.createdBy;
-  };
-
-  const defendant = getDefendant();
 
   // Disable form when submitting or processing transaction
   const isDisabled =
@@ -1626,7 +2116,7 @@ const RejectDeliveryModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-6 shadow-2xl sm:max-w-[40rem]">
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-6 shadow-2xl">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -1652,220 +2142,565 @@ const RejectDeliveryModal = ({
           </div>
         </div>
 
-        {/* Dispute Info Summary */}
-        <div className="mb-6 rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
-          <h4 className="mb-2 text-base font-medium text-purple-300">
-            Summary
-          </h4>
-          <div className="space-y-3">
-            {/* Agreement Title */}
-            <div className="space-y-1">
-              <span className="mb-2 text-sm text-purple-200/80">
-                Agreement Title:
-              </span>
-              <p className="text-sm font-medium break-words text-white">
-                {agreement?.title || "No title"}
-              </p>
-            </div>
-
-            {/* Agreement Description */}
-            <div className="space-y-1">
-              <span className="mb-3 text-sm text-purple-200/80">
-                Agreement Description:
-              </span>
-              <p className="text-sm break-words whitespace-pre-line text-white/90">
-                {agreement?.description || "No description provided"}
-              </p>
-            </div>
-
-            {/* Defendant */}
-            <div className="space-y-1">
-              <span className="mb-3 text-sm text-purple-200/80">Defendant</span>
-              <p className="text-sm break-words whitespace-pre-line text-white/90">
-                {defendant}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Dispute Type Selection */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-purple-300">
-            Dispute Type <span className="text-red-500">*</span>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${requestKind === DisputeTypeEnum.ProBono
-                ? "border-cyan-400/40 bg-cyan-500/20 text-cyan-200"
-                : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
-            >
-              <input
-                type="radio"
-                name="disputeType"
-                className="hidden"
-                checked={requestKind === DisputeTypeEnum.ProBono}
-                onChange={() => {
-                  console.log("📝 [RejectDeliveryModal] Selected Pro Bono");
-                  setRequestKind(DisputeTypeEnum.ProBono);
-                }}
-                disabled={isDisabled}
-              />
-              <Scale className="h-5 w-5" />
-              <div>
-                <div className="font-medium">Pro Bono</div>
-                <div className="text-xs opacity-80">
-                  Free dispute resolution
+        {/* Scrollable form content */}
+        <div className="max-h-[calc(90vh-12rem)] overflow-y-auto pr-2">
+          <div className="space-y-4">
+            {/* Dispute Info Summary */}
+            <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+              <h4 className="mb-2 text-base font-medium text-purple-300">
+                Original Agreement
+              </h4>
+              <div className="space-y-2">
+                <div>
+                  <span className="text-xs text-purple-200/80">Title:</span>
+                  <p className="text-sm font-medium text-white">
+                    {agreement?.title || "No title"}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-purple-200/80">
+                    Description:
+                  </span>
+                  <p className="line-clamp-2 text-sm text-white/90">
+                    {agreement?.description || "No description provided"}
+                  </p>
                 </div>
               </div>
-            </label>
+            </div>
 
-            <label
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${requestKind === DisputeTypeEnum.Paid
-                ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
-            >
+            {/* Title */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Dispute Title <span className="text-red-500">*</span>
+              </label>
               <input
-                type="radio"
-                name="disputeType"
-                className="hidden"
-                checked={requestKind === DisputeTypeEnum.Paid}
-                onChange={() => {
-                  console.log("📝 [RejectDeliveryModal] Selected Paid");
-                  setRequestKind(DisputeTypeEnum.Paid);
-                }}
+                type="text"
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                placeholder="Enter a clear title for your dispute"
+                className="w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
                 disabled={isDisabled}
               />
-              <Wallet className="h-5 w-5" />
-              <div>
-                <div className="font-medium">Paid</div>
-                <div className="text-xs opacity-80">Priority resolution</div>
-              </div>
-            </label>
-          </div>
+            </div>
 
-          {/* Dispute Type Info */}
-          <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
-            <div className="flex items-start gap-2">
-              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-              <div className="text-xs text-cyan-200">
-                {requestKind === DisputeTypeEnum.ProBono ? (
-                  <span>
-                    <span className="font-medium">Pro Bono:</span> No fee
-                    required. Judges will handle your case when available. May
-                    have longer wait times.
-                  </span>
+            {/* Defendant - Read Only Display */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Defendant <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-2">
+                {localDefendant ? (
+                  <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+                        <Users className="h-4 w-4 text-purple-400" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-white">
+                          {localDefendant.startsWith("@")
+                            ? localDefendant
+                            : `@${localDefendant}`}
+                        </div>
+                        <div className="text-xs text-purple-300">
+                          Other party in agreement
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-purple-500/20 px-2 py-1 text-xs font-medium text-purple-300">
+                      Defendant
+                    </div>
+                  </div>
                 ) : (
-                  <span>
-                    <span className="font-medium">Paid:</span> A fee is required
-                    to initiate your dispute. This fee helps prioritize your
-                    case and notifies all judges to begin reviewing it
-                    immediately.
+                  <div className="rounded-lg border border-purple-500/30 bg-black/50 p-3 text-center text-sm text-gray-400">
+                    Loading defendant information...
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400">
+                  Defendant is automatically set to the other party in the
+                  agreement and cannot be changed.
+                </p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Dispute Description <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                placeholder="Describe the dispute in detail, including what went wrong with the delivery"
+                className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                disabled={isDisabled}
+              />
+            </div>
+
+            {/* Claim */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium text-purple-300">
+                  Formal Claim <span className="text-red-500">*</span>
+                </label>
+                <div className="group relative cursor-help">
+                  <Info className="h-4 w-4 text-cyan-300" />
+                  <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                    Make sure it's reasonable, as that might help your case when
+                    the judges look into it.
+                  </div>
+                </div>
+              </div>
+              <textarea
+                value={claim}
+                onChange={(e) => {
+                  setClaim(e.target.value);
+                }}
+                placeholder="State your formal claim against the defendant"
+                className="h-24 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                disabled={isDisabled}
+                required
+              />
+            </div>
+
+            {/* Dispute Type Selection */}
+            {/* Dispute Type Selection */}
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium text-purple-300">
+                  Request Kind <span className="text-red-500">*</span>
+                </label>
+                {/* Tooltips remain the same */}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    requestKind === DisputeTypeEnum.ProBono
+                      ? "border-blue-400/50 bg-blue-500/20 text-blue-300 shadow-lg shadow-blue-500/10"
+                      : requestKind === DisputeTypeEnum.Paid
+                        ? "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                        : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="disputeType"
+                    className="hidden"
+                    checked={requestKind === DisputeTypeEnum.ProBono}
+                    onChange={() => {
+                      console.log("📝 [RejectDeliveryModal] Selected Pro Bono");
+                      setRequestKind(DisputeTypeEnum.ProBono);
+                    }}
+                    disabled={isDisabled}
+                  />
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      requestKind === DisputeTypeEnum.ProBono
+                        ? "border border-blue-400/50 bg-blue-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full ${
+                        requestKind === DisputeTypeEnum.ProBono
+                          ? "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                          : "border border-purple-400"
+                      }`}
+                    ></div>
+                  </div>
+                  <span className="font-medium">Pro Bono</span>
+                  <span className="text-xs opacity-80">
+                    Free dispute resolution
+                  </span>
+                </label>
+
+                <label
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-center text-sm transition-all ${
+                    requestKind === DisputeTypeEnum.Paid
+                      ? "border-green-400/50 bg-green-500/20 text-green-300 shadow-lg shadow-green-500/10"
+                      : requestKind === DisputeTypeEnum.ProBono
+                        ? "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                        : "border-purple-400/20 bg-purple-500/10 text-purple-300 hover:border-purple-400/40 hover:bg-purple-500/20"
+                  } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="disputeType"
+                    className="hidden"
+                    checked={requestKind === DisputeTypeEnum.Paid}
+                    onChange={() => {
+                      console.log("📝 [RejectDeliveryModal] Selected Paid");
+                      setRequestKind(DisputeTypeEnum.Paid);
+                    }}
+                    disabled={isDisabled}
+                  />
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      requestKind === DisputeTypeEnum.Paid
+                        ? "border border-green-400/50 bg-green-500/30"
+                        : "border border-purple-400/30 bg-purple-500/20"
+                    }`}
+                  >
+                    <div
+                      className={`h-4 w-4 rounded-full ${
+                        requestKind === DisputeTypeEnum.Paid
+                          ? "bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"
+                          : "border border-purple-400"
+                      }`}
+                    ></div>
+                  </div>
+                  <span className="font-medium">Paid</span>
+                  <span className="text-xs opacity-80">Small fee required</span>
+                </label>
+              </div>
+
+              {/* Show validation message if no option selected */}
+              {requestKind === null && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-yellow-500/10 p-2">
+                  <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-yellow-500/20">
+                    <Info className="h-3 w-3 text-yellow-400" />
+                  </div>
+                  <p className="text-xs text-yellow-300/90">
+                    Please select Pro Bono or Paid to continue.
+                  </p>
+                </div>
+              )}
+
+              {/* Dispute Type Info - only show when selection is made */}
+              {requestKind !== null && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-start gap-2 rounded-lg bg-purple-500/10 p-2">
+                    <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-purple-500/20">
+                      <Info className="h-3 w-3 text-purple-400" />
+                    </div>
+                    <p className="text-xs text-purple-300/90">
+                      {requestKind === DisputeTypeEnum.ProBono
+                        ? "Pro Bono disputes may have longer wait times as judges volunteer their time. You can change this later if needed."
+                        : "Paid disputes ensure faster processing and immediate notification to all available judges."}
+                    </p>
+                  </div>
+
+                  {requestKind === DisputeTypeEnum.Paid && (
+                    <div className="flex items-start gap-2 rounded-lg bg-green-500/10 p-2">
+                      <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20">
+                        <DollarSign className="h-3 w-3 text-green-400" />
+                      </div>
+                      <p className="text-xs text-green-300/90">
+                        A fee will be required when you confirm the dispute.
+                        Ensure you have sufficient funds in your wallet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Smart Contract Info for Paid Disputes */}
+            {requestKind === DisputeTypeEnum.Paid &&
+              transactionStep === "idle" &&
+              !isSubmitting && (
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5 text-emerald-300" />
+                    <h4 className="text-sm font-medium text-emerald-200">
+                      Smart Contract Transaction Required
+                    </h4>
+                  </div>
+                  <p className="mt-2 text-xs text-emerald-300/80">
+                    For paid disputes, you'll need to confirm a transaction in
+                    your wallet to record the dispute on-chain.
+                  </p>
+                </div>
+              )}
+
+            {/* Witnesses - WITH SEARCH */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Witnesses (Optional) - Max 5
+              </label>
+              <div className="mb-2">
+                <div className="relative flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-purple-400" />
+                    <input
+                      type="text"
+                      value={witnessInput}
+                      onChange={(e) => handleWitnessInputChange(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      onFocus={() => {
+                        if (witnessInput.length >= 2) {
+                          setShowWitnessSuggestions(true);
+                        }
+                      }}
+                      placeholder="Type username with or without @ (min 2 characters)..."
+                      className="w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 pl-9 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                      disabled={isDisabled}
+                    />
+                    {isWitnessSearchLoading && (
+                      <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-purple-400" />
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => addWitness()}
+                    disabled={
+                      isDisabled ||
+                      !witnessInput.trim() ||
+                      localWitnesses.length >= 5
+                    }
+                    className="border-purple-500/30 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                  >
+                    Add
+                  </Button>
+                </div>
+
+                {/* Witness User Suggestions Dropdown */}
+                {showWitnessSuggestions && (
+                  <div className="relative z-10 mt-1">
+                    <div className="absolute top-0 right-0 left-0 max-h-48 overflow-y-auto rounded-lg border border-purple-500/30 bg-purple-900/95 shadow-xl backdrop-blur-md">
+                      {witnessSearchResults.length > 0 ? (
+                        witnessSearchResults.map((user) => (
+                          <UserSearchResult
+                            key={user.id}
+                            user={user}
+                            onSelect={(username) =>
+                              handleWitnessSelect(username)
+                            }
+                            field="witness"
+                          />
+                        ))
+                      ) : witnessSearchQuery.length >= 2 &&
+                        !isWitnessSearchLoading ? (
+                        <div className="px-4 py-3 text-center text-sm text-purple-300">
+                          No users found for "{witnessSearchQuery}"
+                          <div className="mt-1 text-xs text-purple-400">
+                            Make sure the user exists and has a username
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {witnessSearchQuery.length < 2 && (
+                        <div className="px-4 py-3 text-center text-sm text-purple-300">
+                          Type at least 2 characters to search
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Witness list */}
+              {localWitnesses.length > 0 && (
+                <div className="space-y-2">
+                  {localWitnesses.map((witness, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between rounded-lg bg-purple-500/10 p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-purple-400" />
+                        <span className="text-sm text-white">{witness}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeWitness(index)}
+                        className="text-red-400 hover:text-red-300"
+                        disabled={isDisabled}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-purple-400">
+                    {localWitnesses.length} of 5 witnesses added
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* File Upload - WITH VALIDATIONS */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-purple-300">
+                Evidence Files <span className="text-red-500">*</span> (Max 10
+                files, 50MB total)
+                {localFiles.length > 0 && (
+                  <span className="ml-2 text-xs text-yellow-400">
+                    Total: {getTotalFileSize(localFiles)}
                   </span>
                 )}
+              </label>
+              <div className="mb-2">
+                <div
+                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
+                    isDragOver
+                      ? "border-purple-500/60 bg-purple-500/20"
+                      : "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="reject-evidence-upload"
+                    disabled={isDisabled}
+                    accept="image/*,.pdf,.doc,.docx,.txt"
+                  />
+                  <label
+                    htmlFor="reject-evidence-upload"
+                    className={`flex cursor-pointer flex-col items-center justify-center text-center ${
+                      isDisabled ? "cursor-not-allowed opacity-50" : ""
+                    }`}
+                  >
+                    <Upload className="mb-2 h-5 w-5 text-purple-400" />
+                    <span className="text-purple-300">
+                      Click to upload or drag and drop
+                    </span>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Supports images{" "}
+                      <span className="text-yellow-300">(max 2MB)</span>,
+                      documents{" "}
+                      <span className="text-yellow-300">(max 3MB)</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Max 10 files, 50MB total • Allowed: images, PDFs, Word
+                      docs, text files
+                    </p>
+                  </label>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Smart Contract Info for Paid Disputes */}
-        {requestKind === DisputeTypeEnum.Paid &&
-          transactionStep === "idle" &&
-          !isSubmitting && (
-            <div className="mb-6 rounded-lg border border-emerald-400/20 bg-emerald-500/10 p-4">
-              <div className="flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-emerald-300" />
-                <h4 className="text-sm font-medium text-emerald-200">
-                  Smart Contract Transaction Required
-                </h4>
+              {/* File List */}
+              {localFiles.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-purple-300">
+                      Selected Files ({localFiles.length})
+                    </h4>
+                    <div className="text-xs text-yellow-400">
+                      Total: {getTotalFileSize(localFiles)}
+                    </div>
+                  </div>
+
+                  {localFiles.map((file, index) => {
+                    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+                    const isImage = file.type.startsWith("image/");
+
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-lg bg-purple-500/10 p-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isImage && filePreviews[file.name] ? (
+                            <img
+                              src={filePreviews[file.name]}
+                              alt={file.name}
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <Paperclip className="h-4 w-4 text-purple-400" />
+                          )}
+                          <div>
+                            <div className="text-sm text-white">
+                              {file.name}
+                            </div>
+                            <div className="text-xs text-purple-300">
+                              {fileSizeMB} MB • {isImage ? "Image" : "Document"}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="text-red-400 hover:text-red-300"
+                          disabled={isDisabled}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex items-center justify-between pt-2 text-xs text-purple-400">
+                    <div>
+                      {localFiles.length} of 10 files •{" "}
+                      {getTotalFileSize(localFiles)}
+                    </div>
+                    <div>
+                      {localFiles.length >= 10 && (
+                        <span className="text-yellow-400">
+                          Maximum files reached
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Transaction Status Display */}
+            {transactionStep !== "idle" && (
+              <div className="my-4">
+                <TransactionStatus
+                  status={transactionStep}
+                  onRetry={handleRetryTransaction}
+                  title={
+                    transactionStep === "pending"
+                      ? "Waiting for Wallet Confirmation..."
+                      : transactionStep === "success"
+                        ? "Payment Successful!"
+                        : "Payment Failed"
+                  }
+                  description={
+                    transactionStep === "pending"
+                      ? "Please confirm the transaction in your wallet to complete the payment."
+                      : transactionStep === "success"
+                        ? "Your paid dispute is being activated..."
+                        : "The transaction could not be completed. You can retry the transaction."
+                  }
+                />
               </div>
-              <p className="mt-2 text-xs text-emerald-300/80">
-                For paid disputes, you'll need to confirm a transaction in your
-                wallet to record the dispute on-chain.
-              </p>
-            </div>
-          )}
+            )}
 
-        {/* Claim input */}
-        <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between">
-            <label className="text-muted-foreground text-sm">
-              Claim <span className="text-red-500">*</span>
-            </label>
-            <div className="group relative cursor-help">
-              <Info className="h-4 w-4 text-cyan-300" />
-              <div className="absolute top-full right-0 mt-2 hidden w-60 rounded-md bg-cyan-950/90 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                Make sure it's reasonable, as that might help your case when the
-                judges look into it.
+            {/* Log Preview */}
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
+                <div className="text-xs">
+                  <p className="font-medium text-yellow-300">
+                    What will happen:
+                  </p>
+                  <ul className="mt-1 space-y-1 text-yellow-200/80">
+                    <li>• Dispute will be created with {localDefendant}</li>
+                    <li>
+                      • {localWitnesses.length} witness(es) will be invited
+                    </li>
+                    <li>
+                      • {localFiles.length} evidence file(s) will be uploaded
+                    </li>
+                    <li>
+                      • Type:{" "}
+                      {requestKind === DisputeTypeEnum.ProBono
+                        ? "Pro Bono"
+                        : "Paid"}
+                    </li>
+                    {requestKind === DisputeTypeEnum.Paid && (
+                      <li>• Smart contract transaction required</li>
+                    )}
+                  </ul>
+                </div>
               </div>
-            </div>
-          </div>
-          <textarea
-            value={claim}
-            onChange={(e) => {
-              setClaim(e.target.value);
-            }}
-            placeholder="Describe why you're rejecting this delivery (optional)"
-            className="h-32 w-full rounded-lg border border-purple-500/30 bg-black/50 p-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-            disabled={isDisabled}
-            required
-          />
-
-          <p className="mt-1 text-xs text-gray-400">
-            You can add more details and evidence on the dispute page.
-          </p>
-        </div>
-
-        {/* Transaction Status Display */}
-        {transactionStep !== "idle" && (
-          <div className="my-4">
-            <TransactionStatus
-              status={transactionStep}
-              onRetry={handleRetryTransaction}
-              title={
-                transactionStep === "pending"
-                  ? "Waiting for Wallet Confirmation..."
-                  : transactionStep === "success"
-                    ? "Payment Successful!"
-                    : "Payment Failed"
-              }
-              description={
-                transactionStep === "pending"
-                  ? "Please confirm the transaction in your wallet to complete the payment."
-                  : transactionStep === "success"
-                    ? "Your paid dispute is being activated..."
-                    : "The transaction could not be completed. You can retry the transaction."
-              }
-            />
-          </div>
-        )}
-
-        {/* Log Preview */}
-        <div className="mb-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-          <div className="flex items-start gap-2">
-            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
-            <div className="text-xs">
-              <p className="font-medium text-yellow-300">What will happen:</p>
-              <ul className="mt-1 space-y-1 text-yellow-200/80">
-                <li>• Dispute will be created with {defendant}</li>
-                <li>
-                  • Type:{" "}
-                  {requestKind === DisputeTypeEnum.ProBono
-                    ? "Pro Bono"
-                    : "Paid"}
-                </li>
-                {requestKind === DisputeTypeEnum.Paid && (
-                  <li>• Smart contract transaction required</li>
-                )}
-                <li>• You can add evidence, witnesses in the Dispute page</li>
-              </ul>
             </div>
           </div>
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Button
             variant="outline"
             onClick={onClose}
@@ -1876,10 +2711,11 @@ const RejectDeliveryModal = ({
           </Button>
           <Button
             variant="outline"
-            className={`w-full py-2 sm:w-auto ${requestKind === DisputeTypeEnum.Paid
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
-              : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
-              } ${transactionStep === "success" ? "hidden" : ""}`}
+            className={`w-full py-2 sm:w-auto ${
+              requestKind === DisputeTypeEnum.Paid
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+                : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+            } ${transactionStep === "success" ? "hidden" : ""}`}
             onClick={handleSubmit}
             disabled={isDisabled}
           >
@@ -1915,6 +2751,7 @@ const RejectDeliveryModal = ({
     </div>
   );
 };
+
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1922,6 +2759,7 @@ export default function EscrowDetails() {
   const { user } = useAuth();
   const { switchChain } = useSwitchChain();
   const wagmiChainId = useChainId();
+  const socketRef = useRef<TypedSocket | null>(null);
   const [escrow, setEscrow] = useState<EscrowDetailsData | null>(null);
   // const [loading, setLoading] = useState(true);
   // const [showEscrowAddress, setShowEscrowAddress] = useState(false);
@@ -2018,17 +2856,35 @@ export default function EscrowDetails() {
   const [rejectClaim, setRejectClaim] = useState("");
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
 
-  const [pendingRejectClaim, setPendingRejectClaim] = useState<{
-    agreementId: number;
-    claim: string;
-    votingId: string;
-  } | null>(null);
+  const [pendingDisputeModal, setPendingDisputeModal] = useState<{
+    isOpen: boolean;
+    data: {
+      contractAgreementId: bigint;
+      votingId: string | number;
+      isProBono: boolean;
+      action: "raise" | "reject";
+    } | null;
+  }>({
+    isOpen: false,
+    data: null,
+  });
+
+  const [disputeVotingId, setDisputeVotingId] = useState<string | null>(null);
+  const [isDisputeFiler, setIsDisputeFiler] = useState(false);
 
   const disputeInfo = escrow
     ? getDisputeInfo(escrow)
     : { filedAt: null, filedBy: null, filedById: null, filedByAvatarId: null };
 
+  const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
+  const [isPollingDispute, setIsPollingDispute] = useState(false);
+
+  const [pollingTimerId, setPollingTimerId] = useState<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+
   // Status configuration
+  // Status configuration - UPDATED with new dispute statuses
   const statusConfig = {
     pending: {
       icon: Clock,
@@ -2039,7 +2895,7 @@ export default function EscrowDetails() {
       description: "Awaiting deposit and signatures",
     },
     signed: {
-      icon: FileText, // Changed from UserCheck to match getStatusIcon
+      icon: FileText,
       color: "text-blue-400",
       bgColor: "bg-blue-500/20",
       borderColor: "border-blue-400/30",
@@ -2055,26 +2911,26 @@ export default function EscrowDetails() {
       description: "Waiting for work delivery",
     },
     pending_approval: {
-      icon: Package, // Changed from Clock to match getStatusIcon
-      color: "text-orange-400", // Changed from purple to orange to match getStatusIcon
-      bgColor: "bg-orange-500/20", // Changed from purple to orange
-      borderColor: "border-orange-400/30", // Changed from purple to orange
+      icon: Package,
+      color: "text-orange-400",
+      bgColor: "bg-orange-500/20",
+      borderColor: "border-orange-400/30",
       label: "Pending Approval",
       description: "Delivery submitted, awaiting approval",
     },
     completed: {
       icon: CheckCircle,
-      color: "text-green-400", // Changed from emerald to green to match getStatusIcon
-      bgColor: "bg-green-500/20", // Changed from emerald to green
-      borderColor: "border-green-400/30", // Changed from emerald to green
+      color: "text-green-400",
+      bgColor: "bg-green-500/20",
+      borderColor: "border-green-400/30",
       label: "Completed",
       description: "Successfully completed and settled",
     },
     disputed: {
       icon: AlertTriangle,
-      color: "text-purple-400", // Changed from rose to purple to match getStatusIcon
-      bgColor: "bg-purple-500/20", // Changed from rose to purple
-      borderColor: "border-purple-400/30", // Changed from rose to purple
+      color: "text-purple-400",
+      bgColor: "bg-purple-500/20",
+      borderColor: "border-purple-400/30",
       label: "Disputed",
       description: "Under dispute resolution",
     },
@@ -2086,8 +2942,25 @@ export default function EscrowDetails() {
       label: "Cancelled",
       description: "Agreement cancelled",
     },
+    // NEW: Pending Payment Status - for paid disputes awaiting payment
+    pending_payment: {
+      icon: Wallet,
+      color: "text-yellow-400",
+      bgColor: "bg-yellow-500/20",
+      borderColor: "border-yellow-400/30",
+      label: "Pending Payment",
+      description: "Dispute created, awaiting payment confirmation",
+    },
+    // NEW: Pending Locking Funds Status - for pro bono disputes awaiting fund locking
+    pending_locking_funds: {
+      icon: Lock,
+      color: "text-orange-400",
+      bgColor: "bg-orange-500/20",
+      borderColor: "border-orange-400/30",
+      label: "Pending Locking Funds",
+      description: "Pro bono dispute, awaiting fund locking",
+    },
   };
-
   const votingIdToUse = useMemo(() => {
     const array = new Uint32Array(1);
     crypto.getRandomValues(array);
@@ -2201,6 +3074,18 @@ export default function EscrowDetails() {
   const getCurrentStatus = () => {
     if (!onChainAgreement) return escrow?.status || "pending";
 
+    // First check if there's a dispute with payment pending status
+    const disputeStatus = getDisputeStatusFromAgreement(escrow);
+
+    // If dispute exists and is in pending payment/locking state, show that instead
+    if (
+      disputeStatus === "pending_payment" ||
+      disputeStatus === "pending_locking_funds"
+    ) {
+      return disputeStatus;
+    }
+
+    // Otherwise use the regular status logic
     if (onChainAgreement.completed) return "completed";
     if (onChainAgreement.disputed) return "disputed";
     if (onChainAgreement.orderCancelled) return "cancelled";
@@ -2253,9 +3138,14 @@ export default function EscrowDetails() {
       }
 
       const escrowCA = agreementData.escrowContractAddress;
-      console.log("Using escrow contract address for on-chain fetch:", escrowCA);
+      console.log(
+        "Using escrow contract address for on-chain fetch:",
+        escrowCA,
+      );
       if (!escrowCA) {
-        console.warn("No escrowContractAddress found - skipping on-chain fetch");
+        console.warn(
+          "No escrowContractAddress found - skipping on-chain fetch",
+        );
         return;
       }
 
@@ -2335,7 +3225,7 @@ export default function EscrowDetails() {
       // so it can extract the contractAgreementId
       fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
       setEscrow(transformedEscrow);
-      const disputeEvent = getDisputeRaisedEvent(agreementData.timeline);
+      const disputeEvent = getDisputeEvents(agreementData.timeline);
       if (disputeEvent) {
         console.log("⚖️ Found DisputeRaised event in timeline:", disputeEvent);
         // You could store this in state if needed, or access it from escrow._raw.timeline
@@ -2399,7 +3289,7 @@ export default function EscrowDetails() {
       };
 
       setEscrow(transformedEscrow);
-      const disputeEvent = getDisputeRaisedEvent(agreementData.timeline);
+      const disputeEvent = getDisputeEvents(agreementData.timeline);
       if (disputeEvent) {
         console.log("⚖️ Found DisputeRaised event in timeline:", disputeEvent);
         // You could store this in state if needed, or access it from escrow._raw.timeline
@@ -2420,13 +3310,13 @@ export default function EscrowDetails() {
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceProvider.toString().toLowerCase();
+      onChainAgreement.serviceProvider.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceRecipient.toString().toLowerCase();
+      onChainAgreement.serviceRecipient.toString().toLowerCase();
   const now = currentTime;
 
   const switchToTokenChain = useCallback(async () => {
@@ -2488,7 +3378,13 @@ export default function EscrowDetails() {
       functionName: "getMilestone" as const,
       args: [onChainAgreement.id, BigInt(i)],
     }));
-  }, [manageMilestoneCount, onChainAgreement?.id, onChainAgreement?.vesting, refetchTrigger, escrow?.escrowAddress]);
+  }, [
+    manageMilestoneCount,
+    onChainAgreement?.id,
+    onChainAgreement?.vesting,
+    refetchTrigger,
+    escrow?.escrowAddress,
+  ]);
 
   // Fetch all milestones
   const { data: rawMilestonesData, refetch: refetchMilestonesData } =
@@ -2997,7 +3893,7 @@ export default function EscrowDetails() {
     return 100000 + (array[0] % 900000);
   }, []);
 
-  // Updated function to handle rejecting delivery with claim
+  // Update the handleConfirmRejectDelivery function
   const handleConfirmRejectDelivery = async (
     claim: string,
     requestKind: DisputeTypeEnum,
@@ -3012,183 +3908,109 @@ export default function EscrowDetails() {
     try {
       if (!id || !onChainAgreement?.id) {
         setUiError("Agreement ID required");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!isLoadedAgreement) {
         setUiError("Load the agreement first");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!isServiceRecipient) {
         setUiError("Only serviceRecipient can reject delivery");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!onChainAgreement.funded) {
         setUiError("Agreement not funded");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (!onChainAgreement.signed) {
         setUiError("Agreement not signed");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.grace1Ends === 0n) {
         setUiError("There are no pending delivery to reject");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.pendingCancellation) {
         setUiError("Cancellation requested");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.completed) {
         setUiError("The agreement is completed");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       if (onChainAgreement.frozen) {
         setUiError("The agreement is frozen");
-        setIsSubmittingReject(false);
-        setLoading("rejectDelivery", false);
         return;
       }
 
       const agreementId = parseInt(id);
-      // Use the passed votingId or generate a new one if undefined
       const generatedVotingId = votingId || votingIdToUse.toString();
-
-      // Ensure it's a string (not undefined)
-      const votingIdString = generatedVotingId.toString();
+      const isProBono = requestKind === DisputeTypeEnum.ProBono;
 
       console.log("🚀 Starting delivery rejection process:", {
         agreementId,
         contractAgreementId: onChainAgreement.id,
-        votingId: votingIdString,
+        votingId: generatedVotingId,
         claim: claim.trim(),
         requestKind,
+        isProBono,
         chainId,
       });
-      // Store the claim data temporarily to use after transaction success
-      const pendingClaimData = {
-        agreementId,
-        claim: claim.trim(),
-        votingId: generatedVotingId.toString(),
-      };
-
-      // Store in state for later use in transaction success handler
-      setPendingRejectClaim(pendingClaimData);
 
       // STEP 1: First save the claim to backend
       try {
         console.log("📤 Making API call to save claim...");
         await agreementService.rejectDelivery(agreementId, {
-          votingId: generatedVotingId.toString(),
+          votingId: generatedVotingId,
           claim: claim.trim(),
-          requestKind: requestKind, // This is DisputeTypeEnum
+          requestKind: requestKind,
           chainId: networkInfo.chainId,
           contractAgreementId: onChainAgreement?.id?.toString(),
-          txHash: transactionHash, // If you have transaction hash from blockchain
+          txHash: transactionHash,
         });
         console.log("✅ Claim saved to backend successfully");
       } catch (apiError: any) {
         console.error("❌ Failed to save claim to backend:", apiError);
-
-        // Check if it's a 400 error
-        if (apiError.response?.status === 400) {
-          console.error("📋 400 Error details:", {
-            status: apiError.response?.status,
-            data: apiError.response?.data,
-            message: apiError.response?.data?.message || apiError.message,
-          });
-
-          // Try alternative payload format (votingId as number)
-          try {
-            console.log(
-              "🔄 Trying alternative payload format with votingId as number...",
-            );
-            await api.patch(`/agreement/${agreementId}/delivery/reject`, {
-              claim: claim.trim(),
-              votingId: Number(generatedVotingId), // Try as number instead of string
-            });
-            console.log("✅ Alternative payload worked!");
-          } catch (altError: any) {
-            console.error("❌ Alternative payload also failed:", {
-              status: altError.response?.status,
-              data: altError.response?.data,
-              message: altError.message,
-            });
-
-            // Continue with blockchain call even if claim save fails
-            // Show warning but don't stop the process
-            toast.warning(
-              "Claim not saved, but proceeding with blockchain rejection",
-              {
-                description:
-                  "The dispute will be created but your claim description may not be saved.",
-                duration: 3000,
-              },
-            );
-          }
-        } else {
-          // For non-400 errors, show warning and continue
-          toast.warning(
-            "Claim not saved, but proceeding with blockchain rejection",
-            {
-              description:
-                "The dispute will be created but your claim description may not be saved.",
-              duration: 3000,
-            },
-          );
-        }
+        toast.warning(
+          "Claim not saved, but proceeding with blockchain rejection",
+        );
       }
 
-      // STEP 2: Then do the blockchain transaction
-      console.log("🔗 Calling blockchain contract to reject delivery...");
-      writeContract({
-        // address: contractAddress,
-        address: escrow?.escrowAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "approveDelivery",
-        args: [
-          onChainAgreement.id,
-          false,
-          BigInt(generatedVotingId),
-          requestKind === DisputeTypeEnum.ProBono,
-        ],
+      // STEP 2: Open the pending modal with the data
+      setPendingDisputeModal({
+        isOpen: true,
+        data: {
+          contractAgreementId: BigInt(onChainAgreement.id),
+          votingId: generatedVotingId,
+          isProBono,
+          action: "reject",
+        },
       });
 
-      // Don't close modal yet - wait for transaction success
-      setUiSuccess(
-        "Claim saved and rejection transaction submitted. Waiting for confirmation...",
+      // STEP 3: Close the reject modal and clear form
+      setIsRejectModalOpen(false);
+      setRejectClaim("");
+
+      // Set dispute status to pending
+      setDisputeStatus(isProBono ? "pending_locking_funds" : "pending_payment");
+
+      toast.success(
+        isProBono
+          ? "Dispute created! Waiting for blockchain confirmation..."
+          : "Dispute created! Please confirm the transaction in your wallet.",
       );
+
+      setUiSuccess("Claim saved and waiting for blockchain confirmation...");
     } catch (error: any) {
       console.error("❌ Failed to initiate delivery rejection:", error);
-
-      setIsSubmittingReject(false);
-      setLoading("rejectDelivery", false);
-
-      // Clear pending claim on error
-      setPendingRejectClaim(null);
 
       const errorMessage =
         error.response?.data?.message ||
@@ -3201,8 +4023,43 @@ export default function EscrowDetails() {
       });
 
       setUiError(errorMessage);
+    } finally {
+      setIsSubmittingReject(false);
+      setLoading("rejectDelivery", false);
     }
   };
+
+  const fetchOnChainAgreementData = useCallback(async () => {
+    if (!escrow?._raw || !networkInfo.chainId) return;
+
+    try {
+      await fetchOnChainAgreement(escrow._raw);
+    } catch (error) {
+      console.error("Failed to refresh on-chain agreement:", error);
+    }
+  }, [escrow?._raw, networkInfo.chainId, fetchOnChainAgreement]);
+
+  // Add a handler for when the pending modal closes successfully
+  // const handleRejectDisputeCreated = useCallback(async () => {
+  //   console.log("🔄 handleRejectDisputeCreated called - refreshing data");
+
+  //   // First refresh the on-chain agreement data
+  //   await fetchOnChainAgreementData();
+
+  //   // Then refresh the backend agreement details
+  //   await fetchEscrowDetailsBackground();
+
+  //   console.log("✅ Escrow details reloaded after dispute creation");
+
+  //   toast.success("Delivery rejected successfully!", {
+  //     description: "Your dispute has been created and is now active.",
+  //     duration: 3000,
+  //   });
+
+  //   // Close the pending modal
+  //   setIsRejectPendingModalOpen(false);
+  //   setPendingRejectData(null);
+  // }, [fetchEscrowDetailsBackground, fetchOnChainAgreementData]);
 
   const fetchOnchainEscrowConfigs = useCallback(
     async (escrowAddress: `0x${string}`, agreement: any) => {
@@ -3224,8 +4081,7 @@ export default function EscrowDetails() {
     [networkInfo.chainId],
   );
 
-  // Replace the existing handleRaiseDispute function with this:
-  // Updated handleRaiseDispute function with transaction completion check
+  // Update the handleRaiseDispute function - around line 2060
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,
     files: File[],
@@ -3301,12 +4157,12 @@ export default function EscrowDetails() {
 
       // Get required IDs
       const agreementId = parseInt(id);
-      const contractAgreementId = Number(onChainAgreement.id); // On-chain contract ID
-      const chainId = networkInfo.chainId; // Current chain ID
+      const contractAgreementId = BigInt(onChainAgreement.id); // On-chain contract ID
+      const chainId = networkInfo.chainId;
 
       console.log("🚀 Creating dispute from agreement:", {
         agreementId,
-        contractAgreementId,
+        contractAgreementId: contractAgreementId.toString(),
         chainId,
         data,
         files: files.map((f) => f.name),
@@ -3315,10 +4171,10 @@ export default function EscrowDetails() {
 
       // Call the API to create dispute with all required parameters
       const disputeResponse = await disputeService.createDisputeFromAgreement(
-        agreementId, // Database agreement ID
+        agreementId,
         data,
         files,
-        chainId, // Add chainId parameter
+        chainId,
       );
 
       console.log("✅ Dispute created via API:", disputeResponse);
@@ -3328,28 +4184,41 @@ export default function EscrowDetails() {
 
       // Get contract configs for fee calculation
       const escrowAddress = escrow?.escrowAddress as `0x${string}`;
-      const configs = await fetchOnchainEscrowConfigs(escrowAddress, onChainAgreement);
+      const configs = await fetchOnchainEscrowConfigs(
+        escrowAddress,
+        onChainAgreement,
+      );
 
-      // Call blockchain to raise dispute
-      writeContract({
-        // address: contractAddress,
-        address: escrowAddress,
-        abi: ESCROW_ABI.abi,
-        functionName: "raiseDispute",
-        args: [
-          BigInt(contractAgreementId), // Use on-chain contract agreement ID
-          BigInt(votingIdToUse),
-          probono,
-        ],
-        value: probono ? 0n : configs?.feeAmount || 0n,
+      // Log the configs to see what's returned
+      console.log("📊 Escrow configs fetched:", configs);
+
+      // IMPORTANT: Extract the fee amount properly
+      // Based on your getEscrowConfigs function, it returns Escrow_Configs type
+      // Make sure you're accessing the correct property
+      const feeAmountForPaid = configs?.feeAmount
+        ? BigInt(configs.feeAmount)
+        : 0n;
+
+      console.log(
+        "💰 Fee amount for paid dispute:",
+        feeAmountForPaid.toString(),
+      );
+
+      setPendingDisputeModal({
+        isOpen: true,
+        data: {
+          contractAgreementId: BigInt(onChainAgreement.id),
+          votingId: votingIdToUse,
+          isProBono: probono,
+          action: "raise",
+        },
       });
 
-      // Show initial success message but keep modal open
-      setUiSuccess("Transaction submitted. Waiting for confirmation...");
+      // Close the current modal
+      setIsDisputeModalOpen(false);
 
-      // IMPORTANT: Don't close the modal yet
-      // The modal will be closed in the useEffect that watches for transaction success
-      // We'll keep isSubmittingDispute = true to disable the form
+      // Show initial success message
+      setUiSuccess("Dispute created. Waiting for blockchain confirmation...");
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
       setIsSubmittingDispute(false);
@@ -3367,7 +4236,6 @@ export default function EscrowDetails() {
         duration: 5000,
       });
     }
-    // Note: We don't finally close the modal here - it will be closed when transaction is confirmed
   };
 
   // Handle dispute transaction success
@@ -3565,14 +4433,14 @@ export default function EscrowDetails() {
   // Handle delivery rejection transaction success
   // Handle delivery rejection transaction success
   useEffect(() => {
-    if (isSuccess && hash && isSubmittingReject && pendingRejectClaim) {
+    if (isSuccess && hash && isSubmittingReject) {
       const handleTransactionSuccess = async () => {
         try {
           console.log("✅ Blockchain transaction confirmed!");
 
           // Show success message with voting ID
           toast.success("Delivery rejected! A dispute has been created.", {
-            description: `Voting ID: ${pendingRejectClaim.votingId}. Transaction confirmed and dispute is now active.`,
+            description: `Transaction confirmed and dispute is now active.`,
             duration: 5000,
           });
 
@@ -3596,7 +4464,7 @@ export default function EscrowDetails() {
         } finally {
           setIsSubmittingReject(false);
           setLoading("rejectDelivery", false);
-          setPendingRejectClaim(null); // Clear pending data
+
           resetWrite(); // Reset write state
         }
       };
@@ -3607,7 +4475,7 @@ export default function EscrowDetails() {
     isSuccess,
     hash,
     isSubmittingReject,
-    pendingRejectClaim,
+
     resetWrite,
     fetchEscrowDetailsBackground,
   ]);
@@ -3618,7 +4486,7 @@ export default function EscrowDetails() {
       // Reset states when modal closes
       setIsSubmittingReject(false);
       setRejectClaim("");
-      setPendingRejectClaim(null);
+
       setUiError(null);
       setUiSuccess(null);
       resetWrite();
@@ -3629,18 +4497,53 @@ export default function EscrowDetails() {
     fetchEscrowDetails();
   }, [id, fetchEscrowDetails]);
 
-  // Polling for updates
+  // ============= WEBSOCKET EFFECT =============
+  // Replace the polling useEffect (around line 2020-2030) with this:
   useEffect(() => {
-    if (!id) return;
+    const token = localStorage.getItem("authToken") ?? "";
+    if (!token || !id) return;
 
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === "visible" && !isRefreshing) {
+    const agreementId = Number(id);
+    const socket = connectSocket(token) as TypedSocket;
+    socketRef.current = socket;
+
+    socket.emit("agreement:join", { agreementId }, (ack) => {
+      console.log("[WS] agreement:join ack", ack);
+      if (!ack.ok) console.warn("[WS] join failed", ack);
+    });
+
+    socket.on("agreement:event", (event) => {
+      // optional: filters only for actual agreement
+      if (event.agreementId !== agreementId) return;
+      console.log("📡 Agreement event received:", event);
+      fetchEscrowDetailsBackground();
+    });
+
+    return () => {
+      socket.off("agreement:event");
+      socket.disconnect();
+    };
+  }, [id, fetchEscrowDetailsBackground]);
+
+  // KEEP THIS - it's useful for cross-tab communication
+  useEffect(() => {
+    const handleAgreementUpdate = (event: CustomEvent) => {
+      if (event.detail.agreementId === parseInt(id || "")) {
         fetchEscrowDetailsBackground();
       }
-    }, 15000);
+    };
 
-    return () => clearInterval(pollInterval);
-  }, [id, isRefreshing, fetchEscrowDetailsBackground]);
+    window.addEventListener(
+      "agreementUpdated",
+      handleAgreementUpdate as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "agreementUpdated",
+        handleAgreementUpdate as EventListener,
+      );
+    };
+  }, [id, fetchEscrowDetailsBackground]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -3652,8 +4555,8 @@ export default function EscrowDetails() {
 
   const tokenAddress =
     onChainAgreement &&
-      onChainAgreement.token &&
-      onChainAgreement.token !== ZERO_ADDRESS
+    onChainAgreement.token &&
+    onChainAgreement.token !== ZERO_ADDRESS
       ? (onChainAgreement.token as `0x${string}`)
       : undefined;
 
@@ -3741,6 +4644,341 @@ export default function EscrowDetails() {
     }
   };
 
+  const fetchDisputeDetails = useCallback(async (disputeId: number) => {
+    try {
+      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+      const transformedDispute =
+        disputeService.transformDisputeDetailsToRow(disputeDetails);
+
+      // Map the display status to your internal status format
+      const displayStatus = transformedDispute.status;
+      let internalStatus = displayStatus?.toLowerCase().replace(/\s+/g, "_");
+
+      // Handle specific cases
+      if (internalStatus === "pending_locking_funds") {
+        internalStatus = "pending_locking_funds";
+      } else if (internalStatus === "pending_payment") {
+        internalStatus = "pending_payment";
+      }
+
+      console.log(
+        "📊 Dispute status from API:",
+        displayStatus,
+        "→ Mapped to:",
+        internalStatus,
+      );
+
+      setDisputeStatus(internalStatus);
+
+      // 🚨 IMPORTANT: Capture the voting ID from the dispute data
+      if (transformedDispute.votingId) {
+        console.log(
+          "🎯 Setting dispute voting ID:",
+          transformedDispute.votingId,
+        );
+        setDisputeVotingId(transformedDispute.votingId.toString());
+      }
+
+      return transformedDispute;
+    } catch (error) {
+      console.error("❌ Failed to fetch dispute details:", error);
+      return null;
+    }
+  }, []);
+
+  const pollDisputeStatus = useCallback(
+    async (disputeId: number) => {
+      // Don't start if already polling
+      if (isPollingDispute) {
+        console.log("⏸️ Polling already in progress");
+        return;
+      }
+
+      console.log("🚀 Starting dispute status polling for ID:", disputeId);
+      setIsPollingDispute(true);
+
+      const poll = async (currentAttempt: number): Promise<boolean> => {
+        // Check if we've exceeded max attempts
+        if (currentAttempt >= POLLING_CONFIG.MAX_ATTEMPTS) {
+          console.log("🛑 Max polling attempts reached, stopping");
+          return false;
+        }
+
+        try {
+          console.log(
+            `🔄 Polling dispute ${disputeId} (attempt ${currentAttempt + 1}/${POLLING_CONFIG.MAX_ATTEMPTS})`,
+          );
+
+          const dispute = await fetchDisputeDetails(disputeId);
+          const displayStatus = dispute?.status;
+
+          // Check if dispute is still pending
+          const isStillPending =
+            displayStatus === "Pending Payment" ||
+            displayStatus === "Pending" ||
+            displayStatus === "Pending Locking Funds";
+
+          if (!isStillPending) {
+            console.log("✅ Dispute confirmed. New status:", displayStatus);
+
+            // Refresh data one final time
+            await Promise.all([
+              fetchOnChainAgreementData(),
+              fetchEscrowDetailsBackground(),
+            ]);
+
+            toast.success("Dispute has been confirmed on-chain!");
+            return false; // Stop polling
+          }
+
+          return true; // Continue polling
+        } catch (error) {
+          console.error("Polling error:", error);
+          return currentAttempt < POLLING_CONFIG.MAX_ATTEMPTS - 1; // Continue if under max attempts
+        }
+      };
+
+      // Initial poll immediately
+      const shouldContinue = await poll(0);
+
+      if (!shouldContinue) {
+        setIsPollingDispute(false);
+        return;
+      }
+
+      // Recursive function to handle polling with exponential backoff
+      const scheduleNextPoll = async (attempt: number) => {
+        if (attempt >= POLLING_CONFIG.MAX_ATTEMPTS) {
+          setIsPollingDispute(false);
+          return;
+        }
+
+        // Calculate delay with exponential backoff
+        const baseDelay = Math.min(
+          POLLING_CONFIG.INITIAL_DELAY *
+            Math.pow(POLLING_CONFIG.BACKOFF_MULTIPLIER, attempt - 1),
+          POLLING_CONFIG.MAX_DELAY,
+        );
+
+        // Add jitter (±10% randomness) to prevent thundering herd
+        const jitter =
+          baseDelay * POLLING_CONFIG.JITTER_FACTOR * (Math.random() * 2 - 1);
+        const delay = Math.max(
+          POLLING_CONFIG.INITIAL_DELAY,
+          baseDelay + jitter,
+        );
+
+        console.log(
+          `⏱️ Next poll in ${Math.round(delay)}ms (attempt ${attempt})`,
+        );
+
+        const timerId = setTimeout(async () => {
+          const continuePolling = await poll(attempt);
+
+          if (continuePolling) {
+            scheduleNextPoll(attempt + 1);
+          } else {
+            // Polling complete
+            setIsPollingDispute(false);
+            if (pollingTimerId) {
+              clearTimeout(pollingTimerId);
+              setPollingTimerId(null);
+            }
+          }
+        }, delay);
+
+        setPollingTimerId(timerId);
+      };
+
+      // Start the polling schedule
+      scheduleNextPoll(1);
+    },
+    [
+      fetchDisputeDetails,
+      fetchEscrowDetailsBackground,
+      fetchOnChainAgreementData,
+      isPollingDispute,
+      pollingTimerId,
+    ],
+  );
+
+  useEffect(() => {
+    const disputeId = escrow?._raw?.disputes?.[0]?.disputeId;
+
+    if (disputeId) {
+      console.log("🔍 Found dispute ID:", disputeId);
+      fetchDisputeDetails(parseInt(disputeId));
+    }
+  }, [escrow?._raw?.disputes, fetchDisputeDetails]);
+
+  useEffect(() => {
+    const disputeId = escrow?._raw?.disputes?.[0]?.disputeId;
+
+    // Clean up any existing polling timer
+    if (pollingTimerId) {
+      clearTimeout(pollingTimerId);
+      setPollingTimerId(null);
+    }
+
+    // Reset polling state
+    setIsPollingDispute(false);
+
+    // Don't poll if:
+    // 1. User is the filer with modal open (they get updates from transaction)
+    // 2. No dispute ID
+    // 3. Dispute is not in pending state
+    if (
+      (pendingDisputeModal.isOpen && isDisputeFiler) ||
+      !disputeId ||
+      !(
+        disputeStatus === "pending_locking_funds" ||
+        disputeStatus === "pending_payment"
+      )
+    ) {
+      return;
+    }
+
+    console.log("🚀 Starting polling for dispute:", disputeId);
+    pollDisputeStatus(parseInt(disputeId));
+
+    // Cleanup function
+    return () => {
+      if (pollingTimerId) {
+        clearTimeout(pollingTimerId);
+        setPollingTimerId(null);
+      }
+      setIsPollingDispute(false);
+    };
+  }, [
+    disputeStatus,
+    escrow?._raw?.disputes,
+    pendingDisputeModal.isOpen,
+    isDisputeFiler,
+    pollDisputeStatus,
+    pollingTimerId,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingTimerId) {
+        console.log("🧹 Cleaning up polling timer");
+        clearTimeout(pollingTimerId);
+        setPollingTimerId(null);
+      }
+      setIsPollingDispute(false);
+    };
+  }, [pollingTimerId]);
+
+  useEffect(() => {
+    if (uiError) {
+      const timer = setTimeout(() => {
+        setUiError(null);
+      }, 5000); // Dismiss after 5 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [uiError]);
+
+  // Add this useEffect to auto-dismiss success messages
+  useEffect(() => {
+    if (uiSuccess) {
+      const timer = setTimeout(() => {
+        setUiSuccess(null);
+      }, 5000); // Dismiss after 5 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [uiSuccess]);
+
+  useEffect(() => {
+    if (isSuccess) {
+      setUiSuccess("Transaction successful!"); // Use uiSuccess instead
+      resetWrite(); // Reset the transaction state so isSuccess becomes false
+    }
+  }, [isSuccess, resetWrite]);
+
+  useEffect(() => {
+    if (!user || !escrow?._raw?.timeline || !disputeVotingId) return;
+
+    const currentUserId = user.id?.toString();
+    const disputeEvents = escrow._raw.timeline.filter(
+      (event: any) =>
+        (event.type === 6 || event.type === 17) &&
+        event.toStatus === AgreementStatusEnum.DISPUTED,
+    );
+
+    const isCurrentUserFiler = disputeEvents.some(
+      (event: { actor: { id: { toString: () => string } } }) =>
+        event.actor?.id?.toString() === currentUserId,
+    );
+
+    setIsDisputeFiler(isCurrentUserFiler);
+  }, [user, escrow, disputeVotingId]);
+
+  useEffect(() => {
+    // Only run when we have all the data we need
+    if (!escrow?._raw || !user || !disputeVotingId || !onChainAgreement) return;
+
+    const isPendingDispute =
+      disputeStatus === "pending_payment" ||
+      disputeStatus === "pending_locking_funds";
+
+    if (!isPendingDispute) return;
+
+    // Check if current user filed this dispute
+    const currentUserId = user.id?.toString();
+    const disputeEvents =
+      escrow._raw?.timeline?.filter(
+        (event: any) =>
+          (event.type === 6 || event.type === 17) &&
+          event.toStatus === AgreementStatusEnum.DISPUTED,
+      ) || [];
+
+    const isCurrentUserInvolved = disputeEvents.some(
+      (event: { actor: { id: { toString: () => string } } }) =>
+        event.actor?.id?.toString() === currentUserId,
+    );
+
+    // Set the filer flag
+    setIsDisputeFiler(isCurrentUserInvolved);
+
+    if (!isCurrentUserInvolved) return;
+
+    // Determine action
+    const timelineEvents = escrow._raw.timeline || [];
+    const hasRejectionEvent = timelineEvents.some(
+      (event: { type: number }) => event.type === 6,
+    );
+
+    const action = hasRejectionEvent ? "reject" : "raise";
+
+    console.log("🔄 Auto-opening pending dispute modal on page load:", {
+      disputeStatus,
+      action,
+      hasRejectionEvent,
+      votingId: disputeVotingId,
+      contractId: onChainAgreement.id,
+    });
+
+    // Open the modal automatically
+    setPendingDisputeModal({
+      isOpen: true,
+      data: {
+        contractAgreementId: BigInt(onChainAgreement.id),
+        votingId: disputeVotingId,
+        isProBono: disputeStatus === "pending_locking_funds",
+        action,
+      },
+    });
+  }, [escrow, user, disputeVotingId, disputeStatus, onChainAgreement]);
+
+  const isDisputePending = useMemo(() => {
+    return (
+      disputeStatus === "pending_payment" ||
+      disputeStatus === "pending_locking_funds"
+    );
+  }, [disputeStatus]);
+
   // FIXED Role detection - Use on-chain data which has reliable wallet addresses
 
   const userId = user?.id?.toString();
@@ -3758,9 +4996,9 @@ export default function EscrowDetails() {
   // Calculate days remaining
   const daysRemaining = escrow
     ? Math.ceil(
-      (new Date(escrow.deadline).getTime() - Date.now()) /
-      (1000 * 60 * 60 * 24),
-    )
+        (new Date(escrow.deadline).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24),
+      )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -3824,14 +5062,12 @@ export default function EscrowDetails() {
   }
 
   const currentStatus = getCurrentStatus();
-  const statusInfo = getStatusInfo(currentStatus);
-  const StatusIcon = statusInfo.icon;
   return (
     <div className="min-h-screen">
-      <div className="mt-1 text-xs text-cyan-300">
+      {/* <div className="mt-1 text-xs text-cyan-300">
         Debug: From = {escrow.from} | To = {escrow.to} | isFirstParty ={" "}
         {isFirstParty.toString()} | isCounterparty = {isCounterparty.toString()}
-      </div>
+      </div> */}
       <div className="container mx-auto py-2 lg:px-4 lg:py-8">
         {/* Header */}
         <div className="mb-8 flex flex-col items-center justify-between space-y-4 sm:flex-row">
@@ -3846,33 +5082,79 @@ export default function EscrowDetails() {
             </Button>
           </div>
 
+          {/* In the header section, replace the existing status display with this: */}
+          {/* In the header section, replace the existing status display with this: */}
           <div className="flex items-center space-x-2 md:mr-auto">
-            <StatusIcon className={`h-5 w-5 ${statusInfo.color}`} />
-            <span
-              className={`rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.bgColor} ${statusInfo.color} ${statusInfo.borderColor}`}
-            >
-              {statusInfo.label}
-            </span>
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${isOverdue
-                ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
-                : isUrgent
-                  ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                  : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
-                }`}
-            >
-              {isOverdue ? "Overdue" : `${daysRemaining} days left`}
-            </span>
+            {(() => {
+              // First check if we have a dispute in pending state
+              if (
+                disputeStatus === "pending_locking_funds" ||
+                disputeStatus === "pending_payment"
+              ) {
+                const statusInfo = getStatusInfo(disputeStatus);
+                const StatusIcon = statusInfo.icon;
 
-            {escrow._raw?.disputes && escrow._raw.disputes.length > 0 && (
-              <Link
-                to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
-                className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
-              >
-                <AlertTriangle className="h-4 w-4" />
-                View Dispute
-              </Link>
-            )}
+                return (
+                  <>
+                    <StatusIcon className={`h-5 w-5 ${statusInfo.color}`} />
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.bgColor} ${statusInfo.color} ${statusInfo.borderColor}`}
+                    >
+                      {statusInfo.label}
+                    </span>
+                  </>
+                );
+              }
+
+              // Otherwise show regular agreement status
+              const statusInfo = getStatusInfo(currentStatus);
+              const StatusIcon = statusInfo.icon;
+
+              return (
+                <>
+                  <StatusIcon className={`h-5 w-5 ${statusInfo.color}`} />
+                  <span
+                    className={`rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.bgColor} ${statusInfo.color} ${statusInfo.borderColor}`}
+                  >
+                    {statusInfo.label}
+                  </span>
+                </>
+              );
+            })()}
+
+            {/* Only show deadline if agreement is NOT in a terminal or disputed state */}
+            {!onChainAgreement?.completed &&
+              !onChainAgreement?.disputed &&
+              disputeStatus !== "pending_payment" &&
+              disputeStatus !== "pending_locking_funds" && (
+                <span
+                  className={`rounded-full px-3 py-1 text-sm font-medium ${
+                    isOverdue
+                      ? "border border-rose-400/30 bg-rose-500/20 text-rose-300"
+                      : isUrgent
+                        ? "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                        : "border border-cyan-400/30 bg-cyan-500/20 text-cyan-300"
+                  }`}
+                >
+                  {isOverdue ? "Overdue" : `${daysRemaining} days left`}
+                </span>
+              )}
+
+            {escrow._raw?.disputes &&
+              escrow._raw.disputes.length > 0 &&
+              (() => {
+                const disputeStatus = getDisputeStatusFromAgreement(escrow);
+                return disputeStatus !== "pending_payment" &&
+                  disputeStatus !== "pending_locking_funds" ? (
+                  <Link
+                    to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
+                    className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    View Dispute
+                  </Link>
+                ) : null;
+              })()}
           </div>
 
           <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
@@ -4129,7 +5411,7 @@ export default function EscrowDetails() {
               {/* Complete On-Chain Agreement Details */}
               {/* Complete On-Chain Agreement Details */}
               {onChainAgreement && (
-                <div className="card-cyan mt-6 rounded-2xl border border-cyan-500/60 p-2 backdrop-blur-sm lg:p-6">
+                <div className="mt-6 rounded-2xl border border-cyan-500/60 p-2 lg:p-6">
                   <div className="mb-6 flex items-center justify-between">
                     <div>
                       <h3 className="flex items-center gap-2 text-xl font-bold text-white">
@@ -4155,7 +5437,7 @@ export default function EscrowDetails() {
 
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2">
                     {/* Basic Information Card */}
-                    <div className="card-cyan rounded-xl border border-cyan-400/60 p-4">
+                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
                       <div className="mb-3 flex items-center gap-2">
                         <Users className="h-4 w-4 text-cyan-400" />
                         <h4 className="text-sm font-semibold text-cyan-300">
@@ -4236,10 +5518,11 @@ export default function EscrowDetails() {
                             Funded
                           </div>
                           <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${onChainAgreement.funded
-                              ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
-                              : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
-                              }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                              onChainAgreement.funded
+                                ? "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300"
+                                : "border border-yellow-400/30 bg-yellow-500/20 text-yellow-300"
+                            }`}
                           >
                             <div
                               className={`h-1.5 w-1.5 rounded-full ${onChainAgreement.funded ? "bg-emerald-400" : "bg-yellow-400"}`}
@@ -4396,6 +5679,18 @@ export default function EscrowDetails() {
               )}
             </div>
 
+            {/* After the Escrow Overview Card, add this status message */}
+            {(() => {
+              const disputeStatus = getDisputeStatusFromAgreement(escrow);
+              if (
+                disputeStatus === "pending_payment" ||
+                disputeStatus === "pending_locking_funds"
+              ) {
+                return <PendingPaymentStatusMessage status={disputeStatus} />;
+              }
+              return null;
+            })()}
+
             {/* Action Buttons Section */}
             {onChainAgreement && (
               <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 backdrop-blur-sm lg:p-6">
@@ -4409,13 +5704,13 @@ export default function EscrowDetails() {
                           Pending Order Cancellation:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                          // onComplete={refetchAgreement}
+                            // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
                     )}
                   {onChainAgreement.frozen && (
-                    <div className="flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                    <div className="flex w-fit items-center gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
                       <AlertTriangle className="h-4 w-4 text-red-400" />
                       <span className="text-red-300">Agreement is Frozen!</span>
                     </div>
@@ -4462,6 +5757,7 @@ export default function EscrowDetails() {
                       </div>
                     )}
                   {onChainAgreement.grace1Ends > 0n &&
+                    !onChainAgreement?.disputed &&
                     onChainAgreement.deliverySubmited &&
                     !onChainAgreement.vesting && (
                       <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
@@ -4470,12 +5766,13 @@ export default function EscrowDetails() {
                           Pending Delivery [Grace period 1]:{" "}
                           <CountdownTimer
                             targetTimestamp={onChainAgreement.grace1Ends}
-                          // onComplete={refetchAgreement}
+                            // onComplete={refetchAgreement}
                           />
                         </span>
                       </div>
                     )}
                   {onChainAgreement.grace1Ends > 0n &&
+                    !onChainAgreement?.disputed &&
                     onChainAgreement.deliverySubmited && (
                       <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
                         <Package className="h-4 w-4 text-green-400" />
@@ -4506,56 +5803,58 @@ export default function EscrowDetails() {
 
                 {/* Check if any action buttons are available */}
                 {(isServiceProvider || isServiceRecipient) &&
-                  ((((isServiceProvider &&
-                    !onChainAgreement.acceptedByServiceProvider) ||
-                    (isServiceRecipient &&
-                      !onChainAgreement.acceptedByServiceRecipient)) &&
-                    onChainAgreement.funded) ||
-                    (!onChainAgreement.funded && !onChainAgreement.signed) ||
-                    (onChainAgreement.signed &&
-                      isServiceProvider &&
-                      !onChainAgreement.frozen &&
-                      !onChainAgreement.pendingCancellation &&
-                      !onChainAgreement.deliverySubmited) ||
-                    (onChainAgreement.signed &&
-                      isServiceRecipient &&
-                      !onChainAgreement.pendingCancellation &&
-                      onChainAgreement.deliverySubmited) ||
-                    (now < onChainAgreement.grace1Ends &&
-                      onChainAgreement.signed &&
-                      onChainAgreement.pendingCancellation &&
-                      address &&
-                      address.toLowerCase() !==
+                !isDisputePending &&
+                !onChainAgreement?.disputed &&
+                ((((isServiceProvider &&
+                  !onChainAgreement.acceptedByServiceProvider) ||
+                  (isServiceRecipient &&
+                    !onChainAgreement.acceptedByServiceRecipient)) &&
+                  onChainAgreement.funded) ||
+                  (!onChainAgreement.funded && !onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    isServiceProvider &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    isServiceRecipient &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.deliverySubmited) ||
+                  (now < onChainAgreement.grace1Ends &&
+                    onChainAgreement.signed &&
+                    onChainAgreement.pendingCancellation &&
+                    address &&
+                    address.toLowerCase() !==
                       String(
                         onChainAgreement.grace1EndsCalledBy,
                       ).toLowerCase() &&
-                      !onChainAgreement.deliverySubmited) ||
-                    (onChainAgreement.signed &&
-                      !onChainAgreement.pendingCancellation &&
-                      !onChainAgreement.deliverySubmited &&
-                      !onChainAgreement.frozen) ||
-                    (onChainAgreement.grace1Ends !== BigInt(0) &&
-                      !onChainAgreement.vesting &&
-                      now > onChainAgreement.grace1Ends &&
-                      onChainAgreement.funded &&
-                      !onChainAgreement.pendingCancellation &&
-                      onChainAgreement.signed) ||
-                    (onChainAgreement.signed &&
-                      !onChainAgreement.vesting &&
-                      now > onChainAgreement.grace2Ends &&
-                      onChainAgreement.grace2Ends !== BigInt(0) &&
-                      onChainAgreement.funded &&
-                      onChainAgreement.pendingCancellation) ||
-                    (onChainAgreement.signed &&
-                      now > onChainAgreement.grace1Ends &&
-                      onChainAgreement.pendingCancellation &&
-                      onChainAgreement.grace1Ends !== BigInt(0)) ||
-                    (onChainAgreement.funded &&
-                      onChainAgreement.signed &&
-                      !onChainAgreement.disputed &&
-                      !onChainAgreement.completed &&
-                      !onChainAgreement.frozen &&
-                      !onChainAgreement.pendingCancellation)) ? (
+                    !onChainAgreement.deliverySubmited) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.pendingCancellation &&
+                    !onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.frozen) ||
+                  (onChainAgreement.grace1Ends !== BigInt(0) &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.funded &&
+                    !onChainAgreement.pendingCancellation &&
+                    onChainAgreement.signed) ||
+                  (onChainAgreement.signed &&
+                    !onChainAgreement.vesting &&
+                    now > onChainAgreement.grace2Ends &&
+                    onChainAgreement.grace2Ends !== BigInt(0) &&
+                    onChainAgreement.funded &&
+                    onChainAgreement.pendingCancellation) ||
+                  (onChainAgreement.signed &&
+                    now > onChainAgreement.grace1Ends &&
+                    onChainAgreement.pendingCancellation &&
+                    onChainAgreement.grace1Ends !== BigInt(0)) ||
+                  (onChainAgreement.funded &&
+                    onChainAgreement.signed &&
+                    !onChainAgreement.disputed &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen &&
+                    !onChainAgreement.pendingCancellation)) ? (
                   <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
                     <h3 className="mb-4 text-lg font-semibold text-white">
                       Agreement Actions
@@ -4724,9 +6023,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(
-                          onChainAgreement.grace1EndsCalledBy,
-                        ).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(true)}
@@ -4758,9 +6057,9 @@ export default function EscrowDetails() {
                         onChainAgreement.pendingCancellation &&
                         address &&
                         address.toLowerCase() !==
-                        String(
-                          onChainAgreement.grace1EndsCalledBy,
-                        ).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                         !onChainAgreement.deliverySubmited && (
                           <Button
                             onClick={() => handleApproveCancellation(false)}
@@ -5018,10 +6317,18 @@ export default function EscrowDetails() {
 
             {/* Add this section after the Complete On-Chain Agreement Details section */}
             {/* Dispute Information Section */}
+            {/* Dispute Information Section - Updated */}
             {escrow._raw?.disputes && escrow._raw.disputes.length > 0 && (
               <div className="mt-6 rounded-xl border border-purple-400/60 bg-gradient-to-br from-purple-500/20 to-transparent p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white">
-                  Active Dispute
+                  {(() => {
+                    const disputeStatus = getDisputeStatusFromAgreement(escrow);
+                    if (disputeStatus === "pending_payment")
+                      return "Dispute - Pending Payment";
+                    if (disputeStatus === "pending_locking_funds")
+                      return "Dispute - Pending Fund Locking";
+                    return "Active Dispute";
+                  })()}
                 </h3>
 
                 <div className="space-y-4">
@@ -5071,9 +6378,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                    normalizeUsername(
-                                      disputeInfo.filedBy,
-                                    ) && (
+                                      normalizeUsername(
+                                        disputeInfo.filedBy,
+                                      ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -5081,27 +6388,52 @@ export default function EscrowDetails() {
                             )}
                           </div>
                         )}
+
+                        {/* Show payment status message */}
+                        {(() => {
+                          const disputeStatus =
+                            getDisputeStatusFromAgreement(escrow);
+                          if (disputeStatus === "pending_payment") {
+                            return (
+                              <div className="mt-3 flex items-start gap-2 rounded-lg bg-yellow-500/10 p-2">
+                                <Wallet className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-400" />
+                                <p className="text-xs text-yellow-300">
+                                  Payment pending confirmation on blockchain.
+                                  The dispute will become active once confirmed.
+                                </p>
+                              </div>
+                            );
+                          }
+                          if (disputeStatus === "pending_locking_funds") {
+                            return (
+                              <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-500/10 p-2">
+                                <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                                <p className="text-xs text-blue-300">
+                                  Fund locking in progress on blockchain. This
+                                  is a standard step for pro bono disputes.
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
-                      <Link
-                        to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
-                        className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                        Go to Dispute
-                      </Link>
+
+                      {/* Only show "Go to Dispute" link if not in pending payment state */}
+                      {getDisputeStatusFromAgreement(escrow) !==
+                        "pending_payment" &&
+                        getDisputeStatusFromAgreement(escrow) !==
+                          "pending_locking_funds" && (
+                          <Link
+                            to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
+                            className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
+                          >
+                            <AlertTriangle className="h-4 w-4" />
+                            Go to Dispute
+                          </Link>
+                        )}
                     </div>
                   </div>
-
-                  {/* <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 p-3">
-                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-                    <div>
-                      <p className="text-sm text-amber-300">
-                        This dispute was filed when the delivery was rejected.
-                        Please visit the dispute page to view evidence,
-                        participate in voting, or see the resolution process.
-                      </p>
-                    </div>
-                  </div> */}
                 </div>
               </div>
             )}
@@ -5118,13 +6450,14 @@ export default function EscrowDetails() {
                 <p className="text-green-400">{uiSuccess}</p>
               </div>
             )}
-            {isSuccess && (
+            {/* {isSuccess && (
               <div className="mt-4 flex w-fit items-start gap-3 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
                 <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-400" />
                 <p className="text-green-400">Transaction successful!</p>
               </div>
-            )}
+            )} */}
 
+            {/* Activity Timeline */}
             {/* Activity Timeline */}
             {/* Activity Timeline */}
             <div className="card-cyan rounded-xl border border-cyan-400/60 p-6">
@@ -5170,12 +6503,24 @@ export default function EscrowDetails() {
                     <div className="mt-3 font-medium text-white">
                       Both Parties Signed
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      {onChainAgreement?.acceptedByServiceProvider &&
-                        onChainAgreement?.acceptedByServiceRecipient
-                        ? "Fully Executed"
-                        : "Partially Signed"}
-                    </div>
+
+                    {/* Find the signed event from timeline to get exact timestamp */}
+                    {(() => {
+                      const signedEvent = escrow._raw?.timeline?.find(
+                        (event: any) =>
+                          (event.type === 2 || event.type === 1) &&
+                          event.toStatus === 2, // ACTIVE status
+                      );
+                      const signedAt =
+                        signedEvent?.createdAt || escrow._raw?.createdAt;
+
+                      return (
+                        <div className="text-sm text-cyan-300">
+                          {signedAt ? formatDateWithTime(signedAt) : "Recently"}
+                        </div>
+                      );
+                    })()}
+
                     <div className="mt-1 space-y-2 text-xs text-emerald-400/70">
                       {onChainAgreement?.acceptedByServiceProvider && (
                         <div className="flex flex-col items-center gap-1">
@@ -5217,9 +6562,24 @@ export default function EscrowDetails() {
                     <div className="mt-3 font-medium text-white">
                       Work Delivered
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      Submitted for Review
-                    </div>
+
+                    {/* Find the delivery submitted event from timeline */}
+                    {(() => {
+                      const deliveryEvent = escrow._raw?.timeline?.find(
+                        (event: any) =>
+                          event.type === 11 || // DELIVERY_SUBMITTED
+                          (event.toStatus === 7 && event.fromStatus === 2), // PARTY_SUBMITTED_DELIVERY
+                      );
+
+                      return (
+                        <div className="text-sm text-cyan-300">
+                          {deliveryEvent?.createdAt
+                            ? formatDateWithTime(deliveryEvent.createdAt)
+                            : "Recently"}
+                        </div>
+                      );
+                    })()}
+
                     <div className="mt-1 text-xs text-blue-400/70">
                       <div className="flex flex-col items-center gap-1">
                         Delivered by
@@ -5247,7 +6607,17 @@ export default function EscrowDetails() {
                         Approval Pending
                       </div>
                       <div className="text-sm text-cyan-300">
-                        Waiting for Recipient Approval
+                        {/* Use the same delivery submission time */}
+                        {(() => {
+                          const deliveryEvent = escrow._raw?.timeline?.find(
+                            (event: any) =>
+                              event.type === 11 ||
+                              (event.toStatus === 7 && event.fromStatus === 2),
+                          );
+                          return deliveryEvent?.createdAt
+                            ? formatDateWithTime(deliveryEvent.createdAt)
+                            : "Pending";
+                        })()}
                       </div>
                       <div className="mt-1 text-xs text-orange-400/70">
                         <div className="flex flex-col items-center gap-[2px]">
@@ -5276,9 +6646,22 @@ export default function EscrowDetails() {
                     <div className="mt-3 font-medium text-white">
                       Completed & Approved
                     </div>
-                    <div className="text-sm text-cyan-300">
-                      Successfully Finalized
-                    </div>
+
+                    {/* Find the completed event from timeline */}
+                    {(() => {
+                      const completedEvent = escrow._raw?.timeline?.find(
+                        (event: any) => event.toStatus === 3, // COMPLETED status
+                      );
+
+                      return (
+                        <div className="text-sm text-cyan-300">
+                          {completedEvent?.createdAt
+                            ? formatDateWithTime(completedEvent.createdAt)
+                            : "Recently"}
+                        </div>
+                      );
+                    })()}
+
                     <div className="mt-1 text-xs text-purple-400/70">
                       <div className="flex items-center gap-1">
                         <UserAvatar
@@ -5300,7 +6683,7 @@ export default function EscrowDetails() {
                   )) &&
                   (() => {
                     // Get the actual dispute event from timeline
-                    const disputeEvent = getDisputeRaisedEvent(
+                    const disputeEvent = getDisputeEvents(
                       escrow._raw?.timeline,
                     );
                     const actorInfo = getEventActorInfo(disputeEvent);
@@ -5335,11 +6718,6 @@ export default function EscrowDetails() {
                                 Raised by{" "}
                                 {formatWalletAddress(actorInfo.username)}
                               </div>
-                              {/* {eventNote && (
-                                <div className="mt-1 max-w-[10rem] text-red-300/80">
-                                  {eventNote}
-                                </div>
-                              )} */}
                             </div>
                           ) : eventNote ? (
                             <div className="max-w-[10rem]">{eventNote}</div>
@@ -5362,7 +6740,23 @@ export default function EscrowDetails() {
                   <div className="relative flex min-w-[12rem] flex-col items-center text-center">
                     <div className="z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-400"></div>
                     <div className="mt-3 font-medium text-white">Cancelled</div>
-                    <div className="text-sm text-cyan-300">
+
+                    {/* Find the cancelled event from timeline */}
+                    {(() => {
+                      const cancelledEvent = escrow._raw?.timeline?.find(
+                        (event: any) => event.toStatus === 5, // CANCELLED status
+                      );
+
+                      return (
+                        <div className="text-sm text-cyan-300">
+                          {cancelledEvent?.createdAt
+                            ? formatDateWithTime(cancelledEvent.createdAt)
+                            : "Recently"}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="mt-1 text-xs text-red-400/70">
                       Agreement Terminated
                     </div>
                   </div>
@@ -5503,18 +6897,43 @@ export default function EscrowDetails() {
         </div>
       </div>
       {/* Evidence Viewer Modal */}
-      {/* Evidence Viewer Modal */}
       <EvidenceViewer
         isOpen={evidenceViewerOpen}
         onClose={() => {
           setEvidenceViewerOpen(false);
-          setSelectedEvidence(null); // Clear selected evidence when closing
+          setSelectedEvidence(null);
         }}
         selectedEvidence={selectedEvidence}
       />
-      {/* Add this at the end of your JSX, before the closing </div> */}
+
+      {/* Single EscrowPendingDisputeModal for both raise and reject */}
+      {pendingDisputeModal.isOpen &&
+        pendingDisputeModal.data &&
+        escrow?.escrowAddress && (
+          <EscrowPendingDisputeModal
+            isOpen={pendingDisputeModal.isOpen}
+            onClose={() =>
+              setPendingDisputeModal({ isOpen: false, data: null })
+            }
+            onDisputeCreated={() => {
+              fetchEscrowDetailsBackground();
+              toast.success(
+                pendingDisputeModal.data?.action === "raise"
+                  ? "Dispute created successfully!"
+                  : "Delivery rejected and dispute created!",
+              );
+            }}
+            contractAgreementId={pendingDisputeModal.data.contractAgreementId}
+            votingId={pendingDisputeModal.data.votingId}
+            escrowAddress={escrow.escrowAddress as `0x${string}`}
+            isProBono={pendingDisputeModal.data.isProBono}
+            agreement={escrow?._raw}
+            action={pendingDisputeModal.data.action}
+          />
+        )}
+
+      {/* Raise Dispute Modal */}
       {isDisputeModalOpen && (
-        // Update the modal to accept full agreement data
         <RaiseDisputeModal
           isOpen={isDisputeModalOpen}
           onClose={() => {
@@ -5525,14 +6944,14 @@ export default function EscrowDetails() {
           claim={disputeClaim}
           setClaim={setDisputeClaim}
           agreement={escrow?._raw}
-          onChainAgreement={onChainAgreement} // Pass on-chain data
-          networkInfo={networkInfo} // Pass network info
+          onChainAgreement={onChainAgreement}
+          networkInfo={networkInfo}
           currentUser={user}
           isSubmitting={isSubmittingDispute || loadingStates.raiseDispute}
         />
       )}
-      {/* Reject Delivery Modal */}
 
+      {/* Reject Delivery Modal */}
       <RejectDeliveryModal
         isOpen={isRejectModalOpen}
         onClose={() => {
@@ -5544,7 +6963,7 @@ export default function EscrowDetails() {
         claim={rejectClaim}
         setClaim={setRejectClaim}
         isSubmitting={isSubmittingReject || loadingStates.rejectDelivery}
-        agreement={escrow?._raw || onChainAgreement} // Pass agreement data
+        agreement={escrow?._raw || onChainAgreement}
       />
     </div>
   );

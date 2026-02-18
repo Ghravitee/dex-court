@@ -4,13 +4,15 @@ import { Button } from "../components/ui/button";
 import {
   Scale,
   X,
-  // Wallet,
+  Wallet,
   Info,
-  Clock,
+  // Clock,
   AlertTriangle,
   Loader2,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
-import { toast } from "sonner";
+// import { toast } from "sonner";
 import type { UploadedFile } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
@@ -53,6 +55,11 @@ export default function OpenPendingDisputeModal({
 }: OpenPendingDisputeModalProps) {
   const { user: currentUser } = useAuth();
   const networkInfo = useNetworkEnvironment();
+  const [userInitiated, setUserInitiated] = useState(false);
+  const [modalState, setModalState] = useState<
+    "initializing" | "active" | "closing"
+  >("initializing");
+
   const [form, setForm] = useState({
     title: "",
     kind: "Pro Bono" as "Pro Bono" | "Paid",
@@ -75,11 +82,6 @@ export default function OpenPendingDisputeModal({
     isSuccess,
     isError,
   } = useDisputeTransaction(networkInfo.chainId);
-
-  const [hasInitiatedTransaction, setHasInitiatedTransaction] = useState(false);
-  const [modalState, setModalState] = useState<
-    "initializing" | "active" | "closing"
-  >("initializing");
 
   // Add this ref to track if form has been initialized
   const hasInitialized = useRef(false);
@@ -144,82 +146,10 @@ export default function OpenPendingDisputeModal({
     if (!isOpen) {
       hasInitialized.current = false;
       resetTransaction();
-      setHasInitiatedTransaction(false);
+      setUserInitiated(false);
       setModalState("initializing");
     }
   }, [isOpen, resetTransaction]);
-
-  // Enhanced logging
-  useEffect(() => {
-    console.log("📊 [OpenPendingDisputeModal] State Update:", {
-      isOpen,
-      votingId,
-      transactionStep,
-      isProcessing,
-      transactionHash,
-      hasInitiatedTransaction,
-      modalState,
-      networkInfo,
-    });
-  }, [
-    isOpen,
-    votingId,
-    transactionStep,
-    isProcessing,
-    transactionHash,
-    hasInitiatedTransaction,
-    modalState,
-    networkInfo,
-  ]);
-
-  // Initialize transaction when modal opens
-  useEffect(() => {
-    if (isOpen && votingId && !hasInitiatedTransaction) {
-      console.log(
-        "🚀 [OpenPendingDisputeModal] Initializing transaction for voting ID:",
-        votingId,
-      );
-      console.log("🔗 Chain ID:", networkInfo.chainId);
-      console.log("📄 Agreement:", {
-        id: agreement?.id,
-        title: agreement?.title,
-        disputeId: agreement?.disputeId,
-      });
-
-      setHasInitiatedTransaction(true);
-      setModalState("active");
-
-      // Start transaction with a small delay
-      const startTransaction = async () => {
-        try {
-          console.log(
-            "⏳ [OpenPendingDisputeModal] Starting transaction in 500ms...",
-          );
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          console.log(
-            "💰 [OpenPendingDisputeModal] Calling createDisputeOnchain...",
-          );
-          await createDisputeOnchain(votingId);
-          console.log("✅ [OpenPendingDisputeModal] Transaction initiated");
-        } catch (error) {
-          console.error(
-            "❌ [OpenPendingDisputeModal] Failed to start transaction:",
-            error,
-          );
-        }
-      };
-
-      startTransaction();
-    }
-  }, [
-    isOpen,
-    votingId,
-    hasInitiatedTransaction,
-    createDisputeOnchain,
-    networkInfo.chainId,
-    agreement,
-  ]);
 
   // Handle transaction success
   useEffect(() => {
@@ -227,9 +157,6 @@ export default function OpenPendingDisputeModal({
       console.log(
         "✅ [OpenPendingDisputeModal] Transaction successful! Hash:",
         transactionHash,
-      );
-      console.log(
-        "🔄 [OpenPendingDisputeModal] Will close modal and call onDisputeCreated in 2 seconds",
       );
 
       setModalState("closing");
@@ -241,12 +168,12 @@ export default function OpenPendingDisputeModal({
         );
         onDisputeCreated();
         onClose();
-        resetTransaction();
+        setUserInitiated(false);
       }, 2000);
 
       return () => clearTimeout(timer);
     }
-  }, [isSuccess, transactionHash, onDisputeCreated, onClose, resetTransaction]);
+  }, [isSuccess, transactionHash, onDisputeCreated, onClose]);
 
   // Handle transaction error
   useEffect(() => {
@@ -257,46 +184,58 @@ export default function OpenPendingDisputeModal({
         chainId: networkInfo.chainId,
       });
 
-      // Keep modal open for retry
       setModalState("active");
+      setUserInitiated(false); // Allow retry
     }
   }, [isError, transactionError, votingId, networkInfo.chainId]);
 
-  const handleRetryPayment = useCallback(async () => {
-    if (!votingId) {
-      console.error(
-        "❌ [OpenPendingDisputeModal] Cannot retry: Missing voting ID",
-      );
-      toast.error("Cannot retry: Missing voting ID");
-      return;
-    }
+  const handleStartPayment = async () => {
+    if (!votingId || userInitiated || isProcessing) return;
 
+    console.log(
+      "🚀 [OpenPendingDisputeModal] User initiated payment for voting ID:",
+      votingId,
+    );
+
+    setUserInitiated(true);
+    setModalState("active");
+
+    try {
+      await createDisputeOnchain(votingId);
+      console.log("✅ [OpenPendingDisputeModal] Transaction initiated");
+    } catch (error) {
+      console.error(
+        "❌ [OpenPendingDisputeModal] Failed to start transaction:",
+        error,
+      );
+      setUserInitiated(false);
+    }
+  };
+
+  const handleRetryPayment = async () => {
     console.log(
       "🔄 [OpenPendingDisputeModal] Retrying payment for voting ID:",
       votingId,
     );
-    console.log("🔗 Chain ID:", networkInfo.chainId);
 
-    try {
-      await retryTransaction(votingId);
-      console.log("✅ [OpenPendingDisputeModal] Retry initiated");
-    } catch (error) {
-      console.error("❌ [OpenPendingDisputeModal] Retry failed:", error);
-    }
-  }, [votingId, retryTransaction, networkInfo.chainId]);
+    setUserInitiated(false);
+    await retryTransaction(votingId);
+  };
 
-  // Get custom status messages based on modal state
+  // Get custom status messages and icons based on modal state
   const getStatusConfig = () => {
+    // Initial state - waiting for user to click
     if (
       modalState === "initializing" &&
-      !isProcessing &&
-      transactionStep === "idle"
+      transactionStep === "idle" &&
+      !userInitiated
     ) {
       return {
-        title: "Initializing Payment...",
-        description: "Preparing transaction for your dispute.",
-        showSpinner: true,
-        className: "text-blue-400",
+        title: "Ready to Pay",
+        description: "Click the button below to start the payment process.",
+        icon: <Wallet className="h-12 w-12 text-yellow-400" />,
+        spinner: false,
+        className: "text-yellow-400",
       };
     }
 
@@ -306,14 +245,16 @@ export default function OpenPendingDisputeModal({
           title: "Processing Payment...",
           description:
             "Confirm the transaction in your wallet to complete payment.",
-          showSpinner: true,
+          icon: <Loader2 className="h-12 w-12 animate-spin text-blue-400" />,
+          spinner: true,
           className: "text-blue-400",
         };
       case "success":
         return {
           title: "Payment Successful!",
           description: "Your dispute is now active. Redirecting...",
-          showSpinner: false,
+          icon: <CheckCircle className="h-12 w-12 text-green-400" />,
+          spinner: false,
           className: "text-green-400",
         };
       case "error":
@@ -322,14 +263,16 @@ export default function OpenPendingDisputeModal({
           description:
             transactionError?.message ||
             "The transaction could not be completed.",
-          showSpinner: false,
+          icon: <AlertCircle className="h-12 w-12 text-red-400" />,
+          spinner: false,
           className: "text-red-400",
         };
       default:
         return {
           title: "Ready for Payment",
           description: "Please confirm the transaction in your wallet.",
-          showSpinner: false,
+          icon: <Wallet className="h-12 w-12 text-yellow-400" />,
+          spinner: false,
           className: "text-yellow-400",
         };
     }
@@ -341,17 +284,7 @@ export default function OpenPendingDisputeModal({
     e.stopPropagation();
   }, []);
 
-  if (!isOpen) {
-    console.log("🚫 [OpenPendingDisputeModal] Modal not open, returning null");
-    return null;
-  }
-
-  console.log("🎬 [OpenPendingDisputeModal] Rendering modal with:", {
-    votingId,
-    transactionStep,
-    modalState,
-    statusConfig,
-  });
+  if (!isOpen) return null;
 
   return (
     <AnimatePresence mode="wait">
@@ -366,15 +299,17 @@ export default function OpenPendingDisputeModal({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="glass card-cyan relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl"
+          className="relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 shadow-2xl"
           onClick={handleModalClick}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-cyan-400/30 bg-cyan-500/10 p-6">
+          <div className="flex items-center justify-between border-b border-purple-500/30 bg-purple-500/10 p-6">
             <div className="flex items-center gap-3">
-              <Scale className="h-6 w-6 text-cyan-300" />
-              <h3 className="text-xl font-semibold text-cyan-300">
-                Making payment for {agreement?.title}
+              <Scale className="h-6 w-6 text-purple-300" />
+              <h3 className="text-xl font-semibold text-purple-300">
+                {transactionStep === "success"
+                  ? "Payment Complete!"
+                  : "Complete Payment"}
               </h3>
             </div>
             <Button
@@ -382,7 +317,11 @@ export default function OpenPendingDisputeModal({
               size="sm"
               onClick={onClose}
               className="text-white/70 hover:text-white"
-              disabled={isProcessing}
+              disabled={
+                isProcessing ||
+                transactionStep === "pending" ||
+                transactionStep === "success"
+              }
             >
               <X className="h-5 w-5" />
             </Button>
@@ -390,7 +329,12 @@ export default function OpenPendingDisputeModal({
 
           {/* Content */}
           <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
-            {/* Transaction Status Display */}
+            <div className="mb-4 rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
+              <p className="text-sm text-purple-200">
+                Completing payment for: <strong>{agreement?.title}</strong>
+              </p>
+            </div>
+
             <div className="mb-6">
               <TransactionStatus
                 status={transactionStep}
@@ -402,117 +346,69 @@ export default function OpenPendingDisputeModal({
               />
             </div>
 
-            {/* ADD THIS NEW PROCESSING SECTION */}
-            <div className="mb-6 rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 to-transparent p-6">
-              <div className="flex flex-col items-center justify-center text-center">
-                {/* Animated Spinner */}
-                <div className="relative mb-6">
-                  <div className="size-20 animate-spin rounded-full border-4 border-cyan-400/20 border-t-cyan-400"></div>
-                </div>
-
-                {/* Status Message */}
-                <div className="mb-4">
-                  <h4 className="mb-2 text-lg font-semibold text-white">
-                    {transactionStep === "pending"
-                      ? "Processing Transaction..."
-                      : "Ready to Create Dispute"}
-                  </h4>
-                  <p className="text-sm text-cyan-200/80">
-                    {transactionStep === "pending"
-                      ? "Your transaction is being processed on the blockchain. This may take a moment..."
-                      : "Your dispute is ready to be created."}
-                  </p>
-                </div>
-
-                {/* Information Panel */}
-                <div className="mt-4 w-full rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-cyan-400" />
-                    <div className="text-left">
-                      <h5 className="mb-1 font-medium text-cyan-300">
-                        What's happening?
-                      </h5>
-                      <ul className="space-y-2 text-xs text-cyan-200/80">
-                        <li className="flex items-start gap-2">
-                          <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                          <span>
-                            Your dispute will be created and registered on the
-                            blockchain
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                          <span>
-                            Once created, the dispute will enter the voting
-                            phase
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <Scale className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                          <span>
-                            Judges will review your case and community members
-                            can vote
-                          </span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Steps */}
-                {transactionStep === "pending" && (
-                  <div className="mt-6 w-full">
-                    <div className="mb-3 flex items-center justify-between text-sm">
-                      <span className="text-cyan-300">Transaction Status</span>
-                      <span className="font-medium text-cyan-200">
-                        In Progress
-                      </span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-cyan-500/20">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-cyan-400 to-cyan-500"
-                        initial={{ width: "0%" }}
-                        animate={{ width: "100%" }}
-                        transition={{
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "linear",
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+            {/* Status Icon and Message */}
+            <div className="mb-8 flex flex-col items-center justify-center text-center">
+              <div className="mb-4">{statusConfig.icon}</div>
+              <div>
+                <h3
+                  className={`mb-2 text-lg font-semibold ${statusConfig.className}`}
+                >
+                  {statusConfig.title}
+                </h3>
+                <p className="max-w-md truncate text-sm text-purple-200/80">
+                  {statusConfig.description}
+                </p>
               </div>
             </div>
 
+            {/* Progress Indicator for pending state */}
+            {transactionStep === "pending" && (
+              <div className="mb-6">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-purple-300">
+                    Processing Transaction
+                  </span>
+                  <span className="font-medium text-purple-200">
+                    Waiting for confirmation...
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-purple-500/20">
+                  <div
+                    className="h-full animate-pulse bg-gradient-to-r from-purple-400 to-purple-500"
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Transaction Information */}
             <div className="space-y-4">
-              <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
-                <h4 className="mb-2 text-sm font-medium text-cyan-300">
+              <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+                <h4 className="mb-2 text-sm font-medium text-purple-300">
                   Transaction Details
                 </h4>
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-cyan-200/80">Agreement:</span>
+                    <span className="text-purple-200/80">Agreement:</span>
                     <span className="text-white">
                       {agreement?.title || "N/A"}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-cyan-200/80">Type:</span>
+                    <span className="text-purple-200/80">Type:</span>
                     <span className="text-white">Paid Dispute</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-cyan-200/80">Voting ID:</span>
+                    <span className="text-purple-200/80">Voting ID:</span>
                     <span className="font-mono text-white">{votingId}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-cyan-200/80">Network:</span>
+                    <span className="text-purple-200/80">Network:</span>
                     <span className="text-white">{networkInfo.chainName}</span>
                   </div>
                   {transactionHash && (
                     <div className="flex justify-between">
-                      <span className="text-cyan-200/80">
+                      <span className="text-purple-200/80">
                         Transaction Hash:
                       </span>
                       <span className="font-mono text-xs text-green-300">
@@ -524,7 +420,6 @@ export default function OpenPendingDisputeModal({
                 </div>
               </div>
 
-              {/* Smart Contract Info */}
               <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
                 <div className="flex items-start gap-2">
                   <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
@@ -536,14 +431,13 @@ export default function OpenPendingDisputeModal({
                 </div>
               </div>
 
-              {/* Error details for debugging */}
               {transactionError && (
                 <div className="rounded-lg border border-red-500/30 bg-red-900/20 p-4">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
                     <div className="text-xs">
                       <p className="font-medium text-red-300">Error Details:</p>
-                      <p className="mt-1 text-sm break-all text-red-200/80">
+                      <p className="mt-1 max-h-[6rem] overflow-y-scroll text-sm break-all text-red-200/80 opacity-90">
                         {transactionError.message || "Unknown error occurred"}
                       </p>
                     </div>
@@ -554,33 +448,53 @@ export default function OpenPendingDisputeModal({
 
             {/* Action Buttons */}
             <div className="mt-6 flex justify-end space-x-3">
-              {transactionStep !== "success" && (
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                  disabled={isProcessing}
-                >
-                  Cancel
-                </Button>
+              {transactionStep === "idle" && !userInitiated && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                    disabled={isProcessing}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="neon"
+                    onClick={handleStartPayment}
+                    className="neon-hover border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+                    disabled={isProcessing}
+                  >
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Pay & Activate Dispute
+                  </Button>
+                </>
               )}
 
               {transactionStep === "error" && (
-                <Button
-                  variant="outline"
-                  onClick={handleRetryPayment}
-                  className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Retrying...
-                    </>
-                  ) : (
-                    "Retry Payment"
-                  )}
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleRetryPayment}
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Retrying...
+                      </>
+                    ) : (
+                      "Retry Payment"
+                    )}
+                  </Button>
+                </>
               )}
 
               {transactionStep === "success" && (

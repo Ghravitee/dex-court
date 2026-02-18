@@ -347,6 +347,7 @@ export default function Disputes() {
     { label: "Settled", value: "Settled" },
     { label: "Dismissed", value: "Dismissed" },
     { label: "Pending Payment", value: "pendingPayment" },
+    { label: "Pending Locking Funds", value: "pendingLockingFunds" }, // Add this line
   ];
 
   // const recentDisputesFilterOptions = [
@@ -403,6 +404,7 @@ export default function Disputes() {
             Settled: DisputeStatusEnum.Settled,
             Dismissed: DisputeStatusEnum.Dismissed,
             pendingPayment: DisputeStatusEnum.PendingPayment,
+            pendingLockingFunds: DisputeStatusEnum.PendingLockingFunds,
           };
 
           if (statusMap[status]) {
@@ -1507,6 +1509,12 @@ export default function Disputes() {
                           ) : d.status === "Pending Payment" ? (
                             <span className="badge badge-orange">
                               Pending Payment
+                            </span>
+                          ) : d.status === "Pending Locking Funds" ? ( // Add this condition
+                            <span className="badge badge-orange">
+                              {" "}
+                              {/* You may need to define a purple badge class */}
+                              Pending Locking Funds
                             </span>
                           ) : (
                             <span className="badge border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
