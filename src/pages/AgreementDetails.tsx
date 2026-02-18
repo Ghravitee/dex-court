@@ -35,6 +35,7 @@ import {
   Scale,
   AlertCircle,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -65,6 +66,7 @@ import { connectSocket } from "../services/socket";
 import { Socket } from "socket.io-client";
 
 // ============= WEBSOCKET TYPES =============
+// Replace your existing AgreementEventType definition with this
 export type AgreementEventType =
   | 1 // Created
   | 2 // Signed
@@ -82,7 +84,8 @@ export type AgreementEventType =
   | 15 // MilestoneClaimed
   | 16 // MilestoneHoldUpdated
   | 17 // DisputeRaised
-  | 18; // DisputeSettled;
+  | 18 // DisputeSettled
+  | 19; // DisputeUpdated - NEW: Dispute status updated (e.g., from Pending Payment to active)
 
 interface ServerToClientEvents {
   "agreement:event": (payload: AgreementSocketEventPayload) => void;
@@ -205,7 +208,7 @@ const formatCreatorUsername = (username: string | undefined): string => {
   const cleanUsername = username.startsWith("@") ? username.slice(1) : username;
 
   // Check if it's a wallet address (starts with 0x and is hex)
-  if (cleanUsername.startsWith("@0x") && cleanUsername.length === 42) {
+  if (cleanUsername.startsWith("0x") && cleanUsername.length === 42) {
     // Slice the wallet address: first 5 chars + "..." + last 4 chars
     return `${cleanUsername.slice(0, 5)}...${cleanUsername.slice(-4)}`;
   }
@@ -1394,7 +1397,6 @@ const PendingDisputeModal = ({
     isError,
   } = useDisputeTransaction(networkInfo.chainId);
 
-  // Handle transaction success
   useEffect(() => {
     if (isSuccess && transactionHash) {
       console.log(
@@ -1403,20 +1405,19 @@ const PendingDisputeModal = ({
 
       setModalState("closing");
 
-      // Close modal after success with delay
-      const timer = setTimeout(() => {
-        console.log(
-          `🏁 [PendingDisputeModal] Closing modal and calling onDisputeCreated, Flow: ${flow}`,
-        );
-        onDisputeCreated();
-        onClose();
-        setUserInitiated(false);
-        hasStartedTransaction.current = false; // Reset ref on success
-      }, 2000);
+      // Don't close immediately - wait for WebSocket event
+      // The modal will close when WebSocket receives DisputeUpdated event
 
-      return () => clearTimeout(timer);
+      // Just show success message
+      toast.success("Payment successful! Waiting for confirmation...", {
+        description: "Your dispute will be activated momentarily.",
+        duration: 3000,
+      });
+
+      // We'll let the WebSocket event handle closing the modal
+      // The onDisputeCreated will be called when WebSocket event arrives
     }
-  }, [isSuccess, transactionHash, onDisputeCreated, onClose, flow]);
+  }, [isSuccess, transactionHash, flow, onDisputeCreated]);
 
   // Handle transaction error
   useEffect(() => {
@@ -1857,22 +1858,12 @@ export default function AgreementDetails() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectClaim, setRejectClaim] = useState("");
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
-
-  // ADD THESE NEW STATE VARIABLES
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
-
-  const [isPollingDisputeStatus, setIsPollingDisputeStatus] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(
-    null,
-  );
-  const [pollingAttempts, setPollingAttempts] = useState(0);
-
   const [rejectDisputeStatus, setRejectDisputeStatus] = useState<any | null>(
     null,
   );
-  const [rejectPollingInterval, setRejectPollingInterval] =
-    useState<NodeJS.Timeout | null>(null);
+  // ADD THESE NEW STATE VARIABLES
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
 
   const [pendingModalState, setPendingModalState] = useState<{
     isOpen: boolean;
@@ -2107,271 +2098,6 @@ export default function AgreementDetails() {
     }
   }, [id, isRefreshing, disputeVotingId]);
 
-  // Updated pollDisputeStatus function with immediate stop on status change
-  // Updated pollDisputeStatus function
-  const pollDisputeStatus = useCallback(
-    async (disputeId: number, maxAttempts = 10) => {
-      if (
-        !disputeId ||
-        isPollingDisputeStatus ||
-        pollingAttempts >= maxAttempts
-      ) {
-        return;
-      }
-
-      console.log("🔄 Starting dispute status polling for ID:", disputeId);
-      setIsPollingDisputeStatus(true);
-
-      // Store a flag to track if we should continue polling
-      let shouldContinuePolling = true;
-
-      const poll = async () => {
-        if (disputeStatus !== "Pending Payment") {
-          console.log("⏹️ Status already changed, stopping poll");
-          setIsPollingDisputeStatus(false);
-          setPollingAttempts(0);
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-            setPollingInterval(null);
-          }
-          return false;
-        }
-
-        // Check if we should stop polling
-        if (!shouldContinuePolling) {
-          console.log("⏹️ Polling stopped by flag");
-          return false;
-        }
-
-        try {
-          console.log("📡 Polling attempt:", pollingAttempts + 1);
-
-          const disputeDetails =
-            await disputeService.getDisputeDetails(disputeId);
-          const transformedDispute =
-            disputeService.transformDisputeDetailsToRow(disputeDetails);
-
-          console.log("📊 Current dispute status:", transformedDispute.status);
-
-          // Update dispute status
-          setDisputeStatus(transformedDispute.status);
-
-          // Also update rejectDisputeStatus when polling for rejection disputes
-          if (isDisputeTriggeredByRejection(agreement)) {
-            console.log(
-              "🔄 This is a rejection dispute, updating rejectDisputeStatus",
-            );
-            setRejectDisputeStatus(transformedDispute.status);
-          }
-
-          // If status is no longer "Pending Payment", stop immediately
-          if (transformedDispute.status !== "Pending Payment") {
-            console.log(
-              "✅ Status updated to:",
-              transformedDispute.status,
-              "Stopping polling immediately",
-            );
-
-            // Stop polling flag
-            shouldContinuePolling = false;
-
-            // Update state
-            setIsPollingDisputeStatus(false);
-            setPollingAttempts(0);
-
-            // Clear any existing interval
-            if (pollingInterval) {
-              console.log("🧹 Clearing polling interval");
-              clearInterval(pollingInterval);
-              setPollingInterval(null);
-            }
-
-            // Refresh agreement data
-            await fetchAgreementDetailsBackground();
-
-            // Show success toast
-            toast.success("Dispute is now active!", {
-              description: `Status: ${transformedDispute.status}`,
-              duration: 3000,
-            });
-
-            // Close the pending modal when status changes
-            setPendingModalState({
-              isOpen: false,
-              votingId: null,
-              flow: "reject",
-            });
-
-            return false; // Stop polling
-          }
-
-          // Increment attempts
-          setPollingAttempts((prev) => prev + 1);
-
-          // If max attempts reached, stop polling
-          if (pollingAttempts + 1 >= maxAttempts) {
-            console.log("⏹️ Max polling attempts reached");
-            shouldContinuePolling = false;
-            setIsPollingDisputeStatus(false);
-            setPollingAttempts(0);
-
-            if (pollingInterval) {
-              clearInterval(pollingInterval);
-              setPollingInterval(null);
-            }
-
-            toast.info("Status update complete", {
-              description: "Please refresh if status hasn't updated.",
-              duration: 4000,
-            });
-
-            return false;
-          }
-
-          return true; // Continue polling
-        } catch (error) {
-          console.error("❌ Polling error:", error);
-          return true; // Continue polling on error
-        }
-      };
-
-      // Start polling with intervals
-      const startPolling = () => {
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-        }
-
-        const getInterval = (attempt: number) => {
-          if (attempt < 3) return 5000;
-          if (attempt < 6) return 10000;
-          return 15000;
-        };
-
-        const interval = setInterval(async () => {
-          const continuePolling = await poll();
-          if (!continuePolling) {
-            console.log("🛑 Stopping polling interval");
-            clearInterval(interval);
-            setPollingInterval(null);
-            shouldContinuePolling = false;
-          }
-        }, getInterval(pollingAttempts));
-
-        setPollingInterval(interval);
-
-        // Initial poll
-        poll();
-      };
-
-      startPolling();
-
-      // Cleanup function
-      return () => {
-        shouldContinuePolling = false;
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-          setPollingInterval(null);
-        }
-      };
-    },
-    [
-      isPollingDisputeStatus,
-      pollingAttempts,
-      pollingInterval,
-      fetchAgreementDetailsBackground,
-      agreement,
-      disputeStatus,
-    ],
-  );
-
-  // Update the effect that starts polling
-  useEffect(() => {
-    const disputeId = agreement?.disputeId;
-
-    if (
-      disputeId &&
-      disputeId.trim() !== "" &&
-      (disputeStatus === "Pending Payment" ||
-        rejectDisputeStatus === "Pending Payment") &&
-      !isPollingDisputeStatus &&
-      pendingModalState.isOpen &&
-      getDisputeFiledByFromTimeline(agreement, user)
-    ) {
-      console.log("🚀 Starting polling for dispute");
-
-      const timeoutId = setTimeout(() => {
-        const disputeIdNum = parseInt(disputeId);
-        if (!isNaN(disputeIdNum)) {
-          pollDisputeStatus(disputeIdNum, 10);
-        }
-      }, 3000);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [
-    agreement?.disputeId,
-    disputeStatus,
-    rejectDisputeStatus,
-    isPollingDisputeStatus,
-    pollDisputeStatus,
-    pendingModalState.isOpen,
-    user,
-    agreement,
-  ]);
-
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-      setIsPollingDisputeStatus(false);
-      setPollingAttempts(0);
-    };
-  }, [pollingInterval]);
-
-  // Add this debug effect to monitor polling state
-  useEffect(() => {
-    console.log("🔍 Polling State:", {
-      isPollingDisputeStatus,
-      pollingAttempts,
-      hasInterval: !!pollingInterval,
-      disputeStatus,
-    });
-  }, [isPollingDisputeStatus, pollingAttempts, pollingInterval, disputeStatus]);
-
-  // Also add a check to stop polling when status is no longer "Pending Payment"
-  useEffect(() => {
-    // If dispute status is no longer "Pending Payment", stop polling immediately
-    if (disputeStatus !== "Pending Payment" && isPollingDisputeStatus) {
-      console.log("🛑 Status changed, stopping polling immediately");
-      setIsPollingDisputeStatus(false);
-      setPollingAttempts(0);
-
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-    }
-  }, [disputeStatus, isPollingDisputeStatus, pollingInterval]);
-
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-      if (rejectPollingInterval) {
-        clearInterval(rejectPollingInterval);
-        setRejectPollingInterval(null);
-      }
-      setIsPollingDisputeStatus(false);
-      setPollingAttempts(0);
-    };
-  }, [pollingInterval, rejectPollingInterval]);
-
   // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
   useEffect(() => {
     if (!agreement?.disputeId) return;
@@ -2412,7 +2138,6 @@ export default function AgreementDetails() {
   }, [id, fetchAgreementDetails]);
 
   // ============= WEBSOCKET EFFECT =============
-  // Replace the polling useEffect with this socket effect
   useEffect(() => {
     const token = localStorage.getItem("authToken") ?? "";
     if (!token || !id) return;
@@ -2426,10 +2151,66 @@ export default function AgreementDetails() {
       if (!ack.ok) console.warn("[WS] join failed", ack);
     });
 
-    socket.on("agreement:event", (event) => {
-      // optional: filters only for actual agreement
+    socket.on("agreement:event", async (event) => {
       if (event.agreementId !== agreementId) return;
+
       console.log("📡 Agreement event received:", event);
+
+      // Handle DisputeUpdated event (type 19)
+      if (event.type === 19) {
+        console.log("⚖️ Dispute status updated! Refreshing dispute data...");
+
+        // Close the pending modal if open
+        setPendingModalState({
+          isOpen: false,
+          votingId: null,
+          flow: "reject",
+        });
+
+        // Refresh dispute details if we have a dispute ID
+        if (agreement?.disputeId) {
+          const disputeIdNum = parseInt(agreement.disputeId);
+          if (!isNaN(disputeIdNum)) {
+            try {
+              const disputeDetails =
+                await disputeService.getDisputeDetails(disputeIdNum);
+              const transformedDispute =
+                disputeService.transformDisputeDetailsToRow(disputeDetails);
+
+              console.log(
+                "✅ Updated dispute status:",
+                transformedDispute.status,
+              );
+
+              // Update dispute status
+              setDisputeStatus(transformedDispute.status);
+
+              // Also update rejectDisputeStatus if applicable
+              if (isDisputeTriggeredByRejection(agreement)) {
+                setRejectDisputeStatus(transformedDispute.status);
+              }
+
+              // Show success toast if status changed from Pending Payment
+              if (
+                disputeStatus === "Pending Payment" &&
+                transformedDispute.status !== "Pending Payment"
+              ) {
+                toast.success("Dispute is now active!", {
+                  description: `Status: ${transformedDispute.status}`,
+                  duration: 3000,
+                });
+              }
+            } catch (error) {
+              console.error(
+                "❌ Failed to fetch updated dispute details:",
+                error,
+              );
+            }
+          }
+        }
+      }
+
+      // Always refresh agreement data for any event
       fetchAgreementDetailsBackground();
     });
 
@@ -2437,7 +2218,13 @@ export default function AgreementDetails() {
       socket.off("agreement:event");
       socket.disconnect();
     };
-  }, [id, fetchAgreementDetailsBackground]);
+  }, [
+    id,
+    fetchAgreementDetailsBackground,
+    agreement?.disputeId,
+    disputeStatus,
+    agreement,
+  ]);
 
   // ADD THIS EVENT LISTENER FOR CROSS-TAB UPDATES (keep this as backup)
   useEffect(() => {
@@ -2808,27 +2595,82 @@ export default function AgreementDetails() {
     setIsDisputeModalOpen(true);
   };
 
+  const handleCompletePayment = () => {
+    if (!id || !agreement) return;
+
+    // Get voting ID (could be number from disputeVotingId or string from elsewhere)
+    const votingId = agreement.disputeVotingId;
+    if (!votingId) {
+      console.error("No voting ID found for dispute");
+      toast.error("Unable to process payment: Missing voting ID");
+      return;
+    }
+
+    console.log("💰 Opening payment modal for dispute:", {
+      votingId,
+      disputeStatus,
+    });
+
+    // Convert to number if it's a string (for the pending modal which expects number)
+    const votingIdAsNumber =
+      typeof votingId === "string" ? parseInt(votingId, 10) : votingId;
+
+    if (isNaN(votingIdAsNumber)) {
+      console.error("Invalid voting ID format:", votingId);
+      toast.error("Unable to process payment: Invalid voting ID format");
+      return;
+    }
+
+    // Show transition loader briefly
+    setIsTransitioningToPendingModal(true);
+
+    // Small delay for smooth transition
+    setTimeout(() => {
+      setIsTransitioningToPendingModal(false);
+      setPendingModalState({
+        isOpen: true,
+        votingId: votingIdAsNumber, // Now it's definitely a valid number
+        flow: "open",
+      });
+    }, 500);
+  };
+
   const handleDisputeCreated = useCallback(() => {
     console.log("🔄 handleDisputeCreated called");
   }, []);
 
   const handlePaidDisputeCreated = useCallback(
-    (votingId: number, flow: "open") => {
+    (votingId: string | number, flow: "open") => {
       console.log(
         `💰 Paid dispute created with voting ID: ${votingId}, flow: ${flow}`,
       );
+
+      // Convert to number if it's a string
+      const votingIdAsNumber =
+        typeof votingId === "string" ? parseInt(votingId, 10) : votingId;
+
+      if (isNaN(votingIdAsNumber)) {
+        console.error("Invalid voting ID format:", votingId);
+        toast.error("Invalid voting ID received");
+        return;
+      }
+
+      // Set dispute status to Pending Payment
       setDisputeStatus("Pending Payment");
       setRejectDisputeStatus("Pending Payment");
+
+      // Show transition loader
       setIsTransitioningToPendingModal(true);
 
+      // Open pending modal after a brief delay
       setTimeout(() => {
         setIsTransitioningToPendingModal(false);
         setPendingModalState({
           isOpen: true,
-          votingId,
+          votingId: votingIdAsNumber,
           flow,
         });
-      }, 15000);
+      }, 1500);
     },
     [],
   );
@@ -3305,6 +3147,59 @@ export default function AgreementDetails() {
                     View Dispute
                   </Link>
                 )}
+
+              {disputeStatus === "Pending Payment" && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      if (agreement?.disputeId) {
+                        const disputeIdNum = parseInt(agreement.disputeId);
+                        if (!isNaN(disputeIdNum)) {
+                          try {
+                            const disputeDetails =
+                              await disputeService.getDisputeDetails(
+                                disputeIdNum,
+                              );
+                            const transformedDispute =
+                              disputeService.transformDisputeDetailsToRow(
+                                disputeDetails,
+                              );
+
+                            setDisputeStatus(transformedDispute.status);
+
+                            if (isDisputeTriggeredByRejection(agreement)) {
+                              setRejectDisputeStatus(transformedDispute.status);
+                            }
+
+                            if (
+                              transformedDispute.status !== "Pending Payment"
+                            ) {
+                              setPendingModalState({
+                                isOpen: false,
+                                votingId: null,
+                                flow: "reject",
+                              });
+                              toast.success("Dispute status updated!");
+                            }
+                          } catch (error) {
+                            console.error(
+                              "Failed to refresh dispute status:",
+                              error,
+                            );
+                            toast.error("Failed to refresh status");
+                          }
+                        }
+                      }
+                    }}
+                    className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -4111,24 +4006,24 @@ export default function AgreementDetails() {
               </div>
             )}
 
-            {agreement?.status &&
-              (agreement.status as string) === "disputed" &&
+            {/* Payment Action for Disputes */}
+            {agreement?.status === "disputed" &&
               disputeStatus === "Pending Payment" &&
               getDisputeFiledByFromTimeline(agreement, user) && (
                 <div className="card-cyan rounded-xl p-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">
-                    Payment Action
+                    Payment Action Required
                   </h3>
                   <Button
                     variant="outline"
-                    className="mb-4 border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300"
-                    onClick={handleOpenDispute}
-                    disabled={isOpeningDispute || isRefreshing}
+                    className="w-full border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300"
+                    onClick={handleCompletePayment} // Use the new function
+                    disabled={isTransitioningToPendingModal}
                   >
-                    {isOpeningDispute ? (
+                    {isTransitioningToPendingModal ? (
                       <>
-                        <Clock className="mr-2 h-4 w-4 animate-spin" />
-                        Opening...
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
                       </>
                     ) : (
                       <>
@@ -4137,9 +4032,9 @@ export default function AgreementDetails() {
                       </>
                     )}
                   </Button>
-                  <p className="text-sm text-yellow-300">
-                    Payment required to activate your dispute. Click the
-                    "Complete Payment" button below.
+                  <p className="mt-3 text-sm text-yellow-300/80">
+                    Payment required to activate your dispute. Click the button
+                    above to complete the transaction.
                   </p>
                 </div>
               )}
