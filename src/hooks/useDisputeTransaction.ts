@@ -166,10 +166,17 @@ export const useDisputeTransaction = (chainId: number) => {
       setIsProcessing(false);
 
       if (writeError) {
+        // Truncate long error messages
+        const errorMessage =
+          writeError.message ||
+          "Smart contract transaction failed. Please try again.";
+        const truncatedMessage =
+          errorMessage.length > 100
+            ? errorMessage.substring(0, 100) + "..."
+            : errorMessage;
+
         toast.error("Transaction failed", {
-          description:
-            writeError.message ||
-            "Smart contract transaction failed. Please try again.",
+          description: truncatedMessage,
           duration: 5000,
         });
       }
