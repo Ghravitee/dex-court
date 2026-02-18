@@ -371,7 +371,7 @@ export function Topbar({
             <img
               src={logo}
               alt="DexCourt Logo"
-              className="size-8 object-contain sm:size-10"
+              className="size-8 object-contain"
             />
             <span className="glow-text hidden leading-none font-semibold text-cyan-300 sm:block">
               DexCourt

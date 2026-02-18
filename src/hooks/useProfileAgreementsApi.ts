@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { agreementService } from "../services/agreementServices";
+import { getAgreementExistOnchain } from "../web3/readContract";
+import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 
 export function useProfileAgreementsApi(
   userId?: string,
@@ -22,7 +23,10 @@ export function useProfileAgreementsApi(
   const [totalReputationalAgreements, setTotalReputationalAgreements] =
     useState(0);
   const [totalEscrowAgreements, setTotalEscrowAgreements] = useState(0);
+  const [verifyingOnChain, setVerifyingOnChain] = useState(false);
+
   const ITEMS_PER_PAGE = 10;
+  const networkInfo = useNetworkEnvironment();
 
   // Use refs for stable references
   const allReputationalRef = useRef<any[]>([]);
@@ -110,10 +114,16 @@ export function useProfileAgreementsApi(
         payeeWalletAddress: apiAgreement.payeeWalletAddress,
         payerWalletAddress: apiAgreement.payerWalletAddress,
         type: apiAgreement.type,
+        // Add on-chain related fields
+        onChainId: apiAgreement.contractAgreementId,
+        escrowAddress: apiAgreement.escrowContractAddress,
+        chainId: apiAgreement.chainId,
+        // Flag to track verification status
+        onChainVerified: false, // Will be updated after verification
       };
     },
     [extractRolesFromDescription],
-  ); // Add dependency
+  );
 
   const transformReputationalAgreement = useCallback((apiAgreement: any) => {
     return {
@@ -127,6 +137,128 @@ export function useProfileAgreementsApi(
       type: apiAgreement.type,
     };
   }, []);
+
+  // NEW: Function to verify escrow agreements on-chain
+  const verifyEscrowAgreementsOnChain = useCallback(
+    async (escrows: any[]) => {
+      if (!escrows.length) return [];
+
+      // Split escrows by status
+      const confirmedAgreements = escrows.filter(
+        (e) => e.status !== 1 && e.status !== 7, // status 1 = pending, 7 = pending_approval
+      );
+
+      const pendingAgreements = escrows.filter(
+        (e) => e.status === 1 || e.status === 7,
+      );
+
+      console.log(`📊 Profile - Verifying escrow agreements:`, {
+        total: escrows.length,
+        confirmed: confirmedAgreements.length,
+        pending: pendingAgreements.length,
+      });
+
+      // Group pending agreements by (chainId, escrowAddress)
+      const groupedPending: Record<
+        string,
+        {
+          chainId: number;
+          escrowAddress: string;
+          agreements: any[];
+          onChainIds: bigint[];
+        }
+      > = {};
+
+      pendingAgreements.forEach((agreement) => {
+        if (!agreement.onChainId || !agreement.escrowAddress) {
+          console.warn(
+            `⚠️ Profile - Pending escrow ${agreement.id} missing onChainId or escrowAddress`,
+          );
+          return;
+        }
+
+        const chainId = agreement.chainId || networkInfo.chainId;
+        const escrowAddr = agreement.escrowAddress.toLowerCase();
+        const key = `${chainId}-${escrowAddr}`;
+
+        if (!groupedPending[key]) {
+          groupedPending[key] = {
+            chainId,
+            escrowAddress: escrowAddr,
+            agreements: [],
+            onChainIds: [],
+          };
+        }
+
+        groupedPending[key].agreements.push(agreement);
+        groupedPending[key].onChainIds.push(BigInt(agreement.onChainId));
+      });
+
+      // Batch check existence for pending agreements
+      const verifiedPendingAgreements: any[] = [];
+
+      const groupPromises = Object.entries(groupedPending).map(
+        async ([key, group]) => {
+          try {
+            if (group.onChainIds.length === 0) return;
+
+            console.log(`🔍 Profile - Checking pending group ${key}:`, {
+              chainId: group.chainId,
+              contract: group.escrowAddress,
+              agreementCount: group.onChainIds.length,
+            });
+
+            const existOnChain = await getAgreementExistOnchain(
+              group.chainId,
+              group.onChainIds,
+              group.escrowAddress as `0x${string}`,
+            );
+
+            console.log(`✅ Profile - Group ${key} results:`, {
+              existCount: existOnChain.filter(Boolean).length,
+              notExistCount: existOnChain.filter((v) => !v).length,
+            });
+
+            // Add pending agreements that exist on-chain
+            group.agreements.forEach((agreement, index) => {
+              if (existOnChain[index]) {
+                verifiedPendingAgreements.push({
+                  ...agreement,
+                  onChainVerified: true,
+                });
+              } else {
+                console.warn(
+                  `❌ Profile - Pending agreement ${agreement.id} doesn't exist on-chain`,
+                );
+              }
+            });
+          } catch (error) {
+            console.error(
+              `❌ Profile - Error checking pending group ${key}:`,
+              error,
+            );
+            // Skip this group - don't add any pending agreements from it
+          }
+        },
+      );
+
+      await Promise.all(groupPromises);
+
+      console.log("📊 Profile - Final escrow verification results:", {
+        confirmedAgreements: confirmedAgreements.length,
+        verifiedPendingAgreements: verifiedPendingAgreements.length,
+        filteredOut:
+          pendingAgreements.length - verifiedPendingAgreements.length,
+      });
+
+      // Combine confirmed (always included) + verified pending
+      return [
+        ...confirmedAgreements.map((a) => ({ ...a, onChainVerified: true })),
+        ...verifiedPendingAgreements,
+      ];
+    },
+    [networkInfo.chainId],
+  );
 
   // Function to fetch ALL user agreements once
   const fetchAllUserAgreements = useCallback(async () => {
@@ -204,12 +336,19 @@ export function useProfileAgreementsApi(
         })
         .map(transformEscrowAgreement);
 
+      // NEW: Verify escrow agreements on-chain
+      setVerifyingOnChain(true);
+      const verifiedEscrowAgreements =
+        await verifyEscrowAgreementsOnChain(userEscrow);
+      setVerifyingOnChain(false);
+
       return {
         reputational: userReputational,
-        escrow: userEscrow,
+        escrow: verifiedEscrowAgreements,
       };
     } catch (err) {
       console.error("Error fetching user agreements:", err);
+      setVerifyingOnChain(false);
       return { reputational: [], escrow: [] };
     }
   }, [
@@ -218,7 +357,8 @@ export function useProfileAgreementsApi(
     transformReputationalAgreement,
     transformEscrowAgreement,
     extractRolesFromDescription,
-  ]); // Add all dependencies
+    verifyEscrowAgreementsOnChain,
+  ]);
 
   // Initial load
   useEffect(() => {
@@ -346,6 +486,7 @@ export function useProfileAgreementsApi(
 
     // Loading states
     loading,
+    verifyingOnChain, // New: indicates on-chain verification in progress
     error,
 
     // Pagination controls

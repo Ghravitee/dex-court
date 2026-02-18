@@ -477,13 +477,40 @@ export function KPIChart() {
 
   if (loading) {
     return (
+      // <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
+      //   <div className="mb-4 flex flex-col items-center justify-between">
+      //     <div>
+      //       <h3 className="font-bold text-white lg:text-xl">Network Growth</h3>
+      //       <p className="text-sm text-cyan-200/60">
+      //         Cumulative agreements over time
+      //       </p>
+      //     </div>
+      //     <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
+      //       <TabsList className="bg-gray-800">
+      //         <TabsTrigger value="daily">Daily</TabsTrigger>
+      //         <TabsTrigger value="weekly">Weekly</TabsTrigger>
+      //         <TabsTrigger value="monthly">Monthly</TabsTrigger>
+      //       </TabsList>
+      //     </Tabs>
+      //   </div>
+      //   <div className="flex flex-1 items-center justify-center">
+      //     <DottedSpinner size="large" />
+      //     <span className="ml-4 text-cyan-300">Loading growth data...</span>
+      //   </div>
+      // </div>
+
       <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
-        <div className="mb-4 flex flex-col items-center justify-between">
-          <div>
-            <h3 className="font-bold text-white lg:text-xl">Network Growth</h3>
-            <p className="text-sm text-cyan-200/60">
-              Cumulative agreements over time
-            </p>
+        <div className="mb-4 flex flex-col justify-between gap-2 p-4 sm:flex-row sm:items-center sm:p-0">
+          <div className="">
+            <h3 className="text-xl font-bold text-white">Network Growth</h3>
+            {/* <p className="text-sm text-cyan-200/60">
+            Cumulative agreements over time
+          </p> */}
+            {/* <div className="flex items-center">
+            <div className="text-xs text-cyan-200/60">
+              {growthPercent}% increase from the first agreement
+            </div>
+          </div> */}
           </div>
           <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
             <TabsList className="bg-gray-800">

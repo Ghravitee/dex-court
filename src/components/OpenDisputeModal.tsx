@@ -77,6 +77,7 @@ interface OpenDisputeModalProps {
   onClose: () => void;
   agreement: any;
   onDisputeCreated: () => void;
+  onPaidDisputeCreated?: (votingId: number, flow: "open") => void; // Add flow parameter
 }
 
 const UserSearchResult = ({
@@ -139,13 +140,14 @@ export default function OpenDisputeModal({
   onClose,
   agreement,
   onDisputeCreated,
+  onPaidDisputeCreated,
 }: OpenDisputeModalProps) {
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const networkInfo = useNetworkEnvironment();
   const [form, setForm] = useState({
     title: "",
-    kind: "Pro Bono" as "Pro Bono" | "Paid",
+    kind: "" as "" | "Pro Bono" | "Paid",
     defendant: "",
     description: "",
     claim: "",
@@ -166,10 +168,9 @@ export default function OpenDisputeModal({
   // Use the custom hook for transaction management
   const {
     transactionStep,
-    isProcessing,
     transactionHash,
     transactionError,
-    createDisputeOnchain,
+    // createDisputeOnchain,
     retryTransaction,
     resetTransaction,
     // isPending,
@@ -230,7 +231,7 @@ export default function OpenDisputeModal({
 
       setForm({
         title,
-        kind: "Pro Bono",
+        kind: "",
         defendant: formattedDefendant,
         description,
         claim: "",
@@ -254,7 +255,7 @@ export default function OpenDisputeModal({
   const resetFormAndClose = useCallback(() => {
     setForm({
       title: "",
-      kind: "Pro Bono",
+      kind: "",
       defendant: "",
       description: "",
       claim: "",
@@ -290,7 +291,16 @@ export default function OpenDisputeModal({
 
   // Create dispute in backend (used for BOTH Pro Bono AND Paid)
   const createDisputeOffchain = useCallback(
-    async (transactionHash?: string) => {
+    async (
+      title: string,
+      description: string,
+      requestKind: DisputeTypeEnum,
+      defendant: string,
+      claim: string,
+      witnesses: string[],
+      files: File[],
+      transactionHash?: string,
+    ) => {
       console.log(
         "🟡 createDisputeOffchain called with hash:",
         transactionHash,
@@ -306,35 +316,11 @@ export default function OpenDisputeModal({
       try {
         console.log("🚀 Creating dispute from agreement...");
 
-        const currentForm = formRef.current;
-        const currentAgreementId = agreementIdRef.current;
-        const currentNetworkInfo = networkInfoRef.current;
-
-        // Clean defendant - remove @ symbol before storing
-        const cleanedDefendant = currentForm.defendant.startsWith("@")
-          ? currentForm.defendant.substring(1)
-          : currentForm.defendant;
-
-        // Clean witness usernames - remove @ symbol before sending
-        const cleanedWitnesses = currentForm.witnesses
-          .filter((w) => w.trim())
-          .map((w) => {
-            const cleanW = w.startsWith("@") ? w.substring(1) : w;
-            return cleanTelegramUsername(cleanW);
-          });
-
-        const requestKind =
-          currentForm.kind === "Pro Bono"
-            ? DisputeTypeEnum.ProBono
-            : DisputeTypeEnum.Paid;
-
-        const files = currentForm.evidence.map((uf) => uf.file);
-
         console.log("📋 Creating dispute with:", {
-          agreementId: currentAgreementId,
-          title: currentForm.title,
-          kind: currentForm.kind,
-          chainId: currentNetworkInfo.chainId,
+          agreementId: agreement?.id,
+          title,
+          kind: requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
+          chainId: networkInfo.chainId,
           transactionHash,
         });
 
@@ -342,12 +328,12 @@ export default function OpenDisputeModal({
         const result = await disputeService.createDisputeFromAgreement(
           parseInt(agreement.id),
           {
-            title: form.title,
-            description: form.description,
+            title,
+            description,
             requestKind,
-            defendant: cleanedDefendant,
-            claim: form.claim,
-            witnesses: cleanedWitnesses,
+            defendant,
+            claim,
+            witnesses,
             onchainVotingId: votingIdToUse.toString(),
             chainId: networkInfo.chainId,
             txHash: transactionHash,
@@ -358,13 +344,13 @@ export default function OpenDisputeModal({
 
         console.log("✅ Dispute created successfully:", result);
 
-        if (currentForm.kind === "Paid") {
+        if (requestKind === DisputeTypeEnum.Paid) {
           toast.success("Paid dispute created successfully!", {
-            description: `${currentForm.title} has been recorded on-chain and in our system`,
+            description: `${title} has been recorded on-chain and in our system`,
           });
         } else {
           toast.success("Pro Bono dispute created successfully!", {
-            description: `${currentForm.title} has been submitted for review`,
+            description: `${title} has been submitted for review`,
           });
         }
 
@@ -383,14 +369,11 @@ export default function OpenDisputeModal({
       }
     },
     [
-      resetFormAndClose,
+      agreement?.id,
+      networkInfo.chainId,
       votingIdToUse,
       isSubmitting,
-      agreement.id,
-      form.claim,
-      form.description,
-      form.title,
-      networkInfo.chainId,
+      resetFormAndClose,
     ],
   );
 
@@ -411,6 +394,11 @@ export default function OpenDisputeModal({
         const results = await disputeService.searchUsers(cleanQuery);
 
         const currentUserTelegram = getCurrentUserTelegram(currentUser);
+        const cleanDefendant = form.defendant.startsWith("@")
+          ? form.defendant.substring(1)
+          : form.defendant;
+
+        // Filter out current user and defendant from search results
         const filteredResults = results.filter((resultUser) => {
           const resultTelegram = cleanTelegramUsername(
             resultUser.telegramUsername ||
@@ -418,10 +406,14 @@ export default function OpenDisputeModal({
               resultUser.telegramInfo,
           );
 
-          return (
-            resultTelegram &&
-            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
-          );
+          if (!resultTelegram) return false;
+
+          const isCurrentUser =
+            resultTelegram.toLowerCase() === currentUserTelegram.toLowerCase();
+          const isDefendant =
+            resultTelegram.toLowerCase() === cleanDefendant.toLowerCase();
+
+          return !isCurrentUser && !isDefendant;
         });
 
         setWitnessSearchResults(filteredResults);
@@ -432,7 +424,7 @@ export default function OpenDisputeModal({
         setIsWitnessSearchLoading(false);
       }
     },
-    [currentUser],
+    [currentUser, form.defendant],
   );
 
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
@@ -448,6 +440,31 @@ export default function OpenDisputeModal({
 
   // Handle witness selection
   const handleWitnessSelect = (username: string, index: number) => {
+    const cleanDefendant = form.defendant.startsWith("@")
+      ? form.defendant.substring(1)
+      : form.defendant;
+
+    const currentUserTelegram = getCurrentUserTelegram(currentUser);
+
+    // Double-check validation on selection
+    if (username.toLowerCase() === currentUserTelegram.toLowerCase()) {
+      toast.error("Invalid Witness", {
+        description:
+          "You cannot add yourself as a witness. Please select another user.",
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (username.toLowerCase() === cleanDefendant.toLowerCase()) {
+      toast.error("Invalid Witness", {
+        description:
+          "The defendant cannot be a witness. Please select another user.",
+        duration: 4000,
+      });
+      return;
+    }
+
     updateWitness(index, `@${username}`);
     setShowWitnessSuggestions(false);
     setWitnessSearchQuery("");
@@ -456,6 +473,32 @@ export default function OpenDisputeModal({
   const handleWitnessInputChange = (index: number, value: string) => {
     updateWitness(index, value);
     setWitnessSearchQuery(value);
+
+    // If the input loses focus and has a value, validate it
+    if (value && value.length >= 2) {
+      const cleanWitness = value.startsWith("@") ? value.substring(1) : value;
+      const cleanDefendant = form.defendant.startsWith("@")
+        ? form.defendant.substring(1)
+        : form.defendant;
+      const currentUserTelegram = getCurrentUserTelegram(currentUser);
+
+      // Show warning toast if user tries to add themselves or defendant
+      if (cleanWitness.toLowerCase() === currentUserTelegram.toLowerCase()) {
+        toast.warning("Invalid Witness", {
+          description:
+            "You cannot add yourself as a witness. Please remove this entry.",
+          duration: 5000,
+          id: "self-witness-warning", // Prevent duplicate toasts
+        });
+      } else if (cleanWitness.toLowerCase() === cleanDefendant.toLowerCase()) {
+        toast.warning("Invalid Witness", {
+          description:
+            "The defendant cannot be a witness. Please remove this entry.",
+          duration: 5000,
+          id: "defendant-witness-warning",
+        });
+      }
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -578,13 +621,16 @@ export default function OpenDisputeModal({
     }));
   };
 
-  // Main form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Form validation
     if (!form.title.trim()) {
       toast.error("Please enter a title");
+      return;
+    }
+    if (!form.kind) {
+      toast.error("Please select a request kind (Pro Bono or Paid)");
       return;
     }
     if (!form.defendant.trim()) {
@@ -612,14 +658,43 @@ export default function OpenDisputeModal({
       return;
     }
 
-    // Validate witness Telegram usernames
+    const currentUserTelegram = getCurrentUserTelegram(currentUser);
+    const cleanDefendant = form.defendant.startsWith("@")
+      ? form.defendant.substring(1)
+      : form.defendant;
+
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
       .map((w) => (w.startsWith("@") ? w.substring(1) : w))
-      .filter((w) => !isValidTelegramUsername(w));
+      .filter((w) => {
+        const isValidFormat = isValidTelegramUsername(w);
+        const isPlaintiff =
+          w.toLowerCase() === currentUserTelegram.toLowerCase();
+        const isDefendant = w.toLowerCase() === cleanDefendant.toLowerCase();
+        return !isValidFormat || isPlaintiff || isDefendant;
+      });
 
     if (invalidWitnesses.length > 0) {
-      toast.error("Please enter valid Telegram usernames for all witnesses");
+      const invalidReasons = invalidWitnesses
+        .map((w) => {
+          if (w.toLowerCase() === currentUserTelegram.toLowerCase()) {
+            return `"${w}" - You cannot add yourself as a witness`;
+          } else if (w.toLowerCase() === cleanDefendant.toLowerCase()) {
+            return `"${w}" - The defendant cannot be a witness`;
+          } else {
+            return `"${w}" - Invalid Telegram username format`;
+          }
+        })
+        .join("\n");
+
+      toast.error("Invalid Witness Entries", {
+        description: (
+          <div className="whitespace-pre-line">
+            Please fix the following:\n{invalidReasons}
+          </div>
+        ),
+        duration: 8000,
+      });
       return;
     }
 
@@ -671,35 +746,36 @@ export default function OpenDisputeModal({
       }
     }
 
-    // Handle based on dispute type
-    if (form.kind === "Paid") {
+    // Clean data before sending
+    const cleanedDefendant = form.defendant.startsWith("@")
+      ? form.defendant.substring(1)
+      : form.defendant;
+
+    const cleanedWitnesses = form.witnesses
+      .filter((w) => w.trim())
+      .map((w) => {
+        const cleanW = w.startsWith("@") ? w.substring(1) : w;
+        return cleanTelegramUsername(cleanW);
+      });
+
+    const requestKind =
+      form.kind === "Pro Bono" ? DisputeTypeEnum.ProBono : DisputeTypeEnum.Paid;
+
+    const files = form.evidence.map((uf) => uf.file);
+
+    // Handle Paid disputes differently
+    if (requestKind === DisputeTypeEnum.Paid) {
+      setIsSubmitting(true);
       try {
-        console.log("🟡 [PAID] Creating dispute in backend first...");
-
-        // Clean defendant - remove @ symbol before storing
-        const cleanedDefendant = form.defendant.startsWith("@")
-          ? form.defendant.substring(1)
-          : form.defendant;
-
-        // Clean witness usernames
-        const cleanedWitnesses = form.witnesses
-          .filter((w) => w.trim())
-          .map((w) => {
-            const cleanW = w.startsWith("@") ? w.substring(1) : w;
-            return cleanTelegramUsername(cleanW);
-          });
-
-        const requestKind = DisputeTypeEnum.Paid;
-        const files = form.evidence.map((uf) => uf.file);
-
-        console.log("📋 [PAID] Creating dispute in backend with:", {
+        console.log("🚀 Creating PAID dispute from agreement...");
+        console.log("📋 Paid dispute details:", {
           agreementId: agreement?.id,
           title: form.title,
           votingId: votingIdToUse,
           chainId: networkInfo.chainId,
         });
 
-        // STEP 1: Create dispute in backend FIRST (without transaction hash)
+        // Create the dispute via API first (no transaction hash yet)
         const result = await disputeService.createDisputeFromAgreement(
           parseInt(agreement.id),
           {
@@ -711,54 +787,54 @@ export default function OpenDisputeModal({
             witnesses: cleanedWitnesses,
             onchainVotingId: votingIdToUse.toString(),
             chainId: networkInfo.chainId,
+            txHash: transactionHash,
           },
           files,
           networkInfo.chainId,
         );
 
-        console.log("✅ [PAID] Backend dispute created:", result);
+        console.log("✅ Paid dispute created successfully:", result);
 
-        // Use the votingId from response or our generated one
-        let votingIdForContract: number;
-        if (result.votingId) {
-          votingIdForContract =
-            typeof result.votingId === "string"
-              ? parseInt(result.votingId, 10)
-              : result.votingId;
-
-          if (isNaN(votingIdForContract)) {
-            console.warn("Invalid votingId from backend, using generated ID");
-            votingIdForContract = votingIdToUse;
-          }
-        } else {
-          votingIdForContract = votingIdToUse;
-        }
-
-        console.log(
-          `🔢 [PAID] Using voting ID for contract: ${votingIdForContract}`,
-        );
-
-        toast.info("Dispute created in system. Please confirm transaction...", {
-          description: "Now confirming on-chain transaction...",
-          duration: 3000,
+        // Show success message
+        toast.success("Dispute created! Complete payment to activate.", {
+          description: "You'll be redirected to complete the payment.",
+          duration: 5000,
         });
 
-        // STEP 2: Now call smart contract with the voting ID
-        await createDisputeOnchain(votingIdForContract);
+        // Tell parent to show transition loader and prepare payment modal
+        // This will trigger the isTransitioningToPendingModal in AgreementDetails
+        onPaidDisputeCreated?.(votingIdToUse, "open");
+
+        // Close this modal
+        onClose();
       } catch (error: any) {
-        console.error("❌ [PAID] Failed to create paid dispute:", error);
-        const errorMessage = error.message || "Failed to create dispute";
-        toast.error("Submission Failed", {
+        console.error("❌ Failed to create paid dispute:", error);
+
+        const errorMessage =
+          error.response?.data?.message ||
+          error.message ||
+          "Failed to create dispute. Please try again.";
+
+        toast.error("Failed to create dispute", {
           description: errorMessage,
           duration: 6000,
         });
+      } finally {
+        setIsSubmitting(false);
       }
     } else {
-      // For pro bono disputes, create directly
-      await createDisputeOffchain();
+      // Pro Bono flow - use existing createDisputeOffchain
+      await createDisputeOffchain(
+        form.title,
+        form.description,
+        requestKind,
+        cleanedDefendant,
+        form.claim,
+        cleanedWitnesses,
+        files,
+      );
     }
   };
-
   // Retry transaction function
   const handleRetryTransaction = async () => {
     if (form.kind === "Paid") {
@@ -787,9 +863,7 @@ export default function OpenDisputeModal({
     e.stopPropagation();
   }, []);
 
-  // Disable form when submitting or processing transaction
-  const isDisabled =
-    isSubmitting || isProcessing || transactionStep === "pending";
+  const isDisabled = isSubmitting;
 
   if (!isOpen) return null;
 
@@ -938,6 +1012,31 @@ export default function OpenDisputeModal({
                   ))}
                 </div>
               </div>
+
+              {/* Smart Contract Info for Paid Disputes */}
+              {form.kind === "Paid" &&
+                transactionStep === "idle" &&
+                !isSubmitting && (
+                  <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-4">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-5 w-5 text-cyan-300" />
+                      <h4 className="text-sm font-medium text-cyan-200">
+                        Smart Contract Transaction Required
+                      </h4>
+                    </div>
+                    <p className="mt-2 text-xs text-cyan-300/80">
+                      For paid disputes, you'll need to confirm a transaction in
+                      your wallet to record the dispute on-chain. This ensures
+                      transparency and security for your case.
+                    </p>
+                    <div className="mt-3 text-xs text-cyan-400">
+                      <div className="flex items-center gap-1">
+                        <span>•</span>
+                        <span>Network: {networkInfo.chainName}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               {/* Defendant Field */}
               <div>
@@ -1245,31 +1344,6 @@ export default function OpenDisputeModal({
                 </Button>
               </div>
             </form>
-
-            {/* Smart Contract Info for Paid Disputes */}
-            {form.kind === "Paid" &&
-              transactionStep === "idle" &&
-              !isSubmitting && (
-                <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-4">
-                  <div className="flex items-center gap-2">
-                    <Wallet className="h-5 w-5 text-cyan-300" />
-                    <h4 className="text-sm font-medium text-cyan-200">
-                      Smart Contract Transaction Required
-                    </h4>
-                  </div>
-                  <p className="mt-2 text-xs text-cyan-300/80">
-                    For paid disputes, you'll need to confirm a transaction in
-                    your wallet to record the dispute on-chain. This ensures
-                    transparency and security for your case.
-                  </p>
-                  <div className="mt-3 text-xs text-cyan-400">
-                    <div className="flex items-center gap-1">
-                      <span>•</span>
-                      <span>Network: {networkInfo.chainName}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
           </div>
         </motion.div>
       </motion.div>

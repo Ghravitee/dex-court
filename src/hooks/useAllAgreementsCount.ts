@@ -50,7 +50,7 @@ export function useAllAgreementsCount() {
     } catch (error) {
       console.error("Failed to fetch agreements count:", error);
       // Fallback to a reasonable default
-      setAgreementsCount(33); // Based on your Postman response
+      setAgreementsCount(0); // Based on your Postman response
     } finally {
       setLoading(false);
     }
