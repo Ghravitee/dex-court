@@ -1282,7 +1282,7 @@ export default function DisputeDetails() {
       <div className="flex flex-col justify-between gap-2 sm:flex-row">
         {/* Back Button */}
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="grid grid-cols-2 gap-2">
           <Button
             onClick={() => navigate("/disputes")}
             variant="outline"
@@ -1294,21 +1294,7 @@ export default function DisputeDetails() {
             </p>
           </Button>
 
-          <div className="flex flex-wrap gap-3">
-            {/* Role Badge */}
-            {isUserJudge() && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
-                <Gavel className="h-3 w-3" />
-                Judge
-              </span>
-            )}
-            {isUserCommunity() && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
-                <Users className="h-3 w-3" />
-                <p className="block">Community</p>
-              </span>
-            )}
-            {/* Status Badge */}
+          <div className="flex items-center gap-2">
             <div>
               {dispute.status === "Settled" ? (
                 <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
@@ -1336,6 +1322,20 @@ export default function DisputeDetails() {
                 </span>
               )}
             </div>
+            {/* Role Badge */}
+            {isUserJudge() && (
+              <span className="flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
+                <Gavel className="h-3 w-3" />
+                Judge
+              </span>
+            )}
+            {isUserCommunity() && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
+                <Users className="h-3 w-3" />
+                <p className="block">Community</p>
+              </span>
+            )}
+            {/* Status Badge */}
           </div>
         </div>
         {/* Right Side Actions */}
@@ -1356,7 +1356,7 @@ export default function DisputeDetails() {
           {dispute?.status === "Pending" && (
             <Button
               variant="outline"
-              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
               onClick={handleEscalateToVote}
               disabled={escalating}
             >
@@ -1373,7 +1373,7 @@ export default function DisputeDetails() {
           {canFinalize && (
             <Button
               variant="outline"
-              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
               onClick={handleFinalizeVote}
               disabled={finalizing}
             >
@@ -1411,7 +1411,7 @@ export default function DisputeDetails() {
                 dispute.agreement?.type === 2 && (
                   <Button
                     variant="outline"
-                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+                    className="hidden border-green-400/30 text-green-300 hover:bg-green-500/10"
                     onClick={() => setSettleModalOpen(true)}
                     disabled={
                       !escrowContractAddress ||
@@ -1468,7 +1468,7 @@ export default function DisputeDetails() {
       {/* Header Card */}
       {/* Header Card */}
       {/* Agreement and Contract Information Panel */}
-      <div className="">
+      <div className="hidden">
         <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
           <FileText className="h-5 w-5" />
           Agreement & Contract Details

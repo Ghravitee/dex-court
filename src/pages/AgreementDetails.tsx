@@ -26,16 +26,11 @@ import {
   PackageCheck,
   Ban,
   Info,
-  // Hourglass,
   Download,
-  // Loader2,
-  // CheckCircle2,
-  // AlertCircle,
   Wallet,
   Scale,
   AlertCircle,
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -55,13 +50,9 @@ import OpenDisputeModal from "../components/OpenDisputeModal";
 import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
 import { disputeService } from "../services/disputeServices";
-// import OpenPendingDisputeModal from "../components/OpenPendingDisputeModal";
-// import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-// import { VOTING_ABI, VOTING_CA } from "../web3/config";
-// import { getVoteConfigs } from "../web3/readContract";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
-import { TransactionStatus } from "../components/TransactionStatus";
+// import { TransactionStatus } from "../components/TransactionStatus";
 import { connectSocket } from "../services/socket";
 import { Socket } from "socket.io-client";
 
@@ -691,14 +682,6 @@ const shouldShowDeliveryReviewButtons = (agreement: any, currentUser: any) => {
 
   const initiatedBy = getDeliveryInitiatedBy(agreement, currentUser);
 
-  console.log("🔍 Delivery Review Check:", {
-    status: agreement.status,
-    isDeliveryPending,
-    initiatedBy,
-    currentUsername: currentUser.username,
-    shouldShow: initiatedBy === "other", // Show buttons to the OTHER party
-  });
-
   // Show review buttons to the party that did NOT initiate delivery
   return initiatedBy === "other";
 };
@@ -1020,8 +1003,8 @@ const RejectDeliveryModal = ({
   isSubmitting: boolean;
   agreement: any;
 }) => {
-  const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue>(
-    DisputeTypeEnum.ProBono,
+  const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue | null>(
+    null,
   );
   const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
@@ -1033,12 +1016,14 @@ const RejectDeliveryModal = ({
     return 100000 + (array[0] % 900000);
   }, []);
 
+  // In RejectDeliveryModal.tsx
   const handleSubmit = async () => {
+    if (!requestKind) {
+      toast.error("Please select a dispute type");
+      return;
+    }
     if (!claim.trim()) {
-      toast.error("Claim description is required", {
-        description: "Please provide a reason for rejecting the delivery.",
-        duration: 3000,
-      });
+      toast.error("Claim description is required");
       return;
     }
 
@@ -1047,20 +1032,18 @@ const RejectDeliveryModal = ({
       requestKind:
         requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
       chainId: networkInfo.chainId,
-      votingId: votingIdToUse,
+      votingId: votingIdToUse, // This is the generated ID
     });
 
     try {
-      // For BOTH Pro Bono and Paid, use onConfirm
-      // The pending modal will handle the smart contract for paid disputes
+      // Pass the votingId to onConfirm
       await onConfirm(
         claim,
         requestKind,
         networkInfo.chainId,
-        votingIdToUse.toString(),
+        votingIdToUse.toString(), // Make sure this is passed correctly
       );
 
-      // Clear claim and close modal
       setClaim("");
       onClose();
     } catch (error: any) {
@@ -1400,7 +1383,7 @@ const PendingDisputeModal = ({
   useEffect(() => {
     if (isSuccess && transactionHash) {
       console.log(
-        `✅ [PendingDisputeModal] Transaction successful! Hash: ${transactionHash}, Flow: ${flow}`,
+        `✅ [PendingDisputeModal] Transaction successful! Hash: ${transactionHash}, Flow: ${flow}, Voting ID: ${votingId}`,
       );
 
       setModalState("closing");
@@ -1417,7 +1400,7 @@ const PendingDisputeModal = ({
       // We'll let the WebSocket event handle closing the modal
       // The onDisputeCreated will be called when WebSocket event arrives
     }
-  }, [isSuccess, transactionHash, flow, onDisputeCreated]);
+  }, [isSuccess, transactionHash, flow, onDisputeCreated, votingId]);
 
   // Handle transaction error
   useEffect(() => {
@@ -1481,52 +1464,21 @@ const PendingDisputeModal = ({
     await retryTransaction(votingId);
   }, [votingId, flow, retryTransaction]);
 
-  // Auto-start transaction for open dispute flow when modal opens
-  useEffect(() => {
-    if (
-      isOpen &&
-      flow === "open" &&
-      votingId &&
-      !userInitiated &&
-      transactionStep === "idle" &&
-      !hasStartedTransaction.current // Prevent double execution
-    ) {
-      console.log(
-        `🚀 [PendingDisputeModal] Auto-starting payment for open dispute flow`,
-      );
-      hasStartedTransaction.current = true;
-      handleStartPayment();
-    }
-  }, [
-    isOpen,
-    flow,
-    votingId,
-    userInitiated,
-    transactionStep,
-    handleStartPayment,
-  ]);
   // Get custom status messages and icons based on modal state and flow
   const getStatusConfig = () => {
-    // Initial state - waiting for user to click (for reject flow) or auto-starting (for open flow)
+    // Initial state - waiting for user to click (for both flows)
     if (
       modalState === "initializing" &&
       transactionStep === "idle" &&
       !userInitiated
     ) {
       return {
-        title: flow === "open" ? "Processing Payment..." : "Ready to Pay",
+        title: "Ready to Pay",
         description:
-          flow === "open"
-            ? "Automatically processing your payment. Please confirm in your wallet."
-            : "Click the button below to start the payment process for your dispute.",
-        icon:
-          flow === "open" ? (
-            <Loader2 className="h-12 w-12 animate-spin text-blue-400" />
-          ) : (
-            <Wallet className="h-12 w-12 text-yellow-400" />
-          ),
-        spinner: flow === "open",
-        className: flow === "open" ? "text-blue-400" : "text-yellow-400",
+          "Click the button below to start the payment process for your dispute.",
+        icon: <Wallet className="h-12 w-12 text-yellow-400" />,
+        spinner: false,
+        className: "text-yellow-400",
       };
     }
 
@@ -1545,8 +1497,8 @@ const PendingDisputeModal = ({
           title: "Payment Successful!",
           description:
             flow === "reject"
-              ? "Your dispute is now active. Redirecting to dispute page..."
-              : "Your dispute is now active. Redirecting to dispute page...",
+              ? "Your dispute is now active."
+              : "Your dispute is now active.",
           icon: <CheckCircle className="h-12 w-12 text-green-400" />,
           spinner: false,
           className: "text-green-400",
@@ -1557,7 +1509,7 @@ const PendingDisputeModal = ({
           description:
             transactionError?.message ||
             "The transaction could not be completed.",
-          icon: <AlertCircle className="h-12 w-12 text-red-400" />,
+          icon: <AlertCircle className="h-12 w-12 text-red-500" />,
           spinner: false,
           className: "text-red-400",
         };
@@ -1622,16 +1574,14 @@ const PendingDisputeModal = ({
             <p className="text-sm text-purple-300">
               {transactionStep === "success"
                 ? "Your dispute is now active"
-                : flow === "reject"
-                  ? "Complete the transaction to activate your dispute"
-                  : "Complete the transaction to activate your dispute"}
+                : "Complete the transaction to activate your dispute"}
             </p>
           </div>
         </div>
 
         {/* Main Content */}
         <div className="mb-6">
-          <div className="mb-6">
+          {/* <div className="mb-6">
             <TransactionStatus
               status={transactionStep}
               onRetry={handleRetryPayment}
@@ -1640,7 +1590,7 @@ const PendingDisputeModal = ({
               showRetryButton={true}
               className={statusConfig.className}
             />
-          </div>
+          </div> */}
 
           {/* Status Icon and Message */}
           <div className="mb-8 flex flex-col items-center justify-center text-center">
@@ -1651,7 +1601,9 @@ const PendingDisputeModal = ({
               >
                 {statusConfig.title}
               </h3>
-              <p className="max-w-md truncate text-sm text-purple-200/80">
+              <p
+                className={`max-w-md truncate text-sm ${statusConfig.className}`}
+              >
                 {statusConfig.description}
               </p>
             </div>
@@ -1676,7 +1628,7 @@ const PendingDisputeModal = ({
           )}
 
           {/* Transaction Hash Display - This will now show for both flows */}
-          {transactionHash && showTransactionHash}
+          <div className="mb-2">{transactionHash && showTransactionHash}</div>
 
           {/* Transaction Information */}
           <div className="space-y-4">
@@ -1723,7 +1675,7 @@ const PendingDisputeModal = ({
             </div>
 
             {/* Error details for debugging */}
-            {transactionError && (
+            {/* {transactionError && (
               <div className="rounded-lg border border-red-500/30 bg-red-900/20 p-4">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
@@ -1735,45 +1687,32 @@ const PendingDisputeModal = ({
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons - Now both flows show the Pay button */}
         <div className="flex justify-end space-x-3">
-          {transactionStep === "idle" &&
-            !userInitiated &&
-            flow === "reject" && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                  disabled={isProcessing}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="neon"
-                  onClick={handleStartPayment}
-                  className="neon-hover border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
-                  disabled={isProcessing}
-                >
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Pay & Activate Dispute
-                </Button>
-              </>
-            )}
-
-          {transactionStep === "idle" && flow === "open" && (
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="border-gray-600 text-gray-300 hover:bg-gray-800"
-              disabled={isProcessing}
-            >
-              Close
-            </Button>
+          {transactionStep === "idle" && !userInitiated && (
+            <>
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                disabled={isProcessing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="neon"
+                onClick={handleStartPayment}
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+                disabled={isProcessing}
+              >
+                <Wallet className="mr-2 h-4 w-4" />
+                Pay & Activate Dispute
+              </Button>
+            </>
           )}
 
           {transactionStep === "error" && (
@@ -1788,7 +1727,7 @@ const PendingDisputeModal = ({
               <Button
                 variant="outline"
                 onClick={handleRetryPayment}
-                className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300"
                 disabled={isProcessing}
               >
                 {isProcessing ? (
@@ -1834,6 +1773,7 @@ const PendingDisputeModal = ({
     </div>
   );
 };
+
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1874,9 +1814,6 @@ export default function AgreementDetails() {
     votingId: null,
     flow: "reject",
   });
-
-  const [isTransitioningToPendingModal, setIsTransitioningToPendingModal] =
-    useState(false);
 
   // ============= WEBSOCKET REF =============
   const socketRef = useRef<TypedSocket | null>(null);
@@ -2495,11 +2432,12 @@ export default function AgreementDetails() {
     setIsRejectModalOpen(true);
   };
 
+  // In AgreementDetails.tsx - Update handleConfirmReject
   const handleConfirmReject = async (
     claim: string,
     requestKind: DisputeTypeEnumValue,
     chainId?: number,
-    votingId?: string,
+    votingId?: string, // This comes from RejectDeliveryModal
     transactionHash?: string,
   ) => {
     if (!id || !agreement) return;
@@ -2507,7 +2445,10 @@ export default function AgreementDetails() {
     setIsSubmittingReject(true);
     try {
       const agreementId = parseInt(id);
-      const votingIdToUse = votingId || generateVotingId();
+      // Use the votingId passed from the modal, NOT generate a new one
+      const votingIdToUse = votingId || generateVotingId(); // Fallback just in case
+
+      console.log("📝 [handleConfirmReject] Using voting ID:", votingIdToUse);
 
       const payload: AgreementDeliveryRejectedRequest = {
         votingId: votingIdToUse.toString(),
@@ -2521,11 +2462,14 @@ export default function AgreementDetails() {
         agreementId,
         payload,
       );
-      console.log("✅ Dispute created:", response);
+      console.log(
+        response,
+        "✅ Dispute created with voting ID:",
+        votingIdToUse,
+      );
 
       // Store the voting ID and show pending modal for paid disputes
       if (requestKind === DisputeTypeEnum.Paid && !transactionHash) {
-        // For paid disputes: close reject modal, status will auto-show pending modal
         setIsRejectModalOpen(false);
         setRejectClaim("");
 
@@ -2533,18 +2477,11 @@ export default function AgreementDetails() {
         setRejectDisputeStatus("Pending Payment");
         setDisputeStatus("Pending Payment");
 
-        // SHOW LOADER DURING TRANSITION
-        setIsTransitioningToPendingModal(true);
-
-        // Small delay to ensure smooth transition
-        setTimeout(() => {
-          setIsTransitioningToPendingModal(false);
-          setPendingModalState({
-            isOpen: true,
-            votingId: parseInt(votingIdToUse),
-            flow: "reject",
-          });
-        }, 15000);
+        setPendingModalState({
+          isOpen: true,
+          votingId: parseInt(votingIdToUse), // Use the SAME voting ID
+          flow: "reject",
+        });
 
         toast.success(
           "Dispute created! Please confirm the transaction in your wallet.",
@@ -2621,18 +2558,12 @@ export default function AgreementDetails() {
       return;
     }
 
-    // Show transition loader briefly
-    setIsTransitioningToPendingModal(true);
-
-    // Small delay for smooth transition
-    setTimeout(() => {
-      setIsTransitioningToPendingModal(false);
-      setPendingModalState({
-        isOpen: true,
-        votingId: votingIdAsNumber, // Now it's definitely a valid number
-        flow: "open",
-      });
-    }, 500);
+    // REMOVE THE TRANSITION LOADER AND OPEN MODAL IMMEDIATELY
+    setPendingModalState({
+      isOpen: true,
+      votingId: votingIdAsNumber,
+      flow: "open",
+    });
   };
 
   const handleDisputeCreated = useCallback(() => {
@@ -2650,31 +2581,39 @@ export default function AgreementDetails() {
         typeof votingId === "string" ? parseInt(votingId, 10) : votingId;
 
       if (isNaN(votingIdAsNumber)) {
-        console.error("Invalid voting ID format:", votingId);
+        console.error("❌ Invalid voting ID format:", votingId);
         toast.error("Invalid voting ID received");
         return;
       }
+
+      console.log("📝 Storing voting ID for payment:", votingIdAsNumber);
+
+      // Store the voting ID from the API response
+      setDisputeVotingId(votingIdAsNumber);
+
+      // Also update the agreement object to include this voting ID
+      setAgreement((prev) =>
+        prev
+          ? {
+              ...prev,
+              disputeVotingId: votingIdAsNumber,
+            }
+          : null,
+      );
 
       // Set dispute status to Pending Payment
       setDisputeStatus("Pending Payment");
       setRejectDisputeStatus("Pending Payment");
 
-      // Show transition loader
-      setIsTransitioningToPendingModal(true);
-
-      // Open pending modal after a brief delay
-      setTimeout(() => {
-        setIsTransitioningToPendingModal(false);
-        setPendingModalState({
-          isOpen: true,
-          votingId: votingIdAsNumber,
-          flow,
-        });
-      }, 1500);
+      // REMOVE THE TRANSITION LOADER AND OPEN MODAL IMMEDIATELY
+      setPendingModalState({
+        isOpen: true,
+        votingId: votingIdAsNumber, // Use the API's voting ID
+        flow,
+      });
     },
     [],
   );
-
   // For the "Mark as Delivered" button condition:
 
   const disputeTriggeredByRejection = agreement
@@ -2936,7 +2875,10 @@ export default function AgreementDetails() {
   const isCurrentUserInitiatedCancellation = cancellationInitiatedBy === "user";
 
   // Dispute permissions
-  const canOpenDispute = agreement?.status === "signed" && isParticipant;
+  const canOpenDispute =
+    (agreement?.status === "signed" ||
+      agreement?.status === "pending_approval") &&
+    isParticipant;
   const canCancelDispute = agreement?.status === "disputed" && isParticipant;
 
   const completionDate = getCompletionDate(agreement?._raw);
@@ -3147,59 +3089,6 @@ export default function AgreementDetails() {
                     View Dispute
                   </Link>
                 )}
-
-              {disputeStatus === "Pending Payment" && (
-                <div className="mt-2 flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      if (agreement?.disputeId) {
-                        const disputeIdNum = parseInt(agreement.disputeId);
-                        if (!isNaN(disputeIdNum)) {
-                          try {
-                            const disputeDetails =
-                              await disputeService.getDisputeDetails(
-                                disputeIdNum,
-                              );
-                            const transformedDispute =
-                              disputeService.transformDisputeDetailsToRow(
-                                disputeDetails,
-                              );
-
-                            setDisputeStatus(transformedDispute.status);
-
-                            if (isDisputeTriggeredByRejection(agreement)) {
-                              setRejectDisputeStatus(transformedDispute.status);
-                            }
-
-                            if (
-                              transformedDispute.status !== "Pending Payment"
-                            ) {
-                              setPendingModalState({
-                                isOpen: false,
-                                votingId: null,
-                                flow: "reject",
-                              });
-                              toast.success("Dispute status updated!");
-                            }
-                          } catch (error) {
-                            console.error(
-                              "Failed to refresh dispute status:",
-                              error,
-                            );
-                            toast.error("Failed to refresh status");
-                          }
-                        }
-                      }
-                    }}
-                    className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refresh Status
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
 
@@ -4016,21 +3905,11 @@ export default function AgreementDetails() {
                   </h3>
                   <Button
                     variant="outline"
-                    className="w-full border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300"
-                    onClick={handleCompletePayment} // Use the new function
-                    disabled={isTransitioningToPendingModal}
+                    className="w-fit border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300"
+                    onClick={handleCompletePayment}
                   >
-                    {isTransitioningToPendingModal ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Wallet className="mr-2 h-4 w-4" />
-                        Complete Payment for Dispute
-                      </>
-                    )}
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Complete Payment for Dispute
                   </Button>
                   <p className="mt-3 text-sm text-yellow-300/80">
                     Payment required to activate your dispute. Click the button
@@ -4375,39 +4254,6 @@ export default function AgreementDetails() {
           </div>
         </div>
       </div>
-
-      {/* Simple transition loader */}
-      {isTransitioningToPendingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-900/30 to-black/90 p-10 shadow-2xl sm:p-12">
-            <div className="flex flex-col items-center space-y-6">
-              {/* Dotted Spinner - dots animate with staggered timing */}
-              <div className="relative flex h-20 w-20 items-center justify-center sm:h-24 sm:w-24">
-                <div className="flex space-x-2">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="h-3 w-3 rounded-full bg-purple-400 sm:h-4 sm:w-4"
-                      style={{
-                        animation: `bounce 1.4s infinite ease-in-out ${i * 0.16}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2 text-center">
-                <p className="text-base font-medium text-purple-200 sm:text-lg">
-                  Preparing dispute payment...
-                </p>
-                <p className="text-sm text-purple-300/70 sm:text-base">
-                  Just a moment
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isDisputeModalOpen && disputeStatus !== "Pending Payment" && (
         <OpenDisputeModal

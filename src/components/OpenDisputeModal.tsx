@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import {
   Search,
@@ -13,8 +13,6 @@ import {
   ChevronRight,
   X,
   Wallet,
-  // CheckCircle2,
-  // AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { disputeService } from "../services/disputeServices";
@@ -30,7 +28,6 @@ import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
-import { TransactionStatus } from "../components/TransactionStatus";
 
 const formatDefendantDisplay = (defendant: string): string => {
   const cleanDefendant = defendant.replace(/^@/, "");
@@ -77,7 +74,7 @@ interface OpenDisputeModalProps {
   onClose: () => void;
   agreement: any;
   onDisputeCreated: () => void;
-  onPaidDisputeCreated?: (votingId: number, flow: "open") => void; // Add flow parameter
+  onPaidDisputeCreated?: (votingId: number | string, flow: "open") => void;
 }
 
 const UserSearchResult = ({
@@ -166,17 +163,8 @@ export default function OpenDisputeModal({
   const [isDragOver, setIsDragOver] = useState(false);
 
   // Use the custom hook for transaction management
-  const {
-    transactionStep,
-    transactionHash,
-    transactionError,
-    // createDisputeOnchain,
-    retryTransaction,
-    resetTransaction,
-    // isPending,
-    isSuccess,
-    // isError,
-  } = useDisputeTransaction(networkInfo.chainId);
+  const { transactionStep, transactionHash, resetTransaction, isSuccess } =
+    useDisputeTransaction(networkInfo.chainId);
 
   // Add this ref to track if form has been initialized
   const hasInitialized = useRef(false);
@@ -185,13 +173,6 @@ export default function OpenDisputeModal({
   const formRef = useRef(form);
   const agreementIdRef = useRef(agreement?.id);
   const networkInfoRef = useRef(networkInfo);
-
-  // Generate random voting ID
-  const votingIdToUse = useMemo(() => {
-    const array = new Uint32Array(1);
-    crypto.getRandomValues(array);
-    return 100000 + (array[0] % 900000);
-  }, []);
 
   // Update refs when dependencies change
   useEffect(() => {
@@ -275,7 +256,6 @@ export default function OpenDisputeModal({
         transactionHash,
       );
 
-      // Show success message
       toast.success("Paid dispute created successfully!", {
         description:
           "Transaction confirmed on blockchain. The dispute is now active.",
@@ -289,7 +269,7 @@ export default function OpenDisputeModal({
     }
   }, [isSuccess, transactionHash, form.kind, resetFormAndClose]);
 
-  // Create dispute in backend (used for BOTH Pro Bono AND Paid)
+  // Create dispute in backend (used for Pro Bono only now)
   const createDisputeOffchain = useCallback(
     async (
       title: string,
@@ -324,7 +304,7 @@ export default function OpenDisputeModal({
           transactionHash,
         });
 
-        // Create the dispute
+        // Create the dispute - let backend generate voting ID
         const result = await disputeService.createDisputeFromAgreement(
           parseInt(agreement.id),
           {
@@ -334,7 +314,6 @@ export default function OpenDisputeModal({
             defendant,
             claim,
             witnesses,
-            onchainVotingId: votingIdToUse.toString(),
             chainId: networkInfo.chainId,
             txHash: transactionHash,
           },
@@ -344,15 +323,9 @@ export default function OpenDisputeModal({
 
         console.log("✅ Dispute created successfully:", result);
 
-        if (requestKind === DisputeTypeEnum.Paid) {
-          toast.success("Paid dispute created successfully!", {
-            description: `${title} has been recorded on-chain and in our system`,
-          });
-        } else {
-          toast.success("Pro Bono dispute created successfully!", {
-            description: `${title} has been submitted for review`,
-          });
-        }
+        toast.success("Pro Bono dispute created successfully!", {
+          description: `${title} has been submitted for review`,
+        });
 
         // Reset form and close modal
         resetFormAndClose();
@@ -368,13 +341,7 @@ export default function OpenDisputeModal({
         setIsSubmitting(false);
       }
     },
-    [
-      agreement?.id,
-      networkInfo.chainId,
-      votingIdToUse,
-      isSubmitting,
-      resetFormAndClose,
-    ],
+    [agreement?.id, networkInfo.chainId, isSubmitting, resetFormAndClose],
   );
 
   const handleWitnessSearch = useCallback(
@@ -446,7 +413,6 @@ export default function OpenDisputeModal({
 
     const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-    // Double-check validation on selection
     if (username.toLowerCase() === currentUserTelegram.toLowerCase()) {
       toast.error("Invalid Witness", {
         description:
@@ -474,7 +440,6 @@ export default function OpenDisputeModal({
     updateWitness(index, value);
     setWitnessSearchQuery(value);
 
-    // If the input loses focus and has a value, validate it
     if (value && value.length >= 2) {
       const cleanWitness = value.startsWith("@") ? value.substring(1) : value;
       const cleanDefendant = form.defendant.startsWith("@")
@@ -482,13 +447,12 @@ export default function OpenDisputeModal({
         : form.defendant;
       const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-      // Show warning toast if user tries to add themselves or defendant
       if (cleanWitness.toLowerCase() === currentUserTelegram.toLowerCase()) {
         toast.warning("Invalid Witness", {
           description:
             "You cannot add yourself as a witness. Please remove this entry.",
           duration: 5000,
-          id: "self-witness-warning", // Prevent duplicate toasts
+          id: "self-witness-warning",
         });
       } else if (cleanWitness.toLowerCase() === cleanDefendant.toLowerCase()) {
         toast.warning("Invalid Witness", {
@@ -767,15 +731,7 @@ export default function OpenDisputeModal({
     if (requestKind === DisputeTypeEnum.Paid) {
       setIsSubmitting(true);
       try {
-        console.log("🚀 Creating PAID dispute from agreement...");
-        console.log("📋 Paid dispute details:", {
-          agreementId: agreement?.id,
-          title: form.title,
-          votingId: votingIdToUse,
-          chainId: networkInfo.chainId,
-        });
-
-        // Create the dispute via API first (no transaction hash yet)
+        // Don't send onchainVotingId - let backend generate it
         const result = await disputeService.createDisputeFromAgreement(
           parseInt(agreement.id),
           {
@@ -785,7 +741,6 @@ export default function OpenDisputeModal({
             defendant: cleanedDefendant,
             claim: form.claim,
             witnesses: cleanedWitnesses,
-            onchainVotingId: votingIdToUse.toString(),
             chainId: networkInfo.chainId,
             txHash: transactionHash,
           },
@@ -793,19 +748,22 @@ export default function OpenDisputeModal({
           networkInfo.chainId,
         );
 
-        console.log("✅ Paid dispute created successfully:", result);
+        // Extract voting ID from API response
+        const votingIdFromResponse = result.votingId || result.id;
 
-        // Show success message
+        console.log(
+          "🎯 Using voting ID from API response:",
+          votingIdFromResponse,
+        );
+
         toast.success("Dispute created! Complete payment to activate.", {
           description: "You'll be redirected to complete the payment.",
           duration: 5000,
         });
 
-        // Tell parent to show transition loader and prepare payment modal
-        // This will trigger the isTransitioningToPendingModal in AgreementDetails
-        onPaidDisputeCreated?.(votingIdToUse, "open");
+        // Pass the API's voting ID to the parent
+        onPaidDisputeCreated?.(votingIdFromResponse, "open");
 
-        // Close this modal
         onClose();
       } catch (error: any) {
         console.error("❌ Failed to create paid dispute:", error);
@@ -823,7 +781,7 @@ export default function OpenDisputeModal({
         setIsSubmitting(false);
       }
     } else {
-      // Pro Bono flow - use existing createDisputeOffchain
+      // Pro Bono flow
       await createDisputeOffchain(
         form.title,
         form.description,
@@ -833,12 +791,6 @@ export default function OpenDisputeModal({
         cleanedWitnesses,
         files,
       );
-    }
-  };
-  // Retry transaction function
-  const handleRetryTransaction = async () => {
-    if (form.kind === "Paid") {
-      await retryTransaction(votingIdToUse);
     }
   };
 
@@ -909,31 +861,6 @@ export default function OpenDisputeModal({
                 Creating dispute from: <strong>{agreement?.title}</strong>
               </p>
             </div>
-
-            {/* Transaction Status Display */}
-            {transactionStep !== "idle" && (
-              <div className="mb-4">
-                <TransactionStatus
-                  status={transactionStep}
-                  onRetry={handleRetryTransaction}
-                  title={
-                    transactionStep === "pending"
-                      ? "Processing Transaction..."
-                      : transactionStep === "success"
-                        ? "Payment Successful!"
-                        : "Payment Failed"
-                  }
-                  description={
-                    transactionStep === "pending"
-                      ? "Please confirm the transaction in your wallet to complete the payment."
-                      : transactionStep === "success"
-                        ? "Your paid dispute is being activated..."
-                        : transactionError?.message ||
-                          "The transaction could not be completed. You can retry the transaction."
-                  }
-                />
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Title */}
@@ -1324,21 +1251,17 @@ export default function OpenDisputeModal({
                   type="submit"
                   variant="neon"
                   className="neon-hover"
-                  disabled={isDisabled}
+                  disabled={isSubmitting}
                 >
-                  {isSubmitting || transactionStep === "pending" ? (
+                  {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {form.kind === "Paid" && transactionStep === "pending"
-                        ? "Processing Transaction..."
-                        : "Creating Dispute..."}
+                      Creating Dispute...
                     </>
                   ) : (
                     <>
                       <Scale className="mr-2 h-4 w-4" />
-                      {form.kind === "Paid"
-                        ? "Pay & Open Dispute"
-                        : "Open Dispute"}
+                      Open Dispute
                     </>
                   )}
                 </Button>

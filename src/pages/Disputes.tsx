@@ -381,6 +381,38 @@ export default function Disputes() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Handle status dropdown
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+
+      // Handle defendant suggestions
+      if (
+        defendantSearchRef.current &&
+        !defendantSearchRef.current.contains(event.target as Node)
+      ) {
+        setShowDefendantSuggestions(false);
+      }
+
+      // Handle witness suggestions
+      if (
+        witnessSearchRef.current &&
+        !witnessSearchRef.current.contains(event.target as Node)
+      ) {
+        setShowWitnessSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []); // Empty dependency array is fine since refs are stable
+
   // Load disputes with server-side filtering, searching, and pagination
   const loadDisputes = useCallback(
     async (manualRetry = false) => {
@@ -1349,6 +1381,7 @@ export default function Disputes() {
           </div>
 
           {/* Table */}
+          {/* Table */}
           <div className="rounded-xl border border-b-2 border-white/10 p-0 ring-1 ring-white/10">
             <div className="flex items-center justify-between border-b border-white/10 p-5">
               <h3 className="font-semibold text-white/90">Disputes</h3>
@@ -1423,17 +1456,19 @@ export default function Disputes() {
                           {new Date(d.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-5 py-4 font-medium text-white/90">
-                          <div className="max-w-[200px]">
+                          <div className="max-w-[150px] lg:max-w-[200px]">
                             <div className="truncate font-medium">
                               {d.title}
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4">{d.request}</td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          {d.request}
+                        </td>
                         <td className="px-5 py-4 text-white/90">
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-[180px] items-center gap-2">
                             {/* Plaintiff with Avatar */}
-                            <div className="flex items-center gap-1">
+                            <div className="flex min-w-0 flex-shrink items-center gap-1">
                               <UserAvatar
                                 userId={
                                   d.plaintiffData?.userId ||
@@ -1453,19 +1488,19 @@ export default function Disputes() {
                                     encodeURIComponent(cleanUsername);
                                   navigate(`/profile/${encodedUsername}`);
                                 }}
-                                className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                className="max-w-[60px] truncate text-cyan-300 hover:text-cyan-200 hover:underline lg:max-w-none"
                               >
                                 {formatPartyDisplay(d.plaintiff)}
                               </button>
                             </div>
 
                             {/* VS Icon */}
-                            <span className="text-cyan-400">
+                            <span className="flex-shrink-0 text-cyan-400">
                               <FaArrowRightArrowLeft />
                             </span>
 
                             {/* Defendant with Avatar */}
-                            <div className="flex items-center gap-1">
+                            <div className="flex min-w-0 flex-shrink items-center gap-1">
                               <UserAvatar
                                 userId={
                                   d.defendantData?.userId ||
@@ -1485,7 +1520,7 @@ export default function Disputes() {
                                     encodeURIComponent(cleanUsername);
                                   navigate(`/profile/${encodedUsername}`);
                                 }}
-                                className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                className="max-w-[60px] truncate text-cyan-300 hover:text-cyan-200 hover:underline lg:max-w-none"
                               >
                                 {formatPartyDisplay(d.defendant)}
                               </button>
@@ -1493,13 +1528,13 @@ export default function Disputes() {
                           </div>
                         </td>
                         <td className="px-5 py-4">
-                          <div className="max-w-[250px]">
-                            <div className="text-muted-foreground line-clamp-2 text-xs">
+                          <div className="max-w-[300px] sm:max-w-[250px] md:max-w-[300px] lg:max-w-[350px]">
+                            <div className="text-muted-foreground line-clamp-2 text-xs break-words">
                               {d.claim}
                             </div>
                           </div>
                         </td>
-                        <td className="min-w-[200px] px-2 py-4">
+                        <td className="px-2 py-4 whitespace-nowrap">
                           {d.status === "Settled" ? (
                             <span className="badge badge-blue">Settled</span>
                           ) : d.status === "Pending" ? (
@@ -1510,10 +1545,8 @@ export default function Disputes() {
                             <span className="badge badge-orange">
                               Pending Payment
                             </span>
-                          ) : d.status === "Pending Locking Funds" ? ( // Add this condition
+                          ) : d.status === "Pending Locking Funds" ? (
                             <span className="badge badge-orange">
-                              {" "}
-                              {/* You may need to define a purple badge class */}
                               Pending Locking Funds
                             </span>
                           ) : (

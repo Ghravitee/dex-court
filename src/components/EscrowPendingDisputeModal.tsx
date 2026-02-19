@@ -4,7 +4,6 @@ import { Button } from "../components/ui/button";
 import {
   Scale,
   X,
-  //   Wallet,
   Info,
   Clock,
   AlertTriangle,
@@ -13,11 +12,12 @@ import {
   AlertCircle,
   DollarSign,
   Shield,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
-import { TransactionStatus } from "../components/TransactionStatus";
+// import { TransactionStatus } from "../components/TransactionStatus";
 import { useEscrowDisputeTransaction } from "../hooks/useEscrowDisputeTransaction";
 
 interface EscrowPendingDisputeModalProps {
@@ -28,7 +28,6 @@ interface EscrowPendingDisputeModalProps {
   votingId: number | string;
   escrowAddress: `0x${string}` | undefined;
   isProBono: boolean;
-
   agreement: any; // The escrow/agreement data
   action: "raise" | "reject"; // Whether this is raising a new dispute or rejecting delivery
 }
@@ -41,15 +40,14 @@ export default function EscrowPendingDisputeModal({
   votingId,
   escrowAddress,
   isProBono,
-
   agreement,
   action,
 }: EscrowPendingDisputeModalProps) {
   const networkInfo = useNetworkEnvironment();
-  const [hasInitiatedTransaction, setHasInitiatedTransaction] = useState(false);
-  const [modalState, setModalState] = useState<
-    "initializing" | "active" | "closing"
-  >("initializing");
+  const [userInitiated, setUserInitiated] = useState(false);
+  const [, setModalState] = useState<"initializing" | "active" | "closing">(
+    "initializing",
+  );
 
   // Convert contractAgreementId to bigint
   const contractIdAsBigInt = useCallback(() => {
@@ -94,112 +92,13 @@ export default function EscrowPendingDisputeModal({
     isTransactionLoading,
   } = useEscrowDisputeTransaction(escrowAddress, networkInfo.chainId);
 
-  // Enhanced logging
+  // Set modal to active when opened (just showing UI, not starting transaction)
   useEffect(() => {
-    console.log("📊 [EscrowPendingDisputeModal] State Update:", {
-      isOpen,
-      votingId,
-      contractAgreementId: contractIdAsBigInt().toString(),
-      transactionStep,
-      isProcessing,
-      transactionHash,
-      hasInitiatedTransaction,
-      modalState,
-      networkInfo,
-      action,
-      isProBono,
-    });
-  }, [
-    isOpen,
-    votingId,
-    contractAgreementId,
-    transactionStep,
-    isProcessing,
-    transactionHash,
-    hasInitiatedTransaction,
-    modalState,
-    networkInfo,
-    action,
-    isProBono,
-    contractIdAsBigInt,
-  ]);
-
-  // Initialize transaction when modal opens
-  useEffect(() => {
-    if (
-      isOpen &&
-      votingId &&
-      contractIdAsBigInt() > 0n &&
-      !hasInitiatedTransaction
-    ) {
-      console.log(
-        `🚀 [EscrowPendingDisputeModal] Initializing transaction for ${action} with voting ID:`,
-        votingId,
-      );
-      console.log("🔗 Chain ID:", networkInfo.chainId);
-      console.log("📄 Agreement:", {
-        id: agreement?.id,
-        title: agreement?.title,
-        contractId: contractIdAsBigInt().toString(),
-      });
-
-      setHasInitiatedTransaction(true);
+    if (isOpen) {
+      console.log(`📂 [EscrowPendingDisputeModal] Modal opened for ${action}`);
       setModalState("active");
-
-      // Start transaction with a small delay
-      const startTransaction = async () => {
-        try {
-          console.log(
-            "⏳ [EscrowPendingDisputeModal] Starting transaction in 500ms...",
-          );
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          if (action === "raise") {
-            console.log(
-              "💰 [EscrowPendingDisputeModal] Calling raiseDisputeOnchain...",
-            );
-            await raiseDisputeOnchain(
-              contractIdAsBigInt(),
-              votingIdAsBigInt(),
-              isProBono,
-            );
-          } else if (action === "reject") {
-            console.log(
-              "💰 [EscrowPendingDisputeModal] Calling rejectDeliveryOnchain...",
-            );
-            await rejectDeliveryOnchain(
-              contractIdAsBigInt(),
-              votingIdAsBigInt(),
-              isProBono,
-            );
-          }
-
-          console.log("✅ [EscrowPendingDisputeModal] Transaction initiated");
-        } catch (error) {
-          console.error(
-            "❌ [EscrowPendingDisputeModal] Failed to start transaction:",
-            error,
-          );
-        }
-      };
-
-      startTransaction();
     }
-  }, [
-    isOpen,
-    votingId,
-    contractAgreementId,
-    hasInitiatedTransaction,
-    raiseDisputeOnchain,
-    rejectDeliveryOnchain,
-    networkInfo.chainId,
-    agreement,
-    action,
-    isProBono,
-
-    contractIdAsBigInt,
-    votingIdAsBigInt,
-  ]);
+  }, [isOpen, action]);
 
   // Handle transaction success
   useEffect(() => {
@@ -240,6 +139,7 @@ export default function EscrowPendingDisputeModal({
 
       // Keep modal open for retry
       setModalState("active");
+      setUserInitiated(false); // Allow user to try again
     }
   }, [
     isError,
@@ -257,10 +157,84 @@ export default function EscrowPendingDisputeModal({
         "♻️ [EscrowPendingDisputeModal] Modal closed, resetting state",
       );
       resetTransaction();
-      setHasInitiatedTransaction(false);
+      setUserInitiated(false);
       setModalState("initializing");
     }
   }, [isOpen, resetTransaction]);
+
+  // MANUAL TRIGGER FUNCTION - User clicks this button to start transaction
+  const handleStartTransaction = useCallback(async () => {
+    if (!votingId || contractIdAsBigInt() === 0n) {
+      console.error(
+        "❌ [EscrowPendingDisputeModal] Cannot start: Missing voting ID or contract ID",
+      );
+      toast.error("Cannot start transaction: Missing required IDs");
+      return;
+    }
+
+    if (userInitiated || isProcessing) {
+      console.log(
+        "⏸️ [EscrowPendingDisputeModal] Transaction already in progress",
+      );
+      return;
+    }
+
+    console.log(
+      `🚀 [EscrowPendingDisputeModal] User initiated transaction for ${action} with voting ID:`,
+      votingId,
+    );
+    console.log("🔗 Chain ID:", networkInfo.chainId);
+    console.log("📄 Agreement:", {
+      id: agreement?.id,
+      title: agreement?.title,
+      contractId: contractIdAsBigInt().toString(),
+    });
+
+    setUserInitiated(true);
+
+    try {
+      if (action === "raise") {
+        console.log(
+          "💰 [EscrowPendingDisputeModal] Calling raiseDisputeOnchain...",
+        );
+        await raiseDisputeOnchain(
+          contractIdAsBigInt(),
+          votingIdAsBigInt(),
+          isProBono,
+        );
+      } else if (action === "reject") {
+        console.log(
+          "💰 [EscrowPendingDisputeModal] Calling rejectDeliveryOnchain...",
+        );
+        await rejectDeliveryOnchain(
+          contractIdAsBigInt(),
+          votingIdAsBigInt(),
+          isProBono,
+        );
+      }
+
+      console.log("✅ [EscrowPendingDisputeModal] Transaction initiated");
+    } catch (error) {
+      console.error(
+        "❌ [EscrowPendingDisputeModal] Failed to start transaction:",
+        error,
+      );
+      setUserInitiated(false); // Allow retry on error
+    }
+  }, [
+    votingId,
+    // contractAgreementId,
+    userInitiated,
+    isProcessing,
+    raiseDisputeOnchain,
+    rejectDeliveryOnchain,
+    networkInfo.chainId,
+    agreement,
+    action,
+    isProBono,
+    contractIdAsBigInt,
+    votingIdAsBigInt,
+  ]);
 
   const handleRetryPayment = useCallback(async () => {
     if (!votingId || contractIdAsBigInt() === 0n) {
@@ -276,6 +250,8 @@ export default function EscrowPendingDisputeModal({
       votingId,
     );
     console.log("🔗 Chain ID:", networkInfo.chainId);
+
+    setUserInitiated(true); // Set initiated state for retry
 
     try {
       if (action === "raise") {
@@ -294,6 +270,7 @@ export default function EscrowPendingDisputeModal({
       console.log("✅ [EscrowPendingDisputeModal] Retry initiated");
     } catch (error) {
       console.error("❌ [EscrowPendingDisputeModal] Retry failed:", error);
+      setUserInitiated(false); // Allow another retry on error
     }
   }, [
     votingId,
@@ -302,65 +279,61 @@ export default function EscrowPendingDisputeModal({
     networkInfo.chainId,
     action,
     isProBono,
-
     contractIdAsBigInt,
     votingIdAsBigInt,
   ]);
 
   // Get custom status messages based on modal state and action
-  const getStatusConfig = () => {
-    const actionText = action === "raise" ? "Dispute" : "Delivery Rejection";
+  // const getStatusConfig = () => {
+  //   const actionText = action === "raise" ? "Dispute" : "Delivery Rejection";
 
-    if (
-      modalState === "initializing" &&
-      !isProcessing &&
-      transactionStep === "idle"
-    ) {
-      return {
-        title: `Initializing ${actionText}...`,
-        description: `Preparing transaction for your ${actionText.toLowerCase()}.`,
-        showSpinner: true,
-        className: "text-blue-400",
-      };
-    }
+  //   // Show ready state when waiting for user to click the button
+  //   if (transactionStep === "idle" && !userInitiated) {
+  //     return {
+  //       title: `Ready to Process Dispute`,
+  //       description: `Click the button below to start the ${actionText.toLowerCase()} process.`,
+  //       showSpinner: false,
+  //       className: "text-yellow-400",
+  //     };
+  //   }
 
-    switch (transactionStep) {
-      case "pending":
-        return {
-          title: `Processing ${actionText}...`,
-          description: isProBono
-            ? "Confirm the transaction in your wallet."
-            : "Confirm the payment transaction in your wallet to complete.",
-          showSpinner: true,
-          className: "text-blue-400",
-        };
-      case "success":
-        return {
-          title: `${actionText} Successful!`,
-          description: `Your ${actionText.toLowerCase()} is now active.`,
-          showSpinner: false,
-          className: "text-green-400",
-        };
-      case "error":
-        return {
-          title: `${actionText} Failed`,
-          description:
-            transactionError?.message ||
-            `The transaction could not be completed.`,
-          showSpinner: false,
-          className: "text-red-400",
-        };
-      default:
-        return {
-          title: `Ready for ${actionText}`,
-          description: "Please confirm the transaction in your wallet.",
-          showSpinner: false,
-          className: "text-yellow-400",
-        };
-    }
-  };
+  //   switch (transactionStep) {
+  //     case "pending":
+  //       return {
+  //         title: `Processing ${actionText}...`,
+  //         description: isProBono
+  //           ? "Confirm the transaction in your wallet."
+  //           : "Confirm the payment transaction in your wallet to complete.",
+  //         showSpinner: true,
+  //         className: "text-blue-400",
+  //       };
+  //     case "success":
+  //       return {
+  //         title: `${actionText} Successful!`,
+  //         description: `Your ${actionText.toLowerCase()} is now active.`,
+  //         showSpinner: false,
+  //         className: "text-green-400",
+  //       };
+  //     case "error":
+  //       return {
+  //         title: `${actionText} Failed`,
+  //         description:
+  //           transactionError?.message ||
+  //           `The transaction could not be completed.`,
+  //         showSpinner: false,
+  //         className: "text-red-400",
+  //       };
+  //     default:
+  //       return {
+  //         title: `Ready for ${actionText}`,
+  //         description: "Please confirm the transaction in your wallet.",
+  //         showSpinner: false,
+  //         className: "text-yellow-400",
+  //       };
+  //   }
+  // };
 
-  const statusConfig = getStatusConfig();
+  // const statusConfig = getStatusConfig();
 
   const handleModalClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -373,14 +346,15 @@ export default function EscrowPendingDisputeModal({
     return null;
   }
 
-  console.log("🎬 [EscrowPendingDisputeModal] Rendering modal with:", {
-    votingId,
-    contractAgreementId: contractIdAsBigInt().toString(),
-    transactionStep,
-    modalState,
-    statusConfig,
-    action,
-  });
+  // console.log("🎬 [EscrowPendingDisputeModal] Rendering modal with:", {
+  //   votingId,
+  //   contractAgreementId: contractIdAsBigInt().toString(),
+  //   transactionStep,
+  //   modalState,
+  //   userInitiated,
+  //   statusConfig,
+  //   action,
+  // });
 
   return (
     <AnimatePresence mode="wait">
@@ -425,7 +399,7 @@ export default function EscrowPendingDisputeModal({
                 onClose();
               }}
               className="text-white/70 hover:text-white"
-              disabled={isProcessing}
+              disabled={isProcessing || transactionStep === "pending"}
             >
               <X className="h-5 w-5" />
             </Button>
@@ -433,7 +407,7 @@ export default function EscrowPendingDisputeModal({
 
           {/* Content */}
           <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
-            <div className="mb-6">
+            {/* <div className="mb-6">
               <TransactionStatus
                 status={transactionStep}
                 onRetry={handleRetryPayment}
@@ -442,7 +416,7 @@ export default function EscrowPendingDisputeModal({
                 showRetryButton={true}
                 className={statusConfig.className}
               />
-            </div>
+            </div> */}
 
             {/* Processing Section */}
             <div className="mb-6 rounded-lg border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-transparent p-6">
@@ -470,13 +444,27 @@ export default function EscrowPendingDisputeModal({
                   <h4 className="mb-2 text-lg font-semibold text-white">
                     {transactionStep === "pending"
                       ? `Processing ${action === "raise" ? "Dispute" : "Rejection"}...`
-                      : `Ready to ${action === "raise" ? "Create Dispute" : "Reject Delivery"}`}
+                      : transactionStep === "success"
+                        ? `${action === "raise" ? "Dispute" : "Rejection"} Complete!`
+                        : transactionStep === "error"
+                          ? `${action === "raise" ? "Dispute" : "Rejection"} Failed`
+                          : `Ready to Process Dispute`}
                   </h4>
                   <p className="text-sm text-purple-200/80">
                     {transactionStep === "pending"
                       ? "Your transaction is being processed on the blockchain. This may take a moment..."
-                      : `Your ${action === "raise" ? "dispute" : "rejection"} is ready to be processed.`}
+                      : transactionStep === "success"
+                        ? `Your ${action === "raise" ? "dispute" : "rejection"} has been successfully recorded on the blockchain.`
+                        : transactionStep === "error"
+                          ? `Failed to process your ${action === "raise" ? "dispute" : "rejection"}. Please check the error below and try again.`
+                          : `Your ${action === "raise" ? "dispute" : "rejection"} is ready to be processed. Click the button below to start.`}
                   </p>
+
+                  {transactionError && (
+                    <p className="mx-auto max-w-[20rem] truncate text-red-500">
+                      {transactionError.message || "Unknown error occurred"}
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-4 w-full rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
@@ -606,17 +594,12 @@ export default function EscrowPendingDisputeModal({
                     </span>
                   </div>
 
-                  {/* <div className="flex justify-between">
-                    <span className="text-purple-200/80">Voting ID:</span>
-                    <span className="font-mono text-white">{votingId}</span>
-                  </div>
-
                   <div className="flex justify-between">
-                    <span className="text-purple-200/80">Contract ID:</span>
-                    <span className="font-mono text-white">
-                      {contractIdAsBigInt().toString()}
+                    <span className="text-purple-200/80">Voting ID:</span>
+                    <span className="font-mono text-xs font-medium text-purple-300">
+                      {votingId}
                     </span>
-                  </div> */}
+                  </div>
 
                   <div className="flex justify-between">
                     <span className="text-purple-200/80">Network:</span>
@@ -648,24 +631,11 @@ export default function EscrowPendingDisputeModal({
                   </div>
                 </div>
               </div>
-
-              {transactionError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-900/20 p-4">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
-                    <div className="text-xs">
-                      <p className="font-medium text-red-300">Error Details:</p>
-                      <p className="mt-1 max-h-[4rem] overflow-y-scroll text-sm break-all text-red-200/80 opacity-90">
-                        {transactionError.message || "Unknown error occurred"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* Buttons */}
+            {/* Buttons - Now with manual trigger button */}
             <div className="mt-6 flex justify-end space-x-3">
+              {/* Show Cancel button when not in success state */}
               {transactionStep !== "success" && (
                 <Button
                   variant="outline"
@@ -674,12 +644,30 @@ export default function EscrowPendingDisputeModal({
                     onClose();
                   }}
                   className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                  disabled={isProcessing}
+                  disabled={isProcessing || transactionStep === "pending"}
                 >
                   Cancel
                 </Button>
               )}
 
+              {/* Show Start Transaction button when idle and not initiated */}
+              {transactionStep === "idle" && !userInitiated && (
+                <Button
+                  variant="outline"
+                  onClick={handleStartTransaction}
+                  className={`border ${
+                    isProBono
+                      ? "border-2 border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+                  } font-medium transition-all duration-200`}
+                  disabled={isProcessing}
+                >
+                  <Wallet className="mr-2 h-4 w-4" />
+                  {isProBono ? "Confirm Transaction" : "Complete Payment"}
+                </Button>
+              )}
+
+              {/* Show Retry button on error */}
               {transactionStep === "error" && (
                 <Button
                   variant="outline"
@@ -698,6 +686,7 @@ export default function EscrowPendingDisputeModal({
                 </Button>
               )}
 
+              {/* Show Continue button on success (if you have one) */}
               {transactionStep === "success" && (
                 <Button
                   variant="outline"
@@ -705,7 +694,7 @@ export default function EscrowPendingDisputeModal({
                     onDisputeCreated();
                     onClose();
                   }}
-                  className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+                  className="border-green-500/30 bg-green-500/10 text-green-400 hover:bg-green-500/20"
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   Continue to Dispute
