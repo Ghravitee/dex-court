@@ -32,6 +32,8 @@ import {
   ShieldCheck,
   Sparkles,
   AlertCircle,
+  // Recycle,
+  RefreshCcw,
 } from "lucide-react";
 import type { Escrow, ExtendedEscrow } from "../types";
 import { Link } from "react-router-dom";
@@ -1835,7 +1837,7 @@ export default function Escrow() {
     if (!contractAddress) return null;
 
     return (
-      <div className="mb-4 w-fit rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+      <div className="mb-4 hidden w-fit rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
         <div className="flex items-start gap-2">
           <Server className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
           <div>
@@ -2342,54 +2344,29 @@ export default function Escrow() {
                 Escrow Center
               </h2>
               <div className="mb-4 flex items-center gap-3">
-                <Button
-                  variant="neon"
-                  className="neon-hover w-fit"
-                  onClick={() => setOpen(true)}
-                >
-                  Create Escrow
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  onClick={previewCreationSteps}
-                >
-                  Preview Creation Steps
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
-                  onClick={async () => {
-                    try {
-                      await loadEscrowAgreements();
-                      toast.success("Escrows refreshed successfully!");
-                    } catch (error) {
-                      console.error("Failed to refresh escrows:", error);
-                      toast.error("Failed to refresh escrows");
-                    }
-                  }}
-                  disabled={loading}
-                >
-                  <svg
-                    className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                <div className="mb-4 flex gap-3 sm:flex-row sm:items-center">
+                  <Button
+                    variant="neon"
+                    className="group rounded-xl border-2 border-cyan-400/40 bg-cyan-500/5 px-8 py-3 font-semibold text-cyan-200 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-100 hover:shadow-lg hover:shadow-cyan-500/20 active:translate-y-0"
+                    onClick={() => setOpen(true)}
                   >
-                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-                    <path d="M21 3v5h-5" />
-                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-                    <path d="M8 16H3v5" />
-                  </svg>
-                  {loading ? "Refetching..." : "Refetch Escrows"}
-                </Button>
+                    <span className="flex items-center gap-2">
+                      {/* <span className="text-xl">✨</span> */}
+                      Create Escrow
+                    </span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="group rounded-xl border-2 border-cyan-400/40 bg-cyan-500/5 px-8 py-3 font-semibold text-cyan-200 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-100 hover:shadow-lg hover:shadow-cyan-500/20 active:translate-y-0"
+                    onClick={previewCreationSteps}
+                  >
+                    <span className="flex items-center gap-2">
+                      {/* <span className="text-xl">👁️</span> */}
+                      Preview Steps
+                    </span>
+                  </Button>
+                </div>
               </div>
 
               <p className="text-muted-foreground max-w-[20rem] text-lg">
@@ -3147,6 +3124,26 @@ export default function Escrow() {
                 )}{" "}
                 {sortAsc ? "Old → New" : "New → Old"}
               </Button>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  className="group rounded-xl border-2 border-cyan-400/40 bg-cyan-500/5 px-4 py-3 font-semibold text-cyan-200 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-100 hover:shadow-lg hover:shadow-cyan-500/20 active:translate-y-0"
+                  onClick={async () => {
+                    try {
+                      await loadEscrowAgreements();
+                      toast.success("Escrows refreshed successfully!");
+                    } catch (error) {
+                      console.error("Failed to refresh escrows:", error);
+                      toast.error("Failed to refresh escrows");
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  {/* <Recycle /> */}
+                  <RefreshCcw className="h-4 w-4" />
+                  {loading ? "Refetching..." : "Refetch Escrows"}
+                </Button>
+              </div>
             </div>
           </header>
 

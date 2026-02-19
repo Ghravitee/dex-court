@@ -1003,8 +1003,8 @@ const RejectDeliveryModal = ({
   isSubmitting: boolean;
   agreement: any;
 }) => {
-  const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue>(
-    DisputeTypeEnum.ProBono,
+  const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue | null>(
+    null,
   );
   const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
@@ -1018,6 +1018,10 @@ const RejectDeliveryModal = ({
 
   // In RejectDeliveryModal.tsx
   const handleSubmit = async () => {
+    if (!requestKind) {
+      toast.error("Please select a dispute type");
+      return;
+    }
     if (!claim.trim()) {
       toast.error("Claim description is required");
       return;
@@ -1460,9 +1464,6 @@ const PendingDisputeModal = ({
     await retryTransaction(votingId);
   }, [votingId, flow, retryTransaction]);
 
-  // REMOVED: Auto-start transaction for open dispute flow
-  // Now both flows require manual button click
-
   // Get custom status messages and icons based on modal state and flow
   const getStatusConfig = () => {
     // Initial state - waiting for user to click (for both flows)
@@ -1705,7 +1706,7 @@ const PendingDisputeModal = ({
               <Button
                 variant="neon"
                 onClick={handleStartPayment}
-                className="neon-hover border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
                 disabled={isProcessing}
               >
                 <Wallet className="mr-2 h-4 w-4" />
@@ -2874,7 +2875,10 @@ export default function AgreementDetails() {
   const isCurrentUserInitiatedCancellation = cancellationInitiatedBy === "user";
 
   // Dispute permissions
-  const canOpenDispute = agreement?.status === "signed" && isParticipant;
+  const canOpenDispute =
+    (agreement?.status === "signed" ||
+      agreement?.status === "pending_approval") &&
+    isParticipant;
   const canCancelDispute = agreement?.status === "disputed" && isParticipant;
 
   const completionDate = getCompletionDate(agreement?._raw);

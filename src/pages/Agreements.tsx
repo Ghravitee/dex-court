@@ -1106,6 +1106,7 @@ export default function Agreements() {
       //   // Reload agreements to get the new one
       //   window.location.reload(); // Or use your existing loadAgreements function
       // }, 1000);
+      loadAgreements();
     } catch (error: any) {
       console.error("❌ Failed to create agreement:", error);
       console.error("📋 Error response:", error.response?.data);

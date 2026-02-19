@@ -35,6 +35,7 @@ import {
   Trash2,
   // Scale,
   Wallet,
+  Send,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -84,53 +85,6 @@ import {
 import { TransactionStatus } from "../components/TransactionStatus";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
 import EscrowPendingDisputeModal from "../components/EscrowPendingDisputeModal";
-// import { RejectPendingDisputeModal } from "../components/RejectPendingDisputeModal";
-
-// Add this component for displaying pending payment status messages
-const PendingPaymentStatusMessage = ({ status }: { status: string }) => {
-  if (status === "pending_payment") {
-    return (
-      <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-        <div className="flex items-start gap-3">
-          <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-400" />
-          <div className="flex-1">
-            <h4 className="font-medium text-yellow-300">
-              Dispute Pending Payment
-            </h4>
-            <p className="mt-1 text-sm text-yellow-200">
-              Your dispute has been created but is awaiting payment
-              confirmation. Please complete the transaction in your wallet. The
-              dispute will become active once the payment is confirmed on the
-              blockchain.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === "pending_locking_funds") {
-    return (
-      <div className="mt-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
-        <div className="flex items-start gap-3">
-          <Lock className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" />
-          <div className="flex-1">
-            <h4 className="font-medium text-blue-300">
-              Pro Bono Dispute - Pending Fund Locking
-            </h4>
-            <p className="mt-1 text-sm text-blue-200">
-              Your pro bono dispute has been created and is awaiting fund
-              locking on the blockchain. This is a necessary step to ensure the
-              integrity of the dispute resolution process.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-};
 
 // API Enum Mappings (from your Escrow.tsx)
 const AgreementTypeEnum = {
@@ -163,14 +117,6 @@ const DisputeStatusEnum = {
   PendingLockingFunds: 6,
 } as const;
 
-const POLLING_CONFIG = {
-  INITIAL_DELAY: 2000, // 2 seconds
-  MAX_DELAY: 30000, // 30 seconds
-  BACKOFF_MULTIPLIER: 1.5, // Multiply delay by this each time
-  MAX_ATTEMPTS: 20, // Maximum number of polling attempts
-  JITTER_FACTOR: 0.1, // Add 10% randomness to prevent thundering herd
-};
-
 // ============= WEBSOCKET TYPES =============
 export type AgreementEventType =
   | 1 // Created
@@ -189,7 +135,8 @@ export type AgreementEventType =
   | 15 // MilestoneClaimed
   | 16 // MilestoneHoldUpdated
   | 17 // DisputeRaised
-  | 18; // DisputeSettled
+  | 18 // DisputeSettled
+  | 19; // DisputeUpdated - NEW: Dispute status updated (e.g., from Pending Payment to active)
 
 interface ServerToClientEvents {
   "agreement:event": (payload: AgreementSocketEventPayload) => void;
@@ -266,29 +213,36 @@ const useDebounce = (value: string, delay: number) => {
 const UserSearchResult = ({
   user,
   onSelect,
+  field,
+  currentUsername,
+  defendantUsername,
 }: {
   user: any;
   onSelect: (username: string) => void;
   field: "defendant" | "witness";
+  currentUsername?: string;
+  defendantUsername?: string;
 }) => {
-  const { user: currentUser } = useAuth();
-
   const telegramUsername = user.telegramUsername || user.username || "";
-
-  if (!telegramUsername) {
-    return null;
-  }
-
   const displayUsername = telegramUsername.startsWith("@")
     ? telegramUsername
     : `@${telegramUsername}`;
-  const isCurrentUser = user.id === currentUser?.id;
+
+  const isCurrentUser =
+    telegramUsername.toLowerCase() === (currentUsername || "").toLowerCase();
+  const isDefendant =
+    defendantUsername &&
+    telegramUsername.toLowerCase() === defendantUsername.toLowerCase();
+
+  const isInvalid = field === "witness" && (isCurrentUser || isDefendant);
 
   return (
     <div
-      onClick={() => onSelect(telegramUsername)}
-      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/10 px-4 py-3 transition-colors hover:bg-purple-500/20 ${
-        isCurrentUser ? "opacity-80" : ""
+      onClick={() => !isInvalid && onSelect(telegramUsername)}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg border border-purple-500/20 px-4 py-3 transition-colors ${
+        isInvalid
+          ? "cursor-not-allowed border-red-500/30 bg-red-500/10 opacity-60 hover:bg-red-500/20"
+          : "bg-purple-500/10 hover:bg-purple-500/20"
       }`}
     >
       <UserAvatar
@@ -304,6 +258,11 @@ const UserSearchResult = ({
         {user.bio && (
           <div className="mt-1 truncate text-xs text-purple-200/70">
             {user.bio}
+          </div>
+        )}
+        {isInvalid && (
+          <div className="mt-1 text-xs text-red-300">
+            {isCurrentUser ? "Cannot add yourself" : "Cannot add defendant"}
           </div>
         )}
       </div>
@@ -500,47 +459,36 @@ const formatUsernameForDisplay = (username: string): string => {
   return username;
 };
 
-// Replace getDisputeRaisedEvent with this:
-// Replace your getDisputeEvents function with this:
 const getDisputeEvents = (timeline: any[] | undefined) => {
   if (!timeline || !Array.isArray(timeline)) return null;
 
-  // First, find ALL dispute-related events
-  // For rejection flow: type 6 (toStatus: 7) + type 17 (toStatus: 4)
-  // For raise flow: type 17 (toStatus: 4)
   const disputeEvents = timeline.filter(
-    (event) =>
-      // Type 6 (DELIVERY_REJECTED) - this starts the dispute process
-      event.type === 6 ||
-      // Type 17 (RAISE_DISPUTE) - this finalizes the dispute
-      (event.type === 17 && event.toStatus === 4),
+    (event) => event.type === 6 || (event.type === 17 && event.toStatus === 4),
   );
 
   if (disputeEvents.length === 0) return null;
 
-  // Log what we found for debugging
-  console.log("📊 Timeline analysis:", {
-    totalEvents: timeline.length,
-    disputeEventsCount: disputeEvents.length,
-    disputeEventTypes: disputeEvents.map((e) => ({
-      type: e.type,
-      id: e.id,
-      toStatus: e.toStatus,
-      note: e.note,
-    })),
-  });
+  // Only log in development
+  if (process.env.NODE_ENV === "development") {
+    console.log("📊 Timeline analysis:", {
+      totalEvents: timeline.length,
+      disputeEventsCount: disputeEvents.length,
+      disputeEventTypes: disputeEvents.map((e) => ({
+        type: e.type,
+        id: e.id,
+        toStatus: e.toStatus,
+        note: e.note,
+      })),
+    });
+  }
 
-  // Determine if this dispute came from a rejection
-  // Look for a type 6 event anywhere in the dispute events
   const hasRejectionEvent = disputeEvents.some((event) => event.type === 6);
-
-  // Get the raise event (type 17) for display purposes
   const raiseEvent =
     disputeEvents.find((event) => event.type === 17) || disputeEvents[0];
 
   return {
     ...raiseEvent,
-    filedViaRejection: hasRejectionEvent, // Add this flag
+    filedViaRejection: hasRejectionEvent,
   };
 };
 
@@ -562,7 +510,7 @@ const getEventNote = (event: any) => {
 };
 
 // Add this helper function to get dispute information from timeline
-// Update the getDisputeInfo function to ensure proper detection
+// Replace your existing getDisputeInfo function
 const getDisputeInfo = (
   escrowData: any,
 ): {
@@ -581,11 +529,10 @@ const getDisputeInfo = (
       filedViaRejection: false,
     };
 
-  // Look for dispute events
   const disputeEvents = escrowData._raw.timeline.filter(
     (event: any) =>
-      event.type === 6 || // DELIVERY_REJECTED
-      (event.type === 17 && event.toStatus === AgreementStatusEnum.DISPUTED), // RAISE_DISPUTE
+      event.type === 6 ||
+      (event.type === 17 && event.toStatus === AgreementStatusEnum.DISPUTED),
   );
 
   if (disputeEvents.length === 0)
@@ -597,29 +544,29 @@ const getDisputeInfo = (
       filedViaRejection: false,
     };
 
-  // Use the RAISE event (type 17) for the filing info
   const raiseEvent =
     disputeEvents.find((event: { type: number }) => event.type === 17) ||
     disputeEvents[0];
-
-  // CRITICAL: Check if there's a REJECT event anywhere to determine the flow
   const hasRejectionEvent = disputeEvents.some(
     (event: { type: number }) => event.type === 6,
   );
 
-  console.log("📋 Dispute info extracted:", {
-    hasRejectionEvent,
-    usingRaiseEvent: raiseEvent.type === 17,
-    actor: raiseEvent.actor?.username,
-    allEvents: disputeEvents.map((e: any) => ({ type: e.type, id: e.id })),
-  });
+  // Only log in development
+  if (process.env.NODE_ENV === "development") {
+    console.log("📋 Dispute info extracted:", {
+      hasRejectionEvent,
+      usingRaiseEvent: raiseEvent.type === 17,
+      actor: raiseEvent.actor?.username,
+      allEvents: disputeEvents.map((e: any) => ({ type: e.type, id: e.id })),
+    });
+  }
 
   return {
     filedAt: raiseEvent.createdAt || null,
     filedBy: raiseEvent.actor?.username || null,
     filedById: raiseEvent.actor?.id || null,
     filedByAvatarId: raiseEvent.actor?.avatarId || null,
-    filedViaRejection: hasRejectionEvent, // This must be true when there's a type 6 event
+    filedViaRejection: hasRejectionEvent,
   };
 };
 
@@ -873,6 +820,29 @@ const RaiseDisputeModal = ({
     const formattedUsername = username.startsWith("@")
       ? username
       : `@${username}`;
+
+    // Validate that witness is not the current user
+    const currentUsername = currentUser?.username || "";
+    if (
+      normalizeUsername(formattedUsername) ===
+      normalizeUsername(currentUsername)
+    ) {
+      toast.error("You cannot add yourself as a witness");
+      setShowWitnessSuggestions(false);
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    // Validate that witness is not the defendant
+    if (
+      normalizeUsername(formattedUsername) === normalizeUsername(localDefendant)
+    ) {
+      toast.error("The defendant cannot be added as a witness");
+      setShowWitnessSuggestions(false);
+      setWitnessSearchQuery("");
+      return;
+    }
+
     addWitness(formattedUsername);
     setShowWitnessSuggestions(false);
     setWitnessSearchQuery("");
@@ -1025,14 +995,35 @@ const RaiseDisputeModal = ({
 
   const addWitness = (witness?: string) => {
     const trimmed = witness || witnessInput.trim();
+    if (!trimmed) return;
+
+    const formattedWitness = trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+
+    // Validate that witness is not the current user
+    const currentUsername = currentUser?.username || "";
     if (
-      trimmed &&
-      !localWitnesses.includes(trimmed) &&
+      normalizeUsername(formattedWitness) === normalizeUsername(currentUsername)
+    ) {
+      toast.error("You cannot add yourself as a witness");
+      setWitnessInput("");
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    // Validate that witness is not the defendant
+    if (
+      normalizeUsername(formattedWitness) === normalizeUsername(localDefendant)
+    ) {
+      toast.error("The defendant cannot be added as a witness");
+      setWitnessInput("");
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    if (
+      !localWitnesses.includes(formattedWitness) &&
       localWitnesses.length < 5
     ) {
-      const formattedWitness = trimmed.startsWith("@")
-        ? trimmed
-        : `@${trimmed}`;
       setLocalWitnesses([...localWitnesses, formattedWitness]);
       setWitnessInput("");
       setWitnessSearchQuery("");
@@ -1403,6 +1394,8 @@ const RaiseDisputeModal = ({
                               handleWitnessSelect(username)
                             }
                             field="witness"
+                            currentUsername={currentUser?.username}
+                            defendantUsername={localDefendant}
                           />
                         ))
                       ) : witnessSearchQuery.length >= 2 &&
@@ -1645,7 +1638,7 @@ const RaiseDisputeModal = ({
 };
 
 // Reject Delivery Modal Component
-// Reject Delivery Modal Component - Updated with all fields from RaiseDisputeModal
+// Reject Delivery Modal Component - Updated with witness validation
 const RejectDeliveryModal = ({
   isOpen,
   onClose,
@@ -1795,11 +1788,34 @@ const RejectDeliveryModal = ({
     }
   }, [debouncedWitnessQuery, handleWitnessSearch]);
 
-  // Handle witness selection
+  // Handle witness selection - FIXED: Added validation
   const handleWitnessSelect = (username: string) => {
     const formattedUsername = username.startsWith("@")
       ? username
       : `@${username}`;
+
+    // Validate that witness is not the current user (plaintiff)
+    const currentUsername = currentUser?.username || "";
+    if (
+      normalizeUsername(formattedUsername) ===
+      normalizeUsername(currentUsername)
+    ) {
+      toast.error("You cannot add yourself as a witness");
+      setShowWitnessSuggestions(false);
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    // Validate that witness is not the defendant
+    if (
+      normalizeUsername(formattedUsername) === normalizeUsername(localDefendant)
+    ) {
+      toast.error("The defendant cannot be added as a witness");
+      setShowWitnessSuggestions(false);
+      setWitnessSearchQuery("");
+      return;
+    }
+
     addWitness(formattedUsername);
     setShowWitnessSuggestions(false);
     setWitnessSearchQuery("");
@@ -1950,16 +1966,38 @@ const RejectDeliveryModal = ({
     }
   };
 
+  // FIXED: Added validation to addWitness function
   const addWitness = (witness?: string) => {
     const trimmed = witness || witnessInput.trim();
+    if (!trimmed) return;
+
+    const formattedWitness = trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+
+    // Validate that witness is not the current user (plaintiff)
+    const currentUsername = currentUser?.username || "";
     if (
-      trimmed &&
-      !localWitnesses.includes(trimmed) &&
+      normalizeUsername(formattedWitness) === normalizeUsername(currentUsername)
+    ) {
+      toast.error("You cannot add yourself as a witness");
+      setWitnessInput("");
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    // Validate that witness is not the defendant
+    if (
+      normalizeUsername(formattedWitness) === normalizeUsername(localDefendant)
+    ) {
+      toast.error("The defendant cannot be added as a witness");
+      setWitnessInput("");
+      setWitnessSearchQuery("");
+      return;
+    }
+
+    if (
+      !localWitnesses.includes(formattedWitness) &&
       localWitnesses.length < 5
     ) {
-      const formattedWitness = trimmed.startsWith("@")
-        ? trimmed
-        : `@${trimmed}`;
       setLocalWitnesses([...localWitnesses, formattedWitness]);
       setWitnessInput("");
       setWitnessSearchQuery("");
@@ -2414,7 +2452,7 @@ const RejectDeliveryModal = ({
                 </div>
               )}
 
-            {/* Witnesses - WITH SEARCH */}
+            {/* Witnesses - WITH SEARCH AND VALIDATION */}
             <div>
               <label className="mb-1 block text-sm font-medium text-purple-300">
                 Witnesses (Optional) - Max 5
@@ -2455,7 +2493,7 @@ const RejectDeliveryModal = ({
                   </Button>
                 </div>
 
-                {/* Witness User Suggestions Dropdown */}
+                {/* Witness User Suggestions Dropdown - FIXED: Added UserSearchResult with field, currentUsername, and defendantUsername props */}
                 {showWitnessSuggestions && (
                   <div className="relative z-10 mt-1">
                     <div className="absolute top-0 right-0 left-0 max-h-48 overflow-y-auto rounded-lg border border-purple-500/30 bg-purple-900/95 shadow-xl backdrop-blur-md">
@@ -2468,6 +2506,8 @@ const RejectDeliveryModal = ({
                               handleWitnessSelect(username)
                             }
                             field="witness"
+                            currentUsername={currentUser?.username}
+                            defendantUsername={localDefendant}
                           />
                         ))
                       ) : witnessSearchQuery.length >= 2 &&
@@ -2723,15 +2763,13 @@ const RejectDeliveryModal = ({
               <>
                 <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
                 {requestKind === DisputeTypeEnum.Paid
-                  ? "Confirm in Wallet..."
+                  ? "Creating Dispute..."
                   : "Creating Dispute..."}
               </>
             ) : (
               <>
-                <Ban className="mr-2 h-4 w-4" />
-                Reject &{" "}
-                {requestKind === DisputeTypeEnum.Paid ? "Pay for " : ""}Open
-                Dispute
+                <Send className="mr-2 h-4 w-4" />
+                Create Dispute
               </>
             )}
           </Button>
@@ -2872,16 +2910,37 @@ export default function EscrowDetails() {
   const [disputeVotingId, setDisputeVotingId] = useState<string | null>(null);
   const [isDisputeFiler, setIsDisputeFiler] = useState(false);
 
-  const disputeInfo = escrow
-    ? getDisputeInfo(escrow)
-    : { filedAt: null, filedBy: null, filedById: null, filedByAvatarId: null };
+  // Replace the direct call with useMemo
+  const disputeInfo = useMemo(() => {
+    if (!escrow)
+      return {
+        filedAt: null,
+        filedBy: null,
+        filedById: null,
+        filedByAvatarId: null,
+        filedViaRejection: false,
+      };
+
+    // You can keep the console.log here if you want it to run less frequently
+    const result = getDisputeInfo(escrow);
+    console.log("📋 Dispute info extracted:", result); // This will only run when escrow changes
+    return result;
+  }, [escrow]); // Only recalculate when escrow changes
+
+  // Memoize dispute events analysis
+  const disputeEvent = useMemo(() => {
+    if (!escrow?._raw?.timeline) return null;
+    return getDisputeEvents(escrow._raw.timeline);
+  }, [escrow?._raw?.timeline]);
+
+  // Log when it actually changes (for debugging)
+  useEffect(() => {
+    if (disputeEvent) {
+      console.log("⚖️ Dispute event analysis:", disputeEvent);
+    }
+  }, [disputeEvent]);
 
   const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
-  const [isPollingDispute, setIsPollingDispute] = useState(false);
-
-  const [pollingTimerId, setPollingTimerId] = useState<ReturnType<
-    typeof setTimeout
-  > | null>(null);
 
   // Status configuration
   // Status configuration - UPDATED with new dispute statuses
@@ -3225,11 +3284,6 @@ export default function EscrowDetails() {
       // so it can extract the contractAgreementId
       fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
       setEscrow(transformedEscrow);
-      const disputeEvent = getDisputeEvents(agreementData.timeline);
-      if (disputeEvent) {
-        console.log("⚖️ Found DisputeRaised event in timeline:", disputeEvent);
-        // You could store this in state if needed, or access it from escrow._raw.timeline
-      }
     } catch (error) {
       console.error("Failed to fetch escrow:", error);
       toast.error("Failed to load escrow details");
@@ -3289,11 +3343,6 @@ export default function EscrowDetails() {
       };
 
       setEscrow(transformedEscrow);
-      const disputeEvent = getDisputeEvents(agreementData.timeline);
-      if (disputeEvent) {
-        console.log("⚖️ Found DisputeRaised event in timeline:", disputeEvent);
-        // You could store this in state if needed, or access it from escrow._raw.timeline
-      }
 
       fetchOnChainAgreement(agreementData).catch((e) => console.warn(e));
     } catch (error) {
@@ -4029,15 +4078,15 @@ export default function EscrowDetails() {
     }
   };
 
-  const fetchOnChainAgreementData = useCallback(async () => {
-    if (!escrow?._raw || !networkInfo.chainId) return;
+  // const fetchOnChainAgreementData = useCallback(async () => {
+  //   if (!escrow?._raw || !networkInfo.chainId) return;
 
-    try {
-      await fetchOnChainAgreement(escrow._raw);
-    } catch (error) {
-      console.error("Failed to refresh on-chain agreement:", error);
-    }
-  }, [escrow?._raw, networkInfo.chainId, fetchOnChainAgreement]);
+  //   try {
+  //     await fetchOnChainAgreement(escrow._raw);
+  //   } catch (error) {
+  //     console.error("Failed to refresh on-chain agreement:", error);
+  //   }
+  // }, [escrow?._raw, networkInfo.chainId, fetchOnChainAgreement]);
 
   // Add a handler for when the pending modal closes successfully
   // const handleRejectDisputeCreated = useCallback(async () => {
@@ -4498,7 +4547,6 @@ export default function EscrowDetails() {
   }, [id, fetchEscrowDetails]);
 
   // ============= WEBSOCKET EFFECT =============
-  // Replace the polling useEffect (around line 2020-2030) with this:
   useEffect(() => {
     const token = localStorage.getItem("authToken") ?? "";
     if (!token || !id) return;
@@ -4512,10 +4560,75 @@ export default function EscrowDetails() {
       if (!ack.ok) console.warn("[WS] join failed", ack);
     });
 
-    socket.on("agreement:event", (event) => {
-      // optional: filters only for actual agreement
+    socket.on("agreement:event", async (event) => {
       if (event.agreementId !== agreementId) return;
+
       console.log("📡 Agreement event received:", event);
+
+      // Handle DisputeUpdated event (type 19) - This replaces polling!
+      if (event.type === 19) {
+        console.log("⚖️ Dispute status updated! Refreshing dispute data...");
+
+        // Close pending modal if open
+        setPendingDisputeModal({ isOpen: false, data: null });
+
+        // Refresh dispute details if we have a dispute ID
+        const disputeId = escrow?._raw?.disputes?.[0]?.disputeId;
+        if (disputeId) {
+          try {
+            const disputeDetails = await disputeService.getDisputeDetails(
+              parseInt(disputeId),
+            );
+            const transformedDispute =
+              disputeService.transformDisputeDetailsToRow(disputeDetails);
+
+            // Map the display status to internal status format
+            const displayStatus = transformedDispute.status;
+            let internalStatus = displayStatus
+              ?.toLowerCase()
+              .replace(/\s+/g, "_");
+
+            if (internalStatus === "pending_locking_funds") {
+              internalStatus = "pending_locking_funds";
+            } else if (internalStatus === "pending_payment") {
+              internalStatus = "pending_payment";
+            }
+
+            console.log("✅ Updated dispute status:", internalStatus);
+            setDisputeStatus(internalStatus);
+
+            // Capture voting ID
+            if (transformedDispute.votingId) {
+              console.log(
+                "🎯 Setting dispute voting ID:",
+                transformedDispute.votingId,
+              );
+              setDisputeVotingId(transformedDispute.votingId.toString());
+            }
+
+            // Show success toast if status changed from pending
+            if (
+              disputeStatus === "pending_payment" &&
+              internalStatus !== "pending_payment"
+            ) {
+              toast.success("Payment confirmed! Dispute is now active.", {
+                duration: 3000,
+              });
+            } else if (
+              disputeStatus === "pending_locking_funds" &&
+              internalStatus !== "pending_locking_funds"
+            ) {
+              toast.success("Funds locked! Dispute is now active.", {
+                duration: 3000,
+              });
+            }
+          } catch (error) {
+            console.error("❌ Failed to fetch updated dispute details:", error);
+          }
+        }
+      }
+
+      // Always refresh agreement data for any event
       fetchEscrowDetailsBackground();
     });
 
@@ -4523,7 +4636,7 @@ export default function EscrowDetails() {
       socket.off("agreement:event");
       socket.disconnect();
     };
-  }, [id, fetchEscrowDetailsBackground]);
+  }, [id, fetchEscrowDetailsBackground, escrow?._raw?.disputes, disputeStatus]);
 
   // KEEP THIS - it's useful for cross-tab communication
   useEffect(() => {
@@ -4686,122 +4799,6 @@ export default function EscrowDetails() {
     }
   }, []);
 
-  const pollDisputeStatus = useCallback(
-    async (disputeId: number) => {
-      // Don't start if already polling
-      if (isPollingDispute) {
-        console.log("⏸️ Polling already in progress");
-        return;
-      }
-
-      console.log("🚀 Starting dispute status polling for ID:", disputeId);
-      setIsPollingDispute(true);
-
-      const poll = async (currentAttempt: number): Promise<boolean> => {
-        // Check if we've exceeded max attempts
-        if (currentAttempt >= POLLING_CONFIG.MAX_ATTEMPTS) {
-          console.log("🛑 Max polling attempts reached, stopping");
-          return false;
-        }
-
-        try {
-          console.log(
-            `🔄 Polling dispute ${disputeId} (attempt ${currentAttempt + 1}/${POLLING_CONFIG.MAX_ATTEMPTS})`,
-          );
-
-          const dispute = await fetchDisputeDetails(disputeId);
-          const displayStatus = dispute?.status;
-
-          // Check if dispute is still pending
-          const isStillPending =
-            displayStatus === "Pending Payment" ||
-            displayStatus === "Pending" ||
-            displayStatus === "Pending Locking Funds";
-
-          if (!isStillPending) {
-            console.log("✅ Dispute confirmed. New status:", displayStatus);
-
-            // Refresh data one final time
-            await Promise.all([
-              fetchOnChainAgreementData(),
-              fetchEscrowDetailsBackground(),
-            ]);
-
-            toast.success("Dispute has been confirmed on-chain!");
-            return false; // Stop polling
-          }
-
-          return true; // Continue polling
-        } catch (error) {
-          console.error("Polling error:", error);
-          return currentAttempt < POLLING_CONFIG.MAX_ATTEMPTS - 1; // Continue if under max attempts
-        }
-      };
-
-      // Initial poll immediately
-      const shouldContinue = await poll(0);
-
-      if (!shouldContinue) {
-        setIsPollingDispute(false);
-        return;
-      }
-
-      // Recursive function to handle polling with exponential backoff
-      const scheduleNextPoll = async (attempt: number) => {
-        if (attempt >= POLLING_CONFIG.MAX_ATTEMPTS) {
-          setIsPollingDispute(false);
-          return;
-        }
-
-        // Calculate delay with exponential backoff
-        const baseDelay = Math.min(
-          POLLING_CONFIG.INITIAL_DELAY *
-            Math.pow(POLLING_CONFIG.BACKOFF_MULTIPLIER, attempt - 1),
-          POLLING_CONFIG.MAX_DELAY,
-        );
-
-        // Add jitter (±10% randomness) to prevent thundering herd
-        const jitter =
-          baseDelay * POLLING_CONFIG.JITTER_FACTOR * (Math.random() * 2 - 1);
-        const delay = Math.max(
-          POLLING_CONFIG.INITIAL_DELAY,
-          baseDelay + jitter,
-        );
-
-        console.log(
-          `⏱️ Next poll in ${Math.round(delay)}ms (attempt ${attempt})`,
-        );
-
-        const timerId = setTimeout(async () => {
-          const continuePolling = await poll(attempt);
-
-          if (continuePolling) {
-            scheduleNextPoll(attempt + 1);
-          } else {
-            // Polling complete
-            setIsPollingDispute(false);
-            if (pollingTimerId) {
-              clearTimeout(pollingTimerId);
-              setPollingTimerId(null);
-            }
-          }
-        }, delay);
-
-        setPollingTimerId(timerId);
-      };
-
-      // Start the polling schedule
-      scheduleNextPoll(1);
-    },
-    [
-      fetchDisputeDetails,
-      fetchEscrowDetailsBackground,
-      fetchOnChainAgreementData,
-      isPollingDispute,
-      pollingTimerId,
-    ],
-  );
-
   useEffect(() => {
     const disputeId = escrow?._raw?.disputes?.[0]?.disputeId;
 
@@ -4810,64 +4807,6 @@ export default function EscrowDetails() {
       fetchDisputeDetails(parseInt(disputeId));
     }
   }, [escrow?._raw?.disputes, fetchDisputeDetails]);
-
-  useEffect(() => {
-    const disputeId = escrow?._raw?.disputes?.[0]?.disputeId;
-
-    // Clean up any existing polling timer
-    if (pollingTimerId) {
-      clearTimeout(pollingTimerId);
-      setPollingTimerId(null);
-    }
-
-    // Reset polling state
-    setIsPollingDispute(false);
-
-    // Don't poll if:
-    // 1. User is the filer with modal open (they get updates from transaction)
-    // 2. No dispute ID
-    // 3. Dispute is not in pending state
-    if (
-      (pendingDisputeModal.isOpen && isDisputeFiler) ||
-      !disputeId ||
-      !(
-        disputeStatus === "pending_locking_funds" ||
-        disputeStatus === "pending_payment"
-      )
-    ) {
-      return;
-    }
-
-    console.log("🚀 Starting polling for dispute:", disputeId);
-    pollDisputeStatus(parseInt(disputeId));
-
-    // Cleanup function
-    return () => {
-      if (pollingTimerId) {
-        clearTimeout(pollingTimerId);
-        setPollingTimerId(null);
-      }
-      setIsPollingDispute(false);
-    };
-  }, [
-    disputeStatus,
-    escrow?._raw?.disputes,
-    pendingDisputeModal.isOpen,
-    isDisputeFiler,
-    pollDisputeStatus,
-    pollingTimerId,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (pollingTimerId) {
-        console.log("🧹 Cleaning up polling timer");
-        clearTimeout(pollingTimerId);
-        setPollingTimerId(null);
-      }
-      setIsPollingDispute(false);
-    };
-  }, [pollingTimerId]);
 
   useEffect(() => {
     if (uiError) {
@@ -4915,52 +4854,36 @@ export default function EscrowDetails() {
     setIsDisputeFiler(isCurrentUserFiler);
   }, [user, escrow, disputeVotingId]);
 
-  useEffect(() => {
-    // Only run when we have all the data we need
-    if (!escrow?._raw || !user || !disputeVotingId || !onChainAgreement) return;
+  const handleOpenPendingDisputeModal = useCallback(() => {
+    if (!escrow?._raw || !onChainAgreement || !disputeVotingId) {
+      toast.error("Missing required data to process pending dispute");
+      return;
+    }
 
-    const isPendingDispute =
-      disputeStatus === "pending_payment" ||
-      disputeStatus === "pending_locking_funds";
+    // Double-check that current user is the filer
+    if (!isDisputeFiler) {
+      toast.error(
+        "Only the party who filed the dispute can complete this action",
+      );
+      return;
+    }
 
-    if (!isPendingDispute) return;
-
-    // Check if current user filed this dispute
-    const currentUserId = user.id?.toString();
-    const disputeEvents =
-      escrow._raw?.timeline?.filter(
-        (event: any) =>
-          (event.type === 6 || event.type === 17) &&
-          event.toStatus === AgreementStatusEnum.DISPUTED,
-      ) || [];
-
-    const isCurrentUserInvolved = disputeEvents.some(
-      (event: { actor: { id: { toString: () => string } } }) =>
-        event.actor?.id?.toString() === currentUserId,
-    );
-
-    // Set the filer flag
-    setIsDisputeFiler(isCurrentUserInvolved);
-
-    if (!isCurrentUserInvolved) return;
-
-    // Determine action
+    // Determine action from timeline
     const timelineEvents = escrow._raw.timeline || [];
     const hasRejectionEvent = timelineEvents.some(
-      (event: { type: number }) => event.type === 6,
+      (event: any) => event.type === 6,
     );
-
     const action = hasRejectionEvent ? "reject" : "raise";
 
-    console.log("🔄 Auto-opening pending dispute modal on page load:", {
+    console.log("🔄 Manually opening pending dispute modal:", {
       disputeStatus,
       action,
       hasRejectionEvent,
       votingId: disputeVotingId,
       contractId: onChainAgreement.id,
+      isFiler: isDisputeFiler,
     });
 
-    // Open the modal automatically
     setPendingDisputeModal({
       isOpen: true,
       data: {
@@ -4970,7 +4893,13 @@ export default function EscrowDetails() {
         action,
       },
     });
-  }, [escrow, user, disputeVotingId, disputeStatus, onChainAgreement]);
+  }, [
+    escrow,
+    onChainAgreement,
+    disputeVotingId,
+    disputeStatus,
+    isDisputeFiler,
+  ]);
 
   const isDisputePending = useMemo(() => {
     return (
@@ -5140,21 +5069,15 @@ export default function EscrowDetails() {
                 </span>
               )}
 
-            {escrow._raw?.disputes &&
-              escrow._raw.disputes.length > 0 &&
-              (() => {
-                const disputeStatus = getDisputeStatusFromAgreement(escrow);
-                return disputeStatus !== "pending_payment" &&
-                  disputeStatus !== "pending_locking_funds" ? (
-                  <Link
-                    to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
-                    className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
-                  >
-                    <AlertTriangle className="h-4 w-4" />
-                    View Dispute
-                  </Link>
-                ) : null;
-              })()}
+            {escrow._raw?.disputes && escrow._raw.disputes.length > 0 && (
+              <Link
+                to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
+                className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                View Dispute
+              </Link>
+            )}
           </div>
 
           <div className="flex items-end space-x-2 text-xs text-cyan-400/60 sm:self-end">
@@ -5678,18 +5601,6 @@ export default function EscrowDetails() {
                 </div>
               )}
             </div>
-
-            {/* After the Escrow Overview Card, add this status message */}
-            {(() => {
-              const disputeStatus = getDisputeStatusFromAgreement(escrow);
-              if (
-                disputeStatus === "pending_payment" ||
-                disputeStatus === "pending_locking_funds"
-              ) {
-                return <PendingPaymentStatusMessage status={disputeStatus} />;
-              }
-              return null;
-            })()}
 
             {/* Action Buttons Section */}
             {onChainAgreement && (
@@ -6315,6 +6226,65 @@ export default function EscrowDetails() {
               </div>
             )}
 
+            {disputeStatus === "pending_payment" ||
+            disputeStatus === "pending_locking_funds" ? (
+              <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 backdrop-blur-sm lg:p-6">
+                <h3 className="mb-4 text-lg font-semibold text-yellow-500">
+                  {disputeStatus === "pending_payment"
+                    ? "Complete Payment for Dispute"
+                    : "Complete Fund Locking for Dispute"}
+                </h3>
+
+                {isDisputeFiler ? (
+                  <>
+                    <p className="mb-4 text-sm text-cyan-200/80">
+                      {disputeStatus === "pending_payment"
+                        ? "Your dispute has been created but requires payment to become active. Complete the transaction below to activate your dispute."
+                        : "Your pro bono dispute requires fund locking on the blockchain. Complete the transaction below to activate your dispute."}
+                    </p>
+                    <Button
+                      onClick={handleOpenPendingDisputeModal}
+                      disabled={!onChainAgreement?.id || !disputeVotingId}
+                      className={`border-${
+                        disputeStatus === "pending_payment" ? "yellow" : "blue"
+                      }-500/30 bg-${
+                        disputeStatus === "pending_payment" ? "yellow" : "blue"
+                      }-500/10 text-${
+                        disputeStatus === "pending_payment" ? "yellow" : "blue"
+                      }-400 hover:bg-${
+                        disputeStatus === "pending_payment" ? "yellow" : "blue"
+                      }-500/20`}
+                      variant="outline"
+                    >
+                      {disputeStatus === "pending_payment" ? (
+                        <>
+                          <Wallet className="mr-2 h-4 w-4" />
+                          Complete Payment
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="mr-2 h-4 w-4" />
+                          Lock Funds Now
+                        </>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-gray-500/30 bg-gray-500/10 p-4">
+                    <p className="text-sm text-gray-400">
+                      The other party needs to complete the{" "}
+                      {disputeStatus === "pending_payment"
+                        ? "payment"
+                        : "fund locking"}
+                      for this dispute. Once confirmed on the blockchain, the
+                      dispute will become active and you'll be able to
+                      participate.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {/* Add this section after the Complete On-Chain Agreement Details section */}
             {/* Dispute Information Section */}
             {/* Dispute Information Section - Updated */}
@@ -6677,17 +6647,19 @@ export default function EscrowDetails() {
                 )}
 
                 {/* Step 6 - Dispute State */}
+                {/* Step 6 - Dispute State */}
                 {(onChainAgreement?.disputed ||
                   escrow._raw?.timeline?.some(
                     (e: { type: number }) => e.type === 17,
                   )) &&
                   (() => {
-                    // Get the actual dispute event from timeline
-                    const disputeEvent = getDisputeEvents(
-                      escrow._raw?.timeline,
-                    );
-                    const actorInfo = getEventActorInfo(disputeEvent);
-                    const eventNote = getEventNote(disputeEvent);
+                    // Use the memoized disputeEvent instead of calling getDisputeEvents again
+                    const actorInfo = disputeEvent
+                      ? getEventActorInfo(disputeEvent)
+                      : null;
+                    const eventNote = disputeEvent
+                      ? getEventNote(disputeEvent)
+                      : null;
                     const eventTime = disputeEvent?.createdAt;
 
                     return (
