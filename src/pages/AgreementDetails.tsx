@@ -242,8 +242,7 @@ const processAgreementFiles = (files: any[], agreementId: number): any[] => {
     // Function to get file URL
     const getFileUrl = (): string => {
       // Use the same API endpoint pattern as in DisputeDetails
-      const API_BASE =
-        import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+      const API_BASE = import.meta.env.VITE_API_URL;
       return `${API_BASE}/agreement/${agreementId}/file/${file.id}`;
     };
 

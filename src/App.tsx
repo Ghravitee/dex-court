@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import Index from "./pages/Index";
+// import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/layout/Layout";
 import Agreements from "./pages/Agreements";
@@ -31,6 +31,9 @@ import { GlobalLoader } from "./components/GlobalLoader";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+
+// NEW FEATURE-BASED PAGES
+import Index from "./features/index";
 
 // Auto Login Modal Component
 function AutoLoginModal() {
@@ -96,6 +99,7 @@ function AppContent() {
 
       <Routes>
         <Route path="/" element={<Layout />}>
+          {/* <Route index element={<Index />} /> */}
           <Route index element={<Index />} />
           <Route path="agreements" element={<Agreements />} />
           <Route path="agreements/:id" element={<AgreementDetails />} />

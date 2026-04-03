@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { devError } from "../utils/logger";
 import { api } from "../lib/apiClient";
 
 export interface WalletNonceResponse {
@@ -28,7 +29,7 @@ class WalletLinkingService {
       });
       return response.data;
     } catch (error: any) {
-      console.error("🔐 Wallet linking nonce error:", error);
+      devError("🔐 Wallet linking nonce error:", error);
 
       throw new Error(
         error.response?.data?.message ||
@@ -44,7 +45,7 @@ class WalletLinkingService {
     try {
       await api.post("/link/wallet/verify", verifyData);
     } catch (error: any) {
-      console.error("🔐 Wallet linking verification error:", {
+      devError("🔐 Wallet linking verification error:", {
         response: error.response?.data,
         message: error.message,
       });
@@ -71,7 +72,7 @@ class WalletLinkingService {
       );
       return response.data;
     } catch (error: any) {
-      console.error("🔐 Wallet login nonce error:", error);
+      devError("🔐 Wallet login nonce error:", error);
 
       throw new Error(
         error.response?.data?.message || "Failed to generate login nonce",
@@ -89,7 +90,7 @@ class WalletLinkingService {
       const response = await api.post("/login/wallet/verify", verifyData);
       return response.data;
     } catch (error: any) {
-      console.error("🔐 Wallet login verification error:", {
+      devError("🔐 Wallet login verification error:", {
         response: error.response?.data,
         message: error.message,
       });
@@ -108,7 +109,7 @@ class WalletLinkingService {
     try {
       await api.post("/link/telegram", { otp });
     } catch (error: any) {
-      console.error("🔐 Telegram linking error:", error);
+      devError("🔐 Telegram linking error:", error);
 
       throw new Error(
         error.response?.data?.message || "Failed to link Telegram account",

@@ -48,7 +48,7 @@ export const useVotingStatus = (
         user.id || "current-user",
       );
 
-      console.log("🎯 Eligibility result from useVotingStatus:", eligibility);
+      console.log("Eligibility result from useVotingStatus:", eligibility);
 
       // Check localStorage for quick response (for after voting)
       const storageKey = `vote_${disputeId}_${user.id}`;

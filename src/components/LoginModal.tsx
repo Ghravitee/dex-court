@@ -8,6 +8,8 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../hooks/useWalletLogin";
 
+const telegramBotUrl = import.meta.env.VITE_TELEGRAM_BOT_LINK;
+
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -441,12 +443,12 @@ export function LoginModal({
                 <li>
                   Open{" "}
                   <a
-                    href="https://t.me/DexCourtDVBot"
+                    href={telegramBotUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-cyan-300 hover:underline"
                   >
-                    @DexCourtDvBot
+                    @DexCourt_Bot
                   </a>{" "}
                   on Telegram
                 </li>

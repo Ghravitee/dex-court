@@ -17,10 +17,6 @@ import {
   Gavel,
   FileText,
   AlertTriangle,
-  // Package,
-  // XCircle,
-  // Hourglass,
-  // CheckCircle,
   ArrowRight,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
@@ -94,100 +90,6 @@ const formatBigIntTimestamp = (
     return "Invalid date";
   }
 };
-
-// Helper function to map agreement status codes to human-readable labels
-// const getAgreementStatusLabel = (status: number): string => {
-//   switch (status) {
-//     case 1:
-//       return "pending_acceptance"; // Use the same string as your color system expects
-//     case 2:
-//       return "signed";
-//     case 3:
-//       return "completed";
-//     case 4:
-//       return "disputed";
-//     case 5:
-//       return "cancelled";
-//     case 6:
-//       return "expired";
-//     case 7:
-//       return "pending_approval";
-//     default:
-//       return "pending";
-//   }
-// };
-
-// Use your existing color-coded status icon function
-// const getAgreementStatusIcon = (status: number) => {
-//   const statusLabel = getAgreementStatusLabel(status);
-
-//   switch (statusLabel) {
-//     case "completed":
-//       return <CheckCircle className="h-4 w-4 text-green-400" />;
-//     case "pending":
-//     case "pending_acceptance":
-//       return <Clock className="h-4 w-4 text-yellow-400" />;
-//     case "signed":
-//       return <FileText className="h-4 w-4 text-blue-400" />;
-//     case "cancelled":
-//       return <XCircle className="h-4 w-4 text-red-400" />;
-//     case "expired":
-//       return <Hourglass className="h-4 w-4 text-gray-400" />;
-//     case "disputed":
-//       return <AlertTriangle className="h-4 w-4 text-purple-400" />;
-//     case "pending_approval":
-//       return <Package className="h-4 w-4 text-orange-400" />;
-//     default:
-//       return <FileText className="h-4 w-4 text-gray-400" />;
-//   }
-// };
-
-// Helper function for status badge text
-// const getAgreementStatusText = (status: number): string => {
-//   switch (status) {
-//     case 1:
-//       return "Pending Acceptance";
-//     case 2:
-//       return "Signed / Active";
-//     case 3:
-//       return "Completed";
-//     case 4:
-//       return "Disputed";
-//     case 5:
-//       return "Cancelled";
-//     case 6:
-//       return "Expired";
-//     case 7:
-//       return "Pending Approval";
-//     default:
-//       return "Unknown Status";
-//   }
-// };
-
-// Helper function for status badge colors (optional, for text/background)
-// const getAgreementStatusBadgeColor = (status: number): string => {
-//   const statusLabel = getAgreementStatusLabel(status);
-
-//   switch (statusLabel) {
-//     case "completed":
-//       return "bg-green-500/10 text-green-300 border-green-500/30";
-//     case "pending":
-//     case "pending_acceptance":
-//       return "bg-yellow-500/10 text-yellow-300 border-yellow-500/30";
-//     case "signed":
-//       return "bg-blue-500/10 text-blue-300 border-blue-500/30";
-//     case "cancelled":
-//       return "bg-red-500/10 text-red-300 border-red-500/30";
-//     case "expired":
-//       return "bg-gray-500/10 text-gray-300 border-gray-500/30";
-//     case "disputed":
-//       return "bg-purple-500/10 text-purple-300 border-purple-500/30";
-//     case "pending_approval":
-//       return "bg-orange-500/10 text-orange-300 border-orange-500/30";
-//     default:
-//       return "bg-gray-500/10 text-gray-300 border-gray-500/30";
-//   }
-// };
 
 // Add this component inside your DisputeDetails component
 const VotingStatus = ({
@@ -654,8 +556,7 @@ export default function DisputeDetails() {
       const getFileUrl = (file: EvidenceFile): string => {
         if (file.id) {
           // Use the numeric file ID
-          const API_BASE =
-            import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+          const API_BASE = import.meta.env.VITE_API_URL;
           return `${API_BASE}/dispute/${disputeId}/file/${file.id}`;
         }
         // Fallback to filename if no ID (shouldn't happen)

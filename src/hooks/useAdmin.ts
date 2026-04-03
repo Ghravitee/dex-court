@@ -7,6 +7,7 @@ import type {
   AccountSummaryDTO,
 } from "../services/apiService";
 import { useAuth } from "./useAuth";
+import { devError } from "../utils/logger";
 
 // Query keys
 export const adminKeys = {
@@ -49,7 +50,7 @@ export const useAdminUsers = () => {
         console.log(`🔐 [Hook] Successfully fetched ${users.length} users`);
         return users;
       } catch (error: unknown) {
-        console.error("🔐 [Hook] Error in useAdminUsers:", error);
+        devError("🔐 [Hook] Error in useAdminUsers:", error);
 
         const errorMessage =
           error instanceof Error ? error.message : "Failed to fetch users";

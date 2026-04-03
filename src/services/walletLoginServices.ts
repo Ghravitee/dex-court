@@ -1,7 +1,7 @@
 // src/services/walletLoginService.ts
 import { api } from "../lib/apiClient";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 export interface WalletNonceResponse {
   nonce: string;

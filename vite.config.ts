@@ -26,4 +26,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["pdfjs-dist"],
   },
+  define: {
+    __DEV__: process.env.NODE_ENV === "development",
+  },
 });

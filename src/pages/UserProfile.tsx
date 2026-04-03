@@ -501,9 +501,11 @@ export default function UserProfile() {
       apiUser.isAdmin || false,
     );
 
+    const apiUrl = import.meta.env.VITE_API_URL;
+
     const avatarUrl =
       apiUser.avatarId && apiUser.id
-        ? `https://dev-api.dexcourt.com/accounts/${apiUser.id}/file/${apiUser.avatarId}`
+        ? `${apiUrl}/accounts/${apiUser.id}/file/${apiUser.avatarId}`
         : undefined;
 
     const primaryUsername = apiUser.telegram?.username

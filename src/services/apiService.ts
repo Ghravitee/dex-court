@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // services/apiService.ts
+import { devLog } from "../utils/logger";
 import { api } from "../lib/apiClient";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 // services/apiService.ts - Update the interface
 export interface AccountSummaryDTO {
@@ -48,7 +49,7 @@ class ApiService {
   // services/apiService.ts - Update the request method
   private async request<T>(config: any): Promise<T> {
     try {
-      console.log("🔐 Making API request to:", `${this.baseURL}${config.url}`);
+      devLog("🔐 Making API request to:", `${this.baseURL}${config.url}`);
 
       // Get token and set it directly (no Bearer prefix)
       const token = localStorage.getItem("authToken");
@@ -62,7 +63,7 @@ class ApiService {
         headers,
       });
 
-      console.log("🔐 API Success:", response.status, response.data);
+      devLog("🔐 API Success:", response.status, response.data);
       return response.data as T;
     } catch (error: any) {
       console.error("🔐 API request failed:", error);
@@ -124,7 +125,7 @@ class ApiService {
     formData.append("avatar", file);
 
     try {
-      console.log("🔐 Uploading avatar file:", file.name, file.size, file.type);
+      devLog("🔐 Uploading avatar file:", file.name, file.size, file.type);
 
       const response = await fetch(`${this.baseURL}/accounts/avatar`, {
         method: "PATCH",
@@ -136,7 +137,7 @@ class ApiService {
         body: formData,
       });
 
-      console.log("🔐 Avatar upload response status:", response.status);
+      devLog("🔐 Avatar upload response status:", response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -154,7 +155,7 @@ class ApiService {
         throw new Error(`Upload failed: ${response.status} - ${errorText}`);
       }
 
-      console.log("🔐 Avatar uploaded successfully");
+      devLog("🔐 Avatar uploaded successfully");
       return;
     } catch (error) {
       console.error("🔐 Avatar upload error:", error);
@@ -248,18 +249,18 @@ class ApiService {
         url: "/accounts",
       });
 
-      console.log("🔐 [API] Raw getAllUsers response:", response);
+      devLog("🔐 [API] Raw getAllUsers response:", response);
 
       let users: any[] = [];
 
       // Based on your console output, the response has an 'accounts' property
       if (response && response.accounts && Array.isArray(response.accounts)) {
         users = response.accounts;
-        console.log(`🔐 [API] Found ${users.length} users in 'accounts' array`);
+        devLog(`🔐 [API] Found ${users.length} users in 'accounts' array`);
       } else if (Array.isArray(response)) {
         // Fallback: direct array response
         users = response;
-        console.log(`🔐 [API] Found ${users.length} users in direct array`);
+        devLog(`🔐 [API] Found ${users.length} users in direct array`);
       } else {
         console.warn("🔐 [API] Unexpected users response format:", response);
         return [];
@@ -283,7 +284,7 @@ class ApiService {
         ? username.slice(1)
         : username;
 
-      console.log(`🔐 [API] Looking up user by username: ${cleanUsername}`);
+      devLog(`🔐 [API] Looking up user by username: ${cleanUsername}`);
 
       return this.request<AccountSummaryDTO>({
         method: "GET",
@@ -298,7 +299,7 @@ class ApiService {
   // Update the getUserById method to use the new endpoint
   async getUserById(userId: string): Promise<AccountSummaryDTO> {
     try {
-      console.log(`🔐 [API] Looking up user by ID: ${userId}`);
+      devLog(`🔐 [API] Looking up user by ID: ${userId}`);
       return this.request<AccountSummaryDTO>({
         method: "GET",
         url: `/accounts/id/${userId}`,
@@ -315,14 +316,12 @@ class ApiService {
     walletAddress: string,
   ): Promise<AccountSummaryDTO> {
     try {
-      console.log(
-        `🔐 [API] Looking up user by wallet address: ${walletAddress}`,
-      );
+      devLog(`🔐 [API] Looking up user by wallet address: ${walletAddress}`);
 
       // Since there's no direct endpoint, fetch all users and search
       const allUsers = await this.getAllUsers();
 
-      console.log(
+      devLog(
         `🔐 [API] Searching ${allUsers.length} users for wallet: ${walletAddress}`,
       );
 
@@ -336,7 +335,7 @@ class ApiService {
         throw new Error(`User with wallet address ${walletAddress} not found`);
       }
 
-      console.log(`🔐 [API] Found user:`, user);
+      devLog(`🔐 [API] Found user:`, user);
       return user;
     } catch (error) {
       console.error("🔐 [API] Error getting user by wallet address:", error);
@@ -406,7 +405,7 @@ class ApiService {
 
   async getAdminUsers(): Promise<AccountSummaryDTO[]> {
     try {
-      console.log("🔐 [API] Fetching all users for admin...");
+      devLog("🔐 [API] Fetching all users for admin...");
 
       // Use the same endpoint as agreementService.getAllUsers()
       const response = await this.request<any>({
@@ -414,7 +413,7 @@ class ApiService {
         url: "/accounts",
       });
 
-      console.log("🔐 [API] Raw users response:", response);
+      devLog("🔐 [API] Raw users response:", response);
 
       let users: any[] = [];
 
@@ -430,7 +429,7 @@ class ApiService {
         users = [];
       }
 
-      console.log(`🔐 [API] Found ${users.length} users`);
+      devLog(`🔐 [API] Found ${users.length} users`);
 
       // Transform to AccountSummaryDTO
       return users.map((user) => this.transformToAccountSummaryDTO(user));
