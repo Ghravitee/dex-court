@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
 import type { EvidenceItem } from "@/types";
-import DisputeChat from "@/pages/DisputeChat";
+import DisputeChat from "../../pages/DisputeChat";
 import { DisputeModals } from "./components/DisputeModals";
 
 import { useDisputeData } from "./hooks/useDisputeData";

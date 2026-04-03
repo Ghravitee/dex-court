@@ -10,7 +10,7 @@ interface RevenueStatsProps {
 
 export const RevenueStats = ({ revenue }: RevenueStatsProps) => {
   return (
-    <div className="flex flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
+    <div className="flex h-fit flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/25 to-transparent p-8 shadow-[0_0_40px_rgba(34,211,238,0.2)] ring-1 ring-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(34,211,238,0.35)]">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-2xl font-semibold text-white/90">Revenue Earned</h3>
       </div>

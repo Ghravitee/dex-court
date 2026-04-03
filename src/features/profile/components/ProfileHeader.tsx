@@ -8,9 +8,9 @@ import { VerificationBadge } from "./VerificationBadge";
 import TrustMeter from "../../../components/TrustMeter";
 
 import { type UserData } from "../types";
-import Admin from "@/components/ui/svgcomponents/Admin";
-import Judge from "@/components/ui/svgcomponents/Judge";
-import Community from "@/components/ui/svgcomponents/Community";
+import Admin from "../../../components/ui/svgcomponents/Admin";
+import Judge from "../../../components/ui/svgcomponents/Judge";
+import Community from "../../../components/ui/svgcomponents/Community";
 
 interface ProfileHeaderProps {
   user: any;

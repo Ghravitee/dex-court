@@ -93,90 +93,96 @@ export const AgreementTable = ({
                 </td>
               </tr>
             ) : (
-              agreements.map((a) => (
-                <tr
-                  key={a.id}
-                  className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-white/5"
-                  onClick={() =>
-                    navigate(
-                      a.useEscrow ? `/escrow/${a.id}` : `/agreements/${a.id}`,
-                    )
-                  }
-                >
-                  <td className="text-muted-foreground px-5 py-4">
-                    {a.dateCreated}
-                  </td>
-                  <td className="max-w-xs truncate px-5 py-4 font-medium text-white/90">
-                    {a.title}
-                  </td>
-                  <td className="px-5 py-4 text-white/90">
-                    <div className="flex items-center gap-2">
-                      {/* Creator */}
-                      <div className="flex items-center gap-1">
-                        <UserAvatar
-                          userId={
-                            a.createdByUserId ||
-                            cleanTelegramUsername(a.createdBy)
-                          }
-                          avatarId={a.createdByAvatarId || null}
-                          username={cleanTelegramUsername(a.createdBy)}
-                          size="sm"
-                        />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(
-                              `/profile/${encodeURIComponent(cleanTelegramUsername(a.createdBy))}`,
-                            );
-                          }}
-                          className="text-cyan-300 hover:text-cyan-200 hover:underline"
-                        >
-                          {formatParty(a.createdBy)}
-                        </button>
-                      </div>
+              agreements.map((a) => {
+                return (
+                  <tr
+                    key={a.id}
+                    className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-white/5"
+                    onClick={() =>
+                      navigate(
+                        a.useEscrow ? `/escrow/${a.id}` : `/agreements/${a.id}`,
+                      )
+                    }
+                  >
+                    <td className="text-muted-foreground px-5 py-4">
+                      {a.dateCreated}
+                    </td>
+                    <td className="max-w-xs truncate px-5 py-4 font-medium text-white/90">
+                      {a.title}
+                    </td>
+                    <td className="px-5 py-4 text-white/90">
+                      <div className="flex items-center gap-2">
+                        {/* Creator */}
+                        <div className="flex items-center gap-1">
+                          <UserAvatar
+                            userId={
+                              a.createdByUserId ||
+                              cleanTelegramUsername(a.createdBy)
+                            }
+                            avatarId={a.createdByAvatarId || null}
+                            username={cleanTelegramUsername(a.createdBy)}
+                            size="sm"
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const target = cleanTelegramUsername(a.createdBy); // full wallet or telegram username
+                              navigate(
+                                `/profile/${encodeURIComponent(target)}`,
+                              );
+                            }}
+                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                          >
+                            {formatParty(a.createdBy)}
+                          </button>
+                        </div>
 
-                      <span className="text-cyan-400">
-                        <FaArrowRightArrowLeft />
-                      </span>
+                        <span className="text-cyan-400">
+                          <FaArrowRightArrowLeft />
+                        </span>
 
-                      {/* Counterparty */}
-                      <div className="flex items-center gap-1">
-                        <UserAvatar
-                          userId={
-                            a.counterpartyUserId ||
-                            cleanTelegramUsername(a.counterparty)
-                          }
-                          avatarId={a.counterpartyAvatarId || null}
-                          username={cleanTelegramUsername(a.counterparty)}
-                          size="sm"
-                        />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(
-                              `/profile/${encodeURIComponent(cleanTelegramUsername(a.counterparty))}`,
-                            );
-                          }}
-                          className="text-cyan-300 hover:text-cyan-200 hover:underline"
-                        >
-                          {formatParty(a.counterparty)}
-                        </button>
+                        {/* Counterparty */}
+                        <div className="flex items-center gap-1">
+                          <UserAvatar
+                            userId={
+                              a.counterpartyUserId ||
+                              cleanTelegramUsername(a.counterparty)
+                            }
+                            avatarId={a.counterpartyAvatarId || null}
+                            username={cleanTelegramUsername(a.counterparty)}
+                            size="sm"
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const target = cleanTelegramUsername(
+                                a.counterparty,
+                              );
+                              navigate(
+                                `/profile/${encodeURIComponent(target)}`,
+                              );
+                            }}
+                            className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                          >
+                            {formatParty(a.counterparty)}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 text-white/90">
-                    {a.useEscrow
-                      ? `${a.amount || "0"} ${a.token || ""} (Escrow)`
-                      : a.includeFunds === "yes"
-                        ? `${a.amount || "0"} ${a.token || ""} (No escrow)`
-                        : "No amount"}
-                  </td>
-                  <td className="px-5 py-4 text-white/90">{a.deadline}</td>
-                  <td className="px-5 py-4">
-                    <AgreementStatusBadge status={a.status} />
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-5 py-4 text-white/90">
+                      {a.useEscrow
+                        ? `${a.amount || "0"} ${a.token || ""} (Escrow)`
+                        : a.includeFunds === "yes"
+                          ? `${a.amount || "0"} ${a.token || ""} (No escrow)`
+                          : "No amount"}
+                    </td>
+                    <td className="px-5 py-4 text-white/90">{a.deadline}</td>
+                    <td className="px-5 py-4">
+                      <AgreementStatusBadge status={a.status} />
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

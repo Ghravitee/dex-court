@@ -43,7 +43,7 @@ export const StatsGrid = () => {
       { label: "Escrow TVL", value: 3100000, icon: Banknote, prefix: "$" },
       {
         label: "Active Users",
-        value: usersLoading ? 7902 : usersCount,
+        value: usersLoading ? 0 : usersCount,
         icon: User,
       },
       { label: "Paid to Judges", value: 68000, icon: Coins, prefix: "$" },
@@ -64,6 +64,8 @@ export const StatsGrid = () => {
   const getIsLoading = (label: string) => {
     if (label === "Settled Disputes") return settledLoading;
     if (label === "Active Users") return usersLoading;
+    if (label === "Agreements") return agreementsLoading;
+    if (label === "Judges") return judgesLoading;
     return false;
   };
 
@@ -80,20 +82,21 @@ export const StatsGrid = () => {
             </div>
             <div>
               <div className="text-sm text-white/60">{s.label}</div>
-              <CountUp
-                to={s.value}
-                from={0}
-                duration={2}
-                delay={0.2}
-                separator={s.value > 1000 ? "," : ""}
-                prefix={s.prefix || ""}
-                className="font-bold text-white lg:text-[20px] xl:text-[24px]"
-              />
-              {getIsLoading(s.label) && (
-                <div className="mt-1 flex items-center gap-2 text-xs text-cyan-300">
+              {getIsLoading(s.label) ? (
+                <div className="flex items-center gap-2 text-xs text-cyan-300">
                   <DottedSpinner size="small" />
                   <span>Loading...</span>
                 </div>
+              ) : (
+                <CountUp
+                  to={s.value}
+                  from={0}
+                  duration={2}
+                  delay={0.2}
+                  separator={s.value > 1000 ? "," : ""}
+                  prefix={s.prefix || ""}
+                  className="font-bold text-white lg:text-[20px] xl:text-[24px]"
+                />
               )}
             </div>
           </div>

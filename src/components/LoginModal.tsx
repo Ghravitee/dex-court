@@ -34,27 +34,31 @@ export function LoginModal({
     setError: setWalletError,
   } = useWalletLogin();
 
-  // Close modal when user becomes authenticated (after auto sign-in)
   useEffect(() => {
-    if (isOpen && isAuthenticated && activeTab === "wallet") {
-      console.log("🔐 [Modal] User authenticated, closing modal...");
-      // Small delay to show success state before closing
-      const timer = setTimeout(() => {
-        onClose();
-      }, 500);
-
+    if (
+      isOpen &&
+      isAuthenticated &&
+      activeTab === "wallet" &&
+      mode === "login"
+    ) {
+      const timer = setTimeout(() => onClose(), 500);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isAuthenticated, activeTab, onClose]);
+  }, [isOpen, isAuthenticated, activeTab, mode, onClose]);
 
-  // Only handle auto sign-in if modal opens with wallet already connected
   useEffect(() => {
-    if (isOpen && activeTab === "wallet" && isConnected && address) {
+    if (
+      isOpen &&
+      mode === "login" &&
+      activeTab === "wallet" &&
+      isConnected &&
+      address
+    ) {
       console.log(
         "🔐 [Modal] Wallet already connected, showing auto sign-in status",
       );
     }
-  }, [isOpen, activeTab, isConnected, address]);
+  }, [isOpen, mode, activeTab, isConnected, address]);
 
   const handleTelegramAction = async () => {
     if (!otp.trim()) {
@@ -216,6 +220,7 @@ export function LoginModal({
 
   // Check if authentication was successful
   const isAuthSuccess =
+    mode === "login" &&
     isAuthenticated &&
     (loginMethod === "wallet" || (loginMethod === "telegram" && isConnected));
 

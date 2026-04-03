@@ -2,7 +2,8 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
-import { useAccount, useAccountEffect, useDisconnect } from "wagmi";
+import { useAccount, useAccountEffect } from "wagmi";
+// useDisconnect
 import { toast } from "sonner";
 import { useWalletLogin } from "../../hooks/useWalletLogin";
 import {
@@ -18,6 +19,7 @@ import { LoginModal } from "../LoginModal";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../UserAvatar";
 import logo from "../../assets/logo.webp";
+import { Link } from "react-router-dom";
 
 export function Topbar({
   onMenuClick,
@@ -29,7 +31,7 @@ export function Topbar({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const { isAuthenticated, user, loginMethod, logout } = useAuth();
   const { isConnected, address } = useAccount();
-  const { disconnect } = useDisconnect();
+  // const { disconnect } = useDisconnect();
 
   const {
     autoSignIn,
@@ -190,7 +192,7 @@ export function Topbar({
       walletConnectionHandledRef.current = false;
       resetLoginAttempt();
 
-      reloadAfterDisconnect();
+      // reloadAfterDisconnect();
     },
   });
 
@@ -207,18 +209,18 @@ export function Topbar({
     }
   };
 
-  const reloadAfterDisconnect = () => {
-    setTimeout(() => {
-      window.location.reload();
-    }, 150);
-  };
+  // const reloadAfterDisconnect = () => {
+  //   setTimeout(() => {
+  //     window.location.reload();
+  //   }, 150);
+  // };
 
   // Handler for Telegram login/logout
   const handleTelegramAuth = () => {
     if (isAuthenticated) {
       logout();
-      disconnect();
-      reloadAfterDisconnect();
+      // disconnect();
+      // reloadAfterDisconnect();
     } else {
       setShowLoginModal(true);
     }
@@ -367,7 +369,7 @@ export function Topbar({
 
         {/* Left: Logo (shown on mobile when showLogo is true) */}
         {showLogo && (
-          <div className="flex items-center gap-2 lg:hidden">
+          <Link to={"/"} className="flex items-center gap-2 lg:hidden">
             <img
               src={logo}
               alt="DexCourt Logo"
@@ -376,7 +378,7 @@ export function Topbar({
             <span className="glow-text hidden leading-none font-semibold text-cyan-300 sm:block">
               DexCourt
             </span>
-          </div>
+          </Link>
         )}
 
         {/* ADD STATUS INDICATORS HERE - Desktop */}

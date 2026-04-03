@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { formatTelegramUsernameForDisplay } from "../../../lib/usernameUtils";
+// import { formatTelegramUsernameForDisplay } from "../../../lib/usernameUtils";
 import type { Agreement } from "../../../types";
 import {
   AgreementTypeEnum,
@@ -112,11 +112,13 @@ const getAvatarIdFromParty = (party: any): number | null => {
 
 const getTelegramUsernameFromParty = (party: any): string => {
   if (!party) return "Unknown";
-  const telegramUsername = party?.telegramUsername || party?.username;
-  if (!telegramUsername) return "Unknown";
-  return telegramUsername.startsWith("@")
-    ? telegramUsername
-    : `@${telegramUsername}`;
+  if (party.telegramUsername) {
+    return party.telegramUsername.startsWith("@")
+      ? party.telegramUsername
+      : `@${party.telegramUsername}`;
+  }
+  // wallet address — return raw, no @ prefix, no truncation
+  return party.wallet || party.username || "Unknown";
 };
 
 const getVisibilityLabel = (visibility: number): "Public" | "Private" => {
@@ -137,7 +139,7 @@ export const transformApiAgreement = (apiAgreement: any): Agreement => {
   );
 
   const rawCreatedBy = getTelegramUsernameFromParty(apiAgreement.firstParty);
-  const createdBy = formatTelegramUsernameForDisplay(rawCreatedBy);
+  const createdBy = rawCreatedBy;
   const createdByUserId =
     apiAgreement.firstParty?.id?.toString() ||
     apiAgreement.creator?.id?.toString();
@@ -148,7 +150,7 @@ export const transformApiAgreement = (apiAgreement: any): Agreement => {
   const rawCounterparty = getTelegramUsernameFromParty(
     apiAgreement.counterParty,
   );
-  const counterparty = formatTelegramUsernameForDisplay(rawCounterparty);
+  const counterparty = rawCounterparty;
   const counterpartyUserId = apiAgreement.counterParty?.id?.toString();
   const counterpartyAvatarId = getAvatarIdFromParty(apiAgreement.counterParty);
 

@@ -1,4 +1,4 @@
-import Admin from "@/components/ui/svgcomponents/Admin";
+import Admin from "../../../components/ui/svgcomponents/Admin";
 import { Button } from "../../../components/ui/button";
 import { useNavigate } from "react-router-dom";
 // import {

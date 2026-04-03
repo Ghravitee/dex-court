@@ -320,55 +320,62 @@ export default function Profile() {
       </header>
 
       {/* Top Summary Section */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-        {/* Profile Summary */}
-        <div className="space-y-4">
-          <ProfileHeader
-            user={user}
-            userData={userData}
-            trustScore={trustScore}
-            trustScoreLoading={trustScoreLoading}
-            uploading={uploading}
-            onAvatarChange={handleAvatarChange}
-            onEditProfile={() => setShowProfileUpdateModal(true)}
-          />
+      <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-6 md:gap-8">
+          {/* Responsive 3-column layout that stacks on mobile */}
+          <div className="grid grid-cols-1 gap-6 md:gap-8 lg:grid-cols-3">
+            {/* Profile Summary */}
+            <div className="space-y-6">
+              <ProfileHeader
+                user={user}
+                userData={userData}
+                trustScore={trustScore}
+                trustScoreLoading={trustScoreLoading}
+                uploading={uploading}
+                onAvatarChange={handleAvatarChange}
+                onEditProfile={() => setShowProfileUpdateModal(true)}
+              />
 
-          <VerificationSection
-            user={user}
-            onLinkTelegram={() =>
-              setShowLinkModal({ type: "telegram", open: true })
-            }
-            onLinkWallet={() =>
-              setShowLinkModal({ type: "wallet", open: true })
-            }
-          />
-        </div>
+              <VerificationSection
+                user={user}
+                onLinkTelegram={() =>
+                  setShowLinkModal({ type: "telegram", open: true })
+                }
+                onLinkWallet={() =>
+                  setShowLinkModal({ type: "wallet", open: true })
+                }
+              />
+            </div>
 
-        {/* Revenue Stats */}
-        <RevenueStats revenue={userData.stats.revenue} />
+            {/* Revenue Stats */}
+            <div>
+              <RevenueStats revenue={userData.stats.revenue} />
+            </div>
 
-        {/* Role Section */}
-        <div className="flex flex-col gap-4">
-          <RoleSection roles={userData.roles} />
+            {/* Role Section and Reputation combined */}
+            <div className="space-y-6">
+              <RoleSection roles={userData.roles} />
 
-          <BentoCard
-            title="My Reputation History"
-            icon={<RiShieldCheckFill />}
-            color="cyan"
-            count={reputationHistory?.total || 0}
-            scrollable
-            maxHeight="330px"
-          >
-            <ReputationHistory
-              reputationHistory={reputationHistory}
-              loading={reputationLoading}
-              error={reputationError}
-              loadingMore={reputationLoadingMore}
-              userRoles={userData.roles}
-              onLoadMore={loadMoreHistory}
-              onViewEvent={handleAgreementClick}
-            />
-          </BentoCard>
+              <BentoCard
+                title="My Reputation History"
+                icon={<RiShieldCheckFill />}
+                color="cyan"
+                count={reputationHistory?.total || 0}
+                scrollable
+                maxHeight="330px"
+              >
+                <ReputationHistory
+                  reputationHistory={reputationHistory}
+                  loading={reputationLoading}
+                  error={reputationError}
+                  loadingMore={reputationLoadingMore}
+                  userRoles={userData.roles}
+                  onLoadMore={loadMoreHistory}
+                  onViewEvent={handleAgreementClick}
+                />
+              </BentoCard>
+            </div>
+          </div>
         </div>
       </section>
 
