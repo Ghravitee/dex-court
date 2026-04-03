@@ -1,5 +1,4 @@
 // src/web3/config.ts
-
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x", // Mainnet address
   11155111: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", // Sepolia address
