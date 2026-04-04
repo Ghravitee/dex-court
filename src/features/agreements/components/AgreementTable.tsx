@@ -107,8 +107,10 @@ export const AgreementTable = ({
                     <td className="text-muted-foreground px-5 py-4">
                       {a.dateCreated}
                     </td>
-                    <td className="max-w-xs truncate px-5 py-4 font-medium text-white/90">
-                      {a.title}
+                    <td className="max-w-[300px] sm:max-w-[250px] md:max-w-[300px] lg:max-w-[350px]">
+                      <div className="text-muted-foreground line-clamp-2 text-xs break-words">
+                        {a.title}
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-white/90">
                       <div className="flex items-center gap-2">

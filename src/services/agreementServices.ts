@@ -669,7 +669,9 @@ class AgreementService {
 
     // Filter for signed agreements (status = ACTIVE = 2)
     const signedAgreements = allAgreements.filter(
-      (agreement) => agreement.status === AgreementStatusEnum.ACTIVE,
+      (agreement) =>
+        agreement.status === AgreementStatusEnum.ACTIVE ||
+        agreement.status === AgreementStatusEnum.COMPLETED,
     );
 
     devLog(

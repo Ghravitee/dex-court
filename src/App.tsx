@@ -1,41 +1,46 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-
 import { Toaster } from "./components/ui/toaster";
 import { Toaster as Sonner } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
-
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-
 import Layout from "./components/layout/Layout";
 import { AdminLayout } from "./components/layout/AdminLayout";
-
 import { ScrollToTop } from "./components/ScrollToTop";
-
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-
 import { LoginModal } from "./components/LoginModal";
-
 import { GlobalLoader } from "./components/GlobalLoader";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
-
 import { ConnectionStatus } from "./components/ConnectionStatus";
 
-// ─── Lazy Loaded Pages ─────────────────────────────────────────
-
-const NotFound = lazy(() => import("./pages/NotFound"));
-
-const Voting = lazy(() => import("./pages/Voting"));
-const Escrow = lazy(() => import("./pages/Escrow"));
 const Reputation = lazy(() => import("./pages/Reputation"));
-
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
 
+// const Voting = lazy(() => import("./pages/Voting"));
+
+// const Escrow = lazy(() => import("./pages/Escrow"));
+
+// ---- Pages-based structure and routes (Previous) ─────────────────────────────────────────
+// const Index = lazy(() => import("./pages/Index"));
+// const Agreements = lazy(() => import("./pages/Agreements"));
+// const AgreementDetails = lazy(() => import("./pages/AgreementDetails"));
+
+// const Disputes = lazy(() => import("./pages/Disputes"));
+// const DisputeDetails = lazy(() => import("./pages/DisputeDetails"));
+// const Escrow = lazy(() => import("./pages/Escrow"));
+// const EscrowDetails = lazy(() => import("./pages/EscrowDetails"));
+
+// const Voting = lazy(() => import("./pages/Voting"));
+
+// const Profile = lazy(() => import("./pages/Profile"));
+// const UserProfile = lazy(() => import("./pages/UserProfile"));
+
+// const NotFound = lazy(() => import("./pages/NotFound"));
+
+// ---- Feature-based sructure and routes ─────────────────────────────────────────
 const Index = lazy(() => import("./features/index"));
-const Profile = lazy(() => import("./features/profile"));
-const UserProfile = lazy(() => import("./features/userProfile"));
 
 const Agreements = lazy(() => import("./features/agreements"));
 const AgreementDetails = lazy(() => import("./features/agreementDetails"));
@@ -43,7 +48,15 @@ const AgreementDetails = lazy(() => import("./features/agreementDetails"));
 const Disputes = lazy(() => import("./features/disputes"));
 const DisputeDetails = lazy(() => import("./features/disputeDetails"));
 
+const Escrow = lazy(() => import("./features/escrow/Escrow"));
 const EscrowDetails = lazy(() => import("./features/escrowDetails"));
+
+const Voting = lazy(() => import("./features/voting/index"));
+
+const Profile = lazy(() => import("./features/profile"));
+const UserProfile = lazy(() => import("./features/userProfile"));
+
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 // ─── Auto Login Modal ──────────────────────────────────────────
 

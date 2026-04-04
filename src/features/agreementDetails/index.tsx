@@ -15,8 +15,6 @@ import {
   EyeOff,
   Globe,
   Lock,
-  Image,
-  Paperclip,
   UserCheck,
   X,
   ThumbsUp,
@@ -25,7 +23,6 @@ import {
   PackageCheck,
   Ban,
   Info,
-  Download,
   Wallet,
   //   Scale,
   //   AlertCircle,
@@ -56,7 +53,6 @@ import {
   formatDateWithTime,
   getStatusColor,
   processAgreementFiles,
-  getFileType,
   getDisputeInfo,
   isDisputeTriggeredByRejection,
   getDisputeFiledByFromTimeline,
@@ -117,7 +113,6 @@ export default function AgreementDetails() {
     handleConfirmReject,
     handleCompletePayment,
     handlePaidDisputeCreated,
-    handleDownloadFile,
   } = useAgreementActions({
     id,
     agreement,
@@ -144,25 +139,25 @@ export default function AgreementDetails() {
 
   const handleDisputeCreated = useCallback(() => {}, []);
 
-  const getFileIcon = (fileType: string) => {
-    const cls = "h-5 w-5";
-    switch (fileType) {
-      case "pdf":
-        return <FileText className={`${cls} text-red-400`} />;
-      case "image":
-        return <Image className={`${cls} text-green-400`} />;
-      case "word":
-        return <FileText className={`${cls} text-blue-400`} />;
-      case "excel":
-        return <FileText className={`${cls} text-green-500`} />;
-      case "archive":
-        return <Paperclip className={`${cls} text-yellow-400`} />;
-      case "text":
-        return <FileText className={`${cls} text-gray-400`} />;
-      default:
-        return <Paperclip className={`${cls} text-cyan-400`} />;
-    }
-  };
+  // const getFileIcon = (fileType: string) => {
+  //   const cls = "h-5 w-5";
+  //   switch (fileType) {
+  //     case "pdf":
+  //       return <FileText className={`${cls} text-red-400`} />;
+  //     case "image":
+  //       return <Image className={`${cls} text-green-400`} />;
+  //     case "word":
+  //       return <FileText className={`${cls} text-blue-400`} />;
+  //     case "excel":
+  //       return <FileText className={`${cls} text-green-500`} />;
+  //     case "archive":
+  //       return <Paperclip className={`${cls} text-yellow-400`} />;
+  //     case "text":
+  //       return <FileText className={`${cls} text-gray-400`} />;
+  //     default:
+  //       return <Paperclip className={`${cls} text-cyan-400`} />;
+  //   }
+  // };
 
   // ─── Early returns ─────────────────────────────────────────────────────────
   if (loading) return <LoadingScreen />;
@@ -502,7 +497,7 @@ export default function AgreementDetails() {
                       onViewEvidence={handleViewEvidence}
                     />
                   </div>
-                  <div className="space-y-2">
+                  {/* <div className="space-y-2">
                     {(agreement.images || []).map(
                       (file: string, index: number) => {
                         const fileType = getFileType(file);
@@ -535,7 +530,7 @@ export default function AgreementDetails() {
                         );
                       },
                     )}
-                  </div>
+                  </div> */}
                 </div>
               )}
 

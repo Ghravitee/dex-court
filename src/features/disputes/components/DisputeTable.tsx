@@ -106,8 +106,10 @@ export const DisputeTable = ({
                     {new Date(d.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-5 py-4 font-medium text-white/90">
-                    <div className="max-w-[150px] lg:max-w-[200px]">
-                      <div className="truncate font-medium">{d.title}</div>
+                    <div className="max-w-[300px] sm:max-w-[250px] md:max-w-[300px] lg:max-w-[350px]">
+                      <div className="text-muted-foreground line-clamp-2 text-xs break-words">
+                        {d.title}
+                      </div>
                     </div>
                   </td>
                   <td className="px-5 py-4 whitespace-nowrap">{d.request}</td>

@@ -899,7 +899,11 @@ function SignedAgreementsInfiniteCards() {
   const { agreements, loading } = usePublicAgreements();
 
   const signedAgreements = useMemo(
-    () => agreements.filter((agreement) => agreement.status === "signed"),
+    () =>
+      agreements.filter(
+        (agreement) =>
+          agreement.status === "signed" || agreement.status === "completed",
+      ),
     [agreements],
   );
 

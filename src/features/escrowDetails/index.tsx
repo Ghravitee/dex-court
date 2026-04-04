@@ -26,8 +26,6 @@ import {
   //   X,
   Wallet,
   Loader2,
-  Image,
-  Paperclip,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../hooks/useAuth";
@@ -36,7 +34,7 @@ import { VscVerifiedFilled } from "react-icons/vsc";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import EvidenceViewer from "../../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../../components/disputes/EvidenceDisplay";
-import { api } from "../../lib/apiClient";
+
 import EscrowPendingDisputeModal from "../../components/EscrowPendingDisputeModal";
 import { MilestoneTableRow } from "../../web3/MilestoneTableRow";
 import { CountdownTimer } from "../../web3/Timer";
@@ -59,7 +57,6 @@ import {
   formatWalletAddress,
   formatUsernameForDisplay,
   processEscrowFiles,
-  getFileType,
   getDisputeInfo,
   getDisputeEvents,
   getEventActorInfo,
@@ -286,58 +283,6 @@ export default function EscrowDetails() {
   const handleViewEvidence = (evidence: any) => {
     setSelectedEvidence(evidence);
     setEvidenceViewerOpen(true);
-  };
-
-  const handleDownloadFile = async (fileIndex: number) => {
-    if (!id || !escrow) return;
-    try {
-      const allFiles = (escrow._raw?.files || []).filter(
-        (f: any) => !f.fileName.toLowerCase().includes("escrow-draft"),
-      );
-      if (!allFiles[fileIndex]) {
-        return;
-      }
-      const file = allFiles[fileIndex];
-      const response = await api.get(
-        `/agreement/${parseInt(id)}/file/${file.id}`,
-        { responseType: "blob" },
-      );
-      const filename = file.fileName;
-      const contentType = response.headers["content-type"];
-      const blob = contentType
-        ? new Blob([response.data], { type: contentType })
-        : new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      /* silent */
-    }
-  };
-
-  const getFileIcon = (fileType: string) => {
-    const cls = "h-5 w-5";
-    switch (fileType) {
-      case "pdf":
-        return <FileText className={`${cls} text-red-400`} />;
-      case "image":
-        return <Image className={`${cls} text-green-400`} />;
-      case "word":
-        return <FileText className={`${cls} text-blue-400`} />;
-      case "excel":
-        return <FileText className={`${cls} text-green-500`} />;
-      case "archive":
-        return <Paperclip className={`${cls} text-yellow-400`} />;
-      case "text":
-        return <FileText className={`${cls} text-gray-400`} />;
-      default:
-        return <Paperclip className={`${cls} text-cyan-400`} />;
-    }
   };
 
   // ─── Early returns ─────────────────────────────────────────────────────────
@@ -645,38 +590,6 @@ export default function EscrowDetails() {
                           color="cyan"
                           onViewEvidence={handleViewEvidence}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        {filteredFiles.map((file: any, index: number) => {
-                          const fileType = getFileType(file.fileName);
-                          return (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
-                            >
-                              <div className="flex min-w-0 flex-1 items-center space-x-3">
-                                {getFileIcon(fileType)}
-                                <div className="min-w-0 flex-1">
-                                  <span className="block truncate text-white">
-                                    {file.fileName}
-                                  </span>
-                                  <span className="text-xs text-cyan-300/70 capitalize">
-                                    {fileType}
-                                  </span>
-                                </div>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10"
-                                onClick={() => handleDownloadFile(index)}
-                              >
-                                <Upload className="mr-2 h-4 w-4" />
-                                Download
-                              </Button>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   );

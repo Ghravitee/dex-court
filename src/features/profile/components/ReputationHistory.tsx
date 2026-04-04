@@ -2,7 +2,7 @@
 import { Button } from "../../../components/ui/button";
 import { Loader2 } from "lucide-react";
 import { formatReputationEvent, formatDateTime } from "../utils/formatters";
-import { ReputationEventTypeEnum } from "../constants";
+// import { ReputationEventTypeEnum } from "../constants";
 
 interface ReputationHistoryProps {
   reputationHistory: any;
@@ -21,7 +21,7 @@ export const ReputationHistory = ({
   loadingMore,
   userRoles,
   onLoadMore,
-  onViewEvent,
+  // onViewEvent,
 }: ReputationHistoryProps) => {
   if (loading) {
     return (
@@ -138,7 +138,7 @@ export const ReputationHistory = ({
                     </span>
                   </div>
 
-                  {(event.eventType ===
+                  {/* {(event.eventType ===
                     ReputationEventTypeEnum.AgreementCompleted ||
                     event.eventType ===
                       ReputationEventTypeEnum.AgreementEscrowCompleted ||
@@ -165,7 +165,7 @@ export const ReputationHistory = ({
                         View Event #{event.eventId}
                       </Button>
                     </div>
-                  )}
+                  )} */}
                 </div>
               </div>
             </div>

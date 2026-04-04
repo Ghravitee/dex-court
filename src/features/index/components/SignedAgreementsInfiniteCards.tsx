@@ -8,7 +8,10 @@ export const SignedAgreementsInfiniteCards = () => {
   const { agreements, loading } = usePublicAgreements();
 
   const signedAgreements = useMemo(
-    () => agreements.filter((a) => a.status === "signed"),
+    () =>
+      agreements.filter(
+        (a) => a.status === "signed" || a.status === "completed",
+      ),
     [agreements],
   );
 
