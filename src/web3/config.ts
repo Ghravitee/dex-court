@@ -1,28 +1,69 @@
 // src/web3/config.ts
+
+export const CHAIN_ENV_MAP: Record<number, { mainnet: number; testnet: number }> = {
+  1: { mainnet: 1, testnet: 11155111 }, // Ethereum -> Sepolia
+  56: { mainnet: 56, testnet: 97 }, // BNB -> BNB Testnet
+  8453: { mainnet: 8453, testnet: 84532 }, // Base -> Base Sepolia
+};
+
+export const SUPPORTED_CHAINS = [
+  {
+    id: 1,
+    name: "Ethereum",
+    symbol: "ETH",
+    mainnetId: 1,
+    testnetId: 11155111,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
+  },
+  {
+    id: 56,
+    name: "BNB Chain",
+    symbol: "BNB",
+    mainnetId: 56,
+    testnetId: 97,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png",
+  },
+  {
+    id: 8453,
+    name: "Base",
+    symbol: "BASE",
+    mainnetId: 8453,
+    testnetId: 84532,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png",
+  },
+];
+
 export const ESCROW_CA: Record<number, `0x${string}`> = {
-  1: "0x", // Mainnet address
-  11155111: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", // Sepolia address
+  1: "0x",
+  11155111: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66",
+  56: "0x", // BNB mainnet
+  97: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", // BNB testnet
+  8453: "0x", // Base mainnet
+  84532: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", // Base Sepolia testnet
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
-  1: "0x", // Mainnet address
-  11155111: "0xF0FFF4d2A7d60A2Ac695Bd6f03f6B2160B79427e", // Sepolia address
+  1: "0x",
+  11155111: "0xF0FFF4d2A7d60A2Ac695Bd6f03f6B2160B79427e",
+  56: "0x",
+  97: "0x",
+  8453: "0x",
+  84532: "0x",
 };
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-const CHAIN_EXPLORER_URLS: { [chainId: number]: string } = {
-  // Ethereum Mainnet and Testnets
+const CHAIN_EXPLORER_URLS: Record<number, string> = {
   1: "https://etherscan.io",
   11155111: "https://sepolia.etherscan.io",
-
-  // BNB Smart Chain
-  56: "https://bscscan.com", // BSC Mainnet:cite[4]:cite[8]
+  56: "https://bscscan.com",
   97: "https://testnet.bscscan.com",
+  8453: "https://basescan.org",
+  84532: "https://sepolia.basescan.org",
 };
 
 export const getExplorerUrl = (chainId: number): string => {
-  return CHAIN_EXPLORER_URLS[chainId] || "https://etherscan.io"; // Default fallback
+  return CHAIN_EXPLORER_URLS[chainId] || "https://etherscan.io";
 };
 
 export const ESCROW_ABI = {

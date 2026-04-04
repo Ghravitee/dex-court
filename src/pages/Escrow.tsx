@@ -1,6 +1,7 @@
 // src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useChainSelection } from "../config/useChainSelection";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
@@ -49,7 +50,7 @@ import {
   useWaitForTransactionReceipt,
   useContractReads,
   useSwitchChain,
-  useChainId,
+  // useChainId,
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
@@ -377,8 +378,8 @@ export default function Escrow() {
   // ---------- wagmi / on-chain state ----------
   const { address, isConnected } = useAccount();
   const { user: currentUser } = useAuth();
-  const { switchChain } = useSwitchChain();
-  const wagmiChainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  // const wagmiChainId = useChainId();
   const networkInfo = useNetworkEnvironment();
 
   // Add this state near the top of the component
@@ -387,36 +388,33 @@ export default function Escrow() {
   const [pendingAgreementData, setPendingAgreementData] =
     useState<PendingAgreementData | null>(null);
 
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(null);
+
+
+  const activeChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : networkInfo.chainId;
+
   const contractAddress = useMemo(() => {
-    if (!networkInfo.chainId) return undefined;
+    if (!activeChainId) return undefined;
+    const addr = ESCROW_CA[activeChainId as number];
 
-    const address = ESCROW_CA[networkInfo.chainId as number];
-
-    console.log("🔄 Contract address lookup:", {
-      address,
-      isValid: address && isValidAddress(address),
-      ESCROW_CA,
-    });
-
-    if (address && isValidAddress(address)) {
-      return address as `0x${string}`;
+    if (addr && isValidAddress(addr)) {
+      return addr as `0x${string}`;
     }
-
-    console.error(
-      `❌ No valid contract address found for chainId ${networkInfo.chainId}`,
-    );
     return undefined;
-  }, [networkInfo.chainId]);
+  }, [activeChainId]);
 
-  const switchToTokenChain = useCallback(async () => {
-    if (!networkInfo.chainId || !switchChain) return;
+  // const switchToTokenChain = useCallback(async () => {
+  //   if (!networkInfo.chainId || !switchChain) return;
 
-    try {
-      switchChain({ chainId: networkInfo.chainId });
-    } catch (error) {
-      console.error("Failed to switch network:", error);
-    }
-  }, [networkInfo.chainId, switchChain]);
+  //   try {
+  //     switchChain({ chainId: networkInfo.chainId });
+  //   } catch (error) {
+  //     console.error("Failed to switch network:", error);
+  //   }
+  // }, [networkInfo.chainId, switchChain]);
 
   // Separate write hooks
   const {
@@ -1267,6 +1265,7 @@ export default function Escrow() {
     setDeadline(null);
     setEscrowType("myself");
     setPendingAgreementData(null);
+    setSelectedMainnetId(null);
   };
 
   const handleCreateAgreementOnChain = async () => {
@@ -1280,7 +1279,7 @@ export default function Escrow() {
       setUiError(errorMsg);
       updateStep("error", errorMsg);
       toast.error("Network Error", {
-        description: `Please switch to a supported network. Current chain: ${networkInfo.chainId}`,
+        description: `Please select a supported network. Active chain: ${activeChainId}`,
       });
       return;
     }
@@ -1302,6 +1301,10 @@ export default function Escrow() {
     if (!deadline) {
       setUiError("Deadline required");
       updateStep("error", "Missing deadline");
+      return;
+    }
+    if (!selectedMainnetId) {
+      setUiError("Please select a chain");
       return;
     }
     if (!form.amount || Number(form.amount) <= 0) {
@@ -1473,6 +1476,7 @@ export default function Escrow() {
       const fullDescription = form.description;
 
       let backendAgreementId = contractAgreementId;
+      const actualChainId = activeChainId;
 
       try {
         updateStep("creating_backend", "Sending data to backend server...");
@@ -1494,11 +1498,11 @@ export default function Escrow() {
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true,
             secureTheFunds: true,
-            chainId: networkInfo.chainId,
+            chainId: actualChainId,
             payeeWalletAddress: serviceProviderAddr, // The service provider (who receives funds)
             payerWalletAddress: serviceRecipientAddr, // The service recipient (who pays funds)
             contractAgreementId: contractAgreementId,
-            escrowContractAddress: contractAddress,
+            escrowContractAddress: ESCROW_CA[actualChainId] ?? contractAddress,
           },
           filesToUpload,
         );
@@ -1698,6 +1702,15 @@ export default function Escrow() {
         return;
       }
     }
+    if (!isConnected) {
+      setUiError("Please connect a wallet to create an agreement");
+      return;
+    }
+    if (!currentUser?.walletAddress) {
+      setUiError("Please authenticate your wallet to create an agreement");
+      return;
+    }
+
     if (!form.token) {
       setUiError("Please select payment token");
       return;
@@ -1833,48 +1846,24 @@ export default function Escrow() {
     );
   };
 
-  const ContractFilterInfo = () => {
-    if (!contractAddress) return null;
-
-    return (
-      <div className="mb-4 hidden w-fit rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-        <div className="flex items-start gap-2">
-          <Server className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-          <div>
-            <h4 className="text-sm font-medium text-cyan-300">
-              Filtered by Contract Address
-            </h4>
-            <p className="mt-1 font-mono text-xs text-cyan-300/80">
-              {contractAddress.slice(0, 20)}...{contractAddress.slice(-20)}
-            </p>
-            <p className="mt-2 text-xs text-cyan-200/60">
-              Showing escrows using the current contract version on chain{" "}
-              {networkInfo.chainId}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  useEffect(() => {
-    if (
-      currentUser?.walletAddress &&
-      isConnected &&
-      wagmiChainId !== networkInfo.chainId
-    ) {
-      toast.info(
-        `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
-      );
-      switchToTokenChain();
-    }
-  }, [
-    currentUser?.walletAddress,
-    isConnected,
-    networkInfo.chainId,
-    switchToTokenChain,
-    wagmiChainId,
-  ]);
+  // useEffect(() => {
+  //   if (
+  //     currentUser?.walletAddress &&
+  //     isConnected &&
+  //     wagmiChainId !== networkInfo.chainId
+  //   ) {
+  //     toast.info(
+  //       `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
+  //     );
+  //     switchToTokenChain();
+  //   }
+  // }, [
+  //   currentUser?.walletAddress,
+  //   isConnected,
+  //   networkInfo.chainId,
+  //   switchToTokenChain,
+  //   wagmiChainId,
+  // ]);
 
   useEffect(() => {
     if (isConnected) {
@@ -1885,10 +1874,10 @@ export default function Escrow() {
       });
 
       if (!contractAddress || !isValidAddress(contractAddress)) {
-        const errorMsg = `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`;
+        const errorMsg = `Escrow contract not configured for chain ${activeChainId}. Please switch to a supported network.`;
         setChainConfigError(errorMsg);
         toast.error("Unsupported Network", {
-          description: `Chain ID ${networkInfo.chainId} is not supported. Please switch to a supported network.`,
+          description: `Chain ID ${activeChainId} is not supported. Please switch to a supported network.`,
         });
       } else {
         setChainConfigError(null);
@@ -1969,13 +1958,12 @@ export default function Escrow() {
           <div>
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                  isError
-                    ? "bg-red-500/10"
-                    : isSuccess
-                      ? "bg-emerald-500/10"
-                      : "bg-cyan-500/10"
-                }`}
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${isError
+                  ? "bg-red-500/10"
+                  : isSuccess
+                    ? "bg-emerald-500/10"
+                    : "bg-cyan-500/10"
+                  }`}
               >
                 {isError ? (
                   <AlertCircle className="h-5 w-5 text-red-400" />
@@ -2023,49 +2011,45 @@ export default function Escrow() {
               return (
                 <div key={step.id} className="relative">
                   <div
-                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${
-                      isCompleted
-                        ? "border-emerald-500/30 bg-emerald-500/5"
-                        : isCurrent
-                          ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
-                          : isPending
-                            ? "border-white/10 bg-white/5"
-                            : "border-white/10 bg-white/5"
-                    }`}
+                    className={`relative flex flex-col items-center rounded-2xl border p-4 transition-all duration-300 ${isCompleted
+                      ? "border-emerald-500/30 bg-emerald-500/5"
+                      : isCurrent
+                        ? "border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-500/20"
+                        : isPending
+                          ? "border-white/10 bg-white/5"
+                          : "border-white/10 bg-white/5"
+                      }`}
                   >
                     <div
-                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
-                        isCompleted
-                          ? "border-emerald-500 bg-emerald-500/20"
-                          : isCurrent
-                            ? "border-cyan-500 bg-cyan-500/20"
-                            : "border-white/20 bg-white/10"
-                      }`}
+                      className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${isCompleted
+                        ? "border-emerald-500 bg-emerald-500/20"
+                        : isCurrent
+                          ? "border-cyan-500 bg-cyan-500/20"
+                          : "border-white/20 bg-white/10"
+                        }`}
                     >
                       {isCompleted ? (
                         <Check className="h-5 w-5 text-emerald-400" />
                       ) : (
                         <StepIcon
-                          className={`h-5 w-5 ${
-                            isCurrent
-                              ? "text-cyan-400"
-                              : isPending
-                                ? "text-gray-400"
-                                : "text-gray-500"
-                          }`}
+                          className={`h-5 w-5 ${isCurrent
+                            ? "text-cyan-400"
+                            : isPending
+                              ? "text-gray-400"
+                              : "text-gray-500"
+                            }`}
                         />
                       )}
                     </div>
 
                     <div className="text-center">
                       <div
-                        className={`text-xs font-semibold ${
-                          isCompleted
-                            ? "text-emerald-300"
-                            : isCurrent
-                              ? "text-cyan-300"
-                              : "text-gray-400"
-                        }`}
+                        className={`text-xs font-semibold ${isCompleted
+                          ? "text-emerald-300"
+                          : isCurrent
+                            ? "text-cyan-300"
+                            : "text-gray-400"
+                          }`}
                       >
                         {step.label}
                       </div>
@@ -2075,13 +2059,12 @@ export default function Escrow() {
                     </div>
 
                     <div
-                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                        isCompleted
-                          ? "bg-emerald-500 text-white"
-                          : isCurrent
-                            ? "bg-cyan-500 text-white"
-                            : "bg-white/10 text-gray-400"
-                      }`}
+                      className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isCompleted
+                        ? "bg-emerald-500 text-white"
+                        : isCurrent
+                          ? "bg-cyan-500 text-white"
+                          : "bg-white/10 text-gray-400"
+                        }`}
                     >
                       {index + 1}
                     </div>
@@ -2096,13 +2079,12 @@ export default function Escrow() {
         <div className="rounded-xl border border-white/10 bg-gradient-to-r from-white/5 to-transparent p-5">
           <div className="flex items-start gap-4">
             <div
-              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${
-                isError
-                  ? "bg-red-500/10"
-                  : isSuccess
-                    ? "bg-emerald-500/10"
-                    : "bg-cyan-500/10"
-              }`}
+              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${isError
+                ? "bg-red-500/10"
+                : isSuccess
+                  ? "bg-emerald-500/10"
+                  : "bg-cyan-500/10"
+                }`}
             >
               {isError ? (
                 <AlertTriangle className="h-6 w-6 text-red-400" />
@@ -2332,7 +2314,6 @@ export default function Escrow() {
   return (
     <div className="relative">
       <NetworkWarning />
-      <ContractFilterInfo />
 
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
@@ -2422,11 +2403,10 @@ export default function Escrow() {
                         <button
                           type="button"
                           onClick={() => setEscrowType("myself")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "myself"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "myself"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            }`}
                         >
                           <User className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2439,11 +2419,10 @@ export default function Escrow() {
                         <button
                           type="button"
                           onClick={() => setEscrowType("others")}
-                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                            escrowType === "others"
-                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                          }`}
+                          className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === "others"
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            }`}
                         >
                           <Users className="mb-2 h-6 w-6" />
                           <span className="text-sm font-medium">
@@ -2488,6 +2467,37 @@ export default function Escrow() {
 
                     {/* Title */}
                     <div>
+                      {displayChains.map((chain) => (
+                        <button
+                          key={chain.mainnetId}
+                          type="button"
+                          onClick={async () => {
+                            setSelectedMainnetId(chain.mainnetId);
+                            const resolved = resolveChainId(chain.mainnetId);
+                            try {
+                              await switchChainAsync({ chainId: resolved });
+                              toast.success(`Switched to ${chain.label}`);
+                            } catch (err) {
+                              toast.error(`Failed to switch to ${chain.name}`);
+                              setSelectedMainnetId(null); // revert selection if switch fails
+                            }
+                          }}
+                          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${selectedMainnetId === chain.mainnetId
+                            ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                            : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                            }`}
+                        >
+                          <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
+                          <span className="text-xs font-medium">{chain.name}</span>
+                          <span className="text-[10px] opacity-60">
+                            {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+                          </span>
+                          {selectedMainnetId === chain.mainnetId && (
+                            <CheckCircle className="h-3 w-3 text-cyan-400" />
+                          )}
+                        </button>
+                      ))}
+
                       <div className="mb-2 flex items-center justify-between">
                         <label className="text-muted-foreground text-sm">
                           Title <span className="text-red-500">*</span>
@@ -2532,13 +2542,12 @@ export default function Escrow() {
                           <span>
                             {form.type
                               ? typeOptions.find((t) => t.value === form.type)
-                                  ?.label
+                                ?.label
                               : "Select Type"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTypeOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTypeOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTypeOpen && (
@@ -2586,11 +2595,10 @@ export default function Escrow() {
                             {(["me", "counterparty"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payer === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -2630,11 +2638,10 @@ export default function Escrow() {
                             {(["partyA", "partyB"] as const).map((p) => (
                               <label
                                 key={p}
-                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                                  form.payerOther === p
-                                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                                    : "border-white/10 bg-white/5 text-white/70"
-                                }`}
+                                className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
+                                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                                  : "border-white/10 bg-white/5 text-white/70"
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -2741,13 +2748,12 @@ export default function Escrow() {
                           <span>
                             {form.token
                               ? tokenOptions.find((t) => t.value === form.token)
-                                  ?.label
+                                ?.label
                               : "Select Token"}
                           </span>
                           <ChevronDown
-                            className={`transition-transform ${
-                              isTokenOpen ? "rotate-180" : ""
-                            }`}
+                            className={`transition-transform ${isTokenOpen ? "rotate-180" : ""
+                              }`}
                           />
                         </div>
                         {isTokenOpen && (
@@ -2827,10 +2833,10 @@ export default function Escrow() {
                         {(!form.amount.trim() ||
                           isNaN(Number(form.amount)) ||
                           Number(form.amount) <= 0) && (
-                          <div className="mt-1 text-xs text-red-400">
-                            Please enter a valid amount
-                          </div>
-                        )}
+                            <div className="mt-1 text-xs text-red-400">
+                              Please enter a valid amount
+                            </div>
+                          )}
                       </div>
                     </div>
 
@@ -2869,11 +2875,10 @@ export default function Escrow() {
                       </label>
 
                       <div
-                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                          isDragOver
-                            ? "border-cyan-400/60 bg-cyan-500/20"
-                            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                        }`}
+                        className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                          ? "border-cyan-400/60 bg-cyan-500/20"
+                          : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                          }`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -3056,9 +3061,9 @@ export default function Escrow() {
                         }
                       >
                         {isSubmitting ||
-                        isTxPending ||
-                        isApprovalPending ||
-                        createApprovalState.isApprovingToken ? (
+                          isTxPending ||
+                          isApprovalPending ||
+                          createApprovalState.isApprovingToken ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             {createApprovalState.isApprovingToken
@@ -3204,19 +3209,17 @@ export default function Escrow() {
                 <button
                   key={tab.value}
                   onClick={() => setStatusTab(tab.value)}
-                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${
-                    statusTab === tab.value
-                      ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
-                      : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                  } `}
+                  className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all duration-200 ${statusTab === tab.value
+                    ? "border border-cyan-400/30 bg-cyan-500/20 text-cyan-200 shadow-lg shadow-cyan-500/20"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    } `}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                      statusTab === tab.value
-                        ? "bg-cyan-400/30 text-cyan-200"
-                        : "bg-white/10 text-white/60"
-                    } `}
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${statusTab === tab.value
+                      ? "bg-cyan-400/30 text-cyan-200"
+                      : "bg-white/10 text-white/60"
+                      } `}
                   >
                     {tab.count}
                   </span>
@@ -3298,11 +3301,10 @@ export default function Escrow() {
                         variant={currentPage === pageNum ? "neon" : "outline"}
                         size="sm"
                         onClick={() => handlePageChange(pageNum)}
-                        className={`${
-                          currentPage === pageNum
-                            ? "neon-hover"
-                            : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-                        } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
+                        className={`${currentPage === pageNum
+                          ? "neon-hover"
+                          : "border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+                          } h-8 min-w-[2rem] px-2 text-xs sm:h-9 sm:min-w-[2.5rem] sm:px-3 sm:text-sm`}
                       >
                         {pageNum}
                       </Button>
@@ -3405,7 +3407,7 @@ export default function Escrow() {
                                 e.payerDetails?.username && (
                                   <div className="truncate text-xs text-gray-400">
                                     {e.payerDetails.username.startsWith("0x") &&
-                                    e.payerDetails.username.length === 42
+                                      e.payerDetails.username.length === 42
                                       ? `${e.payerDetails.username.slice(0, 6)}...${e.payerDetails.username.slice(-4)}`
                                       : e.payerDetails.username}
                                   </div>
@@ -3441,7 +3443,7 @@ export default function Escrow() {
                                 e.payeeDetails?.username && (
                                   <div className="truncate text-xs text-gray-400">
                                     {e.payeeDetails.username.startsWith("0x") &&
-                                    e.payeeDetails.username.length === 42
+                                      e.payeeDetails.username.length === 42
                                       ? `${e.payeeDetails.username.slice(0, 6)}...${e.payeeDetails.username.slice(-4)}`
                                       : e.payeeDetails.username}
                                   </div>
@@ -3464,28 +3466,27 @@ export default function Escrow() {
                           <div className="flex flex-col gap-1">
                             <div>
                               <span
-                                className={`badge w-fit ${
-                                  e.status === "pending"
-                                    ? "badge-yellow"
-                                    : e.status === "signed"
-                                      ? "badge-blue"
-                                      : e.status === "pending_approval"
-                                        ? "badge-orange"
-                                        : e.status === "completed"
-                                          ? "badge-green"
-                                          : e.status === "disputed"
-                                            ? "badge-purple"
-                                            : e.status === "cancelled"
-                                              ? "badge-red"
-                                              : e.status === "expired"
-                                                ? "badge-gray"
-                                                : "badge-orange"
-                                }`}
+                                className={`badge w-fit ${e.status === "pending"
+                                  ? "badge-yellow"
+                                  : e.status === "signed"
+                                    ? "badge-blue"
+                                    : e.status === "pending_approval"
+                                      ? "badge-orange"
+                                      : e.status === "completed"
+                                        ? "badge-green"
+                                        : e.status === "disputed"
+                                          ? "badge-purple"
+                                          : e.status === "cancelled"
+                                            ? "badge-red"
+                                            : e.status === "expired"
+                                              ? "badge-gray"
+                                              : "badge-orange"
+                                  }`}
                               >
                                 {e.status === "pending_approval"
                                   ? "Pending Approval"
                                   : e.status.charAt(0).toUpperCase() +
-                                    e.status.slice(1)}
+                                  e.status.slice(1)}
                               </span>
                             </div>
                           </div>
