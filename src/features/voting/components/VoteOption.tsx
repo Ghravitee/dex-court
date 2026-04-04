@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { ThumbsUp, ThumbsDown, MinusCircle } from "lucide-react";
-import { UserAvatar } from "@/components/UserAvatar";
+import { UserAvatar } from "../../../components/UserAvatar";
 import { formatDisplayName, formatUsername } from "../utils/formatting";
 import { type VoteOptionProps } from "../types";
 
