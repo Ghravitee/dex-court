@@ -285,29 +285,54 @@ export const getDisputeInfo = (
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
+// In your utils/helpers.ts file
 export const STATUS_CONFIG = {
-  pending: { label: "Pending", description: "Awaiting deposit and signatures" },
-  signed: { label: "Signed", description: "Agreement signed by both parties" },
-  pending_delivery: {
-    label: "Pending Delivery",
-    description: "Waiting for work delivery",
+  pending: {
+    label: "Pending",
+    bgColor: "bg-yellow-700/20",
+    borderColor: "border-yellow-400/30",
+    textColor: "text-yellow-500",
+  },
+  signed: {
+    label: "Signed",
+    bgColor: "bg-blue-700/20",
+    borderColor: "border-blue-400/30",
+    textColor: "text-blue-500",
   },
   pending_approval: {
     label: "Pending Approval",
-    description: "Delivery submitted, awaiting approval",
+    bgColor: "bg-orange-700/20",
+    borderColor: "border-orange-400/30",
+    textColor: "text-orange-500",
   },
   completed: {
     label: "Completed",
-    description: "Successfully completed and settled",
+    bgColor: "bg-emerald-700/20",
+    borderColor: "border-emerald-400/30",
+    textColor: "text-emerald-500",
   },
-  disputed: { label: "Disputed", description: "Under dispute resolution" },
-  cancelled: { label: "Cancelled", description: "Agreement cancelled" },
+  disputed: {
+    label: "Disputed",
+    bgColor: "bg-purple-700/20",
+    borderColor: "border-purple-400/30",
+    textColor: "text-purple-500",
+  },
+  cancelled: {
+    label: "Cancelled",
+    bgColor: "bg-red-700/20",
+    borderColor: "border-red-400/30",
+    textColor: "text-red-500",
+  },
   pending_payment: {
     label: "Pending Payment",
-    description: "Dispute created, awaiting payment confirmation",
+    bgColor: "bg-orange-700/20",
+    borderColor: "border-orange-400/30",
+    textColor: "text-orange-500",
   },
   pending_locking_funds: {
-    label: "Pending Locking Funds",
-    description: "Pro bono dispute, awaiting fund locking",
+    label: "Pending Fund Locking",
+    bgColor: "bg-orange-700/20",
+    borderColor: "border-orange-400/30",
+    textColor: "text-orange-500",
   },
 } as const;

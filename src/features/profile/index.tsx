@@ -35,6 +35,7 @@ import { useRoleLogic } from "./hooks/useRoleLogic";
 // Utils
 import {
   formatDate,
+  formatParty,
   formatShortWallet,
   formatUsername,
 } from "./utils/formatters";
@@ -320,7 +321,7 @@ export default function Profile() {
       </header>
 
       {/* Top Summary Section */}
-      <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <section className="mx-auto w-full max-w-7xl py-6">
         <div className="grid grid-cols-1 gap-6 md:gap-8">
           {/* Responsive 3-column layout that stacks on mobile */}
           <div className="grid grid-cols-1 gap-6 md:gap-8 lg:grid-cols-3">
@@ -437,7 +438,8 @@ export default function Profile() {
                           <div className="flex justify-between">
                             <span>Parties:</span>
                             <span className="text-white/80">
-                              @{dispute.plaintiff} vs @{dispute.defendant}
+                              {formatParty(dispute.plaintiff)} vs{" "}
+                              {formatParty(dispute.defendant)}
                             </span>
                           </div>
                           <div className="flex justify-between">

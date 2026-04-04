@@ -80,12 +80,15 @@ export const PendingDisputeModal = ({
     if (!votingId || userInitiated || isProcessing) return;
     setUserInitiated(true);
     setModalState("active");
+    console.log(
+      `[PendingDisputeModal] Starting payment — flow: ${flow}, votingId: ${votingId}`,
+    );
     try {
       await createDisputeOnchain(votingId);
     } catch {
       setUserInitiated(false);
     }
-  }, [votingId, userInitiated, isProcessing, createDisputeOnchain]);
+  }, [votingId, userInitiated, isProcessing, createDisputeOnchain, flow]);
 
   const handleRetryPayment = useCallback(async () => {
     setUserInitiated(false);
@@ -189,7 +192,7 @@ export const PendingDisputeModal = ({
               {statusConfig.title}
             </h3>
             <p
-              className={`max-w-md truncate text-sm ${statusConfig.className}`}
+              className={`mx-auto max-w-[20rem] truncate text-sm sm:max-w-md ${statusConfig.className}`}
             >
               {statusConfig.description}
             </p>
@@ -235,7 +238,7 @@ export const PendingDisputeModal = ({
                 {[
                   ["Agreement", agreement?.title || "N/A"],
                   ["Type", "Paid Dispute"],
-                  ["Flow", flow],
+                  // ["Flow", flow],
                   ["Voting ID", votingId],
                   ["Network", networkInfo.chainName],
                 ].map(([label, value]) => (

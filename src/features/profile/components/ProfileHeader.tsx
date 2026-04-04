@@ -32,9 +32,11 @@ export const ProfileHeader = ({
   onEditProfile,
 }: ProfileHeaderProps) => {
   return (
-    <div className="row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent px-6 py-3">
-      <div className="flex items-center gap-2">
-        <div className="relative">
+    <div className="row-span-1 flex h-fit flex-col justify-between rounded-2xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent px-4 py-3 lg:px-6">
+      {/* Top row — avatar + info + trust meter */}
+      <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+        {/* Avatar — fixed size, never shrinks */}
+        <div className="relative shrink-0">
           <UserAvatar
             userId={user?.id || "unknown"}
             avatarId={user?.avatarId || null}
@@ -43,7 +45,6 @@ export const ProfileHeader = ({
             className="h-14 w-14 border border-cyan-400/30"
             priority={true}
           />
-
           <label className="absolute -right-1 -bottom-1 cursor-pointer rounded-full bg-cyan-500 p-1 text-xs text-white hover:bg-cyan-600">
             <input
               type="file"
@@ -60,12 +61,14 @@ export const ProfileHeader = ({
           </label>
         </div>
 
-        {uploading && (
-          <div className="mt-2 text-xs text-cyan-300">Uploading avatar...</div>
-        )}
-
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
+        {/* Identity — takes remaining space */}
+        <div className="min-w-0 flex-1">
+          {uploading && (
+            <div className="mb-1 text-xs text-cyan-300">
+              Uploading avatar...
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
             <RoleBadge
               role={userData.roles?.admin || false}
               icon={<Admin className="size-7" />}
@@ -92,16 +95,19 @@ export const ProfileHeader = ({
               tooltip="Basic User"
             />
           </div>
-          <div className="text-muted-foreground mt-2 text-xs">
-            <div className="flex items-center gap-1 font-semibold text-white/90">
+          <div className="mt-1.5 text-xs">
+            <div className="flex items-center gap-1 truncate font-semibold text-white/90">
               {userData.handle}
               {userData.isVerified && <VerificationBadge />}
             </div>
-            <div>{userData.wallet}</div>
+            <div className="text-muted-foreground truncate">
+              {userData.wallet}
+            </div>
           </div>
         </div>
 
-        <div className="self-center">
+        {/* Trust meter — drops to its own row on very small screens */}
+        <div className="shrink-0 self-center">
           {trustScoreLoading ? (
             <div className="flex h-32 w-32 items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />

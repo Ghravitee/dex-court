@@ -92,6 +92,9 @@ export function useDisputeSubmit({
           networkInfo.chainId,
         );
 
+        // Use the parameter here if needed for logging or tracking
+        console.log(`Transaction completed: ${transactionHash}`);
+
         toast.success("Paid dispute submitted successfully!", {
           description: `${form.title} has been recorded on-chain and in our system`,
         });

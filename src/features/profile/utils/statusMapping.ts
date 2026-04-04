@@ -72,7 +72,7 @@ export const getStatusConfig = (status: string) => {
   return (
     configs[status] || {
       label: status,
-      color: "bg-pink-500/20 text-gray-300 border-gray-400/30",
+      color: "bg-yellow-500/20 text-yellow-300 border-yellow-400/30",
     }
   );
 };

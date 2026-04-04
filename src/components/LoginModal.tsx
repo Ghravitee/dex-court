@@ -241,6 +241,16 @@ export function LoginModal({
         {/* Tab Navigation */}
         <div className="mb-4 flex border-b border-white/10">
           <button
+            onClick={() => setActiveTab("telegram")}
+            className={`flex-1 py-2 text-sm font-medium ${
+              activeTab === "telegram"
+                ? "border-b-2 border-cyan-400 text-cyan-300"
+                : "text-gray-400"
+            }`}
+          >
+            Telegram
+          </button>
+          <button
             onClick={() => {
               setActiveTab("wallet");
               setWalletError(null);
@@ -253,17 +263,85 @@ export function LoginModal({
           >
             Wallet
           </button>
-          <button
-            onClick={() => setActiveTab("telegram")}
-            className={`flex-1 py-2 text-sm font-medium ${
-              activeTab === "telegram"
-                ? "border-b-2 border-cyan-400 text-cyan-300"
-                : "text-gray-400"
-            }`}
-          >
-            Telegram
-          </button>
         </div>
+
+        {/* Telegram Section */}
+        {activeTab === "telegram" && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-300">
+              {mode === "link"
+                ? "Link your Telegram account to enable social features"
+                : "Login or register with Telegram."}
+            </p>
+
+            <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
+              <p className="mb-2 text-sm font-semibold text-cyan-100">
+                How to get started:
+              </p>
+              <ol className="list-inside list-decimal space-y-1 text-sm text-gray-300">
+                <li>
+                  Go to Telegram{" "}
+                  <span className="text-white">Settings → Edit Profile</span>
+                </li>
+                <li>Set your @username if you haven't already</li>
+                <li>
+                  Open{" "}
+                  <a
+                    href={telegramBotUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyan-300 hover:underline"
+                  >
+                    @DexCourt_Bot
+                  </a>{" "}
+                  on Telegram
+                </li>
+                <li>
+                  Type <span className="font-semibold text-white">/otp</span> to
+                  get your one-time password
+                </li>
+              </ol>
+            </div>
+
+            <p className="text-sm text-gray-300">
+              Paste the OTP you received below to{" "}
+              {mode === "link" ? "link your account" : "continue"}.
+            </p>
+
+            <label className="block text-sm text-gray-300">
+              Enter your OTP from DexCourt's Telegram bot:
+            </label>
+            <input
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="e.g. xxxxxxxx-wmqDPP"
+              className="w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && otp.trim()) {
+                  handleTelegramAction();
+                }
+              }}
+            />
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                onClick={handleTelegramAction}
+                className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
+                disabled={isLoading || !otp.trim()}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {mode === "link" ? "Linking..." : "Authenticating..."}
+                  </>
+                ) : (
+                  getTelegramButtonText()
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Wallet Section */}
         {activeTab === "wallet" && (
@@ -274,7 +352,8 @@ export function LoginModal({
                   Your Linked Wallet
                 </p>
                 <p className="font-mono text-xs text-amber-200">
-                  {user.walletAddress}
+                  {user.walletAddress.slice(0, 6)}...
+                  {user.walletAddress.slice(-4)}
                 </p>
                 <p className="mt-1 text-xs text-amber-200">
                   You can only connect this wallet to your account.
@@ -423,84 +502,6 @@ export function LoginModal({
                 </p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Telegram Section */}
-        {activeTab === "telegram" && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-300">
-              {mode === "link"
-                ? "Link your Telegram account to enable social features"
-                : "Login or register with Telegram."}
-            </p>
-
-            <div className="rounded-md border border-cyan-400/20 bg-black/30 p-3">
-              <p className="mb-2 text-sm font-semibold text-cyan-100">
-                How to get started:
-              </p>
-              <ol className="list-inside list-decimal space-y-1 text-sm text-gray-300">
-                <li>
-                  Go to Telegram{" "}
-                  <span className="text-white">Settings → Edit Profile</span>
-                </li>
-                <li>Set your @username if you haven't already</li>
-                <li>
-                  Open{" "}
-                  <a
-                    href={telegramBotUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cyan-300 hover:underline"
-                  >
-                    @DexCourt_Bot
-                  </a>{" "}
-                  on Telegram
-                </li>
-                <li>
-                  Type <span className="font-semibold text-white">/otp</span> to
-                  get your one-time password
-                </li>
-              </ol>
-            </div>
-
-            <p className="text-sm text-gray-300">
-              Paste the OTP you received below to{" "}
-              {mode === "link" ? "link your account" : "continue"}.
-            </p>
-
-            <label className="block text-sm text-gray-300">
-              Enter your OTP from DexCourt's Telegram bot:
-            </label>
-            <input
-              type="text"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              placeholder="e.g. xxxxxxxx-wmqDPP"
-              className="w-full rounded-md border border-cyan-400/30 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
-              onKeyPress={(e) => {
-                if (e.key === "Enter" && otp.trim()) {
-                  handleTelegramAction();
-                }
-              }}
-            />
-
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                onClick={handleTelegramAction}
-                className="border-cyan-400/40 bg-cyan-600/20 text-cyan-100 hover:bg-cyan-500/30"
-                disabled={isLoading || !otp.trim()}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {mode === "link" ? "Linking..." : "Authenticating..."}
-                  </>
-                ) : (
-                  getTelegramButtonText()
-                )}
-              </Button>
-            </div>
           </div>
         )}
       </div>

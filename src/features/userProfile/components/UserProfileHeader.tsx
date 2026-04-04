@@ -22,7 +22,7 @@ export const UserProfileHeader = ({
   //   isOwnProfile,
 }: UserProfileHeaderProps) => {
   return (
-    <div className="card-cyan grid items-center rounded-2xl px-6 py-3 ring-1 ring-white/10">
+    <div className="card-cyan grid items-center rounded-2xl px-4 py-3 ring-1 ring-white/10 lg:px-6">
       <div className="flex items-center justify-between gap-2">
         <UserAvatar
           userId={user.id}

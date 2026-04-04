@@ -208,26 +208,34 @@ export default function EscrowDetails() {
 
   const getCurrentStatus = () => {
     if (!onChainAgreement) return escrow?.status || "pending";
+
     const dStatus = getDisputeStatusFromAgreement(escrow);
     if (dStatus === "pending_payment" || dStatus === "pending_locking_funds")
       return dStatus;
+
     if (onChainAgreement.completed) return "completed";
     if (onChainAgreement.disputed) return "disputed";
     if (onChainAgreement.orderCancelled) return "cancelled";
-    if (onChainAgreement.deliverySubmited) return "pending_approval";
+
     if (
       onChainAgreement.signed &&
       onChainAgreement.acceptedByServiceProvider &&
       onChainAgreement.acceptedByServiceRecipient
-    )
+    ) {
+      // Show "pending_approval" only if delivery is submitted, otherwise "signed"
+      if (onChainAgreement.deliverySubmited) return "pending_approval";
       return "signed";
-    if (onChainAgreement.signed) return "pending_delivery";
+    }
+
     return "pending";
   };
 
-  const getStatusInfo = (status: string) =>
-    STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] ||
-    STATUS_CONFIG.pending;
+  const getStatusInfo = (status: string) => {
+    return (
+      STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] ||
+      STATUS_CONFIG.pending
+    );
+  };
 
   const daysRemaining = escrow
     ? Math.ceil(
@@ -417,7 +425,7 @@ export default function EscrowDetails() {
               const info = getStatusInfo(statusKey);
               return (
                 <span
-                  className={`rounded-full border px-3 py-1 text-sm font-medium`}
+                  className={`rounded-full border px-3 py-1 text-sm font-medium ${info.bgColor} ${info.borderColor} ${info.textColor}`}
                 >
                   {info.label}
                 </span>

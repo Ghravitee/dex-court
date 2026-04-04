@@ -20,7 +20,7 @@ export const formatDateTime = (dateString: string): string => {
 
 export const formatWalletAddress = (address: string | undefined): string => {
   if (!address) return "Not connected";
-  return `${address.slice(0, 8)}…${address.slice(-6)}`;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 };
 
 export const formatShortWallet = (address: string | undefined): string => {
@@ -90,4 +90,15 @@ export const formatReputationEvent = (event: any) => {
     eventId: event.eventId,
     createdAt: event.createdAt,
   };
+};
+
+export const formatParty = (party: string) => {
+  if (!party) return "Unknown";
+  // Wallet address — strip any @ and truncate
+  const clean = party.replace(/^@/, "");
+  if (/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+    return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
+  }
+  // Telegram username — ensure single @
+  return `@${clean}`;
 };

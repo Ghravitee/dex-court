@@ -558,7 +558,7 @@ export function useOnChainActions({
           votingId: generatedVotingId,
           claim: claim.trim(),
           requestKind,
-          chainId: networkInfo.chainId,
+          chainId: chainId || networkInfo.chainId,
           contractAgreementId: onChainAgreement?.id?.toString(),
         });
       } catch {
