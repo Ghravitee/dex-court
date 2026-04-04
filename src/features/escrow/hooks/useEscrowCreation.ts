@@ -12,11 +12,7 @@ import { agreementService } from "../../../services/agreementServices";
 import { isValidAddress } from "../../../web3/helper";
 import { AgreementVisibilityEnum } from "../constants";
 import { extractContractErrorMessage } from "../utils/validators";
-import type {
-  CreationStep,
-  EscrowFormState,
-  EscrowType,
-} from "../types";
+import type { CreationStep, EscrowFormState, EscrowType } from "../types";
 
 interface UseEscrowCreationOptions {
   contractAddress?: `0x${string}`;
@@ -66,7 +62,9 @@ export function useEscrowCreation({
     reset: resetApproval,
   } = useWriteContract();
 
-  const { isSuccess: txSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { isSuccess: txSuccess } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
   const { isSuccess: approvalSuccess } = useWaitForTransactionReceipt({
     hash: approvalHash,
   });
@@ -104,20 +102,38 @@ export function useEscrowCreation({
 
   // ─── Approval success → continue to createAgreement ──────────────────────
   useEffect(() => {
-    if (approvalSuccess && createApprovalState.needsApproval && pendingCreatePayload) {
+    if (
+      approvalSuccess &&
+      createApprovalState.needsApproval &&
+      pendingCreatePayload
+    ) {
       try {
-        updateStep("creating_onchain", "Token approved. Creating escrow on blockchain...");
+        updateStep(
+          "creating_onchain",
+          "Token approved. Creating escrow on blockchain...",
+        );
         writeContract(pendingCreatePayload);
-        setCreateApprovalState({ isApprovingToken: false, needsApproval: false });
+        setCreateApprovalState({
+          isApprovingToken: false,
+          needsApproval: false,
+        });
         setPendingCreatePayload(null);
-        updateStep("waiting_confirmation", "Escrow creation submitted. Waiting for confirmation...");
+        updateStep(
+          "waiting_confirmation",
+          "Escrow creation submitted. Waiting for confirmation...",
+        );
         setUiSuccess("Approval confirmed — creating agreement now");
       } catch {
         setUiError("Failed to create agreement after approval");
         updateStep("error", "Failed to create after approval");
       }
     }
-  }, [approvalSuccess, createApprovalState.needsApproval, pendingCreatePayload, writeContract]);
+  }, [
+    approvalSuccess,
+    createApprovalState.needsApproval,
+    pendingCreatePayload,
+    writeContract,
+  ]);
 
   useEffect(() => {
     if (approvalSuccess) {
@@ -129,7 +145,8 @@ export function useEscrowCreation({
 
   // ─── Transaction success ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!txSuccess || !txHash || txHash === lastSyncedTxHash || isSyncing) return;
+    if (!txSuccess || !txHash || txHash === lastSyncedTxHash || isSyncing)
+      return;
 
     setIsSyncing(true);
     setLastSyncedTxHash(txHash);
@@ -137,7 +154,8 @@ export function useEscrowCreation({
     setUiSuccess("✅ Escrow created successfully!");
 
     toast.success("Escrow Created Successfully!", {
-      description: "Transaction confirmed. Both parties will receive Telegram notifications.",
+      description:
+        "Transaction confirmed. Both parties will receive Telegram notifications.",
     });
 
     setTimeout(() => {
@@ -168,8 +186,10 @@ export function useEscrowCreation({
       let offset = 0;
       if (parts.length > 1 && parts[1] !== "") {
         offset = Number(parts[1]);
-        if (Number.isNaN(offset) || offset < 0) throw new Error("invalid offset");
-        if (offset > deadlineDuration) throw new Error("offset > deadlineDuration");
+        if (Number.isNaN(offset) || offset < 0)
+          throw new Error("invalid offset");
+        if (offset > deadlineDuration)
+          throw new Error("offset > deadlineDuration");
       }
       offsets.push(offset);
     }
@@ -187,11 +207,7 @@ export function useEscrowCreation({
   // ─── Main creation flow ───────────────────────────────────────────────────
 
   const createEscrowOnChain = useCallback(
-    async (
-      form: EscrowFormState,
-      deadline: Date,
-      escrowType: EscrowType,
-    ) => {
+    async (form: EscrowFormState, deadline: Date, escrowType: EscrowType) => {
       resetMessages();
       setCreationStep("idle");
       setCurrentStepMessage("");
@@ -252,7 +268,9 @@ export function useEscrowCreation({
         }
       }
 
-      if (serviceProviderAddr.toLowerCase() === serviceRecipientAddr.toLowerCase()) {
+      if (
+        serviceProviderAddr.toLowerCase() === serviceRecipientAddr.toLowerCase()
+      ) {
         setUiError("Service provider and recipient cannot be the same address");
         updateStep("error", "Parties cannot be the same");
         return;
@@ -268,8 +286,13 @@ export function useEscrowCreation({
         }
         tokenAddr = form.customTokenAddress;
       } else if (form.token !== "ETH") {
-        if (!form.customTokenAddress || !isValidAddress(form.customTokenAddress)) {
-          setUiError(`${form.token} selected — paste its contract address in Custom Token field`);
+        if (
+          !form.customTokenAddress ||
+          !isValidAddress(form.customTokenAddress)
+        ) {
+          setUiError(
+            `${form.token} selected — paste its contract address in Custom Token field`,
+          );
           updateStep("error", `Missing ${form.token} contract address`);
           return;
         }
@@ -292,7 +315,10 @@ export function useEscrowCreation({
       let milestoneOffsets: number[] = [];
 
       try {
-        const parsed = parseMilestonesFromForm(form.milestones, deadlineDuration);
+        const parsed = parseMilestonesFromForm(
+          form.milestones,
+          deadlineDuration,
+        );
         if (parsed.percBP.length > 0) {
           vestingMode = true;
           milestonePercs = parsed.percBP;
@@ -312,7 +338,11 @@ export function useEscrowCreation({
       // ── Amount ────────────────────────────────────────────────────────────
       let amountBN: bigint;
       try {
-        amountBN = parseAmount(form.amount, tokenAddr, form.tokenDecimals) as bigint;
+        amountBN = parseAmount(
+          form.amount,
+          tokenAddr,
+          form.tokenDecimals,
+        ) as bigint;
         if (amountBN <= 0n) {
           setUiError("Parsed amount invalid");
           updateStep("error", "Invalid amount");
@@ -363,7 +393,10 @@ export function useEscrowCreation({
             filesToUpload,
           );
         } catch (backendErr) {
-          console.warn("Backend creation had minor issues, continuing:", backendErr);
+          console.warn(
+            "Backend creation had minor issues, continuing:",
+            backendErr,
+          );
         }
 
         transactionDataRef.current = { contractAgreementId };
@@ -385,14 +418,20 @@ export function useEscrowCreation({
           BigInt(deadlineDuration),
           vestingMode,
           form.type === "private",
-          milestonePercsBN,
-          milestoneOffsetsBN,
-        ];
+          milestonePercsBN as readonly bigint[],
+          milestoneOffsetsBN as readonly bigint[],
+        ] as const;
 
         // ERC20 + caller is depositor → approval flow
         if (!tokenIsETH && callerIsDepositor) {
-          updateStep("awaiting_approval", "Token approval required. Please check your wallet...");
-          setCreateApprovalState({ isApprovingToken: true, needsApproval: true });
+          updateStep(
+            "awaiting_approval",
+            "Token approval required. Please check your wallet...",
+          );
+          setCreateApprovalState({
+            isApprovingToken: true,
+            needsApproval: true,
+          });
 
           setPendingCreatePayload({
             address: contractAddress as `0x${string}`,
@@ -410,7 +449,9 @@ export function useEscrowCreation({
             args: [contractAddress as `0x${string}`, amountBN],
           });
 
-          setUiSuccess("Approval submitted; will create agreement after confirmation");
+          setUiSuccess(
+            "Approval submitted; will create agreement after confirmation",
+          );
           return;
         }
 
@@ -426,7 +467,10 @@ export function useEscrowCreation({
           value: valueToSend,
         });
 
-        updateStep("waiting_confirmation", "Transaction submitted. Waiting for blockchain confirmation...");
+        updateStep(
+          "waiting_confirmation",
+          "Transaction submitted. Waiting for blockchain confirmation...",
+        );
         setUiSuccess("CreateAgreement transaction submitted — check wallet");
       } catch (err: any) {
         updateStep("error", "Failed to create agreement");
@@ -464,6 +508,7 @@ export function useEscrowCreation({
       setCurrentStepMessage("");
     },
     /** Drive the step indicator manually — used for the Preview Steps demo */
-    previewStep: (step: CreationStep, message: string) => updateStep(step, message),
+    previewStep: (step: CreationStep, message: string) =>
+      updateStep(step, message),
   };
 }
