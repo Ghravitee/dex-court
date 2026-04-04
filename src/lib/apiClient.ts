@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // src/lib/apiClient.ts
+import { devError, devLog } from "../utils/logger";
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 // Create axios instance with optimized defaults
 export const api = axios.create({
@@ -27,7 +28,7 @@ api.interceptors.request.use(
       import.meta.env.DEV &&
       (config.method !== "get" || config.url?.includes("/mine"))
     ) {
-      console.log(`🔐 [API] ${config.method?.toUpperCase()} ${config.url}`);
+      devLog(`🔐 [API] ${config.method?.toUpperCase()} ${config.url}`);
     }
 
     if (token) {
@@ -38,7 +39,7 @@ api.interceptors.request.use(
   },
   (error) => {
     if (import.meta.env.DEV) {
-      console.error("🔐 [API] Request error:", error);
+      devError("🔐 [API] Request error:", error);
     }
     return Promise.reject(error);
   },
@@ -53,13 +54,13 @@ api.interceptors.response.use(
       (response.config.method !== "get" ||
         response.config.url?.includes("/mine"))
     ) {
-      console.log(`🔐 [API] ${response.status} ${response.config.url}`);
+      devLog(`🔐 [API] ${response.status} ${response.config.url}`);
     }
     return response;
   },
   (error) => {
     if (import.meta.env.DEV) {
-      console.error("🔐 [API] Response error:", {
+      devError("🔐 [API] Response error:", {
         status: error.response?.status,
         url: error.config?.url,
         message: error.response?.data?.message || error.message,
@@ -147,11 +148,11 @@ export const apiService = new ApiService();
 // src/lib/apiClient.ts - Update the loginTelegram function
 export async function loginTelegram(otp: string) {
   try {
-    console.log("🔐 [API] Attempting Telegram login with OTP:", otp);
+    devLog("🔐 [API] Attempting Telegram login with OTP:", otp);
 
     const response = await api.post(`/login/telegram`, { otp });
 
-    console.log("🔐 [API] Telegram login response:", response.data);
+    devLog("🔐 [API] Telegram login response:", response.data);
 
     if (!response.data.token) {
       throw new Error("No authentication token received from server");
@@ -159,7 +160,7 @@ export async function loginTelegram(otp: string) {
 
     return response.data;
   } catch (error: any) {
-    console.error("🔐 [API] Telegram login failed:", {
+    devError("🔐 [API] Telegram login failed:", {
       status: error.response?.status,
       data: error.response?.data,
       message: error.message,

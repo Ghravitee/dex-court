@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "../../../components/ui/button";
 import type { EvidenceItem } from "../../../types";
-import { ExternalLink, FileText, Loader2 } from "lucide-react";
+import { Download, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 // ================= PDF.js =================
@@ -129,7 +129,7 @@ export const PDFPreview = ({
         <FileText className="h-4 w-4 text-cyan-400" />
 
         <div className="flex-1">
-          <div className="text-sm font-medium text-white">{item.name}</div>
+          {/* <div className="text-sm font-medium text-white">{item.name}</div> */}
           <div className="text-xs text-gray-400">PDF Document</div>
         </div>
 
@@ -142,7 +142,7 @@ export const PDFPreview = ({
           }}
           className="h-8 w-8 p-0 text-cyan-400"
         >
-          <ExternalLink className="h-3 w-3" />
+          <Download className="h-3 w-3" />
         </Button>
       </div>
 

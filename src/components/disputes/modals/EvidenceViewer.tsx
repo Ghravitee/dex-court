@@ -188,10 +188,10 @@ export const EvidenceViewer = ({
           className="relative h-[85vh] w-full max-w-4xl rounded-2xl bg-gray-900 p-6"
         >
           {/* Header */}
-          <div className="mt-10 mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white">
+          <div className="mt-6 mb-4 flex items-center justify-between">
+            {/* <h3 className="text-lg font-semibold text-white">
               {selectedEvidence.name}
-            </h3>
+            </h3> */}
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X />
             </Button>

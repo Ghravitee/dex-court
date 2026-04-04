@@ -2,6 +2,7 @@
 // src/components/DebugAuth.tsx
 import { useAuth } from "../hooks/useAuth";
 import { apiService } from "../services/apiService";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function DebugAuth() {
   const { isAuthenticated, user, isLoading } = useAuth();
@@ -18,15 +19,12 @@ export default function DebugAuth() {
 
       // Test with fetch first
       console.log("🔐 [Debug] Testing with fetch...");
-      const response = await fetch(
-        "https://dev-api.dexcourt.com/accounts/mine",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      const response = await fetch("/accounts/mine", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+      });
 
       console.log("🔐 [Debug] Fetch response status:", response.status);
       const text = await response.text();
@@ -176,15 +174,12 @@ export default function DebugAuth() {
     for (const endpoint of profileEndpoints) {
       try {
         const token = localStorage.getItem("authToken");
-        const response = await fetch(
-          `https://dev-api.dexcourt.com${endpoint}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
-        );
+        });
 
         console.log(
           `🔐 [Debug] ${endpoint}: ${response.status} ${response.statusText}`,
@@ -264,14 +259,11 @@ export default function DebugAuth() {
 
     for (const endpoint of endpoints) {
       try {
-        const response = await fetch(
-          `https://dev-api.dexcourt.com${endpoint}`,
-          {
-            headers: {
-              Authorization: token,
-            },
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          headers: {
+            Authorization: token,
           },
-        );
+        });
 
         console.log(
           `🔐 ${endpoint}: ${response.status} ${response.statusText}`,
@@ -324,7 +316,7 @@ export default function DebugAuth() {
   const testAllUsersEndpoint = async () => {
     try {
       console.log("🔐 [Debug] Testing /accounts endpoint...");
-      const response = await fetch("https://dev-api.dexcourt.com/accounts", {
+      const response = await fetch(`${API_BASE}/accounts`, {
         headers: {
           Authorization: localStorage.getItem("authToken") || "",
         },

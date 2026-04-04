@@ -11,7 +11,7 @@ export default function TrustMeter({ score }: { score: number }) {
   const redLen = c - greenLen;
 
   return (
-    <svg viewBox="0 0 128 128" className="h-32 w-32">
+    <svg viewBox="0 0 128 128" className="size-28 sm:size-32">
       <defs>
         <linearGradient id="gGreen" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#22c55e" />

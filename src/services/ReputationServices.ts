@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // services/ReputationServices.ts
+import { devLog } from "../utils/logger";
 import { api } from "../lib/apiClient";
 import { useQuery } from "@tanstack/react-query";
 
@@ -85,11 +86,11 @@ export const reputationQueryKeys = {
 // API service class using the same api client pattern
 class ReputationService {
   setAuthToken(token: string) {
-    console.log("🔐 Reputation service token set", token);
+    devLog("🔐 Reputation service token set", token);
   }
 
   clearAuthToken() {
-    console.log("🔐 Reputation service token cleared");
+    devLog("🔐 Reputation service token cleared");
   }
 
   // services/ReputationServices.ts - Update the getReputationHistory method
@@ -99,7 +100,7 @@ class ReputationService {
     top: number = 30,
     skip: number = 0,
   ): Promise<ReputationHistoryResponse> {
-    console.log(`🔍 Fetching reputation history for account ${accountId}`, {
+    devLog(`🔍 Fetching reputation history for account ${accountId}`, {
       top,
       skip,
     });
@@ -110,7 +111,7 @@ class ReputationService {
 
     const data = response.data;
 
-    console.log("📊 API Response Structure:", {
+    devLog("📊 API Response Structure:", {
       total: data.total,
       totalResults: data.totalResults,
       resultsLength: data.results?.length,
@@ -123,7 +124,7 @@ class ReputationService {
     // Calculate hasMore based on whether we've received fewer items than requested
     const hasMore = data.results.length === top;
 
-    console.log(`✅ Reputation history fetched:`, {
+    devLog(`✅ Reputation history fetched:`, {
       resultsCount: data.results?.length,
       total: data.total,
       totalResults: data.totalResults,
@@ -144,7 +145,7 @@ class ReputationService {
     sort: "asc" | "desc" = "desc",
     search?: string,
   ): Promise<LeaderboardAccount[]> {
-    console.log("🔍 Fetching reputation leaderboard", {
+    devLog("🔍 Fetching reputation leaderboard", {
       top,
       skip,
       sort,
@@ -176,7 +177,7 @@ class ReputationService {
       leaderboardData = [];
     }
 
-    console.log(`✅ Leaderboard fetched: ${leaderboardData.length} users`);
+    devLog(`✅ Leaderboard fetched: ${leaderboardData.length} users`);
     return leaderboardData;
   }
 
@@ -190,7 +191,7 @@ class ReputationService {
       params: { top, skip },
     });
 
-    console.log(
+    devLog(
       `✅ Global updates fetched: ${response.data.results?.length} events`,
     );
     return response.data;

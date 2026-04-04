@@ -3,6 +3,7 @@
 import { api } from "../lib/apiClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DisputeTypeEnum } from "../types";
+import { devLog } from "../utils/logger";
 
 // API Enum Mappings
 export const AgreementTypeEnum = {
@@ -201,15 +202,15 @@ export const agreementQueryKeys = {
 // Improved AgreementService - No manual caching!
 class AgreementService {
   setAuthToken(token: string) {
-    console.log("🔐 Agreement service token set", token);
+    devLog("🔐 Agreement service token set", token);
   }
 
   clearAuthToken() {
-    console.log("🔐 Agreement service token cleared");
+    devLog("🔐 Agreement service token cleared");
   }
 
   async createAgreement(data: AgreementsRequest, files: File[]): Promise<any> {
-    console.log("🔄 Creating agreement with data:", {
+    devLog("🔄 Creating agreement with data:", {
       ...data,
       filesCount: files.length,
       // Log escrowContractAddress specifically
@@ -281,7 +282,7 @@ class AgreementService {
         },
       });
 
-      console.log("✅ Backend response:", {
+      devLog("✅ Backend response:", {
         status: response.status,
         data: response.data,
         escrowContractAddressInResponse: response.data.escrowContractAddress,
@@ -323,7 +324,7 @@ class AgreementService {
           user?.walletAddress?.toLowerCase().includes(query.toLowerCase()),
       );
 
-      console.log(
+      devLog(
         `🔍 [AgreementService] Found ${filteredUsers.length} users matching "${query}"`,
       );
 
@@ -338,7 +339,7 @@ class AgreementService {
   async getAllUsers(): Promise<any[]> {
     try {
       const response = await api.get<any>("/accounts");
-      console.log("🔍 [AgreementService] /accounts response:", response.data);
+      devLog("🔍 [AgreementService] /accounts response:", response.data);
 
       let users: any[] = [];
 
@@ -393,7 +394,7 @@ class AgreementService {
     search?: string;
     type?: number;
   }): Promise<AgreementListDTO> {
-    console.log("🔍 getAgreements called with params:", params);
+    devLog("🔍 getAgreements called with params:", params);
 
     const requestParams = {
       top: Math.min(params?.top || 10, 100), // Cap at 100 to prevent timeouts
@@ -418,7 +419,7 @@ class AgreementService {
         timeout: 30000, // 30 second timeout
       });
 
-      console.log("📦 getAgreements response:", {
+      devLog("📦 getAgreements response:", {
         totalResults: response.data.totalResults,
         totalAgreements: response.data.totalAgreements,
         resultsCount: response.data.results?.length,
@@ -491,10 +492,10 @@ class AgreementService {
   // Get all agreements count - optimized
   async getAllAgreementsCount(): Promise<number> {
     try {
-      console.log("🔢 Counting ALL agreements...");
+      devLog("🔢 Counting ALL agreements...");
       const firstPage = await this.getAgreements({ top: 1, skip: 0 });
       const totalCount = firstPage.totalAgreements || 0;
-      console.log(`✅ Total agreements count from API: ${totalCount}`);
+      devLog(`✅ Total agreements count from API: ${totalCount}`);
       return totalCount;
     } catch (error) {
       console.error("❌ Failed to count all agreements:", error);
@@ -516,16 +517,14 @@ class AgreementService {
       let hasMore = true;
       let totalAgreements = 0;
 
-      console.log("🔍 Fetching all agreements with pagination...");
+      devLog("🔍 Fetching all agreements with pagination...");
 
       while (hasMore) {
         const params = { top, skip, ...filters, sort: filters?.sort || "desc" };
         const response = await this.getAgreements(params);
         const pageAgreements = response.results || [];
 
-        console.log(
-          `📄 Skip ${skip}: ${pageAgreements.length} agreements returned`,
-        );
+        devLog(`📄 Skip ${skip}: ${pageAgreements.length} agreements returned`);
 
         if (pageAgreements.length === 0) {
           hasMore = false;
@@ -537,7 +536,7 @@ class AgreementService {
         if (skip === 0) {
           totalAgreements =
             response.totalAgreements || response.totalResults || 0;
-          console.log(`📊 Total agreements in system: ${totalAgreements}`);
+          devLog(`📊 Total agreements in system: ${totalAgreements}`);
         }
 
         if (totalAgreements > 0 && allAgreements.length >= totalAgreements) {
@@ -559,7 +558,7 @@ class AgreementService {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      console.log(`✅ Fetched ${allAgreements.length} total agreements`);
+      devLog(`✅ Fetched ${allAgreements.length} total agreements`);
       return allAgreements;
     } catch (error) {
       console.error("❌ Failed to fetch all agreements:", error);
@@ -574,7 +573,7 @@ class AgreementService {
     filters?: { status?: number; search?: string },
   ): Promise<AgreementSummaryDTO[]> {
     try {
-      console.log(`👤 Fetching ALL agreements for user ${userId}...`);
+      devLog(`👤 Fetching ALL agreements for user ${userId}...`);
       const allAgreements = await this.getAllAgreements(filters);
 
       // Filter for the specific user with proper null checking
@@ -594,7 +593,7 @@ class AgreementService {
         return isFirstParty || isCounterParty;
       });
 
-      console.log(
+      devLog(
         `✅ Total agreements for user ${userId}: ${userAgreements.length}`,
       );
       return userAgreements;
@@ -609,9 +608,7 @@ class AgreementService {
     userId: string,
   ): Promise<AgreementSummaryDTO[]> {
     try {
-      console.log(
-        `👤 Fetching agreements for user ${userId} with pagination...`,
-      );
+      devLog(`👤 Fetching agreements for user ${userId} with pagination...`);
 
       // Use the existing getAgreements method with pagination
       const response = await this.getAgreements({
@@ -639,9 +636,7 @@ class AgreementService {
         return isFirstParty || isCounterParty;
       });
 
-      console.log(
-        `✅ Found ${userAgreements.length} agreements for user ${userId}`,
-      );
+      devLog(`✅ Found ${userAgreements.length} agreements for user ${userId}`);
 
       return userAgreements;
     } catch (error) {
@@ -664,7 +659,7 @@ class AgreementService {
 
   // Add this method to your AgreementService class
   async getSignedAgreements(): Promise<AgreementSummaryDTO[]> {
-    console.log("🔍 Fetching signed agreements for homepage...");
+    devLog("🔍 Fetching signed agreements for homepage...");
 
     // Get all agreements
     const allAgreements = await this.getAllAgreements({
@@ -674,10 +669,12 @@ class AgreementService {
 
     // Filter for signed agreements (status = ACTIVE = 2)
     const signedAgreements = allAgreements.filter(
-      (agreement) => agreement.status === AgreementStatusEnum.ACTIVE,
+      (agreement) =>
+        agreement.status === AgreementStatusEnum.ACTIVE ||
+        agreement.status === AgreementStatusEnum.COMPLETED,
     );
 
-    console.log(
+    devLog(
       `✅ Found ${signedAgreements.length} signed agreements out of ${allAgreements.length} total`,
     );
 
@@ -787,7 +784,7 @@ class AgreementService {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      console.log(`✅ File downloaded successfully: ${filename}`);
+      devLog(`✅ File downloaded successfully: ${filename}`);
     } catch (error: any) {
       console.error("Download failed:", error);
 
@@ -860,7 +857,7 @@ class AgreementService {
         );
       }
 
-      console.log("✅ Delivery rejected successfully:", response.data);
+      devLog("✅ Delivery rejected successfully:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Failed to reject delivery:", error);
@@ -870,11 +867,11 @@ class AgreementService {
 
   async requestCancelation(agreementId: number): Promise<void> {
     try {
-      console.log(`🔄 Requesting cancellation for agreement ${agreementId}`);
+      devLog(`🔄 Requesting cancellation for agreement ${agreementId}`);
       const response = await api.patch(
         `/agreement/${agreementId}/cancel/request`,
       );
-      console.log("✅ Cancellation request successful:", response.data);
+      devLog("✅ Cancellation request successful:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Cancellation request failed:", error);
@@ -892,7 +889,7 @@ class AgreementService {
     accepted: boolean,
   ): Promise<void> {
     try {
-      console.log(
+      devLog(
         `🔄 Responding to cancellation for agreement ${agreementId}, accepted: ${accepted}`,
       );
       const data: AgreementCancelRespondRequest = { accepted };
@@ -900,7 +897,7 @@ class AgreementService {
         `/agreement/${agreementId}/cancel/response`,
         data,
       );
-      console.log("✅ Cancellation response successful:", response.data);
+      devLog("✅ Cancellation response successful:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("❌ Cancellation response failed:", error);

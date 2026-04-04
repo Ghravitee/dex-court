@@ -42,15 +42,11 @@ const getAgreementType = (visibility: number): string => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getDisplayName = (party: any): string => {
-  if (party.telegramUsername) {
-    return `@${party.telegramUsername}`;
-  }
-  if (party.telegram?.username) {
-    return `@${party.telegram.username}`;
-  }
-  if (party.username) {
-    return `@${party.username}`;
-  }
+  if (party.telegramUsername) return `@${party.telegramUsername}`;
+  if (party.telegram?.username) return `@${party.telegram.username}`;
+  // wallet address — no @ prefix, return raw
+  if (party.wallet) return party.wallet;
+  if (party.username) return party.username;
   return "Unknown User";
 };
 

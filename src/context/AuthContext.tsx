@@ -19,13 +19,15 @@ function isValidToken(token: string | null): boolean {
   return true;
 }
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 function getAvatarUrl(
   userId: string,
   avatarId: number | null,
 ): string | undefined {
   if (!avatarId || !userId || userId === "unknown") return undefined;
   const timestamp = Date.now();
-  return `https://dev-api.dexcourt.com/accounts/${userId}/file/${avatarId}?t=${timestamp}`;
+  return `${apiUrl}/accounts/${userId}/file/${avatarId}?t=${timestamp}`;
 }
 
 function mapApiResponseToUser(apiUser: AccountSummaryDTO): User {

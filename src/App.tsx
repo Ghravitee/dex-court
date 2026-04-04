@@ -1,55 +1,79 @@
-// src/App.tsx - Updated version
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Toaster } from "./components/ui/toaster";
 import { Toaster as Sonner } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
-
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
 import Layout from "./components/layout/Layout";
-import Agreements from "./pages/Agreements";
-import Disputes from "./pages/Disputes";
-import Voting from "./pages/Voting";
-import Escrow from "./pages/Escrow";
-import Reputation from "./pages/Reputation";
-import Profile from "./pages/Profile";
-import AgreementDetails from "./pages/AgreementDetails";
-import EscrowDetails from "./pages/EscrowDetails";
-import UserProfile from "./pages/UserProfile";
+import { AdminLayout } from "./components/layout/AdminLayout";
 import { ScrollToTop } from "./components/ScrollToTop";
-import DisputeDetails from "./pages/DisputeDetails";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-import { useEffect, useState } from "react";
 import { LoginModal } from "./components/LoginModal";
-import { AdminLayout } from "./components/layout/AdminLayout"; // NEW
-import AdminUsers from "./pages/AdminUsers"; // NEW
-import AdminAnalytics from "./pages/AdminAnalytics"; // NEW
-import Web3Escrow from "./pages/h2copy"; // NEW
-
 import { GlobalLoader } from "./components/GlobalLoader";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 
-// Auto Login Modal Component
+const Reputation = lazy(() => import("./pages/Reputation"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
+
+// const Voting = lazy(() => import("./pages/Voting"));
+
+// const Escrow = lazy(() => import("./pages/Escrow"));
+
+// ---- Pages-based structure and routes (Previous) ─────────────────────────────────────────
+// const Index = lazy(() => import("./pages/Index"));
+// const Agreements = lazy(() => import("./pages/Agreements"));
+// const AgreementDetails = lazy(() => import("./pages/AgreementDetails"));
+
+// const Disputes = lazy(() => import("./pages/Disputes"));
+// const DisputeDetails = lazy(() => import("./pages/DisputeDetails"));
+// const Escrow = lazy(() => import("./pages/Escrow"));
+// const EscrowDetails = lazy(() => import("./pages/EscrowDetails"));
+
+// const Voting = lazy(() => import("./pages/Voting"));
+
+// const Profile = lazy(() => import("./pages/Profile"));
+// const UserProfile = lazy(() => import("./pages/UserProfile"));
+
+// const NotFound = lazy(() => import("./pages/NotFound"));
+
+// ---- Feature-based sructure and routes ─────────────────────────────────────────
+const Index = lazy(() => import("./features/index"));
+
+const Agreements = lazy(() => import("./features/agreements"));
+const AgreementDetails = lazy(() => import("./features/agreementDetails"));
+
+const Disputes = lazy(() => import("./features/disputes"));
+const DisputeDetails = lazy(() => import("./features/disputeDetails"));
+
+const Escrow = lazy(() => import("./features/escrow/Escrow"));
+const EscrowDetails = lazy(() => import("./features/escrowDetails"));
+
+const Voting = lazy(() => import("./features/voting/index"));
+
+const Profile = lazy(() => import("./features/profile"));
+const UserProfile = lazy(() => import("./features/userProfile"));
+
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+// ─── Auto Login Modal ──────────────────────────────────────────
+
 function AutoLoginModal() {
   const { isAuthenticated, isLoading, isAuthInitialized } = useAuth();
   const location = useLocation();
+
   const [showModal, setShowModal] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
     const isHomepage = location.pathname === "/";
 
-    // ✅ Don't do anything until auth has initialized
     if (!isAuthInitialized) return;
 
     if (isHomepage && !isAuthenticated && !isLoading && !hasInteracted) {
-      const timer = setTimeout(() => {
-        setShowModal(true);
-      }, 3000);
-
+      const timer = setTimeout(() => setShowModal(true), 3000);
       return () => clearTimeout(timer);
     }
   }, [
@@ -65,12 +89,12 @@ function AutoLoginModal() {
     setHasInteracted(true);
   };
 
-  if (showModal) {
-    return <LoginModal isOpen={true} onClose={handleClose} />;
-  }
+  if (!showModal) return null;
 
-  return null;
+  return <LoginModal isOpen={true} onClose={handleClose} />;
 }
+
+// ─── App Content ───────────────────────────────────────────────
 
 function AppContent() {
   const { isAuthInitialized, isLoading: authLoading } = useAuth();
@@ -88,39 +112,51 @@ function AppContent() {
       <AutoLoginModal />
       <ConnectionStatus />
 
-      {/* Full screen initial loader */}
       {showInitialLoader && <GlobalLoader />}
-
-      {/* Small top transition loader */}
       {showTransitionLoader && <PageTransitionLoader />}
 
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Index />} />
-          <Route path="agreements" element={<Agreements />} />
-          <Route path="agreements/:id" element={<AgreementDetails />} />
-          <Route path="disputes" element={<Disputes />} />
-          <Route path="/disputes/:id" element={<DisputeDetails />} />
-          <Route path="voting" element={<Voting />} />
-          <Route path="escrow" element={<Escrow />} />
-          <Route path="web3escrow" element={<Web3Escrow />} />
-          <Route path="/escrow/:id" element={<EscrowDetails />} />
-          <Route path="reputation" element={<Reputation />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="profile/:handle" element={<UserProfile />} />
-        </Route>
+      <Suspense fallback={<GlobalLoader />}>
+        <Routes>
+          {/* ── Main App ───────────────────────────────── */}
 
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminUsers />} />
-          <Route path="users" element={<AdminUsers />} />
-          <Route path="analytics" element={<AdminAnalytics />} />
-        </Route>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Index />} />
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+            <Route path="agreements" element={<Agreements />} />
+            <Route path="agreements/:id" element={<AgreementDetails />} />
+
+            <Route path="disputes" element={<Disputes />} />
+            <Route path="disputes/:id" element={<DisputeDetails />} />
+
+            <Route path="voting" element={<Voting />} />
+
+            <Route path="escrow" element={<Escrow />} />
+            <Route path="escrow/:id" element={<EscrowDetails />} />
+
+            <Route path="reputation" element={<Reputation />} />
+
+            <Route path="profile" element={<Profile />} />
+            <Route path="profile/:handle" element={<UserProfile />} />
+          </Route>
+
+          {/* ── Admin ─────────────────────────────────── */}
+
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminUsers />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="analytics" element={<AdminAnalytics />} />
+          </Route>
+
+          {/* ── Fallback ──────────────────────────────── */}
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </TooltipProvider>
   );
 }
+
+// ─── Root ──────────────────────────────────────────────────────
 
 export default function App() {
   return (

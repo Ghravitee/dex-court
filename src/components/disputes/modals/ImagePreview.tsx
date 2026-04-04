@@ -1,6 +1,6 @@
 import { Button } from "../../ui/button";
 import type { EvidenceItem } from "../../../types";
-import { ExternalLink, ImageIcon, Loader2 } from "lucide-react";
+import { Download, ImageIcon, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export const ImagePreview = ({
@@ -100,12 +100,12 @@ export const ImagePreview = ({
         <ImageIcon className="h-4 w-4 text-green-400" />
 
         <div className="flex-1">
-          <div className="text-sm font-medium text-white">{item.name}</div>
-          <div className="text-xs text-gray-400">
+          {/* <div className="text-sm font-medium text-white">{item.name}</div> */}
+          {/* <div className="text-xs text-gray-400">
             {dimensions
               ? `${dimensions.width} × ${dimensions.height} px`
               : "Image"}
-          </div>
+          </div> */}
         </div>
 
         <Button
@@ -117,7 +117,7 @@ export const ImagePreview = ({
           }}
           className="h-8 w-8 p-0 text-green-400"
         >
-          <ExternalLink className="h-3 w-3" />
+          <Download className="h-3 w-3" />
         </Button>
       </div>
 

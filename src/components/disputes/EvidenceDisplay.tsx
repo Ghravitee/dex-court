@@ -1,5 +1,10 @@
-
-import { ExternalLink, FileText, ImageIcon, MessageSquare } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  FileText,
+  ImageIcon,
+  MessageSquare,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import type { EvidenceItem, EvidenceType } from "../../types";
 import { PDFPreview } from "./modals/PDFPreview";
@@ -58,7 +63,7 @@ export const EvidenceDisplay = ({
             }}
             className={`h-8 w-8 p-0 text-${color}-400 hover:text-${color}-300`}
           >
-            <ExternalLink className="h-3 w-3" />
+            <Download className="size-3" />
           </Button>
         )}
       </div>

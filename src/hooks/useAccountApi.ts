@@ -3,6 +3,7 @@ import { useState } from "react";
 import { apiService, type AccountUpdateRequest } from "../services/apiService";
 import { useAuth } from "../hooks/useAuth";
 import { clearAvatarCache } from "../lib/avatarUtils";
+import { devLog } from "../utils/logger";
 
 export const useAccountUpdate = () => {
   const [loading, setLoading] = useState(false);
@@ -85,7 +86,7 @@ export const useAvatarUpload = () => {
                 lastModified: Date.now(),
               });
 
-              console.log(
+              devLog(
                 `🔐 Image compressed: ${file.size} → ${compressedFile.size} bytes`,
               );
               resolve(compressedFile);
@@ -122,7 +123,7 @@ export const useAvatarUpload = () => {
       // Compress image if it's larger than 500KB
       let fileToUpload = file;
       if (file.size > 500 * 1024) {
-        console.log("🔐 Compressing image...");
+        devLog("🔐 Compressing image...");
         fileToUpload = await compressImage(file, 800, 0.7);
       }
 

@@ -280,8 +280,7 @@ const processEscrowFiles = (files: any[], escrowId: string): any[] => {
 
       // Function to get file URL
       const getFileUrl = (): string => {
-        const API_BASE =
-          import.meta.env.VITE_API_URL || "https://dev-api.dexcourt.com";
+        const API_BASE = import.meta.env.VITE_API_URL;
         return `${API_BASE}/agreement/${escrowId}/file/${file.id}`;
       };
 

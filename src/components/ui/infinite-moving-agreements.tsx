@@ -223,7 +223,7 @@ export const InfiniteMovingAgreements = ({
       {showControls && (
         <>
           {/* Left control */}
-          <div className="absolute top-1/2 left-0 z-10 -translate-y-1/2">
+          <div className="absolute top-1/2 left-0 z-30 -translate-y-1/2">
             <button
               onClick={scrollToPrevious}
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
@@ -234,7 +234,7 @@ export const InfiniteMovingAgreements = ({
           </div>
 
           {/* Right control */}
-          <div className="absolute top-1/2 right-0 z-10 -translate-y-1/2">
+          <div className="absolute top-1/2 right-0 z-30 -translate-y-1/2">
             <button
               onClick={scrollToNext}
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"

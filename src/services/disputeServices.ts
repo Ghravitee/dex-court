@@ -13,6 +13,7 @@ import type {
   EvidenceFile,
   VoteOutcomeData,
 } from "../types";
+import { devError, devLog } from "../utils/logger";
 
 const generateVotingId = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -30,7 +31,7 @@ class DisputeService {
   async searchUsers(query: string): Promise<any[]> {
     try {
       if (process.env.NODE_ENV === "development") {
-        console.log(`🔍 [DisputeService] Searching users with query: ${query}`);
+        devLog(`🔍 [DisputeService] Searching users with query: ${query}`);
       }
 
       if (!query || query.trim().length === 0) {
@@ -40,7 +41,7 @@ class DisputeService {
       const allUsers = await this.getAllUsers();
 
       if (!Array.isArray(allUsers)) {
-        console.error(
+        devError(
           "🔍 [DisputeService] getAllUsers did not return an array:",
           allUsers,
         );
@@ -58,14 +59,14 @@ class DisputeService {
       );
 
       if (process.env.NODE_ENV === "development") {
-        console.log(
+        devLog(
           `🔍 [DisputeService] Found ${filteredUsers.length} users matching "${query}"`,
         );
       }
 
       return filteredUsers;
     } catch (error) {
-      console.error("🔍 [DisputeService] User search failed:", error);
+      devError("🔍 [DisputeService] User search failed:", error);
       return [];
     }
   }
@@ -75,14 +76,14 @@ class DisputeService {
       this.userCache &&
       Date.now() - this.userCache.timestamp < this.CACHE_DURATION
     ) {
-      console.log("🔍 [DisputeService] Returning cached users");
+      devLog("🔍 [DisputeService] Returning cached users");
       return this.userCache.users;
     }
 
     try {
       const response = await api.get<any>("/accounts");
 
-      console.log("🔍 [DisputeService] /accounts response:", response.data);
+      devLog("🔍 [DisputeService] /accounts response:", response.data);
 
       let users: any[] = [];
 
@@ -107,14 +108,14 @@ class DisputeService {
 
       return users;
     } catch (error) {
-      console.error("🔍 [DisputeService] Failed to get all users:", error);
+      devError("🔍 [DisputeService] Failed to get all users:", error);
       return [];
     }
   }
 
   clearUserCache() {
     this.userCache = null;
-    console.log("🔍 [DisputeService] User cache cleared");
+    devLog("🔍 [DisputeService] User cache cleared");
   }
 
   // Create a new dispute manually
@@ -124,7 +125,7 @@ class DisputeService {
     chainId?: number, // Add chainId as optional parameter
   ): Promise<{ id: number; votingId?: string }> {
     // Update return type to include votingId
-    console.log(
+    devLog(
       "🚀 Creating dispute with proper form-data format...",
       chainId ? `[Chain ID: ${chainId}]` : "",
     );
@@ -143,10 +144,10 @@ class DisputeService {
     // Add chainId if provided
     if (chainId !== undefined) {
       formData.append("chainId", String(chainId));
-      console.log("🔗 Added chainId to formData:", chainId);
+      devLog("🔗 Added chainId to formData:", chainId);
     }
 
-    console.log("✅ Generated votingId for dispute:", votingId);
+    devLog("✅ Generated votingId for dispute:", votingId);
 
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((witness, index) => {
@@ -158,9 +159,9 @@ class DisputeService {
       files.forEach((file) => formData.append("files", file));
     }
 
-    console.log("📦 FormData content being sent:");
+    devLog("📦 FormData content being sent:");
     for (const [key, value] of formData.entries()) {
-      console.log(`  ${key}:`, value);
+      devLog(`  ${key}:`, value);
     }
 
     try {
@@ -169,13 +170,13 @@ class DisputeService {
         timeout: 30000, // Add timeout like the other method
       });
 
-      console.log("📥 Raw response from server:", response);
-      console.log("📦 Response data:", response.data);
-      console.log("📊 Response status:", response.status);
+      devLog("📥 Raw response from server:", response);
+      devLog("📦 Response data:", response.data);
+      devLog("📊 Response status:", response.status);
 
       if (response.status === 201) {
         if (!response.data || typeof response.data !== "object") {
-          console.error("❌ Invalid response format - expected object with id");
+          devError("❌ Invalid response format - expected object with id");
           throw new Error(
             "Server returned invalid response format. Expected { id: disputeId }.",
           );
@@ -184,14 +185,14 @@ class DisputeService {
         const disputeId = response.data.id;
 
         if (!disputeId || typeof disputeId !== "number") {
-          console.error("❌ Missing or invalid dispute ID in response");
-          console.error("Response data:", response.data);
+          devError("❌ Missing or invalid dispute ID in response");
+          devError("Response data:", response.data);
           throw new Error(
             "Server response missing dispute ID. Please contact support.",
           );
         }
 
-        console.log(
+        devLog(
           "✅ Dispute created successfully!",
           `Dispute ID: ${disputeId}, Voting ID: ${votingId}`,
           chainId ? `Chain ID: ${chainId}` : "",
@@ -206,7 +207,7 @@ class DisputeService {
       } else if (response.status === 200) {
         // Handle 200 OK response as well
         if (response.data && response.data.id) {
-          console.log("✅ Dispute created (200 OK)", response.data);
+          devLog("✅ Dispute created (200 OK)", response.data);
           return {
             id: response.data.id,
             votingId: votingId,
@@ -215,15 +216,15 @@ class DisputeService {
           throw new Error("Server returned 200 but missing dispute ID.");
         }
       } else {
-        console.error("❌ Unexpected response status:", response.status);
+        devError("❌ Unexpected response status:", response.status);
         throw new Error(`Unexpected server response: ${response.status}`);
       }
     } catch (error: any) {
-      console.error("❌ Error in createDispute:", error);
+      devError("❌ Error in createDispute:", error);
 
       // Enhanced error handling (similar to createDisputeFromAgreement)
       if (error.response) {
-        console.error("📥 Server response:", {
+        devError("📥 Server response:", {
           status: error.response.status,
           statusText: error.response.statusText,
           data: error.response.data,
@@ -276,14 +277,14 @@ class DisputeService {
       }
 
       if (error.code === "ECONNABORTED") {
-        console.error("⏰ Request timeout - server took too long to respond");
+        devError("⏰ Request timeout - server took too long to respond");
         throw new Error(
           "Request timeout. The server took too long to respond. Please try again.",
         );
       }
 
       if (error.code === "ERR_NETWORK") {
-        console.error("🌐 Network error - cannot connect to server");
+        devError("🌐 Network error - cannot connect to server");
         throw new Error(
           "Cannot connect to server. Please check your internet connection and try again.",
         );
@@ -303,7 +304,7 @@ class DisputeService {
     files: File[],
     chainId?: number, // Make chainId optional for backward compatibility
   ): Promise<{ id: number; votingId?: string }> {
-    console.log(
+    devLog(
       "🚀 Creating dispute from agreement with proper form-data format...",
       chainId ? `[Chain ID: ${chainId}]` : "",
     );
@@ -322,10 +323,10 @@ class DisputeService {
     // Add chainId if provided
     if (chainId !== undefined) {
       formData.append("chainId", String(chainId));
-      console.log("🔗 Added chainId to formData:", chainId);
+      devLog("🔗 Added chainId to formData:", chainId);
     }
 
-    console.log("✅ Generated votingId for agreement dispute:", votingId);
+    devLog("✅ Generated votingId for agreement dispute:", votingId);
 
     if (data.witnesses && data.witnesses.length > 0) {
       data.witnesses.forEach((witness, index) => {
@@ -337,11 +338,9 @@ class DisputeService {
       files.forEach((file) => formData.append("files", file));
     }
 
-    console.log(
-      "📦 FormData content being sent for createDisputeFromAgreement:",
-    );
+    devLog("📦 FormData content being sent for createDisputeFromAgreement:");
     for (const [key, value] of formData.entries()) {
-      console.log(`  ${key}:`, value);
+      devLog(`  ${key}:`, value);
     }
 
     try {
@@ -351,14 +350,14 @@ class DisputeService {
         timeout: 30000, // 30 second timeout
       });
 
-      console.log("📥 Raw response from server:", response);
-      console.log("📦 Response data:", response.data);
-      console.log("📊 Response status:", response.status);
+      devLog("📥 Raw response from server:", response);
+      devLog("📦 Response data:", response.data);
+      devLog("📊 Response status:", response.status);
 
       if (response.status === 201) {
         // FIXED: Handle the new response format { id: disputeId }
         if (!response.data || typeof response.data !== "object") {
-          console.error("❌ Invalid response format - expected object with id");
+          devError("❌ Invalid response format - expected object with id");
           throw new Error(
             "Server returned invalid response format. Expected { id: disputeId }.",
           );
@@ -367,14 +366,14 @@ class DisputeService {
         const disputeId = response.data.id;
 
         if (!disputeId || typeof disputeId !== "number") {
-          console.error("❌ Missing or invalid dispute ID in response");
-          console.error("Response data:", response.data);
+          devError("❌ Missing or invalid dispute ID in response");
+          devError("Response data:", response.data);
           throw new Error(
             "Server response missing dispute ID. Please contact support.",
           );
         }
 
-        console.log(
+        devLog(
           "✅ Dispute created from agreement successfully!",
           `Dispute ID: ${disputeId}, Voting ID: ${votingId}`,
           chainId ? `Chain ID: ${chainId}` : "",
@@ -389,7 +388,7 @@ class DisputeService {
       } else if (response.status === 200) {
         // Handle 200 OK response as well (some APIs use 200 for successful creation)
         if (response.data && response.data.id) {
-          console.log("✅ Dispute created (200 OK)", response.data);
+          devLog("✅ Dispute created (200 OK)", response.data);
           return {
             id: response.data.id,
             votingId: votingId,
@@ -398,15 +397,15 @@ class DisputeService {
           throw new Error("Server returned 200 but missing dispute ID.");
         }
       } else {
-        console.error("❌ Unexpected response status:", response.status);
+        devError("❌ Unexpected response status:", response.status);
         throw new Error(`Unexpected server response: ${response.status}`);
       }
     } catch (error: any) {
-      console.error("❌ Error in createDisputeFromAgreement:", error);
+      devError("❌ Error in createDisputeFromAgreement:", error);
 
       // Enhanced error logging
       if (error.response) {
-        console.error("📥 Server response:", {
+        devError("📥 Server response:", {
           status: error.response.status,
           statusText: error.response.statusText,
           data: error.response.data,
@@ -467,14 +466,14 @@ class DisputeService {
       }
 
       if (error.code === "ECONNABORTED") {
-        console.error("⏰ Request timeout - server took too long to respond");
+        devError("⏰ Request timeout - server took too long to respond");
         throw new Error(
           "Request timeout. The server took too long to respond. Please try again.",
         );
       }
 
       if (error.code === "ERR_NETWORK") {
-        console.error("🌐 Network error - cannot connect to server");
+        devError("🌐 Network error - cannot connect to server");
         throw new Error(
           "Cannot connect to server. Please check your internet connection and try again.",
         );
@@ -496,11 +495,11 @@ class DisputeService {
     range?: "all" | "last7d" | "last30d";
   }): Promise<DisputeListResponse> {
     try {
-      console.log("🔍 [DisputeService] Fetching disputes with params:", params);
+      devLog("🔍 [DisputeService] Fetching disputes with params:", params);
 
       const response = await api.get("/dispute", { params });
 
-      console.log("✅ [DisputeService] Disputes response structure:", {
+      devLog("✅ [DisputeService] Disputes response structure:", {
         hasResults: !!response.data?.results,
         resultsCount: response.data?.results?.length || 0,
         totalCount: response.data?.totalCount,
@@ -510,7 +509,7 @@ class DisputeService {
 
       return response.data;
     } catch (error: any) {
-      console.error("❌ [DisputeService] Failed to fetch disputes:", error);
+      devError("❌ [DisputeService] Failed to fetch disputes:", error);
       this.handleError(error);
     }
   }
@@ -518,12 +517,12 @@ class DisputeService {
   // Get dispute details
   async getDisputeDetails(disputeId: number): Promise<DisputeDetails> {
     try {
-      console.log("🔍 Fetching dispute details for ID:", disputeId);
+      devLog("🔍 Fetching dispute details for ID:", disputeId);
       const response = await api.get(`/dispute/${disputeId}`);
-      console.log("🔍 Raw API response:", response.data);
+      devLog("🔍 Raw API response:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error("🔍 Error fetching dispute details:", error);
+      devError("🔍 Error fetching dispute details:", error);
       this.handleError(error);
     }
   }
@@ -551,9 +550,9 @@ class DisputeService {
       files.forEach((file) => formData.append("files", file));
     }
 
-    console.log("🚀 Sending POST /dispute/:id/defendant-claim");
+    devLog("🚀 Sending POST /dispute/:id/defendant-claim");
     for (const [k, v] of formData.entries()) {
-      console.log("  ", k, "=>", v);
+      devLog("  ", k, "=>", v);
     }
 
     try {
@@ -563,9 +562,9 @@ class DisputeService {
         { headers: { "Content-Type": "multipart/form-data" } },
       );
 
-      console.log("✅ Defendant claim submitted successfully", response.data);
+      devLog("✅ Defendant claim submitted successfully", response.data);
     } catch (error: any) {
-      console.error("❌ Error submitting defendant claim", error);
+      devError("❌ Error submitting defendant claim", error);
       this.handleError(error);
     }
   }
@@ -593,9 +592,9 @@ class DisputeService {
       files.forEach((file) => formData.append("files", file));
     }
 
-    console.log("🚀 Sending PATCH /dispute/:id/defendant-claim");
+    devLog("🚀 Sending PATCH /dispute/:id/defendant-claim");
     for (const [k, v] of formData.entries()) {
-      console.log("  ", k, "=>", v);
+      devLog("  ", k, "=>", v);
     }
 
     try {
@@ -605,9 +604,9 @@ class DisputeService {
         { headers: { "Content-Type": "multipart/form-data" } },
       );
 
-      console.log("✅ Defendant claim edited successfully", response.data);
+      devLog("✅ Defendant claim edited successfully", response.data);
     } catch (error: any) {
-      console.error("❌ Error editing defendant claim", error);
+      devError("❌ Error editing defendant claim", error);
       this.handleError(error);
     }
   }
@@ -645,9 +644,9 @@ class DisputeService {
       files.forEach((file) => formData.append("files", file));
     }
 
-    console.log("🚀 Sending PATCH /dispute/:id/plaintiff-claim");
+    devLog("🚀 Sending PATCH /dispute/:id/plaintiff-claim");
     for (const [k, v] of formData.entries()) {
-      console.log("  ", k, "=>", v);
+      devLog("  ", k, "=>", v);
     }
 
     try {
@@ -657,9 +656,9 @@ class DisputeService {
         { headers: { "Content-Type": "multipart/form-data" } },
       );
 
-      console.log("✅ Plaintiff claim edited successfully", response.data);
+      devLog("✅ Plaintiff claim edited successfully", response.data);
     } catch (error: any) {
-      console.error("❌ Error editing plaintiff claim", error);
+      devError("❌ Error editing plaintiff claim", error);
       this.handleError(error);
     }
   }
@@ -676,22 +675,22 @@ class DisputeService {
   // Cast vote
   async castVote(disputeId: number, data: VoteRequest): Promise<void> {
     try {
-      console.log("🗳️ [DisputeService] Casting vote:", { disputeId, data });
+      devLog("🗳️ [DisputeService] Casting vote:", { disputeId, data });
 
       const response = await api.post(`/dispute/${disputeId}/vote`, data);
 
-      console.log("✅ [DisputeService] Vote response:", response.data);
+      devLog("✅ [DisputeService] Vote response:", response.data);
 
       return response.data;
     } catch (error: any) {
-      console.error("❌ [DisputeService] Vote failed:", error);
+      devError("❌ [DisputeService] Vote failed:", error);
       this.handleError(error);
     }
   }
 
   async escalateDisputesToVote(disputeIds: number[]): Promise<void> {
     try {
-      console.log(`🚀 Escalating disputes to vote (PATCH):`, disputeIds);
+      devLog(`🚀 Escalating disputes to vote (PATCH):`, disputeIds);
 
       const response = await api.patch(
         "/testing/escalate-votes",
@@ -703,10 +702,10 @@ class DisputeService {
         },
       );
 
-      console.log("✅ Disputes escalated successfully:", response.data);
+      devLog("✅ Disputes escalated successfully:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error("❌ Failed to escalate disputes:", error);
+      devError("❌ Failed to escalate disputes:", error);
 
       if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
         console.warn("⚠️ Request timed out, but may have succeeded on server");
@@ -722,7 +721,7 @@ class DisputeService {
   // Add this method to your disputeService class
   async finalizeDisputes(disputeIds: number[]): Promise<void> {
     try {
-      console.log(`🚀 Manually finalizing disputes (PATCH):`, disputeIds);
+      devLog(`🚀 Manually finalizing disputes (PATCH):`, disputeIds);
 
       const response = await api.patch(
         "/testing/finalize-votes",
@@ -734,10 +733,10 @@ class DisputeService {
         },
       );
 
-      console.log("✅ Disputes finalized successfully:", response.data);
+      devLog("✅ Disputes finalized successfully:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error("❌ Failed to finalize disputes:", error);
+      devError("❌ Failed to finalize disputes:", error);
 
       // Enhanced error handling
       if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
@@ -749,7 +748,7 @@ class DisputeService {
 
       // Handle specific error cases
       if (error.response) {
-        console.error("📥 Server response:", {
+        devError("📥 Server response:", {
           status: error.response.status,
           statusText: error.response.statusText,
           data: error.response.data,
@@ -798,7 +797,7 @@ class DisputeService {
     weight?: number;
   }> {
     try {
-      console.log(
+      devLog(
         `🔍 [DisputeService] Checking eligibility for dispute ${disputeId}, user ${userId}`,
       );
 
@@ -806,7 +805,7 @@ class DisputeService {
         `/dispute/${disputeId}/check-eligibility`,
       );
 
-      console.log(`✅ [DisputeService] Eligibility response:`, response.data);
+      devLog(`✅ [DisputeService] Eligibility response:`, response.data);
 
       const { isEligible, reason, tier, weight } = response.data;
 
@@ -817,7 +816,7 @@ class DisputeService {
         weight: weight,
       };
     } catch (error: any) {
-      console.error(`❌ [DisputeService] Eligibility check failed:`, error);
+      devError(`❌ [DisputeService] Eligibility check failed:`, error);
 
       if (error.response?.data?.error) {
         const apiError = error.response.data;
@@ -874,10 +873,7 @@ class DisputeService {
 
       return transformedData;
     } catch (error: any) {
-      console.error(
-        `Failed to fetch vote outcome for dispute ${disputeId}:`,
-        error,
-      );
+      devError(`Failed to fetch vote outcome for dispute ${disputeId}:`, error);
       this.handleError(error);
     }
   }
@@ -901,14 +897,14 @@ class DisputeService {
     range?: string;
   }): Promise<any> {
     try {
-      console.log(
+      devLog(
         "🔍 [DisputeService] Fetching settled disputes with params:",
         params,
       );
 
       const response = await api.get("/dispute/vote-settled", { params });
 
-      console.log("✅ [DisputeService] Settled disputes response structure:", {
+      devLog("✅ [DisputeService] Settled disputes response structure:", {
         hasResults: !!response.data?.results,
         resultsCount: response.data?.results?.length || 0,
         totalCount: response.data?.totalCount,
@@ -918,10 +914,7 @@ class DisputeService {
 
       return response.data;
     } catch (error: any) {
-      console.error(
-        "❌ [DisputeService] Failed to fetch settled disputes:",
-        error,
-      );
+      devError("❌ [DisputeService] Failed to fetch settled disputes:", error);
       this.handleError(error);
     }
   }
@@ -986,7 +979,7 @@ class DisputeService {
         })) || [],
     };
 
-    console.log("🔍 Witnesses after transformation:", witnesses);
+    devLog("🔍 Witnesses after transformation:", witnesses);
 
     const transformEvidenceFiles = (files: any[]): EvidenceFile[] => {
       return (
@@ -1063,7 +1056,7 @@ class DisputeService {
         : null,
     };
 
-    console.log("🔄 Transformed dispute with new fields:", {
+    devLog("🔄 Transformed dispute with new fields:", {
       votingId: transformed.votingId,
       contractAgreementId: transformed.contractAgreementId,
       chainId: transformed.chainId,
@@ -1181,19 +1174,19 @@ class DisputeService {
 
   // Error handling
   private handleError(error: any): never {
-    console.error("🎯 ===== STRICT ERROR HANDLING ===== 🚀");
+    devError("🎯 ===== STRICT ERROR HANDLING ===== 🚀");
 
-    console.error("Full error object:", error);
+    devError("Full error object:", error);
 
     if (error.response?.status === 500) {
-      console.error("❌ SERVER ERROR (500) - Dispute creation FAILED");
+      devError("❌ SERVER ERROR (500) - Dispute creation FAILED");
       throw new Error(
         "Dispute creation failed due to server error. Please try again.",
       );
     }
 
     if (error.response?.status === 413) {
-      console.error("📁 REQUEST ENTITY TOO LARGE (413)");
+      devError("📁 REQUEST ENTITY TOO LARGE (413)");
       throw new Error(
         "File too large. The total request size exceeds server limits. Please reduce file sizes or upload fewer files.",
       );
@@ -1205,7 +1198,7 @@ class DisputeService {
       error.message?.includes("cross-origin") ||
       (error.response === undefined && error.request !== undefined)
     ) {
-      console.error("🌐 CORS/NETWORK ERROR DETECTED");
+      devError("🌐 CORS/NETWORK ERROR DETECTED");
       throw new Error(
         "Unable to connect to server. Please check your connection and try again.",
       );
@@ -1238,18 +1231,18 @@ class DisputeService {
         apiError.message ||
         "Dispute creation failed. Please try again.";
 
-      console.error("🎯 THROWING STRICT ERROR:", message);
+      devError("🎯 THROWING STRICT ERROR:", message);
       throw new Error(message);
     }
 
     if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-      console.error("⏰ TIMEOUT ERROR DETECTED");
+      devError("⏰ TIMEOUT ERROR DETECTED");
       throw new Error(
         "Request timeout. The server took too long to respond. Please try again.",
       );
     }
 
-    console.error("🎯 THROWING GENERIC ERROR");
+    devError("🎯 THROWING GENERIC ERROR");
     throw new Error(
       "Dispute creation failed. Please check your connection and try again.",
     );
