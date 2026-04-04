@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback } from "react";
-import { disputeService } from "@/services/disputeServices";
+import { disputeService } from "../../../services/disputeServices";
 import { type DoneCase } from "../types";
 
 export const useConcludedDisputes = () => {

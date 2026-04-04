@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { UserAvatar } from "@/components/UserAvatar";
+import { UserAvatar } from "../../../components/UserAvatar";
 import { formatDisplayName, formatUsername } from "../utils/formatting";
 import { type UsernameWithAvatarProps } from "../types";
 

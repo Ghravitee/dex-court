@@ -10,10 +10,10 @@ import {
 } from "../../../components/ui/accordion";
 import { Info, Loader2, Clock, ExternalLink, Vote, Shield } from "lucide-react";
 import { toast } from "sonner";
-import { disputeService } from "@/services/disputeServices";
-import { agreementService } from "@/services/agreementServices";
-import { getAgreement } from "@/web3/readContract";
-import { useVotingStatus } from "@/hooks/useVotingStatus";
+import { disputeService } from "../../../services/disputeServices";
+import { agreementService } from "../../../services/agreementServices";
+import { getAgreement } from "../../../web3/readContract";
+import { useVotingStatus } from "../../../hooks/useVotingStatus";
 import { UsernameWithAvatar } from "./UsernameWithAvatar";
 import { MemoizedVoteOption } from "./VoteOption";
 import { fmtRemain } from "../utils/dateUtils";

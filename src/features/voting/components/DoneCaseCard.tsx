@@ -9,8 +9,8 @@ import {
   AccordionTrigger,
 } from "../../../components/ui/accordion";
 import { ExternalLink } from "lucide-react";
-import { UserAvatar } from "@/components/UserAvatar";
-import { calculateVoteResults } from "@/lib/voteCalculations";
+import { UserAvatar } from "../../../components/UserAvatar";
+import { calculateVoteResults } from "../../../lib/voteCalculations";
 import { UsernameWithAvatar } from "./UsernameWithAvatar";
 import { formatDisplayName } from "../utils/formatting";
 import { type DoneCaseCardProps } from "../types";
