@@ -39,6 +39,7 @@ interface EscrowModalProps {
   // Chain selection
   displayChains: DisplayChain[];
   isProd: boolean;
+  resolvedChainId: number | null;
   selectedMainnetId: number | null;
   onSelectChain: (mainnetId: number) => Promise<void>;
 }
@@ -68,6 +69,7 @@ export function EscrowModal({
   onRetry,
   displayChains,
   isProd,
+  resolvedChainId,
   selectedMainnetId,
   onSelectChain,
 }: EscrowModalProps) {
@@ -153,6 +155,7 @@ export function EscrowModal({
           displayChains={displayChains}
           isProd={isProd}
           selectedMainnetId={selectedMainnetId}
+          resolvedChainId={resolvedChainId}
           onSelectChain={onSelectChain}
         />
 

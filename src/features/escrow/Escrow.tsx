@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
 import { useChainSelection } from "../../config/useChainSelection";
 import { useAccount, useReadContract, useSwitchChain } from "wagmi";
-import { ERC20_ABI, ESCROW_CA } from "../../web3/config";
+import { ERC20_ABI, ESCROW_CA, SUPPORTED_CHAINS } from "../../web3/config";
 import { isValidAddress } from "../../web3/helper";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -35,7 +35,7 @@ export default function EscrowPage() {
 
   const activeChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : networkInfo.chainId;
+    : networkInfo.chainId ?? resolveChainId(SUPPORTED_CHAINS[0].mainnetId);
 
   // ── Contract address ──────────────────────────────────────────────────────
   const contractAddress = useMemo(() => {
@@ -137,7 +137,7 @@ export default function EscrowPage() {
 
   // ── Chain config error ────────────────────────────────────────────────────
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected && selectedMainnetId) {
       if (!contractAddress || !isValidAddress(contractAddress)) {
         setChainConfigError(
           `Escrow contract not configured for chain ${activeChainId}. Please switch to a supported network.`,
@@ -148,8 +148,10 @@ export default function EscrowPage() {
       } else {
         setChainConfigError(null);
       }
+    } else {
+      setChainConfigError(null);
     }
-  }, [activeChainId, isConnected, contractAddress]);
+  }, [activeChainId, isConnected, contractAddress, selectedMainnetId]);
 
   // ── Preview creation steps (demo) ────────────────────────────────────────
   const previewCreationSteps = useCallback(() => {
@@ -157,19 +159,19 @@ export default function EscrowPage() {
       step: Parameters<typeof previewStep>[0];
       msg: string;
     }> = [
-      { step: "creating_backend", msg: "Creating agreement in database..." },
-      {
-        step: "awaiting_approval",
-        msg: "Token approval required. Please check your wallet...",
-      },
-      { step: "approving", msg: "Approving token spending..." },
-      { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
-      {
-        step: "waiting_confirmation",
-        msg: "Transaction submitted. Waiting for blockchain confirmation...",
-      },
-      { step: "success", msg: "Escrow created successfully!" },
-    ];
+        { step: "creating_backend", msg: "Creating agreement in database..." },
+        {
+          step: "awaiting_approval",
+          msg: "Token approval required. Please check your wallet...",
+        },
+        { step: "approving", msg: "Approving token spending..." },
+        { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
+        {
+          step: "waiting_confirmation",
+          msg: "Transaction submitted. Waiting for blockchain confirmation...",
+        },
+        { step: "success", msg: "Escrow created successfully!" },
+      ];
 
     PREVIEW_STEPS.forEach(({ step, msg }, i) => {
       setTimeout(() => previewStep(step, msg), i * 2000);
@@ -334,6 +336,7 @@ export default function EscrowPage() {
               displayChains={displayChains}
               isProd={isProd}
               selectedMainnetId={selectedMainnetId}
+              resolvedChainId={activeChainId ?? null}
               onSelectChain={async (mainnetId) => {
                 setSelectedMainnetId(mainnetId);
                 const resolved = resolveChainId(mainnetId);

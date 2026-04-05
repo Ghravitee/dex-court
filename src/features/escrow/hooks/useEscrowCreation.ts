@@ -12,12 +12,14 @@ import {
   ERC20_ABI,
   ZERO_ADDRESS,
   ESCROW_CA,
+  KNOWN_TOKEN_ADDRESSES,
 } from "../../../web3/config";
 import { agreementService } from "../../../services/agreementServices";
 import { isValidAddress } from "../../../web3/helper";
 import { AgreementVisibilityEnum } from "../constants";
 import { extractContractErrorMessage } from "../utils/validators";
 import type { CreationStep, EscrowFormState, EscrowType } from "../types";
+import { getTokenDecimals } from "../../../web3/readContract";
 
 interface UseEscrowCreationOptions {
   contractAddress?: `0x${string}`;
@@ -290,17 +292,16 @@ export function useEscrowCreation({
         }
         tokenAddr = form.customTokenAddress;
       } else if (form.token !== "ETH") {
-        if (
-          !form.customTokenAddress ||
-          !isValidAddress(form.customTokenAddress)
-        ) {
-          setUiError(
-            `${form.token} selected — paste its contract address in Custom Token field`,
-          );
+        const knownAddress = KNOWN_TOKEN_ADDRESSES[form.token]?.[networkChainId as number];
+        if (knownAddress) {
+          tokenAddr = knownAddress;
+        } else if (form.customTokenAddress && isValidAddress(form.customTokenAddress)) {
+          tokenAddr = form.customTokenAddress;
+        } else {
+          setUiError(`No contract address found for ${form.token} on this network. Please use Custom Token.`);
           updateStep("error", `Missing ${form.token} contract address`);
           return;
         }
-        tokenAddr = form.customTokenAddress;
       }
 
       // ── Deadline ──────────────────────────────────────────────────────────
@@ -342,11 +343,17 @@ export function useEscrowCreation({
       // ── Amount ────────────────────────────────────────────────────────────
       let amountBN: bigint;
       try {
-        amountBN = parseAmount(
-          form.amount,
-          tokenAddr,
-          form.tokenDecimals,
-        ) as bigint;
+        let resolvedDecimals = form.tokenDecimals;
+        if (tokenAddr !== ZERO_ADDRESS) {
+          try {
+            const fetched = await getTokenDecimals(networkChainId as number, tokenAddr as `0x${string}`);
+            resolvedDecimals = Number(fetched);
+          } catch {
+            // fall back to form.tokenDecimals
+          }
+        }
+
+        amountBN = parseAmount(form.amount, tokenAddr, resolvedDecimals) as bigint;
         if (amountBN <= 0n) {
           setUiError("Parsed amount invalid");
           updateStep("error", "Invalid amount");

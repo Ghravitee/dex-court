@@ -30,6 +30,8 @@ import type {
 } from "../../types";
 import { CreationProgress } from "./CreationProgress";
 import { StatusMessages } from "./StatusMessages";
+import { isValidAddress } from "../../../../web3/helper";
+import { getTokenDecimals, getTokenSymbol } from "../../../../web3/readContract";
 
 interface EscrowFormProps {
   form: EscrowFormState;
@@ -63,6 +65,7 @@ interface EscrowFormProps {
     icon: string;
   }>;
   isProd: boolean;
+  resolvedChainId: number | null;
   selectedMainnetId: number | null;
   onSelectChain: (mainnetId: number) => Promise<void>;
 }
@@ -91,11 +94,16 @@ export function EscrowForm({
   displayChains,
   isProd,
   selectedMainnetId,
+  resolvedChainId,
   onSelectChain,
 }: EscrowFormProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isTypeOpen, setIsTypeOpen] = useState(false);
   const [isTokenOpen, setIsTokenOpen] = useState(false);
+  const [resolvedTokenMeta, setResolvedTokenMeta] = useState<{
+    symbol: string;
+  } | null>(null);
+  const [isResolvingToken, setIsResolvingToken] = useState(false);
   const typeRef = useRef<HTMLDivElement>(null);
   const tokenRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +118,45 @@ export function EscrowForm({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (
+      form.token !== "custom" ||
+      !form.customTokenAddress ||
+      !isValidAddress(form.customTokenAddress) ||
+      !resolvedChainId
+    ) {
+      setResolvedTokenMeta(null);
+      setForm((p) => ({ ...p, tokenDecimals: 18 })); // reset to safe default
+      return;
+    }
+
+    let cancelled = false;
+    setIsResolvingToken(true);
+    setResolvedTokenMeta(null);
+
+    (async () => {
+      try {
+        const [symbol, decimals] = await Promise.all([
+          getTokenSymbol(resolvedChainId, form.customTokenAddress as `0x${string}`),
+          getTokenDecimals(resolvedChainId, form.customTokenAddress as `0x${string}`),
+        ]);
+
+        if (!cancelled) {
+          setResolvedTokenMeta({
+            symbol: symbol as string,
+          });
+          setForm((p) => ({ ...p, tokenDecimals: Number(decimals) }));
+        }
+      } catch {
+        if (!cancelled) setResolvedTokenMeta(null);
+      } finally {
+        if (!cancelled) setIsResolvingToken(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [form.token, form.customTokenAddress, selectedMainnetId, setForm, resolvedChainId]);
 
   const busy =
     isSubmitting || isTxPending || isApprovalPending || isApprovingToken;
@@ -130,11 +177,10 @@ export function EscrowForm({
               key={t}
               type="button"
               onClick={() => setEscrowType(t)}
-              className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
-                escrowType === t
-                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-              }`}
+              className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === t
+                ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                }`}
             >
               {t === "myself" ? (
                 <User className="mb-2 h-6 w-6" />
@@ -191,11 +237,10 @@ export function EscrowForm({
               key={chain.mainnetId}
               type="button"
               onClick={() => onSelectChain(chain.mainnetId)}
-              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${
-                selectedMainnetId === chain.mainnetId
-                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-              }`}
+              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${selectedMainnetId === chain.mainnetId
+                ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                }`}
             >
               <img
                 src={chain.icon}
@@ -309,11 +354,10 @@ export function EscrowForm({
               {(["me", "counterparty"] as const).map((p) => (
                 <label
                   key={p}
-                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                    form.payer === p
-                      ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                      : "border-white/10 bg-white/5 text-white/70"
-                  }`}
+                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
+                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                    : "border-white/10 bg-white/5 text-white/70"
+                    }`}
                 >
                   <input
                     type="radio"
@@ -343,11 +387,10 @@ export function EscrowForm({
               {(["partyA", "partyB"] as const).map((p) => (
                 <label
                   key={p}
-                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
-                    form.payerOther === p
-                      ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                      : "border-white/10 bg-white/5 text-white/70"
-                  }`}
+                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
+                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                    : "border-white/10 bg-white/5 text-white/70"
+                    }`}
                 >
                   <input
                     type="radio"
@@ -432,9 +475,11 @@ export function EscrowForm({
             className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none"
           >
             <span>
-              {form.token
-                ? TOKEN_OPTIONS.find((t) => t.value === form.token)?.label
-                : "Select Token"}
+              {form.token === "custom" && resolvedTokenMeta
+                ? resolvedTokenMeta.symbol
+                : form.token
+                  ? TOKEN_OPTIONS.find((t) => t.value === form.token)?.label
+                  : "Select Token"}
             </span>
             <ChevronDown
               className={`transition-transform ${isTokenOpen ? "rotate-180" : ""}`}
@@ -476,6 +521,25 @@ export function EscrowForm({
                 className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                 required
               />
+              {isResolvingToken && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-white/50">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Fetching token info...
+                </div>
+              )}
+              {!isResolvingToken && resolvedTokenMeta && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-400">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  <span>
+                    <span className="font-semibold">{resolvedTokenMeta.symbol}</span>
+                  </span>
+                </div>
+              )}
+              {!isResolvingToken && !resolvedTokenMeta && form.customTokenAddress && isValidAddress(form.customTokenAddress) && (
+                <div className="mt-1 text-xs text-red-400">
+                  Not a valid ERC-20 on {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name || "selected network"}
+                </div>
+              )}
             </div>
           )}
           {form.token === "custom" && !form.customTokenAddress.trim() && (
@@ -508,10 +572,10 @@ export function EscrowForm({
           {(!form.amount.trim() ||
             isNaN(Number(form.amount)) ||
             Number(form.amount) <= 0) && (
-            <div className="mt-1 text-xs text-red-400">
-              Please enter a valid amount
-            </div>
-          )}
+              <div className="mt-1 text-xs text-red-400">
+                Please enter a valid amount
+              </div>
+            )}
         </div>
       </div>
 
@@ -548,11 +612,10 @@ export function EscrowForm({
         </label>
 
         <div
-          className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-            isDragOver
-              ? "border-cyan-400/60 bg-cyan-500/20"
-              : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-          }`}
+          className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+            ? "border-cyan-400/60 bg-cyan-500/20"
+            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+            }`}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragOver(true);
@@ -779,14 +842,13 @@ export function EscrowForm({
               <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2">
                 <span className="text-xs text-white/50">Total allocated</span>
                 <span
-                  className={`text-xs font-semibold ${
-                    form.milestones.reduce(
-                      (s, m) => s + (Number(m.percent) || 0),
-                      0,
-                    ) === 100
-                      ? "text-emerald-400"
-                      : "text-amber-400"
-                  }`}
+                  className={`text-xs font-semibold ${form.milestones.reduce(
+                    (s, m) => s + (Number(m.percent) || 0),
+                    0,
+                  ) === 100
+                    ? "text-emerald-400"
+                    : "text-amber-400"
+                    }`}
                 >
                   {form.milestones.reduce(
                     (s, m) => s + (Number(m.percent) || 0),

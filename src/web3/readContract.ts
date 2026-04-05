@@ -264,6 +264,8 @@ export const getTokenSymbol = async (
   const publicClient: PublicClient = getClientForChain(chainId);
   const contractAddr = tokenAddr;
 
+  console.log(`getTokenSymbol: chainId=${chainId}, tokenAddr=${tokenAddr}`);
+
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);
   }
