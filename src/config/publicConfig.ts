@@ -4,45 +4,45 @@ import {
   mainnet,
   sepolia,
   bsc,
+  bscTestnet,
   base,
-  //  bscTestnet, bsc
+  baseSepolia,
 } from "viem/chains";
 
-const alchemyKey = import.meta.env.VITE_ETH_RPC_URL as string;
-const Sepolia_AlchemyKey = import.meta.env.VITE_SEPOLIA_RPC_URL as string;
-// const bsc_AlchemyKey = import.meta.env.VITE_BSC_RPC_URL!;
-const bsc_url = import.meta.env.VITE_BSC_RPC_URL!;
-const base_url = import.meta.env.VITE_BASE_RPC_URL!;
-// const bscTestnet_AlchemyKey =
-// import.meta.env.VITE_BSC_TESTNET_RPC_URL! ||
-// import.meta.env.VITE_BSC_TESTNET_RPC_URL2!;
+// const alchemyKey = import.meta.env.VITE_ETH_RPC_URL as string;
+// const Sepolia_AlchemyKey = import.meta.env.VITE_SEPOLIA_RPC_URL as string;
+// // const bsc_AlchemyKey = import.meta.env.VITE_BSC_RPC_URL!;
+// const bsc_url = import.meta.env.VITE_BSC_RPC_URL!;
+// const bscTestnet_url = import.meta.env.VITE_BSC_TESTNET_RPC_URL!;
+// const base_url = import.meta.env.VITE_BASE_RPC_URL!;
+// const baseSepolia_url = import.meta.env.VITE_BASE_SEPOLIA_RPC_URL!;
 const isDev = import.meta.env.DEV as boolean;
 
 // Configure clients for all supported chains
 export const clients: Record<number, PublicClient> = {
   [mainnet.id]: createPublicClient({
     chain: mainnet,
-    transport: http(alchemyKey),
+    transport: http(),
   }),
   [sepolia.id]: createPublicClient({
     chain: sepolia,
-    transport: http(Sepolia_AlchemyKey),
+    transport: http(),
   }),
-  // [bsc.id]: createPublicClient({
-  //   chain: bsc,
-  //   transport: http(bsc_AlchemyKey),
-  // }),
-  // [bscTestnet.id]: createPublicClient({
-  //   chain: bscTestnet,
-  //   transport: http(bscTestnet_AlchemyKey),
-  // }),
   [bsc.id]: createPublicClient({
     chain: bsc,
-    transport: http(bsc_url),
+    transport: http(),
+  }),
+  [bscTestnet.id]: createPublicClient({
+    chain: bscTestnet,
+    transport: http(),
   }),
   [base.id]: createPublicClient({
     chain: base,
-    transport: http(base_url),
+    transport: http(),
+  }),
+  [baseSepolia.id]: createPublicClient({
+    chain: baseSepolia,
+    transport: http(),
   }),
 } as Record<number, PublicClient>;
 
