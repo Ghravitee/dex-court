@@ -1,6 +1,14 @@
 import { EscrowForm } from "./EscrowForm";
 import type { CreationStep, EscrowFormState, EscrowType } from "../../types";
 
+interface DisplayChain {
+  mainnetId: number;
+  label: string;
+  name: string;
+  symbol: string;
+  icon: string;
+}
+
 interface EscrowModalProps {
   open: boolean;
   onClose: () => void;
@@ -28,6 +36,11 @@ interface EscrowModalProps {
   currentStepMessage: string;
   txHash?: string;
   onRetry: () => void;
+  // Chain selection
+  displayChains: DisplayChain[];
+  isProd: boolean;
+  selectedMainnetId: number | null;
+  onSelectChain: (mainnetId: number) => Promise<void>;
 }
 
 export function EscrowModal({
@@ -53,6 +66,10 @@ export function EscrowModal({
   currentStepMessage,
   txHash,
   onRetry,
+  displayChains,
+  isProd,
+  selectedMainnetId,
+  onSelectChain,
 }: EscrowModalProps) {
   if (!open) return null;
 
@@ -133,6 +150,10 @@ export function EscrowModal({
           currentStepMessage={currentStepMessage}
           txHash={txHash}
           onRetry={onRetry}
+          displayChains={displayChains}
+          isProd={isProd}
+          selectedMainnetId={selectedMainnetId}
+          onSelectChain={onSelectChain}
         />
 
         {footerNote()}

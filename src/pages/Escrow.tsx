@@ -1,6 +1,7 @@
 // src/pages/Escrow.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useChainSelection } from "../config/useChainSelection";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
@@ -49,7 +50,7 @@ import {
   useWaitForTransactionReceipt,
   useContractReads,
   useSwitchChain,
-  useChainId,
+  // useChainId,
 } from "wagmi";
 import { parseEther, parseUnits } from "viem";
 import { ESCROW_ABI, ESCROW_CA, ERC20_ABI, ZERO_ADDRESS } from "../web3/config";
@@ -377,8 +378,8 @@ export default function Escrow() {
   // ---------- wagmi / on-chain state ----------
   const { address, isConnected } = useAccount();
   const { user: currentUser } = useAuth();
-  const { switchChain } = useSwitchChain();
-  const wagmiChainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  // const wagmiChainId = useChainId();
   const networkInfo = useNetworkEnvironment();
 
   // Add this state near the top of the component
@@ -387,36 +388,34 @@ export default function Escrow() {
   const [pendingAgreementData, setPendingAgreementData] =
     useState<PendingAgreementData | null>(null);
 
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(
+    null,
+  );
+
+  const activeChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : networkInfo.chainId;
+
   const contractAddress = useMemo(() => {
-    if (!networkInfo.chainId) return undefined;
+    if (!activeChainId) return undefined;
+    const addr = ESCROW_CA[activeChainId as number];
 
-    const address = ESCROW_CA[networkInfo.chainId as number];
-
-    console.log("🔄 Contract address lookup:", {
-      address,
-      isValid: address && isValidAddress(address),
-      ESCROW_CA,
-    });
-
-    if (address && isValidAddress(address)) {
-      return address as `0x${string}`;
+    if (addr && isValidAddress(addr)) {
+      return addr as `0x${string}`;
     }
-
-    console.error(
-      `❌ No valid contract address found for chainId ${networkInfo.chainId}`,
-    );
     return undefined;
-  }, [networkInfo.chainId]);
+  }, [activeChainId]);
 
-  const switchToTokenChain = useCallback(async () => {
-    if (!networkInfo.chainId || !switchChain) return;
+  // const switchToTokenChain = useCallback(async () => {
+  //   if (!networkInfo.chainId || !switchChain) return;
 
-    try {
-      switchChain({ chainId: networkInfo.chainId });
-    } catch (error) {
-      console.error("Failed to switch network:", error);
-    }
-  }, [networkInfo.chainId, switchChain]);
+  //   try {
+  //     switchChain({ chainId: networkInfo.chainId });
+  //   } catch (error) {
+  //     console.error("Failed to switch network:", error);
+  //   }
+  // }, [networkInfo.chainId, switchChain]);
 
   // Separate write hooks
   const {
@@ -1267,6 +1266,7 @@ export default function Escrow() {
     setDeadline(null);
     setEscrowType("myself");
     setPendingAgreementData(null);
+    setSelectedMainnetId(null);
   };
 
   const handleCreateAgreementOnChain = async () => {
@@ -1280,7 +1280,7 @@ export default function Escrow() {
       setUiError(errorMsg);
       updateStep("error", errorMsg);
       toast.error("Network Error", {
-        description: `Please switch to a supported network. Current chain: ${networkInfo.chainId}`,
+        description: `Please select a supported network. Active chain: ${activeChainId}`,
       });
       return;
     }
@@ -1302,6 +1302,10 @@ export default function Escrow() {
     if (!deadline) {
       setUiError("Deadline required");
       updateStep("error", "Missing deadline");
+      return;
+    }
+    if (!selectedMainnetId) {
+      setUiError("Please select a chain");
       return;
     }
     if (!form.amount || Number(form.amount) <= 0) {
@@ -1473,6 +1477,7 @@ export default function Escrow() {
       const fullDescription = form.description;
 
       let backendAgreementId = contractAgreementId;
+      const actualChainId = activeChainId;
 
       try {
         updateStep("creating_backend", "Sending data to backend server...");
@@ -1494,11 +1499,11 @@ export default function Escrow() {
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true,
             secureTheFunds: true,
-            chainId: networkInfo.chainId,
+            chainId: actualChainId,
             payeeWalletAddress: serviceProviderAddr, // The service provider (who receives funds)
             payerWalletAddress: serviceRecipientAddr, // The service recipient (who pays funds)
             contractAgreementId: contractAgreementId,
-            escrowContractAddress: contractAddress,
+            escrowContractAddress: ESCROW_CA[actualChainId] ?? contractAddress,
           },
           filesToUpload,
         );
@@ -1698,6 +1703,15 @@ export default function Escrow() {
         return;
       }
     }
+    if (!isConnected) {
+      setUiError("Please connect a wallet to create an agreement");
+      return;
+    }
+    if (!currentUser?.walletAddress) {
+      setUiError("Please authenticate your wallet to create an agreement");
+      return;
+    }
+
     if (!form.token) {
       setUiError("Please select payment token");
       return;
@@ -1833,48 +1847,24 @@ export default function Escrow() {
     );
   };
 
-  const ContractFilterInfo = () => {
-    if (!contractAddress) return null;
-
-    return (
-      <div className="mb-4 hidden w-fit rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
-        <div className="flex items-start gap-2">
-          <Server className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-400" />
-          <div>
-            <h4 className="text-sm font-medium text-cyan-300">
-              Filtered by Contract Address
-            </h4>
-            <p className="mt-1 font-mono text-xs text-cyan-300/80">
-              {contractAddress.slice(0, 20)}...{contractAddress.slice(-20)}
-            </p>
-            <p className="mt-2 text-xs text-cyan-200/60">
-              Showing escrows using the current contract version on chain{" "}
-              {networkInfo.chainId}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  useEffect(() => {
-    if (
-      currentUser?.walletAddress &&
-      isConnected &&
-      wagmiChainId !== networkInfo.chainId
-    ) {
-      toast.info(
-        `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
-      );
-      switchToTokenChain();
-    }
-  }, [
-    currentUser?.walletAddress,
-    isConnected,
-    networkInfo.chainId,
-    switchToTokenChain,
-    wagmiChainId,
-  ]);
+  // useEffect(() => {
+  //   if (
+  //     currentUser?.walletAddress &&
+  //     isConnected &&
+  //     wagmiChainId !== networkInfo.chainId
+  //   ) {
+  //     toast.info(
+  //       `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
+  //     );
+  //     switchToTokenChain();
+  //   }
+  // }, [
+  //   currentUser?.walletAddress,
+  //   isConnected,
+  //   networkInfo.chainId,
+  //   switchToTokenChain,
+  //   wagmiChainId,
+  // ]);
 
   useEffect(() => {
     if (isConnected) {
@@ -1885,16 +1875,16 @@ export default function Escrow() {
       });
 
       if (!contractAddress || !isValidAddress(contractAddress)) {
-        const errorMsg = `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`;
+        const errorMsg = `Escrow contract not configured for chain ${activeChainId}. Please switch to a supported network.`;
         setChainConfigError(errorMsg);
         toast.error("Unsupported Network", {
-          description: `Chain ID ${networkInfo.chainId} is not supported. Please switch to a supported network.`,
+          description: `Chain ID ${activeChainId} is not supported. Please switch to a supported network.`,
         });
       } else {
         setChainConfigError(null);
       }
     }
-  }, [networkInfo.chainId, isConnected, contractAddress]);
+  }, [networkInfo.chainId, isConnected, contractAddress, activeChainId]);
 
   const CreationProgress = () => {
     if (creationStep === "idle") return null;
@@ -2332,7 +2322,6 @@ export default function Escrow() {
   return (
     <div className="relative">
       <NetworkWarning />
-      <ContractFilterInfo />
 
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl"></div>
 
@@ -2488,6 +2477,46 @@ export default function Escrow() {
 
                     {/* Title */}
                     <div>
+                      {displayChains.map((chain) => (
+                        <button
+                          key={chain.mainnetId}
+                          type="button"
+                          onClick={async () => {
+                            setSelectedMainnetId(chain.mainnetId);
+                            const resolved = resolveChainId(chain.mainnetId);
+                            try {
+                              await switchChainAsync({ chainId: resolved });
+                              toast.success(`Switched to ${chain.label}`);
+                            } catch (err) {
+                              toast.error(
+                                `Failed to switch to ${chain.name}, ${err}`,
+                              );
+                              setSelectedMainnetId(null); // revert selection if switch fails
+                            }
+                          }}
+                          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                            selectedMainnetId === chain.mainnetId
+                              ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                          }`}
+                        >
+                          <img
+                            src={chain.icon}
+                            alt={chain.name}
+                            className="h-8 w-8 rounded-full"
+                          />
+                          <span className="text-xs font-medium">
+                            {chain.name}
+                          </span>
+                          <span className="text-[10px] opacity-60">
+                            {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+                          </span>
+                          {selectedMainnetId === chain.mainnetId && (
+                            <CheckCircle className="h-3 w-3 text-cyan-400" />
+                          )}
+                        </button>
+                      ))}
+
                       <div className="mb-2 flex items-center justify-between">
                         <label className="text-muted-foreground text-sm">
                           Title <span className="text-red-500">*</span>

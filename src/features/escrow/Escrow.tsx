@@ -3,10 +3,11 @@ import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Search } from "lucide-react";
 import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
-import { useAccount, useReadContract, useChainId, useSwitchChain } from "wagmi";
+import { useChainSelection } from "../../config/useChainSelection";
+import { useAccount, useReadContract, useSwitchChain } from "wagmi";
 import { ERC20_ABI, ESCROW_CA } from "../../web3/config";
 import { isValidAddress } from "../../web3/helper";
-import { useAuth } from "../..//hooks/useAuth";
+import { useAuth } from "../../hooks/useAuth";
 
 // Feature imports
 import { useEscrowList } from "./hooks/useEscrowList";
@@ -16,27 +17,33 @@ import { EscrowCard } from "./components/EscrowCard";
 import { EscrowSkeleton } from "./components/EscrowSkeleton";
 import { EscrowFilters } from "./components/EscrowFilters";
 import { EscrowModal } from "./components/EscrowModal";
-import {
-  NetworkWarning,
-  ContractFilterInfo,
-} from "./components/EscrowModal/NetworkWarning";
-// import { StatusMessages } from "./components/EscrowModal/StatusMessages";
+import { NetworkWarning } from "./components/EscrowModal/NetworkWarning";
+import { StatusMessages } from "./components/EscrowModal/StatusMessages";
 import { MAX_IMAGE_SIZE, MAX_DOCUMENT_SIZE, MAX_TOTAL_SIZE } from "./constants";
 
 export default function EscrowPage() {
   const networkInfo = useNetworkEnvironment();
   const { isConnected } = useAccount();
   const { user: currentUser } = useAuth();
-  const { switchChain } = useSwitchChain();
-  const wagmiChainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
 
-  // ── Contract address ─────────────────────────────────────────────────────
+  // ── Chain selection ───────────────────────────────────────────────────────
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(
+    null,
+  );
+
+  const activeChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : networkInfo.chainId;
+
+  // ── Contract address ──────────────────────────────────────────────────────
   const contractAddress = useMemo(() => {
-    if (!networkInfo.chainId) return undefined;
-    const addr = ESCROW_CA[networkInfo.chainId as number];
+    if (!activeChainId) return undefined;
+    const addr = ESCROW_CA[activeChainId as number];
     if (addr && isValidAddress(addr)) return addr as `0x${string}`;
     return undefined;
-  }, [networkInfo.chainId]);
+  }, [activeChainId]);
 
   const [chainConfigError, setChainConfigError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -62,7 +69,7 @@ export default function EscrowPage() {
     handlePageChange,
     handlePageSizeChange,
     pageSize,
-  } = useEscrowList({ contractAddress, networkChainId: networkInfo.chainId });
+  } = useEscrowList({ contractAddress, networkChainId: activeChainId });
 
   const {
     form,
@@ -80,6 +87,7 @@ export default function EscrowPage() {
   const handleSuccess = useCallback(() => {
     setOpen(false);
     resetForm();
+    setSelectedMainnetId(null);
     loadEscrowAgreements();
   }, [resetForm, loadEscrowAgreements]);
 
@@ -98,7 +106,7 @@ export default function EscrowPage() {
     previewStep,
   } = useEscrowCreation({
     contractAddress,
-    networkChainId: networkInfo.chainId,
+    networkChainId: activeChainId,
     onSuccess: handleSuccess,
   });
 
@@ -127,49 +135,21 @@ export default function EscrowPage() {
     }
   }, [createTokenDecimals, setForm]);
 
-  // ── Chain switch on connect ──────────────────────────────────────────────
-  const switchToTokenChain = useCallback(async () => {
-    if (!networkInfo.chainId || !switchChain) return;
-    try {
-      switchChain({ chainId: networkInfo.chainId });
-    } catch {
-      /* ignore */
-    }
-  }, [networkInfo.chainId, switchChain]);
-
-  useEffect(() => {
-    if (
-      currentUser?.walletAddress &&
-      isConnected &&
-      wagmiChainId !== networkInfo.chainId
-    ) {
-      toast.info(
-        `Switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
-      );
-      switchToTokenChain();
-    }
-  }, [
-    currentUser?.walletAddress,
-    isConnected,
-    networkInfo.chainId,
-    switchToTokenChain,
-    wagmiChainId,
-  ]);
-
+  // ── Chain config error ────────────────────────────────────────────────────
   useEffect(() => {
     if (isConnected) {
       if (!contractAddress || !isValidAddress(contractAddress)) {
         setChainConfigError(
-          `Escrow contract not configured for chain ${networkInfo.chainId}. Please switch to a supported network.`,
+          `Escrow contract not configured for chain ${activeChainId}. Please switch to a supported network.`,
         );
         toast.error("Unsupported Network", {
-          description: `Chain ID ${networkInfo.chainId} is not supported.`,
+          description: `Chain ID ${activeChainId} is not supported. Please switch to a supported network.`,
         });
       } else {
         setChainConfigError(null);
       }
     }
-  }, [networkInfo.chainId, isConnected, contractAddress]);
+  }, [activeChainId, isConnected, contractAddress]);
 
   // ── Preview creation steps (demo) ────────────────────────────────────────
   const previewCreationSteps = useCallback(() => {
@@ -203,6 +183,7 @@ export default function EscrowPage() {
   const handleModalClose = () => {
     setOpen(false);
     resetMessages();
+    setSelectedMainnetId(null);
   };
 
   const createEscrowSubmit = async (e: React.FormEvent) => {
@@ -219,6 +200,18 @@ export default function EscrowPage() {
     } else {
       if (!form.payerOther || !form.partyA.trim() || !form.partyB.trim())
         return;
+    }
+    if (!isConnected) {
+      toast.error("Please connect a wallet to create an agreement");
+      return;
+    }
+    if (!currentUser?.walletAddress) {
+      toast.error("Please authenticate your wallet to create an agreement");
+      return;
+    }
+    if (!selectedMainnetId) {
+      toast.error("Please select a chain");
+      return;
     }
     if (!form.token) return;
     if (form.token === "custom" && !form.customTokenAddress.trim()) return;
@@ -269,10 +262,6 @@ export default function EscrowPage() {
   return (
     <div className="relative">
       <NetworkWarning chainConfigError={chainConfigError} />
-      <ContractFilterInfo
-        contractAddress={contractAddress}
-        networkChainId={networkInfo.chainId}
-      />
 
       <div className="absolute inset-0 -z-[50] bg-cyan-500/15 blur-3xl" />
 
@@ -310,12 +299,12 @@ export default function EscrowPage() {
             </div>
 
             {/* Global status bar */}
-            {/* <StatusMessages
+            <StatusMessages
               uiError={uiError}
               uiSuccess={uiSuccess}
               isTxPending={isTxPending}
               isApprovalPending={isApprovalPending}
-            /> */}
+            />
 
             {/* Modal */}
             <EscrowModal
@@ -341,6 +330,24 @@ export default function EscrowPage() {
               currentStepMessage={currentStepMessage}
               txHash={txHash}
               onRetry={resetCreationStep}
+              // Chain selection
+              displayChains={displayChains}
+              isProd={isProd}
+              selectedMainnetId={selectedMainnetId}
+              onSelectChain={async (mainnetId) => {
+                setSelectedMainnetId(mainnetId);
+                const resolved = resolveChainId(mainnetId);
+                try {
+                  await switchChainAsync({ chainId: resolved });
+                  const chain = displayChains.find(
+                    (c) => c.mainnetId === mainnetId,
+                  );
+                  toast.success(`Switched to ${chain?.label ?? "chain"}`);
+                } catch {
+                  toast.error("Failed to switch chain");
+                  setSelectedMainnetId(null);
+                }
+              }}
             />
 
             {/* Filters (search, sort, tabs, pagination) */}

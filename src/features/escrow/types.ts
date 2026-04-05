@@ -81,6 +81,13 @@ export interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
 
 // ─── Form ────────────────────────────────────────────────────────────────────
 
+// ─── Milestone (user-friendly shape) ─────────────────────────────────────────
+
+export interface Milestone {
+  percent: string; // "25", "50", etc. — user types a plain percentage
+  date: Date | null; // exact date the milestone unlocks
+}
+
 export interface EscrowFormState {
   title: string;
   type: "public" | "private" | "";
@@ -94,7 +101,7 @@ export interface EscrowFormState {
   amount: string;
   description: string;
   evidence: UploadedFile[];
-  milestones: string[];
+  milestones: Milestone[];
   tokenDecimals: number;
 }
 
@@ -111,7 +118,7 @@ export const initialFormState: EscrowFormState = {
   amount: "",
   description: "",
   evidence: [],
-  milestones: [""],
+  milestones: [],
   tokenDecimals: 18,
 };
 

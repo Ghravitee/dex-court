@@ -7,7 +7,12 @@ import {
   useWaitForTransactionReceipt,
   useAccount,
 } from "wagmi";
-import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS } from "../../../web3/config";
+import {
+  ESCROW_ABI,
+  ERC20_ABI,
+  ZERO_ADDRESS,
+  ESCROW_CA,
+} from "../../../web3/config";
 import { agreementService } from "../../../services/agreementServices";
 import { isValidAddress } from "../../../web3/helper";
 import { AgreementVisibilityEnum } from "../constants";
@@ -170,26 +175,25 @@ export function useEscrowCreation({
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   const parseMilestonesFromForm = (
-    milestonesInput: string[],
+    milestonesInput: Array<{ percent: string; date: Date | null }>,
     deadlineDuration: number,
   ) => {
     const percBP: number[] = [];
     const offsets: number[] = [];
+    const now = Math.floor(Date.now() / 1000);
 
     for (const m of milestonesInput) {
-      if (!m || m.trim() === "") continue;
-      const parts = m.split(":").map((s) => s.trim());
-      const p = Number(parts[0]);
-      if (Number.isNaN(p)) throw new Error("invalid percent");
+      const p = Number(m.percent);
+      if (!m.percent || Number.isNaN(p) || p <= 0)
+        throw new Error("Each milestone needs a valid percentage");
       percBP.push(Math.round(p * 100));
 
       let offset = 0;
-      if (parts.length > 1 && parts[1] !== "") {
-        offset = Number(parts[1]);
-        if (Number.isNaN(offset) || offset < 0)
-          throw new Error("invalid offset");
+      if (m.date) {
+        offset = Math.floor(m.date.getTime() / 1000) - now;
+        if (offset < 0) throw new Error("Milestone date must be in the future");
         if (offset > deadlineDuration)
-          throw new Error("offset > deadlineDuration");
+          throw new Error("Milestone date cannot be after the deadline");
       }
       offsets.push(offset);
     }
@@ -388,7 +392,8 @@ export function useEscrowCreation({
               payeeWalletAddress: serviceProviderAddr,
               payerWalletAddress: serviceRecipientAddr,
               contractAgreementId,
-              escrowContractAddress: contractAddress,
+              escrowContractAddress:
+                ESCROW_CA[networkChainId as number] ?? contractAddress,
             },
             filesToUpload,
           );

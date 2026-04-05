@@ -2,7 +2,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { validateFile } from "../utils/validators";
 import { initialFormState } from "../types";
-import type { EscrowFormState, EscrowType, UploadedFile } from "../types";
+import type {
+  EscrowFormState,
+  EscrowType,
+  Milestone,
+  UploadedFile,
+} from "../types";
 
 export function useEscrowForm() {
   const [form, setForm] = useState<EscrowFormState>(initialFormState);
@@ -91,19 +96,25 @@ export function useEscrowForm() {
 
   // ─── Milestone helpers ────────────────────────────────────────────────────
 
-  const updateMilestone = (idx: number, value: string) => {
-    const next = [...form.milestones];
-    next[idx] = value;
-    setForm((prev) => ({ ...prev, milestones: next }));
+  const addMilestone = () => {
+    const empty: Milestone = { percent: "", date: null };
+    setForm((prev) => ({ ...prev, milestones: [...prev.milestones, empty] }));
+  };
+
+  const updateMilestone = (idx: number, patch: Partial<Milestone>) => {
+    setForm((prev) => {
+      const next: Milestone[] = prev.milestones.map((m, i) =>
+        i === idx ? { ...m, ...patch } : m,
+      );
+      return { ...prev, milestones: next };
+    });
   };
 
   const removeMilestone = (idx: number) => {
-    const next = form.milestones.filter((_, i) => i !== idx);
-    setForm((prev) => ({ ...prev, milestones: next.length ? next : [""] }));
-  };
-
-  const addMilestone = () => {
-    setForm((prev) => ({ ...prev, milestones: [...prev.milestones, ""] }));
+    setForm((prev) => ({
+      ...prev,
+      milestones: prev.milestones.filter((_, i) => i !== idx),
+    }));
   };
 
   return {
@@ -119,8 +130,8 @@ export function useEscrowForm() {
     removeFile,
     handleDrop,
     // milestones
+    addMilestone,
     updateMilestone,
     removeMilestone,
-    addMilestone,
   };
 }

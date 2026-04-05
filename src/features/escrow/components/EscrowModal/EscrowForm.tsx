@@ -12,6 +12,7 @@ import {
   Trash2,
   Send,
   Loader2,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "../../../../components/ui/button";
 import { TYPE_OPTIONS, TOKEN_OPTIONS } from "../../constants";
@@ -53,6 +54,17 @@ interface EscrowFormProps {
   currentStepMessage: string;
   txHash?: string;
   onRetry: () => void;
+  // Chain selection
+  displayChains: Array<{
+    mainnetId: number;
+    label: string;
+    name: string;
+    symbol: string;
+    icon: string;
+  }>;
+  isProd: boolean;
+  selectedMainnetId: number | null;
+  onSelectChain: (mainnetId: number) => Promise<void>;
 }
 
 export function EscrowForm({
@@ -76,6 +88,10 @@ export function EscrowForm({
   currentStepMessage,
   txHash,
   onRetry,
+  displayChains,
+  isProd,
+  selectedMainnetId,
+  onSelectChain,
 }: EscrowFormProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isTypeOpen, setIsTypeOpen] = useState(false);
@@ -162,6 +178,45 @@ export function EscrowForm({
             </ul>
           </div>
         </div>
+      </div>
+
+      {/* ── Chain selector ────────────────────────────────────────────────── */}
+      <div>
+        <label className="text-muted-foreground mb-3 block text-sm font-semibold">
+          Select Network <span className="text-red-500">*</span>
+        </label>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {displayChains.map((chain) => (
+            <button
+              key={chain.mainnetId}
+              type="button"
+              onClick={() => onSelectChain(chain.mainnetId)}
+              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${
+                selectedMainnetId === chain.mainnetId
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+              }`}
+            >
+              <img
+                src={chain.icon}
+                alt={chain.name}
+                className="h-8 w-8 rounded-full"
+              />
+              <span className="text-xs font-medium">{chain.name}</span>
+              <span className="text-[10px] opacity-60">
+                {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+              </span>
+              {selectedMainnetId === chain.mainnetId && (
+                <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
+              )}
+            </button>
+          ))}
+        </div>
+        {!selectedMainnetId && (
+          <div className="mt-1 text-xs text-red-400">
+            Please select a network
+          </div>
+        )}
       </div>
 
       {/* ── Title ────────────────────────────────────────────────────────── */}
@@ -595,48 +650,167 @@ export function EscrowForm({
 
       {/* ── Milestones ────────────────────────────────────────────────────── */}
       <div>
-        <label className="text-muted-foreground mb-2 block text-sm">
-          Milestones (optional)
-        </label>
-        <p className="text-muted-foreground mb-2 text-xs">
-          Enter milestone lines as <code>percentBP:offsetSeconds</code> (e.g.{" "}
-          <code>50:604800</code> meaning 50% at +7 days).
-        </p>
-        {form.milestones.map((m, idx) => (
-          <div key={idx} className="mb-2 flex gap-2">
-            <input
-              value={m}
-              onChange={(e) => {
-                const next = [...form.milestones];
-                next[idx] = e.target.value;
-                setForm((p) => ({ ...p, milestones: next }));
-              }}
-              className="flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
-              placeholder="percent:offsetSeconds (e.g. 50:604800)"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                const next = form.milestones.filter((_, i) => i !== idx);
-                setForm((p) => ({
-                  ...p,
-                  milestones: next.length ? next : [""],
-                }));
-              }}
-            >
-              Remove
-            </Button>
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <label className="text-muted-foreground block text-sm font-medium">
+              Payment Milestones{" "}
+              <span className="font-normal text-white/40">(optional)</span>
+            </label>
+            <p className="mt-0.5 text-xs text-white/40">
+              Split the payment into stages — set what % is released and when.
+              Percentages must add up to 100%.
+            </p>
           </div>
-        ))}
+        </div>
+
+        {form.milestones.length > 0 && (
+          <div className="mb-3 space-y-2">
+            {form.milestones.map((m, idx) => {
+              const totalSoFar = form.milestones.reduce(
+                (sum, ms, i) =>
+                  i !== idx ? sum + (Number(ms.percent) || 0) : sum,
+                0,
+              );
+              const remaining = 100 - totalSoFar;
+
+              return (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-white/10 bg-white/5 p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-cyan-300">
+                      Milestone {idx + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = form.milestones.filter(
+                          (_, i) => i !== idx,
+                        );
+                        setForm((p) => ({ ...p, milestones: next }));
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Percentage */}
+                    <div>
+                      <label className="text-muted-foreground mb-1 block text-xs">
+                        % of total amount
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={m.percent}
+                          onChange={(e) => {
+                            const next = [...form.milestones];
+                            next[idx] = {
+                              ...next[idx],
+                              percent: e.target.value,
+                            };
+                            setForm((p) => ({ ...p, milestones: next }));
+                          }}
+                          placeholder={`e.g. ${remaining > 0 ? remaining : 50}`}
+                          className="w-full rounded-md border border-white/10 bg-white/5 py-2 pr-8 pl-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-400/40"
+                        />
+                        <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-white/50">
+                          %
+                        </span>
+                      </div>
+                      {m.percent &&
+                        (Number(m.percent) <= 0 || Number(m.percent) > 100) && (
+                          <p className="mt-1 text-[10px] text-red-400">
+                            Must be between 1–100
+                          </p>
+                        )}
+                    </div>
+
+                    {/* Release date */}
+                    <div>
+                      <label className="text-muted-foreground mb-1 block text-xs">
+                        Release date
+                      </label>
+                      <ReactDatePicker
+                        selected={m.date}
+                        onChange={(date) => {
+                          const next = [...form.milestones];
+                          next[idx] = { ...next[idx], date };
+                          setForm((p) => ({ ...p, milestones: next }));
+                        }}
+                        placeholderText="Pick a date"
+                        dateFormat="dd/MM/yyyy"
+                        minDate={new Date()}
+                        maxDate={deadline ?? undefined}
+                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-400/40"
+                        calendarClassName="!bg-cyan-700 !text-white rounded-lg border border-white/10"
+                        popperClassName="z-50"
+                      />
+                      {!m.date && (
+                        <p className="mt-1 text-[10px] text-white/40">
+                          Optional — defaults to deadline
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Inline amount preview */}
+                  {m.percent && form.amount && Number(m.percent) > 0 && (
+                    <p className="mt-2 text-[10px] text-cyan-300/70">
+                      ≈{" "}
+                      {(
+                        (Number(m.percent) / 100) *
+                        Number(form.amount)
+                      ).toFixed(4)}{" "}
+                      {form.token || "tokens"} released on this milestone
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Running total */}
+            {form.milestones.length > 0 && (
+              <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2">
+                <span className="text-xs text-white/50">Total allocated</span>
+                <span
+                  className={`text-xs font-semibold ${
+                    form.milestones.reduce(
+                      (s, m) => s + (Number(m.percent) || 0),
+                      0,
+                    ) === 100
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  }`}
+                >
+                  {form.milestones.reduce(
+                    (s, m) => s + (Number(m.percent) || 0),
+                    0,
+                  )}
+                  % / 100%
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         <Button
           type="button"
           variant="outline"
+          className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           onClick={() =>
-            setForm((p) => ({ ...p, milestones: [...p.milestones, ""] }))
+            setForm((p) => ({
+              ...p,
+              milestones: [...p.milestones, { percent: "", date: null }],
+            }))
           }
         >
-          Add milestone
+          + Add Milestone
         </Button>
       </div>
 
