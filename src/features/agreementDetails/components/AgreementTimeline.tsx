@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { useAuth } from "../../../hooks/useAuth";
@@ -31,7 +31,6 @@ export const AgreementTimeline = ({
   completionDate,
   cancellationDate,
 }: Props) => {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const disputeInfo = getDisputeInfo(agreement);
 
@@ -55,7 +54,16 @@ export const AgreementTimeline = ({
               username={agreement.creator || ""}
               size="sm"
             />
-            {formatCreatorUsername(agreement.creator)}
+            <Link
+              to={`/profile/${encodeURIComponent(
+                agreement.creator?.startsWith("@")
+                  ? agreement.creator.slice(1)
+                  : agreement.creator || "",
+              )}`}
+              className="hover:text-blue-300 hover:underline"
+            >
+              {formatCreatorUsername(agreement.creator)}
+            </Link>
             {isCreator && (
               <VscVerifiedFilled className="size-5 text-green-400" />
             )}
@@ -135,19 +143,17 @@ export const AgreementTimeline = ({
                       size="sm"
                     />
                   )}
-                  <button
-                    onClick={() =>
-                      navigate(
-                        `/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`,
-                      )
-                    }
+                  <Link
+                    to={`/profile/${encodeURIComponent(
+                      disputeInfo.filedBy?.replace(/^@/, "") || "",
+                    )}`}
                     className="text-xs text-violet-300/70 hover:text-violet-200 hover:underline"
                   >
                     by{" "}
                     {disputeInfo.filedBy.startsWith("0x")
                       ? formatWalletAddress(disputeInfo.filedBy)
-                      : disputeInfo.filedBy}
-                  </button>
+                      : formatCreatorUsername(disputeInfo.filedBy)}
+                  </Link>
                   {user &&
                     disputeInfo.filedBy &&
                     normalizeUsername(user.username) ===

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { toast } from "sonner";
 import { useDebounce } from "../../../hooks/useDebounce";
 import {
@@ -7,9 +6,8 @@ import {
   isValidTelegramUsername,
   formatTelegramUsernameForDisplay,
 } from "../../../lib/usernameUtils";
-import { disputeService } from "../../../services/disputeServices";
 import type { DisputeRow, UploadedFile } from "../../../types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   FileText,
@@ -26,14 +24,13 @@ import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { useAuth } from "../../../hooks/useAuth";
 import { UserSearchResult } from "../UserSearchResult";
+import { useAllAccounts } from "../../../hooks/useAccounts";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
   const mb = totalBytes / 1024 / 1024;
   return `${mb.toFixed(2)} MB`;
 };
-
-// Plaintiff Reply Modal Component
 
 const PlaintiffReplyModal = ({
   isOpen,
@@ -59,79 +56,53 @@ const PlaintiffReplyModal = ({
   const [title, setTitle] = useState(dispute?.title || "");
   const [description, setDescription] = useState(dispute?.description || "");
   const [claim, setClaim] = useState(dispute?.claim || "");
-  const [requestKind, setRequestKind] = useState<number>(1); // Default to Pro Bono
+  const [requestKind, setRequestKind] = useState<number>(1);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [witnesses, setWitnesses] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Witness search state
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
-  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
-  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
   const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const witnessSearchRef = useRef<HTMLDivElement>(null);
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
-  // Witness search function
-  const handleWitnessSearch = useCallback(
-    async (query: string) => {
-      if (query.length < 2) {
-        setWitnessSearchResults([]);
-        setShowWitnessSuggestions(false);
-        return;
-      }
+  const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-      setIsWitnessSearchLoading(true);
-      setShowWitnessSuggestions(true);
+  // Fetch all accounts once — cached, no per-keystroke requests
+  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
+    useAllAccounts({
+      enabled: debouncedWitnessQuery.length >= 2,
+    });
 
-      try {
-        const results = await disputeService.searchUsers(query);
+  // Client-side filter
+  const witnessSearchResults = useMemo(() => {
+    if (debouncedWitnessQuery.length < 2) return [];
+    const q = debouncedWitnessQuery.toLowerCase();
+    return allAccounts.filter((u) => {
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      if (
+        telegram &&
+        telegram.toLowerCase() === currentUserTelegram.toLowerCase()
+      )
+        return false;
+      return (
+        u.username?.toLowerCase().includes(q) ||
+        u.telegram?.username?.toLowerCase().includes(q) ||
+        u.telegramInfo?.toLowerCase().includes(q) ||
+        u.walletAddress?.toLowerCase().includes(q)
+      );
+    });
+  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
 
-        const currentUserTelegram = getCurrentUserTelegram(currentUser);
-        const filteredResults = results.filter((resultUser) => {
-          const resultTelegram = cleanTelegramUsername(
-            resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
-          );
-
-          return (
-            resultTelegram &&
-            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
-          );
-        });
-
-        setWitnessSearchResults(filteredResults);
-      } catch (error) {
-        console.error("Witness search failed:", error);
-        setWitnessSearchResults([]);
-      } finally {
-        setIsWitnessSearchLoading(false);
-      }
-    },
-    [currentUser],
-  );
-
-  // Debounced search effect
+  // Show/hide suggestions
   useEffect(() => {
-    if (debouncedWitnessQuery.length >= 2) {
-      handleWitnessSearch(debouncedWitnessQuery);
-    } else {
-      setWitnessSearchResults([]);
-      setShowWitnessSuggestions(false);
-    }
-  }, [debouncedWitnessQuery, handleWitnessSearch]);
+    setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
+  }, [debouncedWitnessQuery]);
 
-  // Handle witness selection
-  const handleWitnessSelect = (username: string) => {
-    if (!witnesses.includes(username)) {
-      setWitnesses((prev) => [...prev, username]);
-    }
-    setShowWitnessSuggestions(false);
-    setWitnessSearchQuery("");
-  };
-
-  // Click outside handler for witness search
+  // Click-outside handler
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -145,7 +116,27 @@ const PlaintiffReplyModal = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Reset form when dispute changes
+  // Witness select handler
+  const handleWitnessSelect = useCallback(
+    (user: (typeof allAccounts)[number]) => {
+      const telegram = cleanTelegramUsername(
+        user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
+      );
+      if (!telegram) {
+        toast.error("Selected user has no valid Telegram username");
+        return;
+      }
+      if (witnesses.includes(telegram)) {
+        toast.error("Witness already added");
+        return;
+      }
+      setWitnesses((prev) => [...prev, telegram]);
+      setWitnessSearchQuery("");
+      setShowWitnessSuggestions(false);
+    },
+    [witnesses],
+  );
+
   // Reset form when dispute changes
   useEffect(() => {
     if (dispute) {
@@ -165,21 +156,16 @@ const PlaintiffReplyModal = ({
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
 
-    const newFiles: UploadedFile[] = [];
-    console.log("new files:", newFiles);
-
     Array.from(selectedFiles).forEach((file) => {
       const fileSizeMB = file.size / 1024 / 1024;
       const fileType = file.type.startsWith("image/") ? "image" : "document";
 
-      // Apply file size limits based on file type (same as OpenDisputeModal)
       if (fileType === "image" && fileSizeMB > 2) {
         toast.error(
           `Image "${file.name}" exceeds 2MB limit (${fileSizeMB.toFixed(2)}MB)`,
         );
         return;
       }
-
       if (fileType === "document" && fileSizeMB > 3) {
         toast.error(
           `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
@@ -187,15 +173,13 @@ const PlaintiffReplyModal = ({
         return;
       }
 
-      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
         type: fileType,
-        size: fileSize,
+        size: fileSizeMB.toFixed(2) + " MB",
       };
 
-      // Create preview for images
       if (fileType === "image") {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -220,16 +204,12 @@ const PlaintiffReplyModal = ({
   };
 
   const handleSubmit = async () => {
-    // Validation for Plaintiff
-    // Check if at least one field is being updated (including witnesses, files, etc.)
     const hasTextChanges =
       title.trim() !== dispute?.title ||
       description.trim() !== dispute?.description ||
       claim.trim() !== dispute?.claim;
-
     const hasWitnessChanges =
       JSON.stringify(witnesses) !== JSON.stringify(dispute?.witnesses || []);
-
     const hasRequestKindChanges =
       requestKind !== (dispute?.request === "Pro Bono" ? 1 : 2);
     const hasFileChanges = files.length > 0;
@@ -244,16 +224,10 @@ const PlaintiffReplyModal = ({
       return;
     }
 
-    // For edits, only validate fields that are actually being changed
-    // Don't require all fields to be filled if they're not being updated
-
-    // If title is being changed, validate it
     if (hasTextChanges && title.trim() !== dispute?.title && !title.trim()) {
       toast.error("Title cannot be empty");
       return;
     }
-
-    // If description is being changed, validate it
     if (
       hasTextChanges &&
       description.trim() !== dispute?.description &&
@@ -262,33 +236,26 @@ const PlaintiffReplyModal = ({
       toast.error("Description cannot be empty");
       return;
     }
-
-    // If claim is being changed, validate it
     if (hasTextChanges && claim.trim() !== dispute?.claim && !claim.trim()) {
       toast.error("Formal claim cannot be empty");
       return;
     }
 
-    // Validate witness format only for new witnesses being added
     const invalidWitnesses = witnesses.filter(
       (witness) => !witness.trim() || !isValidTelegramUsername(witness),
     );
-
     if (invalidWitnesses.length > 0) {
       toast.error("All witnesses must have valid Telegram usernames");
       return;
     }
 
-    // VALIDATION: Maximum 10 files allowed
     if (files.length > 10) {
       toast.error("Maximum 10 files allowed for evidence");
       return;
     }
 
-    // VALIDATION: Check total file size (max 50MB)
     const totalSize = files.reduce((total, file) => total + file.file.size, 0);
-    const maxTotalSize = 50 * 1024 * 1024; // 50MB
-    if (totalSize > maxTotalSize) {
+    if (totalSize > 50 * 1024 * 1024) {
       toast.error("Total file size too large", {
         description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
         duration: 8000,
@@ -296,8 +263,6 @@ const PlaintiffReplyModal = ({
       return;
     }
 
-    // VALIDATION: Individual file sizes and types
-    const maxFileSize = 10 * 1024 * 1024; // 10MB
     const allowedImageTypes = [
       "image/jpeg",
       "image/jpg",
@@ -314,17 +279,13 @@ const PlaintiffReplyModal = ({
     ];
 
     for (const file of files) {
-      // Check file size
-      if (file.file.size > maxFileSize) {
+      if (file.file.size > 10 * 1024 * 1024) {
         toast.error(`File ${file.file.name} exceeds 10MB size limit`);
         return;
       }
-
-      // Check file type
-      const fileType = file.file.type;
       if (
-        !allowedImageTypes.includes(fileType) &&
-        !allowedDocumentTypes.includes(fileType)
+        !allowedImageTypes.includes(file.file.type) &&
+        !allowedDocumentTypes.includes(file.file.type)
       ) {
         toast.error(
           `File ${file.file.name} has unsupported type. Allowed: images, PDFs, Word docs, text files`,
@@ -336,22 +297,16 @@ const PlaintiffReplyModal = ({
     setIsSubmitting(true);
     try {
       await onSubmit(title, description, claim, requestKind, files, witnesses);
-
-      // Reset form on successful submission
       setTitle("");
       setDescription("");
       setClaim("");
       setRequestKind(1);
       setFiles([]);
       setWitnesses([]);
-
       onClose();
-
       toast.success("Dispute updated successfully!");
     } catch (error) {
       console.error("Error submitting reply:", error);
-
-      // More specific error messages based on error type
       if (error instanceof Error) {
         if (
           error.message.includes("network") ||

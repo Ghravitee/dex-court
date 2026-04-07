@@ -1,2109 +1,2109 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-
-import {
-  ArrowLeft,
-  Clock,
-  Users,
-  Scale,
-  MessageCircle,
-  Upload,
-  UserCheck,
-  Shield,
-  Loader2,
-  BarChart3,
-  Vote,
-  Gavel,
-  FileText,
-  AlertTriangle,
-  ArrowRight,
-} from "lucide-react";
-import { VscVerifiedFilled } from "react-icons/vsc";
-import { useAuth } from "../hooks/useAuth";
-import { Button } from "../components/ui/button";
-import { toast } from "sonner";
-import { disputeService } from "../services/disputeServices";
-import { UserAvatar } from "../components/UserAvatar";
-import {
-  cleanTelegramUsername,
-  formatTelegramUsernameForDisplay,
-} from "../lib/usernameUtils";
-import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-
-import type {
-  DefendantClaimRequest,
-  DisputeRow,
-  EvidenceFile,
-  EvidenceItem,
-  UploadedFile,
-  VoteData,
-} from "../types";
-import PlaintiffReplyModal from "../components/disputes/modals/PlaintiffReplyModal";
-import { DefendantReplyModal } from "../components/disputes/modals/DefendantReplyModal";
-import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
-import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
-import { VoteModal } from "../components/disputes/modals/VoteModal";
-import VoteOutcomeModal from "../components/disputes/modals/VoteOutcomeModal";
-import SettleConfirmationModal from "../components/disputes/modals/SettleConfirmationModal";
-// import StartVoteConfirmationModal from "../components/disputes/modals/StartVoteConfirmationModal";
-import DisputeChat from "./DisputeChat";
-import type { DisputeChatRole } from "./DisputeChat/types/dto";
-import { useVotingStatus } from "../hooks/useVotingStatus";
-import { ESCROW_ABI } from "../web3/config";
-
-import { getAgreement } from "../web3/readContract";
-import { agreementService } from "../services/agreementServices";
-// import { formatDateWithTime } from "../web3/helper";
-
-// Add this helper function near your other imports
-const formatDisplayName = (username: string) => {
-  // Clean the username first
-  const cleaned = cleanTelegramUsername(username);
-
-  // Check if it's a wallet address (starts with 0x and is 42 chars)
-  if (cleaned.startsWith("0x") && cleaned.length === 42) {
-    // Truncate wallet address and remove any @ prefix
-    return `${cleaned.slice(0, 4)}...${cleaned.slice(-6)}`;
-  }
-  // For Telegram usernames, use the existing formatter
-  return formatTelegramUsernameForDisplay(username);
-};
-
-const formatBigIntTimestamp = (
-  bigIntTimestamp: bigint | string | number,
-): string => {
-  try {
-    const timestamp = Number(bigIntTimestamp.toString());
-    if (timestamp === 0) return "Not scheduled";
-
-    // Check if it's in seconds (Unix timestamp)
-    if (timestamp < 10000000000) {
-      // Multiply by 1000 to convert seconds to milliseconds
-      return new Date(timestamp * 1000).toLocaleString();
-    }
-
-    // Assume it's already in milliseconds
-    return new Date(timestamp).toLocaleString();
-  } catch (error) {
-    console.error("Error formatting timestamp:", error);
-    return "Invalid date";
-  }
-};
-
-// Add this component inside your DisputeDetails component
-const VotingStatus = ({
-  dispute,
-  votingStatusLoading,
-  getUserRole,
-  isUserJudge,
-  isUserCommunity,
-  canVote,
-  reason,
-  hasVoted,
-  handleOpenVoteModal,
-
-  tier, // Add this prop
-  weight, // Add this prop
-}: {
-  dispute: DisputeRow | null;
-  votingStatusLoading: boolean;
-  getUserRole: () => DisputeChatRole | undefined;
-  isUserJudge: () => boolean;
-  isUserCommunity: () => boolean;
-  canVote: boolean;
-  reason?: string;
-  hasVoted: boolean;
-  handleOpenVoteModal: () => void;
-  isVoteStarted: boolean; // Add this
-  tier?: number; // Add this
-  weight?: number; // Add this
-}) => {
-  if (!dispute || dispute?.status !== "Vote in Progress") return null;
-
-  // Show loading state
-  if (votingStatusLoading) {
-    return (
-      <div className="animate-fade-in card-cyan rounded-2xl p-6">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
-          <p className="text-sm text-cyan-200">Checking voting status...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const userRole = getUserRole();
-  const isJudge = isUserJudge();
-  const isCommunity = isUserCommunity();
-  const isParty = userRole === "plaintiff" || userRole === "defendant";
-
-  // User is plaintiff or defendant - they CANNOT vote
-  if (isParty) {
-    return (
-      <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-            <Shield className="h-6 w-6 text-amber-300" />
-          </div>
-          <div>
-            <h3 className="mb-1 text-lg font-bold text-amber-300">
-              Case Participant
-            </h3>
-            <p className="text-sm text-amber-200">
-              {userRole === "plaintiff"
-                ? "As the plaintiff, you cannot vote in your own dispute."
-                : "As the defendant, you cannot vote in your own dispute."}
-            </p>
-            <p className="mt-2 text-xs text-amber-300/70">
-              Voting is for community members and judges only.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // In the VotingStatus component, update the logic:
-
-  // User has voted - Consistent with Voting page
-  if (hasVoted) {
-    return (
-      <div className="animate-fade-in card-emerald mx-auto w-fit rounded-2xl p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
-            <span className="text-2xl">✅</span>
-          </div>
-          <div>
-            <h3 className="mb-1 text-lg font-bold text-emerald-300">
-              Vote Submitted!
-            </h3>
-            <p className="text-sm text-emerald-200">
-              Thank you for participating in this dispute.
-              {isJudge && (
-                <span className="mt-1 block text-emerald-300">
-                  ⚖️ Your vote carries judge weight
-                </span>
-              )}
-            </p>
-            <p className="mt-2 text-xs text-emerald-300/70">
-              Results will be revealed when voting ends.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // User can vote (and voting has started)
-  if (canVote) {
-    return (
-      <div className="animate-fade-in card-cyan mx-auto w-fit rounded-2xl p-6">
-        <div className="flex flex-col items-center justify-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
-            <Vote className="h-6 w-6 text-cyan-300" />
-          </div>
-          <div className="flex flex-col items-center justify-center">
-            <h3 className="mb-1 text-lg font-bold text-cyan-300">
-              Cast Your Vote
-            </h3>
-            <p className="text-center text-sm text-cyan-200">
-              Your vote will help resolve this dispute fairly.
-              {tier && (
-                <span className="mt-1 block text-cyan-300">
-                  Tier {tier} Voter
-                </span>
-              )}
-              {weight && weight > 1 && (
-                <span className="mt-1 block font-semibold text-cyan-300">
-                  Voting Weight: {weight}x
-                </span>
-              )}
-              {isJudge && (
-                <span className="mt-1 block font-semibold text-cyan-300">
-                  Judge Vote - Carries Higher Weight
-                </span>
-              )}
-              {isCommunity && (
-                <span className="mt-1 block text-cyan-300">Community Vote</span>
-              )}
-            </p>
-          </div>
-          <Button
-            variant="neon"
-            className="neon-hover mt-2"
-            onClick={handleOpenVoteModal}
-            size="lg"
-          >
-            <Vote className="mr-2 h-4 w-4" />
-            Cast {isJudge ? "Judge" : "Community"} Vote
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // User cannot vote (but not because they're a party)
-  return (
-    <div className="animate-fade-in card-amber mx-auto rounded-2xl p-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
-          <Shield className="h-6 w-6 text-amber-300" />
-        </div>
-        <div>
-          <h3 className="mb-1 text-lg font-bold text-amber-300">
-            Voting in Progress
-          </h3>
-          <p className="text-sm text-amber-200">
-            This dispute is currently being voted on by eligible community
-            members.
-          </p>
-          {reason && <p className="mt-2 text-xs text-amber-300/70">{reason}</p>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Main Component
-export default function DisputeDetails() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [dispute, setDispute] = useState<DisputeRow | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(
-    null,
-  );
-  const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
-  const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
-  const [onChainLoading, setOnChainLoading] = useState(false);
-  const [escrowContractAddress, setEscrowContractAddress] = useState<
-    `0x${string}` | null
-  >(null);
-
-  const {
-    data: hash,
-    writeContract,
-    isPending,
-    error: writeError,
-    reset: resetWrite,
-  } = useWriteContract();
-  const { isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
-
-  const [settleModalOpen, setSettleModalOpen] = useState(false);
-
-  const [escalating, setEscalating] = useState(false);
-
-  const [finalizing, setFinalizing] = useState(false);
-  const [canFinalize, setCanFinalize] = useState(false);
-
-  const [settlingDispute, setSettlingDispute] = useState(false);
-  const [pendingTransactionType, setPendingTransactionType] = useState<
-    "settle" | "startVote" | null
-  >(null);
-  const [voteStarted, setVoteStarted] = useState(false);
-
-  // Add this helper function to check if vote has been started
-
-  const isVoteStarted = useCallback(() => {
-    if (!dispute) return false;
-
-    // For reputational disputes (type 1), check if voteStartedAt exists OR status is "Vote in Progress"
-    if (dispute.agreement?.type === 1) {
-      return dispute.status === "Vote in Progress";
-    }
-
-    // For escrow disputes (type 2), check voteStarted state
-    if (dispute.agreement?.type === 2) {
-      return voteStarted;
-    }
-
-    return false;
-  }, [dispute, voteStarted]);
-
-  // Voting state
-  const [voteData, setVoteData] = useState<VoteData>({
-    choice: null,
-    comment: "",
-  });
-
-  const disputeId = id ? parseInt(id) : null;
-
-  const {
-    hasVoted,
-    canVote,
-    reason,
-    isLoading: votingStatusLoading,
-    markAsVoted,
-    tier,
-    weight,
-  } = useVotingStatus(disputeId, dispute);
-
-  const [voteOutcomeModalOpen, setVoteOutcomeModalOpen] = useState(false);
-  const [voteModalOpen, setVoteModalOpen] = useState(false);
-
-  // Reply modals state
-  const [defendantReplyModalOpen, setDefendantReplyModalOpen] = useState(false);
-  const [plaintiffReplyModalOpen, setPlaintiffReplyModalOpen] = useState(false);
-
-  const isCurrentUserPlaintiff = useCallback(() => {
-    if (!user || !dispute) {
-      return false;
-    }
-
-    const currentUsername = user.username || user.telegramUsername;
-    const plaintiffUsername = cleanTelegramUsername(dispute.plaintiff);
-
-    const isPlaintiff =
-      normalizeUsername(currentUsername) ===
-      normalizeUsername(plaintiffUsername);
-
-    return isPlaintiff;
-  }, [user, dispute]);
-
-  // Replace your current isCurrentUserDefendant function with this:
-  const isCurrentUserDefendant = useCallback(() => {
-    if (!user || !dispute) {
-      return false;
-    }
-
-    const currentUsername = user.username || user.telegramUsername;
-    const defendantUsername = cleanTelegramUsername(dispute.defendant);
-
-    const isDefendant =
-      normalizeUsername(currentUsername) ===
-      normalizeUsername(defendantUsername);
-
-    return isDefendant;
-  }, [user, dispute]);
-
-  // Add normalization helper function
-  // Update the normalizeUsername function to handle undefined values
-  const normalizeUsername = (username: string | undefined): string => {
-    if (!username) return "";
-    return username.replace(/^@/, "").toLowerCase().trim();
-  };
-
-  // Wrap these helper functions in useCallback as well
-  const getUserRoleNumber = useCallback((): number => {
-    return user?.role || 1; // Default to Community (1) if no role
-  }, [user?.role]);
-
-  const isUserJudge = useCallback((): boolean => {
-    return getUserRoleNumber() === 2; // 2 = Judge
-  }, [getUserRoleNumber]);
-
-  const isUserAdmin = useCallback((): boolean => {
-    return getUserRoleNumber() === 3; // 3 = Admin
-  }, [getUserRoleNumber]);
-
-  const isUserCommunity = useCallback((): boolean => {
-    return getUserRoleNumber() === 1; // 1 = Community
-  }, [getUserRoleNumber]);
-
-  // Update the getUserRole function to use useCallback
-  const getUserRole = useCallback((): DisputeChatRole | undefined => {
-    if (!user || !dispute) return undefined;
-
-    const currentUsername = user.username || user.telegramUsername;
-    const normalizedCurrent = normalizeUsername(currentUsername);
-
-    const plaintiffUsername = normalizeUsername(
-      cleanTelegramUsername(dispute.plaintiff),
-    );
-    const defendantUsername = normalizeUsername(
-      cleanTelegramUsername(dispute.defendant),
-    );
-
-    if (normalizedCurrent === plaintiffUsername) return "plaintiff";
-    if (normalizedCurrent === defendantUsername) return "defendant";
-
-    // Check if user is a witness
-    const plaintiffWitnesses = dispute.witnesses?.plaintiff || [];
-    const defendantWitnesses = dispute.witnesses?.defendant || [];
-
-    const allWitnesses = [...plaintiffWitnesses, ...defendantWitnesses];
-    const isWitness = allWitnesses.some(
-      (witness) => normalizeUsername(witness.username) === normalizedCurrent,
-    );
-
-    if (isWitness) return "witness";
-
-    // Check if user is a judge (role 2) or admin (role 3)
-    if (isUserJudge() || isUserAdmin()) return "judge";
-
-    return "community"; // Return community for regular users
-  }, [user, dispute, isUserJudge, isUserAdmin]); // Add all dependencies
-
-  const canUserVote = useCallback(async (): Promise<{
-    canVote: boolean;
-    reason?: string;
-    hasVoted?: boolean;
-    isJudge?: boolean;
-  }> => {
-    const userRole = getUserRole();
-    const isJudge = isUserJudge();
-
-    // Plaintiff and defendant cannot vote - this should already be handled by useVotingStatus
-    // but we double-check here for UI purposes
-    if (userRole === "plaintiff" || userRole === "defendant") {
-      return {
-        canVote: false,
-        reason: "Parties cannot vote in their own dispute",
-        hasVoted: false,
-        isJudge: false,
-      };
-    }
-
-    return {
-      canVote,
-      reason,
-      hasVoted,
-      isJudge,
-    };
-  }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
-
-  const fetchOnChainAgreement = useCallback(
-    async (agreementData: any, escrowAddress?: `0x${string}`) => {
-      if (!agreementData) return;
-
-      try {
-        const res = await getAgreement(
-          escrowAddress as `0x${string}`,
-          agreementData.chainId,
-          BigInt(agreementData.contractAgreementId), // Use the contractAgreementId here
-        );
-        console.log("📦 On-chain agreement data:", res);
-        setOnChainAgreement(res);
-      } catch (err) {
-        console.error("Failed to fetch on-chain agreement:", err);
-        setOnChainAgreement(null);
-      } finally {
-        setOnChainLoading(false);
-      }
-    },
-    [],
-  );
-
-  // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
-  useEffect(() => {
-    if (!id) {
-      console.error("No dispute ID provided");
-      setLoading(false);
-      return;
-    }
-
-    const disputeId = parseInt(id);
-    if (isNaN(disputeId)) {
-      console.error("Invalid dispute ID:", id);
-      toast.error("Invalid dispute ID");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    const fetchDisputeDetails = async () => {
-      try {
-        const disputeDetails =
-          await disputeService.getDisputeDetails(disputeId);
-        console.log("✅ Received dispute details:", disputeDetails);
-
-        const transformedDispute =
-          disputeService.transformDisputeDetailsToRow(disputeDetails);
-        console.log("✅ Transformed dispute:", transformedDispute);
-
-        setDispute(transformedDispute);
-        if (transformedDispute.agreement?.type == 2) {
-          const agreementData = await agreementService.getAgreementDetails(
-            transformedDispute.agreement.id,
-          );
-
-          const escrowAddress = agreementData.escrowContractAddress;
-          if (escrowAddress) {
-            setEscrowContractAddress(escrowAddress as `0x${string}`); // ✅ store it
-            fetchOnChainAgreement(
-              transformedDispute,
-              escrowAddress as `0x${string}`,
-            );
-          }
-        }
-      } catch (error: any) {
-        console.error("❌ Failed to fetch dispute details:", error);
-        toast.error("Failed to load dispute details", {
-          description: error.message,
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDisputeDetails();
-  }, [fetchOnChainAgreement, id]);
-
-  // In your component, update the processEvidence function
-  const processEvidence = (
-    evidenceList: EvidenceFile[], // Now properly typed
-    disputeId: string,
-  ): EvidenceItem[] => {
-    return evidenceList.map((evidence) => {
-      const name = evidence.fileName;
-
-      // Function to get file URL using file ID
-      const getFileUrl = (file: EvidenceFile): string => {
-        if (file.id) {
-          // Use the numeric file ID
-          const API_BASE = import.meta.env.VITE_API_URL;
-          return `${API_BASE}/dispute/${disputeId}/file/${file.id}`;
-        }
-        // Fallback to filename if no ID (shouldn't happen)
-        return `/api/dispute/${disputeId}/file/${encodeURIComponent(name)}`;
-      };
-
-      const fileUrl = getFileUrl(evidence);
-
-      // Improved PDF detection
-      if (name.includes("etherscan.io")) {
-        return {
-          name,
-          type: "transaction",
-          url: evidence.url || name, // Use provided URL or fallback
-          preview:
-            "https://placehold.co/600x400/1e3a8a/white?text=Blockchain+Tx",
-        };
-      } else if (/\.(webp|jpg|jpeg|png|gif)$/i.test(name)) {
-        return {
-          name,
-          type: "image",
-          url: fileUrl,
-          preview: fileUrl,
-        };
-      } else if (/\.pdf($|\?)/i.test(name)) {
-        return {
-          name,
-          type: "pdf",
-          url: fileUrl,
-          preview:
-            "https://placehold.co/600x800/059669/white?text=PDF+Document",
-        };
-      } else if (name.match(/chat|screenshot|conversation/i)) {
-        return {
-          name,
-          type: "chat",
-          url: fileUrl,
-          preview:
-            "https://placehold.co/600x800/1f2937/white?text=Chat+Screenshot",
-        };
-      } else {
-        return {
-          name,
-          type: "document",
-          url: fileUrl,
-          preview: "https://placehold.co/600x800/059669/white?text=Document",
-        };
-      }
-    });
-  };
-
-  // Safe data access with fallbacks
-  const safeEvidence = processEvidence(
-    dispute?.evidence || [],
-    dispute?.id || id || "",
-  );
-  const plaintiffWitnesses =
-    dispute?.witnesses?.plaintiff?.map((w) => w.username) || [];
-  const defendantWitnesses =
-    dispute?.witnesses?.defendant?.map((w) => w.username) || [];
-  const safeDescription = dispute?.description || "No description provided.";
-  const safeClaim = dispute?.claim || "No claim specified.";
-
-  // const networkInfo = useNetworkEnvironment();
-
-  // const contractAddress = ESCROW_CA[networkInfo.chainId as number];
-
-  const defendantEvidence = dispute?.defendantResponse
-    ? processEvidence(
-        dispute.defendantResponse.evidence || [],
-        dispute?.id || id || "",
-      )
-    : [];
-
-  // Function to handle evidence viewing
-  const handleViewEvidence = (evidence: EvidenceItem) => {
-    setSelectedEvidence(evidence);
-    setEvidenceViewerOpen(true);
-  };
-
-  // Voting handlers
-  const handleVoteChange = useCallback(
-    (
-      choice: "plaintiff" | "defendant" | "dismissed" | null,
-      comment: string,
-    ) => {
-      setVoteData({ choice, comment });
-    },
-    [],
-  );
-
-  const handleCastVote = useCallback(async () => {
-    if (!voteData.choice || !disputeId || !user) return;
-
-    let loadingToast: string | number | undefined;
-
-    try {
-      loadingToast = toast.loading("Submitting your vote...");
-
-      await disputeService.castVote(disputeId, {
-        voteType:
-          voteData.choice === "plaintiff"
-            ? 1
-            : voteData.choice === "defendant"
-              ? 2
-              : 3,
-        comment: voteData.comment,
-      });
-
-      toast.dismiss(loadingToast);
-
-      // Use the hook to mark as voted
-      markAsVoted(voteData.choice);
-
-      const voteMessage =
-        voteData.choice === "plaintiff"
-          ? "You voted for the Plaintiff"
-          : voteData.choice === "defendant"
-            ? "You voted for the Defendant"
-            : "You voted to dismiss the case";
-
-      toast.success("Vote Submitted Successfully! 🗳️", {
-        description: `${voteMessage}. Your vote is now confidential.`,
-      });
-
-      setVoteModalOpen(false);
-      setVoteData({ choice: null, comment: "" });
-
-      // Refresh dispute details
-      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
-      const transformedDispute =
-        disputeService.transformDisputeDetailsToRow(disputeDetails);
-      setDispute(transformedDispute);
-    } catch (error: any) {
-      if (loadingToast) toast.dismiss(loadingToast);
-
-      toast.error("Failed to submit vote", {
-        description: error.message || "Please try again later",
-      });
-      throw error;
-    }
-  }, [voteData, disputeId, user, markAsVoted]);
-
-  const handleOpenVoteModal = useCallback(() => {
-    setVoteModalOpen(true);
-    // Reset vote data when opening modal
-    setVoteData({ choice: null, comment: "" });
-  }, []);
-
-  // Reply handlers with witnesses
-  const handleDefendantReply = useCallback(
-    async (description: string, files: UploadedFile[], witnesses: string[]) => {
-      if (!id) return;
-
-      const disputeId = parseInt(id);
-      if (isNaN(disputeId)) {
-        toast.error("Invalid dispute ID");
-        return;
-      }
-
-      try {
-        const defendantClaimData: DefendantClaimRequest = {
-          defendantClaim: description,
-          witnesses: witnesses.filter((w) => w.trim()),
-        };
-
-        const fileList = files.map((uf) => uf.file);
-
-        // Determine if this is a new response or an edit
-        const isEditing = dispute?.defendantResponse !== undefined;
-
-        if (isEditing) {
-          // Use PATCH for editing existing response
-          await disputeService.editDefendantClaim(
-            disputeId,
-            defendantClaimData,
-            fileList.length > 0 ? fileList : undefined,
-          );
-          toast.success("Response updated successfully!");
-        } else {
-          // Use POST for new response
-          await disputeService.submitDefendantClaim(
-            disputeId,
-            defendantClaimData,
-            fileList.length > 0 ? fileList : undefined,
-          );
-          toast.success("Response submitted successfully!");
-        }
-
-        // Refresh dispute details
-        const disputeDetails =
-          await disputeService.getDisputeDetails(disputeId);
-        const transformedDispute =
-          disputeService.transformDisputeDetailsToRow(disputeDetails);
-        setDispute(transformedDispute);
-      } catch (error: any) {
-        toast.error("Failed to submit response", {
-          description: error.message,
-        });
-        throw error;
-      }
-    },
-    [id, dispute],
-  );
-
-  const handlePlaintiffReply = useCallback(
-    async (
-      title: string,
-      description: string,
-      claim: string,
-      requestKind: number,
-      files: UploadedFile[],
-      witnesses: string[],
-    ) => {
-      if (!id) return;
-
-      const disputeId = parseInt(id);
-      if (isNaN(disputeId)) {
-        toast.error("Invalid dispute ID");
-        return;
-      }
-
-      try {
-        const plaintiffClaimData: any = {};
-
-        // Check what fields are actually being included
-        if (title.trim() && title !== dispute?.title) {
-          plaintiffClaimData.title = title;
-        }
-        if (description.trim() && description !== dispute?.description) {
-          plaintiffClaimData.description = description;
-        }
-        if (claim.trim() && claim !== dispute?.claim) {
-          plaintiffClaimData.claim = claim;
-        }
-        if (requestKind !== undefined) {
-          plaintiffClaimData.requestKind = requestKind;
-          console.log("🔍 Including requestKind:", requestKind);
-        }
-
-        if (witnesses !== undefined) {
-          plaintiffClaimData.witnesses = witnesses.filter((w) => w.trim());
-        }
-
-        // Check if at least one field is provided
-        if (
-          Object.keys(plaintiffClaimData).length === 0 &&
-          files.length === 0
-        ) {
-          throw new Error("Please provide at least one field to update");
-        }
-
-        const fileList = files.map((uf) => uf.file);
-
-        await disputeService.editPlaintiffClaim(
-          disputeId,
-          plaintiffClaimData,
-          fileList.length > 0 ? fileList : undefined,
-        );
-
-        toast.success("Dispute updated successfully!");
-
-        // Refresh dispute details
-        const disputeDetails =
-          await disputeService.getDisputeDetails(disputeId);
-        const transformedDispute =
-          disputeService.transformDisputeDetailsToRow(disputeDetails);
-        setDispute(transformedDispute);
-      } catch (error: any) {
-        console.error("❌ Error details:", error);
-        toast.error("Failed to update dispute", {
-          description: error.message,
-        });
-        throw error;
-      }
-    },
-    [id, dispute],
-  );
-
-  // KEEP ORIGINAL: Handle settling on-chain (escrow) disputes - using blockchain
-  const handleOnchainSettleDispute = useCallback(async () => {
-    try {
-      // Check if dispute and contractAgreementId exist
-      if (!dispute || !dispute.contractAgreementId) {
-        console.error(
-          "Missing contract agreement ID:",
-          dispute?.contractAgreementId,
-        );
-        toast.error("Cannot settle dispute: Contract agreement ID is missing");
-        return;
-      }
-
-      if (!escrowContractAddress) {
-        toast.error("Escrow contract address not loaded yet");
-        return;
-      }
-
-      // Set transaction type
-      setPendingTransactionType("settle");
-
-      writeContract({
-        address: escrowContractAddress, // use the correct escrow contract address from the api response
-        abi: ESCROW_ABI.abi,
-        functionName: "settleDispute",
-        args: [BigInt(dispute.contractAgreementId)],
-      });
-
-      setSettleModalOpen(false);
-    } catch (error: unknown) {
-      console.error("Error settling dispute:", error);
-      toast.error("Failed to settle dispute", {
-        description:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
-      setPendingTransactionType(null);
-    }
-  }, [dispute, escrowContractAddress, writeContract]);
-
-  // UPDATED: Handle settling reputational disputes - using API
-  const handleSettleDispute = useCallback(async () => {
-    if (!id) return;
-
-    const disputeId = parseInt(id);
-    if (isNaN(disputeId)) {
-      toast.error("Invalid dispute ID");
-      return;
-    }
-
-    let loadingToast: string | number | undefined;
-
-    try {
-      setSettlingDispute(true);
-
-      // ✅ Show loading toast
-      loadingToast = toast.loading(
-        "Settling dispute... This may take a moment.",
-        {
-          description: "Please wait while we process your request.",
-        },
-      );
-
-      // Use the existing settleDispute method
-      await disputeService.settleDispute(disputeId);
-
-      // ✅ Dismiss loading toast and show success
-      toast.dismiss(loadingToast);
-      toast.success("Dispute settled successfully! 🎉", {
-        description: "The dispute has been resolved and the page will refresh.",
-      });
-
-      setSettleModalOpen(false);
-
-      // ✅ Reload page after a short delay
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-    } catch (error: any) {
-      console.error("Settlement error details:", error);
-
-      // ✅ Dismiss loading toast
-      if (loadingToast) toast.dismiss(loadingToast);
-
-      // ✅ SPECIAL HANDLING FOR TIMEOUT ERRORS
-      if (
-        error.message?.includes("timeout") ||
-        error.message?.includes("Request timeout") ||
-        error.code === "ECONNABORTED"
-      ) {
-        toast.info("Settlement is processing...", {
-          description:
-            "This is taking longer than expected. The page will refresh to check status.",
-        });
-
-        setSettleModalOpen(false);
-
-        // Reload the page to check the new status
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-      } else {
-        // For other errors, show the actual error message
-        toast.error("Failed to settle dispute", {
-          description: error.message || "Please try again later",
-        });
-      }
-    } finally {
-      setSettlingDispute(false);
-    }
-  }, [id]);
-
-  const hasValidDefendantResponse = (defendantResponse: any) => {
-    if (!defendantResponse) return false;
-    if (!defendantResponse.description) return false;
-
-    const trimmedDesc = defendantResponse.description.trim();
-    return trimmedDesc !== "" && trimmedDesc !== "No response description";
-  };
-
-  const handleEscalateToVote = useCallback(async () => {
-    if (!disputeId || !user || !dispute) return;
-
-    try {
-      setEscalating(true);
-      await disputeService.escalateDisputesToVote([disputeId]);
-
-      toast.success("Dispute escalated to voting period!", {
-        description:
-          "The dispute has been moved from Pending to Vote in Progress.",
-      });
-
-      // Refresh dispute details
-      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
-      const transformedDispute =
-        disputeService.transformDisputeDetailsToRow(disputeDetails);
-      setDispute(transformedDispute);
-    } catch (error: any) {
-      toast.error("Failed to escalate dispute", {
-        description: error.message || "Please try again later",
-      });
-    } finally {
-      setEscalating(false);
-    }
-  }, [disputeId, user, dispute]); // Added dispute to dependencies
-
-  const checkIfCanFinalize = useCallback(() => {
-    if (!dispute || !user) return false;
-
-    // Only disputes in "Vote in Progress" status can be finalized
-    const isVoteInProgress = dispute.status === "Vote in Progress";
-
-    // Only admins or judges can finalize (or you can adjust permissions as needed)
-    const isEligibleToFinalize = isUserAdmin() || isUserJudge();
-
-    return isVoteInProgress && isEligibleToFinalize;
-  }, [dispute, user, isUserAdmin, isUserJudge]);
-
-  useEffect(() => {
-    if (dispute && user) {
-      const canFinalizeDispute = checkIfCanFinalize();
-      setCanFinalize(canFinalizeDispute);
-    }
-  }, [dispute, user, checkIfCanFinalize]);
-
-  // Add this handler function
-  const handleFinalizeVote = useCallback(async () => {
-    if (!disputeId || !user) return;
-
-    // Confirm with the user
-    if (
-      !confirm(
-        "Are you sure you want to manually finalize this dispute? This will calculate votes and determine the outcome.",
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setFinalizing(true);
-
-      // Show loading toast
-      const loadingToast = toast.loading("Finalizing dispute votes...", {
-        description: "This may take a moment as votes are calculated.",
-      });
-
-      await disputeService.finalizeDisputes([disputeId]);
-
-      // Dismiss loading toast
-      toast.dismiss(loadingToast);
-
-      toast.success("Dispute votes finalized successfully!", {
-        description:
-          "Voting results have been calculated and dispute status updated.",
-      });
-
-      // Refresh dispute details
-      const disputeDetails = await disputeService.getDisputeDetails(disputeId);
-      const transformedDispute =
-        disputeService.transformDisputeDetailsToRow(disputeDetails);
-      setDispute(transformedDispute);
-    } catch (error: any) {
-      toast.error("Failed to finalize dispute", {
-        description: error.message || "Please try again later",
-      });
-    } finally {
-      setFinalizing(false);
-    }
-  }, [disputeId, user]);
-
-  useEffect(() => {
-    if (isSuccess && hash && pendingTransactionType) {
-      if (pendingTransactionType === "startVote") {
-        toast.success("Voting can now begin! 🗳️", {
-          description:
-            "The voting phase has been initiated. Community members can now cast their votes.",
-        });
-
-        // Set vote as started
-        setVoteStarted(true);
-
-        // Refresh dispute data
-        setTimeout(async () => {
-          try {
-            const disputeDetails = await disputeService.getDisputeDetails(
-              disputeId!,
-            );
-            const transformedDispute =
-              disputeService.transformDisputeDetailsToRow(disputeDetails);
-            setDispute(transformedDispute);
-          } catch (error) {
-            console.error("Failed to refresh dispute:", error);
-          }
-        }, 3000);
-      }
-
-      if (pendingTransactionType === "settle") {
-        toast.success("Escrow dispute settled successfully! 🎉", {
-          description: "Transaction confirmed! The page will refresh.",
-        });
-
-        // Reload page after a short delay
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-      }
-
-      // Reset states
-      setPendingTransactionType(null);
-      resetWrite();
-    }
-  }, [isSuccess, hash, pendingTransactionType, resetWrite, disputeId]);
-
-  useEffect(() => {
-    if (writeError) {
-      resetWrite();
-    }
-  }, [writeError, resetWrite]);
-
-  if (loading) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="relative mx-auto mb-8">
-            <div className="mx-auto size-24 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
-            <div className="absolute inset-0 mx-auto size-24 animate-ping rounded-full border-2 border-cyan-400/40"></div>
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-cyan-300">
-              Loading Disputes Details
-            </h3>
-          </div>
-          <div className="mt-4 flex justify-center space-x-1">
-            {[...Array(3)].map((_, i) => (
-              <div
-                key={i}
-                className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (!dispute) {
-    return (
-      <div className="flex min-h-screen justify-center">
-        <div className="flex flex-col items-center text-center">
-          <div className="mb-6">
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-purple-500/10">
-              <AlertTriangle className="h-10 w-10 text-red-400" />
-            </div>
-            <h2 className="mb-2 text-2xl font-bold text-white">
-              Dispute Not Found
-            </h2>
-            <div className="mb-6 max-w-md text-cyan-200/80">
-              <p>
-                The dispute you're looking for doesn't exist or may have been
-                removed. Please check the dispute ID and try again.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Button
-              onClick={() => {
-                // Refresh the page
-                window.location.reload();
-              }}
-              variant="outline"
-              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-            >
-              <Loader2 className="mr-2 h-4 w-4" />
-              Refresh & Retry
-            </Button>
-
-            <Button
-              onClick={() => navigate("/disputes")}
-              className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Disputes
-            </Button>
-          </div>
-
-          <div className="mt-8 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
-            <div className="text-sm text-cyan-300">
-              <p className="mb-1 font-medium">Troubleshooting tips:</p>
-              <ul className="space-y-1">
-                <li>• Check if the dispute ID is correct</li>
-                <li>• Verify your internet connection</li>
-                <li>• The dispute may have been deleted</li>
-                <li>• Try refreshing the page</li>
-                <li>• Check if you have permission to view this dispute</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="animate-fade-in space-y-6 py-6 text-white">
-      <div className="flex flex-col justify-between gap-2 sm:flex-row">
-        {/* Back Button */}
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            onClick={() => navigate("/disputes")}
-            variant="outline"
-            className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
-          >
-            <ArrowLeft className="h-4 w-4" />{" "}
-            <p className="flex items-center gap-1">
-              Back<span className="hidden sm:block"> to Disputes</span>
-            </p>
-          </Button>
-
-          <div className="flex items-center gap-2">
-            <div>
-              {dispute.status === "Settled" ? (
-                <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                  Settled
-                </span>
-              ) : dispute.status === "Pending" ? (
-                <span className="badge-yellow inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                  Pending
-                </span>
-              ) : dispute.status === "Dismissed" ? (
-                <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
-                  Dismissed
-                </span>
-              ) : dispute.status === "Pending Payment" ? (
-                <span className="badge-orange inline-flex items-center rounded-full px-4 py-1 text-sm">
-                  Pending Payment
-                </span>
-              ) : dispute.status === "Pending Locking Funds" ? ( // Add this condition
-                <span className="badge-orange inline-flex items-center rounded-full px-4 py-1 text-sm">
-                  Pending Locking Funds
-                </span>
-              ) : (
-                <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
-                  Vote in Progress
-                </span>
-              )}
-            </div>
-            {/* Role Badge */}
-            {isUserJudge() && (
-              <span className="flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
-                <Gavel className="h-3 w-3" />
-                Judge
-              </span>
-            )}
-            {isUserCommunity() && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
-                <Users className="h-3 w-3" />
-                <p className="block">Community</p>
-              </span>
-            )}
-            {/* Status Badge */}
-          </div>
-        </div>
-        {/* Right Side Actions */}
-        {/* Right Side Actions */}
-        <div className="flex items-center gap-1">
-          {/* Show Vote Outcome for Settled/Dismissed disputes */}
-          {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
-            <Button
-              variant="neon"
-              className="neon-hover"
-              onClick={() => setVoteOutcomeModalOpen(true)}
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              See Vote Outcome
-            </Button>
-          )}
-
-          {dispute?.status === "Pending" && (
-            <Button
-              variant="outline"
-              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
-              onClick={handleEscalateToVote}
-              disabled={escalating}
-            >
-              {escalating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Vote className="mr-2 h-4 w-4" />
-              )}
-              {escalating ? "Escalating..." : "Escalate to Vote"}
-            </Button>
-          )}
-
-          {/* Add this near your other action buttons */}
-          {canFinalize && (
-            <Button
-              variant="outline"
-              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
-              onClick={handleFinalizeVote}
-              disabled={finalizing}
-            >
-              {finalizing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Gavel className="mr-2 h-4 w-4" />
-              )}
-              {finalizing ? "Finalizing..." : "Finalize Votes"}
-            </Button>
-          )}
-
-          <div className="flex flex-wrap gap-3">
-            {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
-
-            {dispute.status === "Vote in Progress" &&
-              canVote &&
-              !hasVoted &&
-              !isCurrentUserPlaintiff() &&
-              !isCurrentUserDefendant() && (
-                <Button
-                  variant="neon"
-                  className="neon-hover ml-auto"
-                  onClick={handleOpenVoteModal}
-                >
-                  <Vote className="mr-2 h-4 w-4" />
-                  Cast {isUserJudge() ? "Judge" : "Community"} Vote
-                </Button>
-              )}
-
-            <div className="flex flex-wrap gap-2">
-              {/* Settle Escrow Dispute Button */}
-              {dispute.status === "Pending" &&
-                isCurrentUserPlaintiff() &&
-                dispute.agreement?.type === 2 && (
-                  <Button
-                    variant="outline"
-                    className="hidden border-green-400/30 text-green-300 hover:bg-green-500/10"
-                    onClick={() => setSettleModalOpen(true)}
-                    disabled={
-                      !escrowContractAddress ||
-                      (pendingTransactionType === "settle" && isPending)
-                    }
-                  >
-                    {pendingTransactionType === "settle" && isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="mr-2 h-4 w-4" />
-                    )}
-                    {pendingTransactionType === "settle" && isPending
-                      ? "Settling..."
-                      : !escrowContractAddress
-                        ? "Loading contract..."
-                        : "Settle Escrow Dispute"}
-                  </Button>
-                )}
-              {dispute.status === "Pending" &&
-                isCurrentUserPlaintiff() &&
-                dispute.agreement?.type === 1 && (
-                  <Button
-                    variant="outline"
-                    className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-                    onClick={() => setSettleModalOpen(true)}
-                    disabled={settlingDispute}
-                  >
-                    {settlingDispute ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="mr-2 h-4 w-4" />
-                    )}
-                    {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
-                  </Button>
-                )}
-            </div>
-          </div>
-
-          {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
-          {dispute.status === "Vote in Progress" &&
-            isVoteStarted() && // Use the helper function
-            hasVoted &&
-            !isCurrentUserPlaintiff() &&
-            !isCurrentUserDefendant() && (
-              <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
-                <span className="text-emerald-300">
-                  ✅ {isUserJudge() ? "Judge " : ""}Vote Submitted
-                  {isUserJudge() && " ⚖️"}
-                </span>
-              </div>
-            )}
-        </div>
-      </div>
-      {/* Header Card */}
-      {/* Header Card */}
-      {/* Agreement and Contract Information Panel */}
-      <div className="hidden">
-        <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
-          <FileText className="h-5 w-5" />
-          Agreement & Contract Details
-        </h3>
-
-        {/* Agreement and Contract Information Panel */}
-        {(dispute.agreement?.type ||
-          dispute.votingId ||
-          dispute.contractAgreementId) && (
-          <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
-            <div className="flex flex-wrap gap-2">
-              {/* Agreement Type Card */}
-              {dispute.agreement?.type && (
-                <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
-                      <FileText className="h-4 w-4 text-blue-300" />
-                    </div>
-                    <span className="text-sm font-medium text-blue-300">
-                      Agreement Type
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-blue-200">
-                      {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
-                    </span>
-                  </div>
-                  {dispute.agreement.status && (
-                    <div className="mt-2 text-xs text-blue-300/70">
-                      Status: {dispute.agreement.status}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Voting ID Card */}
-              {dispute.votingId && (
-                <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
-                      <Vote className="h-4 w-4 text-purple-300" />
-                    </div>
-                    <span className="text-sm font-medium text-purple-300">
-                      Voting ID
-                    </span>
-                  </div>
-                  <div className="font-mono text-lg font-bold text-purple-200">
-                    #{dispute.votingId}
-                  </div>
-                  <div className="mt-1 text-xs text-purple-300/70">
-                    Unique voting identifier
-                  </div>
-                </div>
-              )}
-
-              {/* Contract Agreement ID Card */}
-              {dispute.contractAgreementId && (
-                <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                      <span className="text-lg">📜</span>
-                    </div>
-                    <span className="text-sm font-medium text-green-300">
-                      Contract ID
-                    </span>
-                  </div>
-                  <div className="font-mono text-lg font-bold text-green-200">
-                    {dispute.contractAgreementId}
-                  </div>
-                  <div className="mt-1 text-xs text-green-300/70">
-                    On-chain contract reference
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Additional Information Row */}
-            <div className="mt-4 flex flex-col gap-3">
-              {/* Chain ID */}
-              {dispute.chainId && (
-                <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
-                  <span className="text-sm text-cyan-300">Chain ID</span>
-                  <span className="font-mono text-sm font-bold text-cyan-200">
-                    {dispute.chainId}
-                  </span>
-                </div>
-              )}
-
-              {/* Transaction Hash */}
-              {dispute.txnhash && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
-                  <span className="text-sm text-amber-300">
-                    Transaction Hash
-                  </span>
-                  <span className="truncate font-mono text-xs text-amber-200">
-                    {dispute.txnhash.slice(0, 6)}...{dispute.txnhash.slice(-4)}
-                  </span>
-                </div>
-              )}
-
-              {/* Dispute Type */}
-              {dispute.type !== undefined && (
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
-                  <span className="text-sm text-indigo-300">Dispute Type</span>
-                  <span className="text-sm font-bold text-indigo-200">
-                    {dispute.type === 1 ? "Pro Bono" : "Paid"}
-                  </span>
-                </div>
-              )}
-
-              {/* Vote Timings */}
-              {onChainAgreement && !onChainLoading && (
-                <div className="flex flex-col gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
-                  <span className="text-sm text-violet-300">
-                    Vote Scheduled
-                  </span>
-                  <span className="text-sm font-bold text-violet-200">
-                    {formatBigIntTimestamp(onChainAgreement.voteStartedAt)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Debug Info (remove in production) */}
-            {process.env.NODE_ENV === "development" && (
-              <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
-                <details className="text-xs">
-                  <summary className="cursor-pointer text-gray-300">
-                    Debug Info
-                  </summary>
-                  <pre className="mt-2 overflow-auto text-gray-400">
-                    {JSON.stringify(
-                      {
-                        votingId: dispute.votingId,
-                        contractAgreementId: dispute.contractAgreementId,
-                        chainId: dispute.chainId,
-                        agreement: dispute.agreement,
-                        type: dispute.type,
-                        result: dispute.result,
-                      },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </details>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
-        <div className="card-cyan rounded-2xl p-6 shadow-lg">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div>
-              <h1 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
-                {dispute.title}
-              </h1>
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <div className="flex items-center gap-2 text-cyan-300">
-                  <Clock className="h-4 w-4" />
-                  <span>
-                    {new Date(dispute.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-emerald-300">
-                  <span>{dispute.request}</span>
-                </div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center justify-center gap-2 text-sm text-white/70">
-                <Users className="h-4 w-4" />
-                <span>Parties</span>
-              </div>
-              <div className="mt-1 flex flex-col items-center gap-2 text-sm">
-                {/* Plaintiff with Avatar and Verification */}
-                <div className="flex items-center gap-2">
-                  <UserAvatar
-                    userId={
-                      dispute.plaintiffData?.userId ||
-                      cleanTelegramUsername(dispute.plaintiff)
-                    }
-                    avatarId={dispute.plaintiffData?.avatarId || null}
-                    username={cleanTelegramUsername(dispute.plaintiff)}
-                    size="sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const cleanUsername = cleanTelegramUsername(
-                        dispute.plaintiff,
-                      );
-                      const encodedUsername = encodeURIComponent(cleanUsername);
-                      navigate(`/profile/${encodedUsername}`);
-                    }}
-                    className="flex items-center gap-2 text-cyan-300 hover:text-cyan-200 hover:underline"
-                  >
-                    {formatDisplayName(dispute.plaintiff)} {/* Updated */}
-                    {isCurrentUserPlaintiff() && (
-                      <VscVerifiedFilled className="h-4 w-4 text-green-400" />
-                    )}
-                  </button>
-                </div>
-                <span className="text-white/50">vs</span>
-                {/* Defendant with Avatar and Verification */}
-                <div className="flex items-center gap-2">
-                  <UserAvatar
-                    userId={
-                      dispute.defendantData?.userId ||
-                      cleanTelegramUsername(dispute.defendant)
-                    }
-                    avatarId={dispute.defendantData?.avatarId || null}
-                    username={cleanTelegramUsername(dispute.defendant)}
-                    size="sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const cleanUsername = cleanTelegramUsername(
-                        dispute.defendant,
-                      );
-                      const encodedUsername = encodeURIComponent(cleanUsername);
-                      navigate(`/profile/${encodedUsername}`);
-                    }}
-                    className="flex items-center gap-2 text-yellow-300 hover:text-yellow-200 hover:underline"
-                  >
-                    {formatDisplayName(dispute.defendant)} {/* Updated */}
-                    {isCurrentUserDefendant() && (
-                      <VscVerifiedFilled className="h-4 w-4 text-green-400" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Source Agreement Information Section - Using data from dispute.agreement */}
-        {dispute.agreement && (
-          <div className="rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-4">
-            <div className="space-y-4">
-              <div className="px-4">
-                <h2 className="">Source Agreement</h2>
-                <div className="flex flex-col justify-between gap-2">
-                  <div>
-                    <h4 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
-                      {dispute.agreement.title ||
-                        `Agreement #${dispute.agreement.id}`}
-                    </h4>
-
-                    {/* Agreement Status and Type Row */}
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {/* Agreement Status with Icon */}
-                      {/* {dispute.agreement.status && (
-                        <div
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${getAgreementStatusBadgeColor(dispute.agreement.status)}`}
-                        >
-                          {getAgreementStatusIcon(dispute.agreement.status)}
-                          <span>
-                            {getAgreementStatusText(dispute.agreement.status)}
-                          </span>
-                        </div>
-                      )} */}
-
-                      {/* Agreement Type Badge */}
-                      <span
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
-                          dispute.agreement.type === 2
-                            ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                            : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
-                        }`}
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        {dispute.agreement.type === 2
-                          ? "Escrow Agreement"
-                          : "Reputational Agreement"}
-                      </span>
-                    </div>
-
-                    {/* Agreement Details Grid */}
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <Link
-                      to={
-                        dispute.agreement.type === 2
-                          ? `/escrow/${dispute.agreement.id}`
-                          : `/agreements/${dispute.agreement.id}`
-                      }
-                      className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
-                    >
-                      <FileText className="h-4 w-4" />
-                      View Source Agreement
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {dispute.status === "Vote in Progress" && (
-        <VotingStatus
-          dispute={dispute}
-          votingStatusLoading={votingStatusLoading}
-          getUserRole={getUserRole}
-          isUserJudge={isUserJudge}
-          isUserCommunity={isUserCommunity}
-          canVote={canVote}
-          reason={reason}
-          hasVoted={hasVoted}
-          handleOpenVoteModal={handleOpenVoteModal}
-          isVoteStarted={isVoteStarted()}
-          tier={tier}
-          weight={weight}
-        />
-      )}
-      {/* Two Column Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Plaintiff Column */}
-        <div className="space-y-6">
-          {/* Plaintiff Header */}
-          {/* Plaintiff Header */}
-          <div className="animate-slide-in-left ml-auto flex w-fit items-center gap-3 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-4">
-            <UserAvatar
-              userId={
-                dispute.plaintiffData?.userId ||
-                cleanTelegramUsername(dispute.plaintiff)
-              }
-              avatarId={dispute.plaintiffData?.avatarId || null}
-              username={cleanTelegramUsername(dispute.plaintiff)}
-              size="md"
-            />
-            <div>
-              <h2 className="text-lg font-bold text-cyan-400">Plaintiff</h2>
-              <div className="flex items-center gap-2 text-sm text-cyan-300">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cleanUsername = cleanTelegramUsername(
-                      dispute.plaintiff,
-                    );
-                    const encodedUsername = encodeURIComponent(cleanUsername);
-                    navigate(`/profile/${encodedUsername}`);
-                  }}
-                  className="hover:text-cyan-200 hover:underline"
-                >
-                  {formatDisplayName(dispute.plaintiff)} {/* Updated */}
-                </button>
-                {isCurrentUserPlaintiff() && (
-                  <VscVerifiedFilled className="h-4 w-4 text-green-400" />
-                )}
-                <button
-                  onClick={() => {
-                    const cleanUsername = cleanTelegramUsername(
-                      dispute.plaintiff,
-                    );
-                    const encodedUsername = encodeURIComponent(cleanUsername);
-                    navigate(`/profile/${encodedUsername}`);
-                  }}
-                  className="text-cyan-400 hover:text-cyan-300"
-                ></button>
-              </div>
-            </div>
-          </div>
-          {/* Initial Claim */}
-          <div className="space-y-4">
-            <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
-              <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
-                <MessageCircle className="h-4 w-4" />
-                Initial Complaint
-                <span className="text-muted-foreground ml-auto text-xs">
-                  {new Date(dispute.createdAt).toLocaleDateString()}
-                </span>
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="mb-2 text-sm font-medium text-cyan-200">
-                    Description
-                  </h4>
-                  <p className="text-sm leading-relaxed break-all text-cyan-100">
-                    {safeDescription}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="mb-2 text-sm font-medium text-green-400">
-                    Formal Claim
-                  </h4>
-                  <p className="text-sm leading-relaxed break-all text-cyan-100">
-                    {safeClaim}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Evidence */}
-            {safeEvidence.length > 0 && (
-              <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
-                <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
-                  <Upload className="h-4 w-4" />
-                  Supporting Evidence ({safeEvidence.length})
-                </h3>
-                <EvidenceDisplay
-                  evidence={safeEvidence}
-                  color="cyan"
-                  onViewEvidence={handleViewEvidence}
-                />
-              </div>
-            )}
-
-            {/* Witnesses */}
-            {/* Plaintiff's Witnesses */}
-            {plaintiffWitnesses.length > 0 && (
-              <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
-                <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
-                  <UserCheck className="h-4 w-4" />
-                  Plaintiff's Witnesses ({plaintiffWitnesses.length})
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {plaintiffWitnesses.map((witness, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const cleanUsername = cleanTelegramUsername(witness);
-                        const encodedUsername =
-                          encodeURIComponent(cleanUsername);
-                        navigate(`/profile/${encodedUsername}`);
-                      }}
-                      className="rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300 transition-colors hover:bg-cyan-500/30 hover:text-cyan-200 hover:underline"
-                    >
-                      {formatDisplayName(witness)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Defendant Column */}
-        {/* Defendant Column */}
-        <div className="space-y-6">
-          {/* Defendant Header */}
-          <div className="animate-slide-in-right flex w-fit items-center gap-3 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-4">
-            <UserAvatar
-              userId={
-                dispute.defendantData?.userId ||
-                cleanTelegramUsername(dispute.defendant)
-              }
-              avatarId={dispute.defendantData?.avatarId || null}
-              username={cleanTelegramUsername(dispute.defendant)}
-              size="md"
-            />
-            <div>
-              <h2 className="text-lg font-bold text-yellow-400">Defendant</h2>
-              <div className="flex items-center gap-2 text-sm text-yellow-300">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cleanUsername = cleanTelegramUsername(
-                      dispute.defendant,
-                    );
-                    const encodedUsername = encodeURIComponent(cleanUsername);
-                    navigate(`/profile/${encodedUsername}`);
-                  }}
-                  className="hover:text-yellow-200 hover:underline"
-                >
-                  {formatDisplayName(dispute.defendant)} {/* Updated */}
-                </button>
-                {isCurrentUserDefendant() && (
-                  <VscVerifiedFilled className="h-4 w-4 text-green-400" />
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Defendant Response */}
-          {dispute.defendantResponse ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
-                <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
-                  <MessageCircle className="h-4 w-4" />
-                  Response to Claims
-                  <span className="text-muted-foreground ml-auto text-xs">
-                    {new Date(
-                      dispute.defendantResponse.createdAt,
-                    ).toLocaleDateString()}
-                  </span>
-                </h3>
-                <p className="text-sm leading-relaxed text-yellow-100">
-                  {dispute.defendantResponse.description}
-                </p>
-              </div>
-
-              {/* Defendant's Evidence */}
-              {defendantEvidence.length > 0 && (
-                <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
-                  <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
-                    <Upload className="h-4 w-4" />
-                    Defense Evidence ({defendantEvidence.length})
-                  </h3>
-                  <EvidenceDisplay
-                    evidence={defendantEvidence}
-                    color="yellow"
-                    onViewEvidence={handleViewEvidence}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-yellow-400/30 bg-yellow-500/5 p-8 text-center">
-              <Shield className="mx-auto mb-3 h-8 w-8 text-yellow-400/50" />
-              <h3 className="mb-2 text-lg font-semibold text-yellow-300">
-                Awaiting Response
-              </h3>
-              <p className="mb-4 text-sm text-yellow-200/70">
-                The defendant has not yet responded to the claims.
-              </p>
-            </div>
-          )}
-
-          {/* Defendant Witnesses Section */}
-          {/* Defendant's Witnesses Section */}
-          {defendantWitnesses.length > 0 && (
-            <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
-              <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
-                <UserCheck className="h-4 w-4" />
-                Defendant's Witnesses ({defendantWitnesses.length})
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {defendantWitnesses.map((witness, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const cleanUsername = cleanTelegramUsername(witness);
-                      const encodedUsername = encodeURIComponent(cleanUsername);
-                      navigate(`/profile/${encodedUsername}`);
-                    }}
-                    className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300 transition-colors hover:bg-yellow-500/30 hover:text-yellow-200 hover:underline"
-                  >
-                    {formatDisplayName(witness)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Voting Section - Prominent display for Vote in Progress disputes */}
-      </div>
-      {/* Action Buttons */}
-      {/* Action Buttons */}
-      {/* Action Buttons */}
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-3 border-b border-white/10 py-6">
-        {/* Plaintiff Edit Button - Only show when dispute is pending */}
-        {dispute.status === "Pending" && isCurrentUserPlaintiff() && (
-          <Button
-            variant="outline"
-            className="border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
-            onClick={() => setPlaintiffReplyModalOpen(true)}
-          >
-            <MessageCircle className="mr-2 h-4 w-4" />
-            Edit as Plaintiff
-          </Button>
-        )}
-        {/* Settle Dispute Button - Only for plaintiff when dispute is pending */}
-        {dispute.status === "Pending" &&
-          isCurrentUserPlaintiff() &&
-          dispute.agreement?.type === 2 && (
-            <Button
-              variant="outline"
-              className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-              onClick={() => setSettleModalOpen(true)}
-              disabled={isPending}
-            >
-              {isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Scale className="mr-2 h-4 w-4" />
-              )}
-              {isPending ? "Settling..." : "Settle Escrow Dispute"}
-            </Button>
-          )}
-        {dispute.status === "Pending" &&
-          isCurrentUserPlaintiff() &&
-          dispute.agreement?.type === 1 && (
-            <Button
-              variant="outline"
-              className="border-green-400/30 text-green-300 hover:bg-green-500/10"
-              onClick={() => setSettleModalOpen(true)}
-              disabled={settlingDispute}
-            >
-              {settlingDispute ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Scale className="mr-2 h-4 w-4" />
-              )}
-              {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
-            </Button>
-          )}
-
-        {/* Defendant Response Button - Only for defendant when no response exists and dispute is pending */}
-        {dispute.status === "Pending" &&
-          isCurrentUserDefendant() &&
-          !hasValidDefendantResponse(dispute.defendantResponse) && (
-            <Button
-              variant="outline"
-              className="ml-auto border-yellow-400/30 text-yellow-300 hover:bg-yellow-500/10"
-              onClick={() => setDefendantReplyModalOpen(true)}
-            >
-              <Shield className="mr-2 h-4 w-4" />
-              Respond as Defendant
-            </Button>
-          )}
-        {/* Defendant Edit Button - Show when defendant has responded AND dispute is still pending */}
-        {dispute.status === "Pending" &&
-          isCurrentUserDefendant() &&
-          hasValidDefendantResponse(dispute.defendantResponse) && (
-            <Button
-              variant="outline"
-              className="ml-auto border-yellow-400/30 text-yellow-300 hover:bg-yellow-500/10"
-              onClick={() => setDefendantReplyModalOpen(true)}
-            >
-              <MessageCircle className="mr-2 h-4 w-4" />
-              Edit as Defendant
-            </Button>
-          )}
-        {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
-        {dispute.status === "Vote in Progress" &&
-          isVoteStarted() && // Use the helper function
-          canVote &&
-          !hasVoted &&
-          !isCurrentUserPlaintiff() &&
-          !isCurrentUserDefendant() && (
-            <Button
-              variant="neon"
-              className="neon-hover ml-auto"
-              onClick={handleOpenVoteModal}
-            >
-              <Vote className="mr-2 h-4 w-4" />
-              Cast Vote
-            </Button>
-          )}
-        {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
-        {dispute.status === "Vote in Progress" &&
-          isVoteStarted() && // Use the helper function
-          hasVoted &&
-          !isCurrentUserPlaintiff() &&
-          !isCurrentUserDefendant() && (
-            <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
-              <span className="text-emerald-300">✅ Vote Submitted</span>
-            </div>
-          )}
-      </div>
-      {/* Dispute Chat Integration */}
-      <div className="mt-8">
-        <DisputeChat disputeId={parseInt(id!)} userRole={getUserRole()} />
-      </div>
-      {/* Evidence Viewer Modal */}
-      <EvidenceViewer
-        isOpen={evidenceViewerOpen}
-        onClose={() => {
-          setEvidenceViewerOpen(false);
-        }}
-        selectedEvidence={selectedEvidence}
-      />
-      {/* Vote Outcome Modal */}
-      <VoteOutcomeModal
-        isOpen={voteOutcomeModalOpen}
-        onClose={() => setVoteOutcomeModalOpen(false)}
-        disputeId={parseInt(id!)}
-        // Optional: You can also pass voteOutcome data directly if you already have it
-        // voteOutcome={yourVoteOutcomeData}
-      />
-      {/* Vote Modal */}
-      <VoteModal
-        isOpen={voteModalOpen}
-        onClose={() => setVoteModalOpen(false)}
-        voteData={voteData}
-        onVoteChange={handleVoteChange}
-        onCastVote={handleCastVote}
-        hasVoted={hasVoted}
-        isSubmitting={false}
-        dispute={dispute}
-        canUserVote={canUserVote}
-        isCurrentUserPlaintiff={isCurrentUserPlaintiff}
-        isCurrentUserDefendant={isCurrentUserDefendant}
-        isJudge={isUserJudge()} // Pass actual judge status
-      />
-      {/* Plaintiff Reply Modal */}
-      <PlaintiffReplyModal
-        isOpen={plaintiffReplyModalOpen}
-        onClose={() => setPlaintiffReplyModalOpen(false)}
-        dispute={dispute}
-        onSubmit={handlePlaintiffReply}
-        navigate={navigate}
-      />
-      {/* Defendant Reply Modal */}
-      <DefendantReplyModal
-        isOpen={defendantReplyModalOpen}
-        onClose={() => setDefendantReplyModalOpen(false)}
-        dispute={dispute}
-        onSubmit={handleDefendantReply}
-        navigate={navigate}
-      />
-
-      {dispute.agreement?.type === 1 && (
-        <SettleConfirmationModal
-          isOpen={settleModalOpen}
-          onClose={() => setSettleModalOpen(false)}
-          onConfirm={handleSettleDispute}
-          disable={settlingDispute}
-          disputeTitle={dispute?.title}
-        />
-      )}
-      {dispute.agreement?.type === 2 && (
-        <SettleConfirmationModal
-          isOpen={settleModalOpen}
-          onClose={() => setSettleModalOpen(false)}
-          onConfirm={handleOnchainSettleDispute}
-          disable={isPending}
-          disputeTitle={dispute?.title}
-        />
-      )}
-    </div>
-  );
-}
+// /* eslint-disable @typescript-eslint/no-explicit-any */
+// import { useEffect, useState, useCallback } from "react";
+// import { useParams, useNavigate, Link } from "react-router-dom";
+
+// import {
+//   ArrowLeft,
+//   Clock,
+//   Users,
+//   Scale,
+//   MessageCircle,
+//   Upload,
+//   UserCheck,
+//   Shield,
+//   Loader2,
+//   BarChart3,
+//   Vote,
+//   Gavel,
+//   FileText,
+//   AlertTriangle,
+//   ArrowRight,
+// } from "lucide-react";
+// import { VscVerifiedFilled } from "react-icons/vsc";
+// import { useAuth } from "../hooks/useAuth";
+// import { Button } from "../components/ui/button";
+// import { toast } from "sonner";
+// import { disputeService } from "../services/disputeServices";
+// import { UserAvatar } from "../components/UserAvatar";
+// import {
+//   cleanTelegramUsername,
+//   formatTelegramUsernameForDisplay,
+// } from "../lib/usernameUtils";
+// import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+
+// import type {
+//   DefendantClaimRequest,
+//   DisputeRow,
+//   EvidenceFile,
+//   EvidenceItem,
+//   UploadedFile,
+//   VoteData,
+// } from "../types";
+// import PlaintiffReplyModal from "../components/disputes/modals/PlaintiffReplyModal";
+// import { DefendantReplyModal } from "../components/disputes/modals/DefendantReplyModal";
+// import EvidenceViewer from "../components/disputes/modals/EvidenceViewer";
+// import { EvidenceDisplay } from "../components/disputes/EvidenceDisplay";
+// import { VoteModal } from "../components/disputes/modals/VoteModal";
+// import VoteOutcomeModal from "../components/disputes/modals/VoteOutcomeModal";
+// import SettleConfirmationModal from "../components/disputes/modals/SettleConfirmationModal";
+// // import StartVoteConfirmationModal from "../components/disputes/modals/StartVoteConfirmationModal";
+// import DisputeChat from "./DisputeChat";
+// import type { DisputeChatRole } from "./DisputeChat/types/dto";
+// import { useVotingStatus } from "../features/voting/hooks/useVotingStatus";
+// import { ESCROW_ABI } from "../web3/config";
+
+// import { getAgreement } from "../web3/readContract";
+// import { agreementService } from "../services/agreementServices";
+// // import { formatDateWithTime } from "../web3/helper";
+
+// // Add this helper function near your other imports
+// const formatDisplayName = (username: string) => {
+//   // Clean the username first
+//   const cleaned = cleanTelegramUsername(username);
+
+//   // Check if it's a wallet address (starts with 0x and is 42 chars)
+//   if (cleaned.startsWith("0x") && cleaned.length === 42) {
+//     // Truncate wallet address and remove any @ prefix
+//     return `${cleaned.slice(0, 4)}...${cleaned.slice(-6)}`;
+//   }
+//   // For Telegram usernames, use the existing formatter
+//   return formatTelegramUsernameForDisplay(username);
+// };
+
+// const formatBigIntTimestamp = (
+//   bigIntTimestamp: bigint | string | number,
+// ): string => {
+//   try {
+//     const timestamp = Number(bigIntTimestamp.toString());
+//     if (timestamp === 0) return "Not scheduled";
+
+//     // Check if it's in seconds (Unix timestamp)
+//     if (timestamp < 10000000000) {
+//       // Multiply by 1000 to convert seconds to milliseconds
+//       return new Date(timestamp * 1000).toLocaleString();
+//     }
+
+//     // Assume it's already in milliseconds
+//     return new Date(timestamp).toLocaleString();
+//   } catch (error) {
+//     console.error("Error formatting timestamp:", error);
+//     return "Invalid date";
+//   }
+// };
+
+// // Add this component inside your DisputeDetails component
+// const VotingStatus = ({
+//   dispute,
+//   votingStatusLoading,
+//   getUserRole,
+//   isUserJudge,
+//   isUserCommunity,
+//   canVote,
+//   reason,
+//   hasVoted,
+//   handleOpenVoteModal,
+
+//   tier, // Add this prop
+//   weight, // Add this prop
+// }: {
+//   dispute: DisputeRow | null;
+//   votingStatusLoading: boolean;
+//   getUserRole: () => DisputeChatRole | undefined;
+//   isUserJudge: () => boolean;
+//   isUserCommunity: () => boolean;
+//   canVote: boolean;
+//   reason?: string;
+//   hasVoted: boolean;
+//   handleOpenVoteModal: () => void;
+//   isVoteStarted: boolean; // Add this
+//   tier?: number; // Add this
+//   weight?: number; // Add this
+// }) => {
+//   if (!dispute || dispute?.status !== "Vote in Progress") return null;
+
+//   // Show loading state
+//   if (votingStatusLoading) {
+//     return (
+//       <div className="animate-fade-in card-cyan rounded-2xl p-6">
+//         <div className="flex flex-col items-center gap-3">
+//           <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+//           <p className="text-sm text-cyan-200">Checking voting status...</p>
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   const userRole = getUserRole();
+//   const isJudge = isUserJudge();
+//   const isCommunity = isUserCommunity();
+//   const isParty = userRole === "plaintiff" || userRole === "defendant";
+
+//   // User is plaintiff or defendant - they CANNOT vote
+//   if (isParty) {
+//     return (
+//       <div className="animate-fade-in card-amber mx-auto w-fit rounded-2xl p-6">
+//         <div className="flex flex-col items-center gap-3 text-center">
+//           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+//             <Shield className="h-6 w-6 text-amber-300" />
+//           </div>
+//           <div>
+//             <h3 className="mb-1 text-lg font-bold text-amber-300">
+//               Case Participant
+//             </h3>
+//             <p className="text-sm text-amber-200">
+//               {userRole === "plaintiff"
+//                 ? "As the plaintiff, you cannot vote in your own dispute."
+//                 : "As the defendant, you cannot vote in your own dispute."}
+//             </p>
+//             <p className="mt-2 text-xs text-amber-300/70">
+//               Voting is for community members and judges only.
+//             </p>
+//           </div>
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   // In the VotingStatus component, update the logic:
+
+//   // User has voted - Consistent with Voting page
+//   if (hasVoted) {
+//     return (
+//       <div className="animate-fade-in card-emerald mx-auto w-fit rounded-2xl p-6">
+//         <div className="flex flex-col items-center gap-3 text-center">
+//           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
+//             <span className="text-2xl">✅</span>
+//           </div>
+//           <div>
+//             <h3 className="mb-1 text-lg font-bold text-emerald-300">
+//               Vote Submitted!
+//             </h3>
+//             <p className="text-sm text-emerald-200">
+//               Thank you for participating in this dispute.
+//               {isJudge && (
+//                 <span className="mt-1 block text-emerald-300">
+//                   ⚖️ Your vote carries judge weight
+//                 </span>
+//               )}
+//             </p>
+//             <p className="mt-2 text-xs text-emerald-300/70">
+//               Results will be revealed when voting ends.
+//             </p>
+//           </div>
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   // User can vote (and voting has started)
+//   if (canVote) {
+//     return (
+//       <div className="animate-fade-in card-cyan mx-auto w-fit rounded-2xl p-6">
+//         <div className="flex flex-col items-center justify-center gap-3">
+//           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/20">
+//             <Vote className="h-6 w-6 text-cyan-300" />
+//           </div>
+//           <div className="flex flex-col items-center justify-center">
+//             <h3 className="mb-1 text-lg font-bold text-cyan-300">
+//               Cast Your Vote
+//             </h3>
+//             <p className="text-center text-sm text-cyan-200">
+//               Your vote will help resolve this dispute fairly.
+//               {tier && (
+//                 <span className="mt-1 block text-cyan-300">
+//                   Tier {tier} Voter
+//                 </span>
+//               )}
+//               {weight && weight > 1 && (
+//                 <span className="mt-1 block font-semibold text-cyan-300">
+//                   Voting Weight: {weight}x
+//                 </span>
+//               )}
+//               {isJudge && (
+//                 <span className="mt-1 block font-semibold text-cyan-300">
+//                   Judge Vote - Carries Higher Weight
+//                 </span>
+//               )}
+//               {isCommunity && (
+//                 <span className="mt-1 block text-cyan-300">Community Vote</span>
+//               )}
+//             </p>
+//           </div>
+//           <Button
+//             variant="neon"
+//             className="neon-hover mt-2"
+//             onClick={handleOpenVoteModal}
+//             size="lg"
+//           >
+//             <Vote className="mr-2 h-4 w-4" />
+//             Cast {isJudge ? "Judge" : "Community"} Vote
+//           </Button>
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   // User cannot vote (but not because they're a party)
+//   return (
+//     <div className="animate-fade-in card-amber mx-auto rounded-2xl p-6">
+//       <div className="flex flex-col items-center gap-3 text-center">
+//         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20">
+//           <Shield className="h-6 w-6 text-amber-300" />
+//         </div>
+//         <div>
+//           <h3 className="mb-1 text-lg font-bold text-amber-300">
+//             Voting in Progress
+//           </h3>
+//           <p className="text-sm text-amber-200">
+//             This dispute is currently being voted on by eligible community
+//             members.
+//           </p>
+//           {reason && <p className="mt-2 text-xs text-amber-300/70">{reason}</p>}
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
+
+// // Main Component
+// export default function DisputeDetails() {
+//   const { id } = useParams();
+//   const navigate = useNavigate();
+//   const { user } = useAuth();
+//   const [dispute, setDispute] = useState<DisputeRow | null>(null);
+//   const [loading, setLoading] = useState(true);
+//   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(
+//     null,
+//   );
+//   const [evidenceViewerOpen, setEvidenceViewerOpen] = useState(false);
+//   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
+//   const [onChainLoading, setOnChainLoading] = useState(false);
+//   const [escrowContractAddress, setEscrowContractAddress] = useState<
+//     `0x${string}` | null
+//   >(null);
+
+//   const {
+//     data: hash,
+//     writeContract,
+//     isPending,
+//     error: writeError,
+//     reset: resetWrite,
+//   } = useWriteContract();
+//   const { isSuccess } = useWaitForTransactionReceipt({
+//     hash,
+//   });
+
+//   const [settleModalOpen, setSettleModalOpen] = useState(false);
+
+//   const [escalating, setEscalating] = useState(false);
+
+//   const [finalizing, setFinalizing] = useState(false);
+//   const [canFinalize, setCanFinalize] = useState(false);
+
+//   const [settlingDispute, setSettlingDispute] = useState(false);
+//   const [pendingTransactionType, setPendingTransactionType] = useState<
+//     "settle" | "startVote" | null
+//   >(null);
+//   const [voteStarted, setVoteStarted] = useState(false);
+
+//   // Add this helper function to check if vote has been started
+
+//   const isVoteStarted = useCallback(() => {
+//     if (!dispute) return false;
+
+//     // For reputational disputes (type 1), check if voteStartedAt exists OR status is "Vote in Progress"
+//     if (dispute.agreement?.type === 1) {
+//       return dispute.status === "Vote in Progress";
+//     }
+
+//     // For escrow disputes (type 2), check voteStarted state
+//     if (dispute.agreement?.type === 2) {
+//       return voteStarted;
+//     }
+
+//     return false;
+//   }, [dispute, voteStarted]);
+
+//   // Voting state
+//   const [voteData, setVoteData] = useState<VoteData>({
+//     choice: null,
+//     comment: "",
+//   });
+
+//   const disputeId = id ? parseInt(id) : null;
+
+//   const {
+//     hasVoted,
+//     canVote,
+//     reason,
+//     isLoading: votingStatusLoading,
+//     markAsVoted,
+//     tier,
+//     weight,
+//   } = useVotingStatus(disputeId, dispute);
+
+//   const [voteOutcomeModalOpen, setVoteOutcomeModalOpen] = useState(false);
+//   const [voteModalOpen, setVoteModalOpen] = useState(false);
+
+//   // Reply modals state
+//   const [defendantReplyModalOpen, setDefendantReplyModalOpen] = useState(false);
+//   const [plaintiffReplyModalOpen, setPlaintiffReplyModalOpen] = useState(false);
+
+//   const isCurrentUserPlaintiff = useCallback(() => {
+//     if (!user || !dispute) {
+//       return false;
+//     }
+
+//     const currentUsername = user.username || user.telegramUsername;
+//     const plaintiffUsername = cleanTelegramUsername(dispute.plaintiff);
+
+//     const isPlaintiff =
+//       normalizeUsername(currentUsername) ===
+//       normalizeUsername(plaintiffUsername);
+
+//     return isPlaintiff;
+//   }, [user, dispute]);
+
+//   // Replace your current isCurrentUserDefendant function with this:
+//   const isCurrentUserDefendant = useCallback(() => {
+//     if (!user || !dispute) {
+//       return false;
+//     }
+
+//     const currentUsername = user.username || user.telegramUsername;
+//     const defendantUsername = cleanTelegramUsername(dispute.defendant);
+
+//     const isDefendant =
+//       normalizeUsername(currentUsername) ===
+//       normalizeUsername(defendantUsername);
+
+//     return isDefendant;
+//   }, [user, dispute]);
+
+//   // Add normalization helper function
+//   // Update the normalizeUsername function to handle undefined values
+//   const normalizeUsername = (username: string | undefined): string => {
+//     if (!username) return "";
+//     return username.replace(/^@/, "").toLowerCase().trim();
+//   };
+
+//   // Wrap these helper functions in useCallback as well
+//   const getUserRoleNumber = useCallback((): number => {
+//     return user?.role || 1; // Default to Community (1) if no role
+//   }, [user?.role]);
+
+//   const isUserJudge = useCallback((): boolean => {
+//     return getUserRoleNumber() === 2; // 2 = Judge
+//   }, [getUserRoleNumber]);
+
+//   const isUserAdmin = useCallback((): boolean => {
+//     return getUserRoleNumber() === 3; // 3 = Admin
+//   }, [getUserRoleNumber]);
+
+//   const isUserCommunity = useCallback((): boolean => {
+//     return getUserRoleNumber() === 1; // 1 = Community
+//   }, [getUserRoleNumber]);
+
+//   // Update the getUserRole function to use useCallback
+//   const getUserRole = useCallback((): DisputeChatRole | undefined => {
+//     if (!user || !dispute) return undefined;
+
+//     const currentUsername = user.username || user.telegramUsername;
+//     const normalizedCurrent = normalizeUsername(currentUsername);
+
+//     const plaintiffUsername = normalizeUsername(
+//       cleanTelegramUsername(dispute.plaintiff),
+//     );
+//     const defendantUsername = normalizeUsername(
+//       cleanTelegramUsername(dispute.defendant),
+//     );
+
+//     if (normalizedCurrent === plaintiffUsername) return "plaintiff";
+//     if (normalizedCurrent === defendantUsername) return "defendant";
+
+//     // Check if user is a witness
+//     const plaintiffWitnesses = dispute.witnesses?.plaintiff || [];
+//     const defendantWitnesses = dispute.witnesses?.defendant || [];
+
+//     const allWitnesses = [...plaintiffWitnesses, ...defendantWitnesses];
+//     const isWitness = allWitnesses.some(
+//       (witness) => normalizeUsername(witness.username) === normalizedCurrent,
+//     );
+
+//     if (isWitness) return "witness";
+
+//     // Check if user is a judge (role 2) or admin (role 3)
+//     if (isUserJudge() || isUserAdmin()) return "judge";
+
+//     return "community"; // Return community for regular users
+//   }, [user, dispute, isUserJudge, isUserAdmin]); // Add all dependencies
+
+//   const canUserVote = useCallback(async (): Promise<{
+//     canVote: boolean;
+//     reason?: string;
+//     hasVoted?: boolean;
+//     isJudge?: boolean;
+//   }> => {
+//     const userRole = getUserRole();
+//     const isJudge = isUserJudge();
+
+//     // Plaintiff and defendant cannot vote - this should already be handled by useVotingStatus
+//     // but we double-check here for UI purposes
+//     if (userRole === "plaintiff" || userRole === "defendant") {
+//       return {
+//         canVote: false,
+//         reason: "Parties cannot vote in their own dispute",
+//         hasVoted: false,
+//         isJudge: false,
+//       };
+//     }
+
+//     return {
+//       canVote,
+//       reason,
+//       hasVoted,
+//       isJudge,
+//     };
+//   }, [canVote, reason, hasVoted, getUserRole, isUserJudge]);
+
+//   const fetchOnChainAgreement = useCallback(
+//     async (agreementData: any, escrowAddress?: `0x${string}`) => {
+//       if (!agreementData) return;
+
+//       try {
+//         const res = await getAgreement(
+//           escrowAddress as `0x${string}`,
+//           agreementData.chainId,
+//           BigInt(agreementData.contractAgreementId), // Use the contractAgreementId here
+//         );
+//         console.log("📦 On-chain agreement data:", res);
+//         setOnChainAgreement(res);
+//       } catch (err) {
+//         console.error("Failed to fetch on-chain agreement:", err);
+//         setOnChainAgreement(null);
+//       } finally {
+//         setOnChainLoading(false);
+//       }
+//     },
+//     [],
+//   );
+
+//   // Fetch dispute details - UPDATED WITH BETTER ERROR HANDLING
+//   useEffect(() => {
+//     if (!id) {
+//       console.error("No dispute ID provided");
+//       setLoading(false);
+//       return;
+//     }
+
+//     const disputeId = parseInt(id);
+//     if (isNaN(disputeId)) {
+//       console.error("Invalid dispute ID:", id);
+//       toast.error("Invalid dispute ID");
+//       setLoading(false);
+//       return;
+//     }
+
+//     setLoading(true);
+
+//     const fetchDisputeDetails = async () => {
+//       try {
+//         const disputeDetails =
+//           await disputeService.getDisputeDetails(disputeId);
+//         console.log("✅ Received dispute details:", disputeDetails);
+
+//         const transformedDispute =
+//           disputeService.transformDisputeDetailsToRow(disputeDetails);
+//         console.log("✅ Transformed dispute:", transformedDispute);
+
+//         setDispute(transformedDispute);
+//         if (transformedDispute.agreement?.type == 2) {
+//           const agreementData = await agreementService.getAgreementDetails(
+//             transformedDispute.agreement.id,
+//           );
+
+//           const escrowAddress = agreementData.escrowContractAddress;
+//           if (escrowAddress) {
+//             setEscrowContractAddress(escrowAddress as `0x${string}`); // ✅ store it
+//             fetchOnChainAgreement(
+//               transformedDispute,
+//               escrowAddress as `0x${string}`,
+//             );
+//           }
+//         }
+//       } catch (error: any) {
+//         console.error("❌ Failed to fetch dispute details:", error);
+//         toast.error("Failed to load dispute details", {
+//           description: error.message,
+//         });
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchDisputeDetails();
+//   }, [fetchOnChainAgreement, id]);
+
+//   // In your component, update the processEvidence function
+//   const processEvidence = (
+//     evidenceList: EvidenceFile[], // Now properly typed
+//     disputeId: string,
+//   ): EvidenceItem[] => {
+//     return evidenceList.map((evidence) => {
+//       const name = evidence.fileName;
+
+//       // Function to get file URL using file ID
+//       const getFileUrl = (file: EvidenceFile): string => {
+//         if (file.id) {
+//           // Use the numeric file ID
+//           const API_BASE = import.meta.env.VITE_API_URL;
+//           return `${API_BASE}/dispute/${disputeId}/file/${file.id}`;
+//         }
+//         // Fallback to filename if no ID (shouldn't happen)
+//         return `/api/dispute/${disputeId}/file/${encodeURIComponent(name)}`;
+//       };
+
+//       const fileUrl = getFileUrl(evidence);
+
+//       // Improved PDF detection
+//       if (name.includes("etherscan.io")) {
+//         return {
+//           name,
+//           type: "transaction",
+//           url: evidence.url || name, // Use provided URL or fallback
+//           preview:
+//             "https://placehold.co/600x400/1e3a8a/white?text=Blockchain+Tx",
+//         };
+//       } else if (/\.(webp|jpg|jpeg|png|gif)$/i.test(name)) {
+//         return {
+//           name,
+//           type: "image",
+//           url: fileUrl,
+//           preview: fileUrl,
+//         };
+//       } else if (/\.pdf($|\?)/i.test(name)) {
+//         return {
+//           name,
+//           type: "pdf",
+//           url: fileUrl,
+//           preview:
+//             "https://placehold.co/600x800/059669/white?text=PDF+Document",
+//         };
+//       } else if (name.match(/chat|screenshot|conversation/i)) {
+//         return {
+//           name,
+//           type: "chat",
+//           url: fileUrl,
+//           preview:
+//             "https://placehold.co/600x800/1f2937/white?text=Chat+Screenshot",
+//         };
+//       } else {
+//         return {
+//           name,
+//           type: "document",
+//           url: fileUrl,
+//           preview: "https://placehold.co/600x800/059669/white?text=Document",
+//         };
+//       }
+//     });
+//   };
+
+//   // Safe data access with fallbacks
+//   const safeEvidence = processEvidence(
+//     dispute?.evidence || [],
+//     dispute?.id || id || "",
+//   );
+//   const plaintiffWitnesses =
+//     dispute?.witnesses?.plaintiff?.map((w) => w.username) || [];
+//   const defendantWitnesses =
+//     dispute?.witnesses?.defendant?.map((w) => w.username) || [];
+//   const safeDescription = dispute?.description || "No description provided.";
+//   const safeClaim = dispute?.claim || "No claim specified.";
+
+//   // const networkInfo = useNetworkEnvironment();
+
+//   // const contractAddress = ESCROW_CA[networkInfo.chainId as number];
+
+//   const defendantEvidence = dispute?.defendantResponse
+//     ? processEvidence(
+//         dispute.defendantResponse.evidence || [],
+//         dispute?.id || id || "",
+//       )
+//     : [];
+
+//   // Function to handle evidence viewing
+//   const handleViewEvidence = (evidence: EvidenceItem) => {
+//     setSelectedEvidence(evidence);
+//     setEvidenceViewerOpen(true);
+//   };
+
+//   // Voting handlers
+//   const handleVoteChange = useCallback(
+//     (
+//       choice: "plaintiff" | "defendant" | "dismissed" | null,
+//       comment: string,
+//     ) => {
+//       setVoteData({ choice, comment });
+//     },
+//     [],
+//   );
+
+//   const handleCastVote = useCallback(async () => {
+//     if (!voteData.choice || !disputeId || !user) return;
+
+//     let loadingToast: string | number | undefined;
+
+//     try {
+//       loadingToast = toast.loading("Submitting your vote...");
+
+//       await disputeService.castVote(disputeId, {
+//         voteType:
+//           voteData.choice === "plaintiff"
+//             ? 1
+//             : voteData.choice === "defendant"
+//               ? 2
+//               : 3,
+//         comment: voteData.comment,
+//       });
+
+//       toast.dismiss(loadingToast);
+
+//       // Use the hook to mark as voted
+//       markAsVoted(voteData.choice);
+
+//       const voteMessage =
+//         voteData.choice === "plaintiff"
+//           ? "You voted for the Plaintiff"
+//           : voteData.choice === "defendant"
+//             ? "You voted for the Defendant"
+//             : "You voted to dismiss the case";
+
+//       toast.success("Vote Submitted Successfully! 🗳️", {
+//         description: `${voteMessage}. Your vote is now confidential.`,
+//       });
+
+//       setVoteModalOpen(false);
+//       setVoteData({ choice: null, comment: "" });
+
+//       // Refresh dispute details
+//       const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+//       const transformedDispute =
+//         disputeService.transformDisputeDetailsToRow(disputeDetails);
+//       setDispute(transformedDispute);
+//     } catch (error: any) {
+//       if (loadingToast) toast.dismiss(loadingToast);
+
+//       toast.error("Failed to submit vote", {
+//         description: error.message || "Please try again later",
+//       });
+//       throw error;
+//     }
+//   }, [voteData, disputeId, user, markAsVoted]);
+
+//   const handleOpenVoteModal = useCallback(() => {
+//     setVoteModalOpen(true);
+//     // Reset vote data when opening modal
+//     setVoteData({ choice: null, comment: "" });
+//   }, []);
+
+//   // Reply handlers with witnesses
+//   const handleDefendantReply = useCallback(
+//     async (description: string, files: UploadedFile[], witnesses: string[]) => {
+//       if (!id) return;
+
+//       const disputeId = parseInt(id);
+//       if (isNaN(disputeId)) {
+//         toast.error("Invalid dispute ID");
+//         return;
+//       }
+
+//       try {
+//         const defendantClaimData: DefendantClaimRequest = {
+//           defendantClaim: description,
+//           witnesses: witnesses.filter((w) => w.trim()),
+//         };
+
+//         const fileList = files.map((uf) => uf.file);
+
+//         // Determine if this is a new response or an edit
+//         const isEditing = dispute?.defendantResponse !== undefined;
+
+//         if (isEditing) {
+//           // Use PATCH for editing existing response
+//           await disputeService.editDefendantClaim(
+//             disputeId,
+//             defendantClaimData,
+//             fileList.length > 0 ? fileList : undefined,
+//           );
+//           toast.success("Response updated successfully!");
+//         } else {
+//           // Use POST for new response
+//           await disputeService.submitDefendantClaim(
+//             disputeId,
+//             defendantClaimData,
+//             fileList.length > 0 ? fileList : undefined,
+//           );
+//           toast.success("Response submitted successfully!");
+//         }
+
+//         // Refresh dispute details
+//         const disputeDetails =
+//           await disputeService.getDisputeDetails(disputeId);
+//         const transformedDispute =
+//           disputeService.transformDisputeDetailsToRow(disputeDetails);
+//         setDispute(transformedDispute);
+//       } catch (error: any) {
+//         toast.error("Failed to submit response", {
+//           description: error.message,
+//         });
+//         throw error;
+//       }
+//     },
+//     [id, dispute],
+//   );
+
+//   const handlePlaintiffReply = useCallback(
+//     async (
+//       title: string,
+//       description: string,
+//       claim: string,
+//       requestKind: number,
+//       files: UploadedFile[],
+//       witnesses: string[],
+//     ) => {
+//       if (!id) return;
+
+//       const disputeId = parseInt(id);
+//       if (isNaN(disputeId)) {
+//         toast.error("Invalid dispute ID");
+//         return;
+//       }
+
+//       try {
+//         const plaintiffClaimData: any = {};
+
+//         // Check what fields are actually being included
+//         if (title.trim() && title !== dispute?.title) {
+//           plaintiffClaimData.title = title;
+//         }
+//         if (description.trim() && description !== dispute?.description) {
+//           plaintiffClaimData.description = description;
+//         }
+//         if (claim.trim() && claim !== dispute?.claim) {
+//           plaintiffClaimData.claim = claim;
+//         }
+//         if (requestKind !== undefined) {
+//           plaintiffClaimData.requestKind = requestKind;
+//           console.log("🔍 Including requestKind:", requestKind);
+//         }
+
+//         if (witnesses !== undefined) {
+//           plaintiffClaimData.witnesses = witnesses.filter((w) => w.trim());
+//         }
+
+//         // Check if at least one field is provided
+//         if (
+//           Object.keys(plaintiffClaimData).length === 0 &&
+//           files.length === 0
+//         ) {
+//           throw new Error("Please provide at least one field to update");
+//         }
+
+//         const fileList = files.map((uf) => uf.file);
+
+//         await disputeService.editPlaintiffClaim(
+//           disputeId,
+//           plaintiffClaimData,
+//           fileList.length > 0 ? fileList : undefined,
+//         );
+
+//         toast.success("Dispute updated successfully!");
+
+//         // Refresh dispute details
+//         const disputeDetails =
+//           await disputeService.getDisputeDetails(disputeId);
+//         const transformedDispute =
+//           disputeService.transformDisputeDetailsToRow(disputeDetails);
+//         setDispute(transformedDispute);
+//       } catch (error: any) {
+//         console.error("❌ Error details:", error);
+//         toast.error("Failed to update dispute", {
+//           description: error.message,
+//         });
+//         throw error;
+//       }
+//     },
+//     [id, dispute],
+//   );
+
+//   // KEEP ORIGINAL: Handle settling on-chain (escrow) disputes - using blockchain
+//   const handleOnchainSettleDispute = useCallback(async () => {
+//     try {
+//       // Check if dispute and contractAgreementId exist
+//       if (!dispute || !dispute.contractAgreementId) {
+//         console.error(
+//           "Missing contract agreement ID:",
+//           dispute?.contractAgreementId,
+//         );
+//         toast.error("Cannot settle dispute: Contract agreement ID is missing");
+//         return;
+//       }
+
+//       if (!escrowContractAddress) {
+//         toast.error("Escrow contract address not loaded yet");
+//         return;
+//       }
+
+//       // Set transaction type
+//       setPendingTransactionType("settle");
+
+//       writeContract({
+//         address: escrowContractAddress, // use the correct escrow contract address from the api response
+//         abi: ESCROW_ABI.abi,
+//         functionName: "settleDispute",
+//         args: [BigInt(dispute.contractAgreementId)],
+//       });
+
+//       setSettleModalOpen(false);
+//     } catch (error: unknown) {
+//       console.error("Error settling dispute:", error);
+//       toast.error("Failed to settle dispute", {
+//         description:
+//           error instanceof Error ? error.message : "Unknown error occurred",
+//       });
+//       setPendingTransactionType(null);
+//     }
+//   }, [dispute, escrowContractAddress, writeContract]);
+
+//   // UPDATED: Handle settling reputational disputes - using API
+//   const handleSettleDispute = useCallback(async () => {
+//     if (!id) return;
+
+//     const disputeId = parseInt(id);
+//     if (isNaN(disputeId)) {
+//       toast.error("Invalid dispute ID");
+//       return;
+//     }
+
+//     let loadingToast: string | number | undefined;
+
+//     try {
+//       setSettlingDispute(true);
+
+//       // ✅ Show loading toast
+//       loadingToast = toast.loading(
+//         "Settling dispute... This may take a moment.",
+//         {
+//           description: "Please wait while we process your request.",
+//         },
+//       );
+
+//       // Use the existing settleDispute method
+//       await disputeService.settleDispute(disputeId);
+
+//       // ✅ Dismiss loading toast and show success
+//       toast.dismiss(loadingToast);
+//       toast.success("Dispute settled successfully! 🎉", {
+//         description: "The dispute has been resolved and the page will refresh.",
+//       });
+
+//       setSettleModalOpen(false);
+
+//       // ✅ Reload page after a short delay
+//       setTimeout(() => {
+//         window.location.reload();
+//       }, 1500);
+//     } catch (error: any) {
+//       console.error("Settlement error details:", error);
+
+//       // ✅ Dismiss loading toast
+//       if (loadingToast) toast.dismiss(loadingToast);
+
+//       // ✅ SPECIAL HANDLING FOR TIMEOUT ERRORS
+//       if (
+//         error.message?.includes("timeout") ||
+//         error.message?.includes("Request timeout") ||
+//         error.code === "ECONNABORTED"
+//       ) {
+//         toast.info("Settlement is processing...", {
+//           description:
+//             "This is taking longer than expected. The page will refresh to check status.",
+//         });
+
+//         setSettleModalOpen(false);
+
+//         // Reload the page to check the new status
+//         setTimeout(() => {
+//           window.location.reload();
+//         }, 3000);
+//       } else {
+//         // For other errors, show the actual error message
+//         toast.error("Failed to settle dispute", {
+//           description: error.message || "Please try again later",
+//         });
+//       }
+//     } finally {
+//       setSettlingDispute(false);
+//     }
+//   }, [id]);
+
+//   const hasValidDefendantResponse = (defendantResponse: any) => {
+//     if (!defendantResponse) return false;
+//     if (!defendantResponse.description) return false;
+
+//     const trimmedDesc = defendantResponse.description.trim();
+//     return trimmedDesc !== "" && trimmedDesc !== "No response description";
+//   };
+
+//   const handleEscalateToVote = useCallback(async () => {
+//     if (!disputeId || !user || !dispute) return;
+
+//     try {
+//       setEscalating(true);
+//       await disputeService.escalateDisputesToVote([disputeId]);
+
+//       toast.success("Dispute escalated to voting period!", {
+//         description:
+//           "The dispute has been moved from Pending to Vote in Progress.",
+//       });
+
+//       // Refresh dispute details
+//       const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+//       const transformedDispute =
+//         disputeService.transformDisputeDetailsToRow(disputeDetails);
+//       setDispute(transformedDispute);
+//     } catch (error: any) {
+//       toast.error("Failed to escalate dispute", {
+//         description: error.message || "Please try again later",
+//       });
+//     } finally {
+//       setEscalating(false);
+//     }
+//   }, [disputeId, user, dispute]); // Added dispute to dependencies
+
+//   const checkIfCanFinalize = useCallback(() => {
+//     if (!dispute || !user) return false;
+
+//     // Only disputes in "Vote in Progress" status can be finalized
+//     const isVoteInProgress = dispute.status === "Vote in Progress";
+
+//     // Only admins or judges can finalize (or you can adjust permissions as needed)
+//     const isEligibleToFinalize = isUserAdmin() || isUserJudge();
+
+//     return isVoteInProgress && isEligibleToFinalize;
+//   }, [dispute, user, isUserAdmin, isUserJudge]);
+
+//   useEffect(() => {
+//     if (dispute && user) {
+//       const canFinalizeDispute = checkIfCanFinalize();
+//       setCanFinalize(canFinalizeDispute);
+//     }
+//   }, [dispute, user, checkIfCanFinalize]);
+
+//   // Add this handler function
+//   const handleFinalizeVote = useCallback(async () => {
+//     if (!disputeId || !user) return;
+
+//     // Confirm with the user
+//     if (
+//       !confirm(
+//         "Are you sure you want to manually finalize this dispute? This will calculate votes and determine the outcome.",
+//       )
+//     ) {
+//       return;
+//     }
+
+//     try {
+//       setFinalizing(true);
+
+//       // Show loading toast
+//       const loadingToast = toast.loading("Finalizing dispute votes...", {
+//         description: "This may take a moment as votes are calculated.",
+//       });
+
+//       await disputeService.finalizeDisputes([disputeId]);
+
+//       // Dismiss loading toast
+//       toast.dismiss(loadingToast);
+
+//       toast.success("Dispute votes finalized successfully!", {
+//         description:
+//           "Voting results have been calculated and dispute status updated.",
+//       });
+
+//       // Refresh dispute details
+//       const disputeDetails = await disputeService.getDisputeDetails(disputeId);
+//       const transformedDispute =
+//         disputeService.transformDisputeDetailsToRow(disputeDetails);
+//       setDispute(transformedDispute);
+//     } catch (error: any) {
+//       toast.error("Failed to finalize dispute", {
+//         description: error.message || "Please try again later",
+//       });
+//     } finally {
+//       setFinalizing(false);
+//     }
+//   }, [disputeId, user]);
+
+//   useEffect(() => {
+//     if (isSuccess && hash && pendingTransactionType) {
+//       if (pendingTransactionType === "startVote") {
+//         toast.success("Voting can now begin! 🗳️", {
+//           description:
+//             "The voting phase has been initiated. Community members can now cast their votes.",
+//         });
+
+//         // Set vote as started
+//         setVoteStarted(true);
+
+//         // Refresh dispute data
+//         setTimeout(async () => {
+//           try {
+//             const disputeDetails = await disputeService.getDisputeDetails(
+//               disputeId!,
+//             );
+//             const transformedDispute =
+//               disputeService.transformDisputeDetailsToRow(disputeDetails);
+//             setDispute(transformedDispute);
+//           } catch (error) {
+//             console.error("Failed to refresh dispute:", error);
+//           }
+//         }, 3000);
+//       }
+
+//       if (pendingTransactionType === "settle") {
+//         toast.success("Escrow dispute settled successfully! 🎉", {
+//           description: "Transaction confirmed! The page will refresh.",
+//         });
+
+//         // Reload page after a short delay
+//         setTimeout(() => {
+//           window.location.reload();
+//         }, 1500);
+//       }
+
+//       // Reset states
+//       setPendingTransactionType(null);
+//       resetWrite();
+//     }
+//   }, [isSuccess, hash, pendingTransactionType, resetWrite, disputeId]);
+
+//   useEffect(() => {
+//     if (writeError) {
+//       resetWrite();
+//     }
+//   }, [writeError, resetWrite]);
+
+//   if (loading) {
+//     return (
+//       <div className="relative flex min-h-screen items-center justify-center">
+//         <div className="text-center">
+//           <div className="relative mx-auto mb-8">
+//             <div className="mx-auto size-24 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400"></div>
+//             <div className="absolute inset-0 mx-auto size-24 animate-ping rounded-full border-2 border-cyan-400/40"></div>
+//           </div>
+//           <div className="space-y-2">
+//             <h3 className="text-lg font-semibold text-cyan-300">
+//               Loading Disputes Details
+//             </h3>
+//           </div>
+//           <div className="mt-4 flex justify-center space-x-1">
+//             {[...Array(3)].map((_, i) => (
+//               <div
+//                 key={i}
+//                 className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
+//                 style={{ animationDelay: `${i * 0.1}s` }}
+//               />
+//             ))}
+//           </div>
+//         </div>
+//       </div>
+//     );
+//   }
+//   if (!dispute) {
+//     return (
+//       <div className="flex min-h-screen justify-center">
+//         <div className="flex flex-col items-center text-center">
+//           <div className="mb-6">
+//             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-purple-500/10">
+//               <AlertTriangle className="h-10 w-10 text-red-400" />
+//             </div>
+//             <h2 className="mb-2 text-2xl font-bold text-white">
+//               Dispute Not Found
+//             </h2>
+//             <div className="mb-6 max-w-md text-cyan-200/80">
+//               <p>
+//                 The dispute you're looking for doesn't exist or may have been
+//                 removed. Please check the dispute ID and try again.
+//               </p>
+//             </div>
+//           </div>
+
+//           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+//             <Button
+//               onClick={() => {
+//                 // Refresh the page
+//                 window.location.reload();
+//               }}
+//               variant="outline"
+//               className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+//             >
+//               <Loader2 className="mr-2 h-4 w-4" />
+//               Refresh & Retry
+//             </Button>
+
+//             <Button
+//               onClick={() => navigate("/disputes")}
+//               className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
+//             >
+//               <ArrowLeft className="mr-2 h-4 w-4" />
+//               Back to Disputes
+//             </Button>
+//           </div>
+
+//           <div className="mt-8 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
+//             <div className="text-sm text-cyan-300">
+//               <p className="mb-1 font-medium">Troubleshooting tips:</p>
+//               <ul className="space-y-1">
+//                 <li>• Check if the dispute ID is correct</li>
+//                 <li>• Verify your internet connection</li>
+//                 <li>• The dispute may have been deleted</li>
+//                 <li>• Try refreshing the page</li>
+//                 <li>• Check if you have permission to view this dispute</li>
+//               </ul>
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   return (
+//     <div className="animate-fade-in space-y-6 py-6 text-white">
+//       <div className="flex flex-col justify-between gap-2 sm:flex-row">
+//         {/* Back Button */}
+
+//         <div className="grid grid-cols-2 gap-2">
+//           <Button
+//             onClick={() => navigate("/disputes")}
+//             variant="outline"
+//             className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+//           >
+//             <ArrowLeft className="h-4 w-4" />{" "}
+//             <p className="flex items-center gap-1">
+//               Back<span className="hidden sm:block"> to Disputes</span>
+//             </p>
+//           </Button>
+
+//           <div className="flex items-center gap-2">
+//             <div>
+//               {dispute.status === "Settled" ? (
+//                 <span className="badge-blue inline-flex items-center rounded-full border px-4 py-1 text-sm">
+//                   Settled
+//                 </span>
+//               ) : dispute.status === "Pending" ? (
+//                 <span className="badge-yellow inline-flex items-center rounded-full border px-4 py-1 text-sm">
+//                   Pending
+//                 </span>
+//               ) : dispute.status === "Dismissed" ? (
+//                 <span className="badge-red inline-flex items-center rounded-full border px-4 py-1 text-sm">
+//                   Dismissed
+//                 </span>
+//               ) : dispute.status === "Pending Payment" ? (
+//                 <span className="badge-orange inline-flex items-center rounded-full px-4 py-1 text-sm">
+//                   Pending Payment
+//                 </span>
+//               ) : dispute.status === "Pending Locking Funds" ? ( // Add this condition
+//                 <span className="badge-orange inline-flex items-center rounded-full px-4 py-1 text-sm">
+//                   Pending Locking Funds
+//                 </span>
+//               ) : (
+//                 <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300">
+//                   Vote in Progress
+//                 </span>
+//               )}
+//             </div>
+//             {/* Role Badge */}
+//             {isUserJudge() && (
+//               <span className="flex items-center gap-1 rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300">
+//                 <Gavel className="h-3 w-3" />
+//                 Judge
+//               </span>
+//             )}
+//             {isUserCommunity() && (
+//               <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-300">
+//                 <Users className="h-3 w-3" />
+//                 <p className="block">Community</p>
+//               </span>
+//             )}
+//             {/* Status Badge */}
+//           </div>
+//         </div>
+//         {/* Right Side Actions */}
+//         {/* Right Side Actions */}
+//         <div className="flex items-center gap-1">
+//           {/* Show Vote Outcome for Settled/Dismissed disputes */}
+//           {(dispute.status === "Settled" || dispute.status === "Dismissed") && (
+//             <Button
+//               variant="neon"
+//               className="neon-hover"
+//               onClick={() => setVoteOutcomeModalOpen(true)}
+//             >
+//               <BarChart3 className="mr-2 h-4 w-4" />
+//               See Vote Outcome
+//             </Button>
+//           )}
+
+//           {dispute?.status === "Pending" && (
+//             <Button
+//               variant="outline"
+//               className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+//               onClick={handleEscalateToVote}
+//               disabled={escalating}
+//             >
+//               {escalating ? (
+//                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//               ) : (
+//                 <Vote className="mr-2 h-4 w-4" />
+//               )}
+//               {escalating ? "Escalating..." : "Escalate to Vote"}
+//             </Button>
+//           )}
+
+//           {/* Add this near your other action buttons */}
+//           {canFinalize && (
+//             <Button
+//               variant="outline"
+//               className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+//               onClick={handleFinalizeVote}
+//               disabled={finalizing}
+//             >
+//               {finalizing ? (
+//                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//               ) : (
+//                 <Gavel className="mr-2 h-4 w-4" />
+//               )}
+//               {finalizing ? "Finalizing..." : "Finalize Votes"}
+//             </Button>
+//           )}
+
+//           <div className="flex flex-wrap gap-3">
+//             {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
+
+//             {dispute.status === "Vote in Progress" &&
+//               canVote &&
+//               !hasVoted &&
+//               !isCurrentUserPlaintiff() &&
+//               !isCurrentUserDefendant() && (
+//                 <Button
+//                   variant="neon"
+//                   className="neon-hover ml-auto"
+//                   onClick={handleOpenVoteModal}
+//                 >
+//                   <Vote className="mr-2 h-4 w-4" />
+//                   Cast {isUserJudge() ? "Judge" : "Community"} Vote
+//                 </Button>
+//               )}
+
+//             <div className="flex flex-wrap gap-2">
+//               {/* Settle Escrow Dispute Button */}
+//               {dispute.status === "Pending" &&
+//                 isCurrentUserPlaintiff() &&
+//                 dispute.agreement?.type === 2 && (
+//                   <Button
+//                     variant="outline"
+//                     className="hidden border-green-400/30 text-green-300 hover:bg-green-500/10"
+//                     onClick={() => setSettleModalOpen(true)}
+//                     disabled={
+//                       !escrowContractAddress ||
+//                       (pendingTransactionType === "settle" && isPending)
+//                     }
+//                   >
+//                     {pendingTransactionType === "settle" && isPending ? (
+//                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//                     ) : (
+//                       <Scale className="mr-2 h-4 w-4" />
+//                     )}
+//                     {pendingTransactionType === "settle" && isPending
+//                       ? "Settling..."
+//                       : !escrowContractAddress
+//                         ? "Loading contract..."
+//                         : "Settle Escrow Dispute"}
+//                   </Button>
+//                 )}
+//               {dispute.status === "Pending" &&
+//                 isCurrentUserPlaintiff() &&
+//                 dispute.agreement?.type === 1 && (
+//                   <Button
+//                     variant="outline"
+//                     className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+//                     onClick={() => setSettleModalOpen(true)}
+//                     disabled={settlingDispute}
+//                   >
+//                     {settlingDispute ? (
+//                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//                     ) : (
+//                       <Scale className="mr-2 h-4 w-4" />
+//                     )}
+//                     {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
+//                   </Button>
+//                 )}
+//             </div>
+//           </div>
+
+//           {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
+//           {dispute.status === "Vote in Progress" &&
+//             isVoteStarted() && // Use the helper function
+//             hasVoted &&
+//             !isCurrentUserPlaintiff() &&
+//             !isCurrentUserDefendant() && (
+//               <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+//                 <span className="text-emerald-300">
+//                   ✅ {isUserJudge() ? "Judge " : ""}Vote Submitted
+//                   {isUserJudge() && " ⚖️"}
+//                 </span>
+//               </div>
+//             )}
+//         </div>
+//       </div>
+//       {/* Header Card */}
+//       {/* Header Card */}
+//       {/* Agreement and Contract Information Panel */}
+//       <div className="hidden">
+//         <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-blue-300">
+//           <FileText className="h-5 w-5" />
+//           Agreement & Contract Details
+//         </h3>
+
+//         {/* Agreement and Contract Information Panel */}
+//         {(dispute.agreement?.type ||
+//           dispute.votingId ||
+//           dispute.contractAgreementId) && (
+//           <div className="w-fit rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-6">
+//             <div className="flex flex-wrap gap-2">
+//               {/* Agreement Type Card */}
+//               {dispute.agreement?.type && (
+//                 <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4">
+//                   <div className="mb-2 flex items-center gap-2">
+//                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
+//                       <FileText className="h-4 w-4 text-blue-300" />
+//                     </div>
+//                     <span className="text-sm font-medium text-blue-300">
+//                       Agreement Type
+//                     </span>
+//                   </div>
+//                   <div className="flex items-center justify-between">
+//                     <span className="text-2xl font-bold text-blue-200">
+//                       {dispute.agreement.type === 2 ? "Escrow" : "Reputational"}
+//                     </span>
+//                   </div>
+//                   {dispute.agreement.status && (
+//                     <div className="mt-2 text-xs text-blue-300/70">
+//                       Status: {dispute.agreement.status}
+//                     </div>
+//                   )}
+//                 </div>
+//               )}
+
+//               {/* Voting ID Card */}
+//               {dispute.votingId && (
+//                 <div className="rounded-lg border border-purple-400/20 bg-purple-500/10 p-4">
+//                   <div className="mb-2 flex items-center gap-2">
+//                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+//                       <Vote className="h-4 w-4 text-purple-300" />
+//                     </div>
+//                     <span className="text-sm font-medium text-purple-300">
+//                       Voting ID
+//                     </span>
+//                   </div>
+//                   <div className="font-mono text-lg font-bold text-purple-200">
+//                     #{dispute.votingId}
+//                   </div>
+//                   <div className="mt-1 text-xs text-purple-300/70">
+//                     Unique voting identifier
+//                   </div>
+//                 </div>
+//               )}
+
+//               {/* Contract Agreement ID Card */}
+//               {dispute.contractAgreementId && (
+//                 <div className="rounded-lg border border-green-400/20 bg-green-500/10 p-4">
+//                   <div className="mb-2 flex items-center gap-2">
+//                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
+//                       <span className="text-lg">📜</span>
+//                     </div>
+//                     <span className="text-sm font-medium text-green-300">
+//                       Contract ID
+//                     </span>
+//                   </div>
+//                   <div className="font-mono text-lg font-bold text-green-200">
+//                     {dispute.contractAgreementId}
+//                   </div>
+//                   <div className="mt-1 text-xs text-green-300/70">
+//                     On-chain contract reference
+//                   </div>
+//                 </div>
+//               )}
+//             </div>
+
+//             {/* Additional Information Row */}
+//             <div className="mt-4 flex flex-col gap-3">
+//               {/* Chain ID */}
+//               {dispute.chainId && (
+//                 <div className="flex items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-4 py-2">
+//                   <span className="text-sm text-cyan-300">Chain ID</span>
+//                   <span className="font-mono text-sm font-bold text-cyan-200">
+//                     {dispute.chainId}
+//                   </span>
+//                 </div>
+//               )}
+
+//               {/* Transaction Hash */}
+//               {dispute.txnhash && (
+//                 <div className="flex items-center justify-between rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2">
+//                   <span className="text-sm text-amber-300">
+//                     Transaction Hash
+//                   </span>
+//                   <span className="truncate font-mono text-xs text-amber-200">
+//                     {dispute.txnhash.slice(0, 6)}...{dispute.txnhash.slice(-4)}
+//                   </span>
+//                 </div>
+//               )}
+
+//               {/* Dispute Type */}
+//               {dispute.type !== undefined && (
+//                 <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
+//                   <span className="text-sm text-indigo-300">Dispute Type</span>
+//                   <span className="text-sm font-bold text-indigo-200">
+//                     {dispute.type === 1 ? "Pro Bono" : "Paid"}
+//                   </span>
+//                 </div>
+//               )}
+
+//               {/* Vote Timings */}
+//               {onChainAgreement && !onChainLoading && (
+//                 <div className="flex flex-col gap-2 rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2">
+//                   <span className="text-sm text-violet-300">
+//                     Vote Scheduled
+//                   </span>
+//                   <span className="text-sm font-bold text-violet-200">
+//                     {formatBigIntTimestamp(onChainAgreement.voteStartedAt)}
+//                   </span>
+//                 </div>
+//               )}
+//             </div>
+
+//             {/* Debug Info (remove in production) */}
+//             {process.env.NODE_ENV === "development" && (
+//               <div className="mt-4 w-fit rounded-lg border border-gray-400/20 bg-gray-500/10 p-3">
+//                 <details className="text-xs">
+//                   <summary className="cursor-pointer text-gray-300">
+//                     Debug Info
+//                   </summary>
+//                   <pre className="mt-2 overflow-auto text-gray-400">
+//                     {JSON.stringify(
+//                       {
+//                         votingId: dispute.votingId,
+//                         contractAgreementId: dispute.contractAgreementId,
+//                         chainId: dispute.chainId,
+//                         agreement: dispute.agreement,
+//                         type: dispute.type,
+//                         result: dispute.result,
+//                       },
+//                       null,
+//                       2,
+//                     )}
+//                   </pre>
+//                 </details>
+//               </div>
+//             )}
+//           </div>
+//         )}
+//       </div>
+//       <div className="flex grid-cols-2 flex-col gap-6 lg:grid">
+//         <div className="card-cyan rounded-2xl p-6 shadow-lg">
+//           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//             <div>
+//               <h1 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
+//                 {dispute.title}
+//               </h1>
+//               <div className="flex flex-wrap items-center gap-4 text-sm">
+//                 <div className="flex items-center gap-2 text-cyan-300">
+//                   <Clock className="h-4 w-4" />
+//                   <span>
+//                     {new Date(dispute.createdAt).toLocaleDateString()}
+//                   </span>
+//                 </div>
+//                 <div className="flex items-center gap-2 text-emerald-300">
+//                   <span>{dispute.request}</span>
+//                 </div>
+//               </div>
+//             </div>
+//             <div className="text-right">
+//               <div className="flex items-center justify-center gap-2 text-sm text-white/70">
+//                 <Users className="h-4 w-4" />
+//                 <span>Parties</span>
+//               </div>
+//               <div className="mt-1 flex flex-col items-center gap-2 text-sm">
+//                 {/* Plaintiff with Avatar and Verification */}
+//                 <div className="flex items-center gap-2">
+//                   <UserAvatar
+//                     userId={
+//                       dispute.plaintiffData?.userId ||
+//                       cleanTelegramUsername(dispute.plaintiff)
+//                     }
+//                     avatarId={dispute.plaintiffData?.avatarId || null}
+//                     username={cleanTelegramUsername(dispute.plaintiff)}
+//                     size="sm"
+//                   />
+//                   <button
+//                     type="button"
+//                     onClick={(e) => {
+//                       e.stopPropagation();
+//                       const cleanUsername = cleanTelegramUsername(
+//                         dispute.plaintiff,
+//                       );
+//                       const encodedUsername = encodeURIComponent(cleanUsername);
+//                       navigate(`/profile/${encodedUsername}`);
+//                     }}
+//                     className="flex items-center gap-2 text-cyan-300 hover:text-cyan-200 hover:underline"
+//                   >
+//                     {formatDisplayName(dispute.plaintiff)} {/* Updated */}
+//                     {isCurrentUserPlaintiff() && (
+//                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+//                     )}
+//                   </button>
+//                 </div>
+//                 <span className="text-white/50">vs</span>
+//                 {/* Defendant with Avatar and Verification */}
+//                 <div className="flex items-center gap-2">
+//                   <UserAvatar
+//                     userId={
+//                       dispute.defendantData?.userId ||
+//                       cleanTelegramUsername(dispute.defendant)
+//                     }
+//                     avatarId={dispute.defendantData?.avatarId || null}
+//                     username={cleanTelegramUsername(dispute.defendant)}
+//                     size="sm"
+//                   />
+//                   <button
+//                     type="button"
+//                     onClick={(e) => {
+//                       e.stopPropagation();
+//                       const cleanUsername = cleanTelegramUsername(
+//                         dispute.defendant,
+//                       );
+//                       const encodedUsername = encodeURIComponent(cleanUsername);
+//                       navigate(`/profile/${encodedUsername}`);
+//                     }}
+//                     className="flex items-center gap-2 text-yellow-300 hover:text-yellow-200 hover:underline"
+//                   >
+//                     {formatDisplayName(dispute.defendant)} {/* Updated */}
+//                     {isCurrentUserDefendant() && (
+//                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+//                     )}
+//                   </button>
+//                 </div>
+//               </div>
+//             </div>
+//           </div>
+//         </div>
+
+//         {/* Source Agreement Information Section - Using data from dispute.agreement */}
+//         {dispute.agreement && (
+//           <div className="rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-transparent p-4">
+//             <div className="space-y-4">
+//               <div className="px-4">
+//                 <h2 className="">Source Agreement</h2>
+//                 <div className="flex flex-col justify-between gap-2">
+//                   <div>
+//                     <h4 className="mb-2 font-bold text-cyan-400 lg:text-[22px]">
+//                       {dispute.agreement.title ||
+//                         `Agreement #${dispute.agreement.id}`}
+//                     </h4>
+
+//                     {/* Agreement Status and Type Row */}
+//                     <div className="mt-3 flex flex-wrap items-center gap-3">
+//                       {/* Agreement Status with Icon */}
+//                       {/* {dispute.agreement.status && (
+//                         <div
+//                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${getAgreementStatusBadgeColor(dispute.agreement.status)}`}
+//                         >
+//                           {getAgreementStatusIcon(dispute.agreement.status)}
+//                           <span>
+//                             {getAgreementStatusText(dispute.agreement.status)}
+//                           </span>
+//                         </div>
+//                       )} */}
+
+//                       {/* Agreement Type Badge */}
+//                       <span
+//                         className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
+//                           dispute.agreement.type === 2
+//                             ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+//                             : "border border-blue-400/30 bg-blue-500/10 text-blue-300"
+//                         }`}
+//                       >
+//                         <FileText className="h-3.5 w-3.5" />
+//                         {dispute.agreement.type === 2
+//                           ? "Escrow Agreement"
+//                           : "Reputational Agreement"}
+//                       </span>
+//                     </div>
+
+//                     {/* Agreement Details Grid */}
+//                   </div>
+
+//                   {/* Action Buttons */}
+//                   <div className="mt-4 flex flex-wrap gap-3">
+//                     <Link
+//                       to={
+//                         dispute.agreement.type === 2
+//                           ? `/escrow/${dispute.agreement.id}`
+//                           : `/agreements/${dispute.agreement.id}`
+//                       }
+//                       className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-500/30 hover:text-white"
+//                     >
+//                       <FileText className="h-4 w-4" />
+//                       View Source Agreement
+//                       <ArrowRight className="h-3.5 w-3.5" />
+//                     </Link>
+//                   </div>
+//                 </div>
+//               </div>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {dispute.status === "Vote in Progress" && (
+//         <VotingStatus
+//           dispute={dispute}
+//           votingStatusLoading={votingStatusLoading}
+//           getUserRole={getUserRole}
+//           isUserJudge={isUserJudge}
+//           isUserCommunity={isUserCommunity}
+//           canVote={canVote}
+//           reason={reason}
+//           hasVoted={hasVoted}
+//           handleOpenVoteModal={handleOpenVoteModal}
+//           isVoteStarted={isVoteStarted()}
+//           tier={tier}
+//           weight={weight}
+//         />
+//       )}
+//       {/* Two Column Layout */}
+//       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+//         {/* Plaintiff Column */}
+//         <div className="space-y-6">
+//           {/* Plaintiff Header */}
+//           {/* Plaintiff Header */}
+//           <div className="animate-slide-in-left ml-auto flex w-fit items-center gap-3 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-4">
+//             <UserAvatar
+//               userId={
+//                 dispute.plaintiffData?.userId ||
+//                 cleanTelegramUsername(dispute.plaintiff)
+//               }
+//               avatarId={dispute.plaintiffData?.avatarId || null}
+//               username={cleanTelegramUsername(dispute.plaintiff)}
+//               size="md"
+//             />
+//             <div>
+//               <h2 className="text-lg font-bold text-cyan-400">Plaintiff</h2>
+//               <div className="flex items-center gap-2 text-sm text-cyan-300">
+//                 <button
+//                   type="button"
+//                   onClick={() => {
+//                     const cleanUsername = cleanTelegramUsername(
+//                       dispute.plaintiff,
+//                     );
+//                     const encodedUsername = encodeURIComponent(cleanUsername);
+//                     navigate(`/profile/${encodedUsername}`);
+//                   }}
+//                   className="hover:text-cyan-200 hover:underline"
+//                 >
+//                   {formatDisplayName(dispute.plaintiff)} {/* Updated */}
+//                 </button>
+//                 {isCurrentUserPlaintiff() && (
+//                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+//                 )}
+//                 <button
+//                   onClick={() => {
+//                     const cleanUsername = cleanTelegramUsername(
+//                       dispute.plaintiff,
+//                     );
+//                     const encodedUsername = encodeURIComponent(cleanUsername);
+//                     navigate(`/profile/${encodedUsername}`);
+//                   }}
+//                   className="text-cyan-400 hover:text-cyan-300"
+//                 ></button>
+//               </div>
+//             </div>
+//           </div>
+//           {/* Initial Claim */}
+//           <div className="space-y-4">
+//             <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+//               <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
+//                 <MessageCircle className="h-4 w-4" />
+//                 Initial Complaint
+//                 <span className="text-muted-foreground ml-auto text-xs">
+//                   {new Date(dispute.createdAt).toLocaleDateString()}
+//                 </span>
+//               </h3>
+//               <div className="space-y-4">
+//                 <div>
+//                   <h4 className="mb-2 text-sm font-medium text-cyan-200">
+//                     Description
+//                   </h4>
+//                   <p className="text-sm leading-relaxed break-all text-cyan-100">
+//                     {safeDescription}
+//                   </p>
+//                 </div>
+//                 <div>
+//                   <h4 className="mb-2 text-sm font-medium text-green-400">
+//                     Formal Claim
+//                   </h4>
+//                   <p className="text-sm leading-relaxed break-all text-cyan-100">
+//                     {safeClaim}
+//                   </p>
+//                 </div>
+//               </div>
+//             </div>
+
+//             {/* Evidence */}
+//             {safeEvidence.length > 0 && (
+//               <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+//                 <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
+//                   <Upload className="h-4 w-4" />
+//                   Supporting Evidence ({safeEvidence.length})
+//                 </h3>
+//                 <EvidenceDisplay
+//                   evidence={safeEvidence}
+//                   color="cyan"
+//                   onViewEvidence={handleViewEvidence}
+//                 />
+//               </div>
+//             )}
+
+//             {/* Witnesses */}
+//             {/* Plaintiff's Witnesses */}
+//             {plaintiffWitnesses.length > 0 && (
+//               <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-4">
+//                 <h3 className="mb-3 flex items-center gap-2 font-semibold text-cyan-300">
+//                   <UserCheck className="h-4 w-4" />
+//                   Plaintiff's Witnesses ({plaintiffWitnesses.length})
+//                 </h3>
+//                 <div className="flex flex-wrap gap-2">
+//                   {plaintiffWitnesses.map((witness, index) => (
+//                     <button
+//                       key={index}
+//                       type="button"
+//                       onClick={(e) => {
+//                         e.stopPropagation();
+//                         const cleanUsername = cleanTelegramUsername(witness);
+//                         const encodedUsername =
+//                           encodeURIComponent(cleanUsername);
+//                         navigate(`/profile/${encodedUsername}`);
+//                       }}
+//                       className="rounded-full bg-cyan-500/20 px-3 py-1 text-sm text-cyan-300 transition-colors hover:bg-cyan-500/30 hover:text-cyan-200 hover:underline"
+//                     >
+//                       {formatDisplayName(witness)}
+//                     </button>
+//                   ))}
+//                 </div>
+//               </div>
+//             )}
+//           </div>
+//         </div>
+
+//         {/* Defendant Column */}
+//         {/* Defendant Column */}
+//         <div className="space-y-6">
+//           {/* Defendant Header */}
+//           <div className="animate-slide-in-right flex w-fit items-center gap-3 rounded-lg border border-yellow-400/30 bg-yellow-500/10 p-4">
+//             <UserAvatar
+//               userId={
+//                 dispute.defendantData?.userId ||
+//                 cleanTelegramUsername(dispute.defendant)
+//               }
+//               avatarId={dispute.defendantData?.avatarId || null}
+//               username={cleanTelegramUsername(dispute.defendant)}
+//               size="md"
+//             />
+//             <div>
+//               <h2 className="text-lg font-bold text-yellow-400">Defendant</h2>
+//               <div className="flex items-center gap-2 text-sm text-yellow-300">
+//                 <button
+//                   type="button"
+//                   onClick={() => {
+//                     const cleanUsername = cleanTelegramUsername(
+//                       dispute.defendant,
+//                     );
+//                     const encodedUsername = encodeURIComponent(cleanUsername);
+//                     navigate(`/profile/${encodedUsername}`);
+//                   }}
+//                   className="hover:text-yellow-200 hover:underline"
+//                 >
+//                   {formatDisplayName(dispute.defendant)} {/* Updated */}
+//                 </button>
+//                 {isCurrentUserDefendant() && (
+//                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
+//                 )}
+//               </div>
+//             </div>
+//           </div>
+
+//           {/* Defendant Response */}
+//           {dispute.defendantResponse ? (
+//             <div className="space-y-4">
+//               <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
+//                 <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
+//                   <MessageCircle className="h-4 w-4" />
+//                   Response to Claims
+//                   <span className="text-muted-foreground ml-auto text-xs">
+//                     {new Date(
+//                       dispute.defendantResponse.createdAt,
+//                     ).toLocaleDateString()}
+//                   </span>
+//                 </h3>
+//                 <p className="text-sm leading-relaxed text-yellow-100">
+//                   {dispute.defendantResponse.description}
+//                 </p>
+//               </div>
+
+//               {/* Defendant's Evidence */}
+//               {defendantEvidence.length > 0 && (
+//                 <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
+//                   <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
+//                     <Upload className="h-4 w-4" />
+//                     Defense Evidence ({defendantEvidence.length})
+//                   </h3>
+//                   <EvidenceDisplay
+//                     evidence={defendantEvidence}
+//                     color="yellow"
+//                     onViewEvidence={handleViewEvidence}
+//                   />
+//                 </div>
+//               )}
+//             </div>
+//           ) : (
+//             <div className="rounded-lg border border-dashed border-yellow-400/30 bg-yellow-500/5 p-8 text-center">
+//               <Shield className="mx-auto mb-3 h-8 w-8 text-yellow-400/50" />
+//               <h3 className="mb-2 text-lg font-semibold text-yellow-300">
+//                 Awaiting Response
+//               </h3>
+//               <p className="mb-4 text-sm text-yellow-200/70">
+//                 The defendant has not yet responded to the claims.
+//               </p>
+//             </div>
+//           )}
+
+//           {/* Defendant Witnesses Section */}
+//           {/* Defendant's Witnesses Section */}
+//           {defendantWitnesses.length > 0 && (
+//             <div className="rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4">
+//               <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
+//                 <UserCheck className="h-4 w-4" />
+//                 Defendant's Witnesses ({defendantWitnesses.length})
+//               </h3>
+//               <div className="flex flex-wrap gap-2">
+//                 {defendantWitnesses.map((witness, index) => (
+//                   <button
+//                     key={index}
+//                     type="button"
+//                     onClick={(e) => {
+//                       e.stopPropagation();
+//                       const cleanUsername = cleanTelegramUsername(witness);
+//                       const encodedUsername = encodeURIComponent(cleanUsername);
+//                       navigate(`/profile/${encodedUsername}`);
+//                     }}
+//                     className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300 transition-colors hover:bg-yellow-500/30 hover:text-yellow-200 hover:underline"
+//                   >
+//                     {formatDisplayName(witness)}
+//                   </button>
+//                 ))}
+//               </div>
+//             </div>
+//           )}
+//         </div>
+
+//         {/* Voting Section - Prominent display for Vote in Progress disputes */}
+//       </div>
+//       {/* Action Buttons */}
+//       {/* Action Buttons */}
+//       {/* Action Buttons */}
+//       {/* Action Buttons */}
+//       <div className="flex flex-wrap gap-3 border-b border-white/10 py-6">
+//         {/* Plaintiff Edit Button - Only show when dispute is pending */}
+//         {dispute.status === "Pending" && isCurrentUserPlaintiff() && (
+//           <Button
+//             variant="outline"
+//             className="border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/10"
+//             onClick={() => setPlaintiffReplyModalOpen(true)}
+//           >
+//             <MessageCircle className="mr-2 h-4 w-4" />
+//             Edit as Plaintiff
+//           </Button>
+//         )}
+//         {/* Settle Dispute Button - Only for plaintiff when dispute is pending */}
+//         {dispute.status === "Pending" &&
+//           isCurrentUserPlaintiff() &&
+//           dispute.agreement?.type === 2 && (
+//             <Button
+//               variant="outline"
+//               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+//               onClick={() => setSettleModalOpen(true)}
+//               disabled={isPending}
+//             >
+//               {isPending ? (
+//                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//               ) : (
+//                 <Scale className="mr-2 h-4 w-4" />
+//               )}
+//               {isPending ? "Settling..." : "Settle Escrow Dispute"}
+//             </Button>
+//           )}
+//         {dispute.status === "Pending" &&
+//           isCurrentUserPlaintiff() &&
+//           dispute.agreement?.type === 1 && (
+//             <Button
+//               variant="outline"
+//               className="border-green-400/30 text-green-300 hover:bg-green-500/10"
+//               onClick={() => setSettleModalOpen(true)}
+//               disabled={settlingDispute}
+//             >
+//               {settlingDispute ? (
+//                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//               ) : (
+//                 <Scale className="mr-2 h-4 w-4" />
+//               )}
+//               {settlingDispute ? "Settling..." : "Settle Rep Dispute"}
+//             </Button>
+//           )}
+
+//         {/* Defendant Response Button - Only for defendant when no response exists and dispute is pending */}
+//         {dispute.status === "Pending" &&
+//           isCurrentUserDefendant() &&
+//           !hasValidDefendantResponse(dispute.defendantResponse) && (
+//             <Button
+//               variant="outline"
+//               className="ml-auto border-yellow-400/30 text-yellow-300 hover:bg-yellow-500/10"
+//               onClick={() => setDefendantReplyModalOpen(true)}
+//             >
+//               <Shield className="mr-2 h-4 w-4" />
+//               Respond as Defendant
+//             </Button>
+//           )}
+//         {/* Defendant Edit Button - Show when defendant has responded AND dispute is still pending */}
+//         {dispute.status === "Pending" &&
+//           isCurrentUserDefendant() &&
+//           hasValidDefendantResponse(dispute.defendantResponse) && (
+//             <Button
+//               variant="outline"
+//               className="ml-auto border-yellow-400/30 text-yellow-300 hover:bg-yellow-500/10"
+//               onClick={() => setDefendantReplyModalOpen(true)}
+//             >
+//               <MessageCircle className="mr-2 h-4 w-4" />
+//               Edit as Defendant
+//             </Button>
+//           )}
+//         {/* Show Cast Vote button ONLY for Vote in Progress disputes AND if user is NOT plaintiff/defendant AND vote has started */}
+//         {dispute.status === "Vote in Progress" &&
+//           isVoteStarted() && // Use the helper function
+//           canVote &&
+//           !hasVoted &&
+//           !isCurrentUserPlaintiff() &&
+//           !isCurrentUserDefendant() && (
+//             <Button
+//               variant="neon"
+//               className="neon-hover ml-auto"
+//               onClick={handleOpenVoteModal}
+//             >
+//               <Vote className="mr-2 h-4 w-4" />
+//               Cast Vote
+//             </Button>
+//           )}
+//         {/* Show voted status ONLY if user is NOT plaintiff/defendant AND vote has started */}
+//         {dispute.status === "Vote in Progress" &&
+//           isVoteStarted() && // Use the helper function
+//           hasVoted &&
+//           !isCurrentUserPlaintiff() &&
+//           !isCurrentUserDefendant() && (
+//             <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2">
+//               <span className="text-emerald-300">✅ Vote Submitted</span>
+//             </div>
+//           )}
+//       </div>
+//       {/* Dispute Chat Integration */}
+//       <div className="mt-8">
+//         <DisputeChat disputeId={parseInt(id!)} userRole={getUserRole()} />
+//       </div>
+//       {/* Evidence Viewer Modal */}
+//       <EvidenceViewer
+//         isOpen={evidenceViewerOpen}
+//         onClose={() => {
+//           setEvidenceViewerOpen(false);
+//         }}
+//         selectedEvidence={selectedEvidence}
+//       />
+//       {/* Vote Outcome Modal */}
+//       <VoteOutcomeModal
+//         isOpen={voteOutcomeModalOpen}
+//         onClose={() => setVoteOutcomeModalOpen(false)}
+//         disputeId={parseInt(id!)}
+//         // Optional: You can also pass voteOutcome data directly if you already have it
+//         // voteOutcome={yourVoteOutcomeData}
+//       />
+//       {/* Vote Modal */}
+//       <VoteModal
+//         isOpen={voteModalOpen}
+//         onClose={() => setVoteModalOpen(false)}
+//         voteData={voteData}
+//         onVoteChange={handleVoteChange}
+//         onCastVote={handleCastVote}
+//         hasVoted={hasVoted}
+//         isSubmitting={false}
+//         dispute={dispute}
+//         canUserVote={canUserVote}
+//         isCurrentUserPlaintiff={isCurrentUserPlaintiff}
+//         isCurrentUserDefendant={isCurrentUserDefendant}
+//         isJudge={isUserJudge()} // Pass actual judge status
+//       />
+//       {/* Plaintiff Reply Modal */}
+//       <PlaintiffReplyModal
+//         isOpen={plaintiffReplyModalOpen}
+//         onClose={() => setPlaintiffReplyModalOpen(false)}
+//         dispute={dispute}
+//         onSubmit={handlePlaintiffReply}
+//         navigate={navigate}
+//       />
+//       {/* Defendant Reply Modal */}
+//       <DefendantReplyModal
+//         isOpen={defendantReplyModalOpen}
+//         onClose={() => setDefendantReplyModalOpen(false)}
+//         dispute={dispute}
+//         onSubmit={handleDefendantReply}
+//         navigate={navigate}
+//       />
+
+//       {dispute.agreement?.type === 1 && (
+//         <SettleConfirmationModal
+//           isOpen={settleModalOpen}
+//           onClose={() => setSettleModalOpen(false)}
+//           onConfirm={handleSettleDispute}
+//           disable={settlingDispute}
+//           disputeTitle={dispute?.title}
+//         />
+//       )}
+//       {dispute.agreement?.type === 2 && (
+//         <SettleConfirmationModal
+//           isOpen={settleModalOpen}
+//           onClose={() => setSettleModalOpen(false)}
+//           onConfirm={handleOnchainSettleDispute}
+//           disable={isPending}
+//           disputeTitle={dispute?.title}
+//         />
+//       )}
+//     </div>
+//   );
+// }

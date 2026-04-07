@@ -1,98 +1,93 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback } from "react";
+// features/agreements/hooks/useAgreementList.ts
+import { useState, useCallback } from "react";
 import { toast } from "sonner";
-import type { Agreement, AgreementStatusFilter } from "../../../types";
-import { agreementService } from "../../../services/agreementServices";
+import type { AgreementStatusFilter } from "../../../types";
 import { STATUS_TO_API_MAP } from "../constants/enums";
 import { transformApiAgreement } from "../utils/formatters";
+import { useAgreements } from "../../../hooks/useAgreements";
 
 export function useAgreementList() {
-  const [agreements, setAgreements] = useState<Agreement[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalAgreements, setTotalAgreements] = useState(0);
-  const [, setTotalResults] = useState(0);
-
-  // Filters
   const [tableFilter, setTableFilter] = useState<AgreementStatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const loadAgreements = useCallback(async () => {
-    try {
-      setLoading(true);
-      const queryParams: any = {
-        top: pageSize,
-        skip: (currentPage - 1) * pageSize,
-        sort: sortOrder,
-        type: 1,
-      };
-
-      if (tableFilter !== "all" && STATUS_TO_API_MAP[tableFilter]) {
-        queryParams.status = STATUS_TO_API_MAP[tableFilter];
-      }
-
-      if (searchQuery.trim()) {
-        queryParams.search = searchQuery;
-      }
-
-      const response = await agreementService.getAgreements(queryParams);
-      const pageAgreements = response.results || [];
-
-      setAgreements(pageAgreements.map(transformApiAgreement));
-      setTotalAgreements(response.totalAgreements || 0);
-      setTotalResults(response.totalResults || 0);
-    } catch (error: any) {
-      if (error.message?.includes("timeout") || error.code === "ECONNABORTED") {
-        toast.error("Request timed out", {
-          description:
-            "Please try again with fewer results or a smaller page size",
-        });
-      } else {
-        toast.error(error.message || "Failed to load agreements");
-      }
-      setAgreements([]);
-      setTotalAgreements(0);
-      setTotalResults(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, pageSize, tableFilter, searchQuery, sortOrder]);
-
-  useEffect(() => {
-    loadAgreements();
-  }, [loadAgreements]);
-
-  // Reset to page 1 on filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [tableFilter, searchQuery, sortOrder]);
-
-  const handlePageChange = (page: number) => setCurrentPage(page);
-
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(1);
+  const queryParams = {
+    top: pageSize,
+    skip: (currentPage - 1) * pageSize,
+    sort: sortOrder,
+    type: 1,
+    ...(tableFilter !== "all" && STATUS_TO_API_MAP[tableFilter]
+      ? { status: STATUS_TO_API_MAP[tableFilter] }
+      : {}),
+    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
   };
 
-  const toggleSortOrder = () =>
+  const { data, isLoading, error } = useAgreements(queryParams, {
+    // Keep previous page data visible while next page loads
+    // so the table doesn't flash empty between page changes
+    placeholderData: (prev) => prev,
+  });
+
+  // Surface errors via toast — mirrors the old behaviour
+  if (error) {
+    const message = (error as any).message ?? "";
+    if (message.includes("timeout") || (error as any).code === "ECONNABORTED") {
+      toast.error("Request timed out", {
+        description:
+          "Please try again with fewer results or a smaller page size",
+      });
+    } else {
+      toast.error(message || "Failed to load agreements");
+    }
+  }
+
+  const agreements = (data?.results ?? []).map(transformApiAgreement);
+  const totalAgreements = data?.totalAgreements ?? 0;
+
+  // ─── Filter/sort setters — always reset to page 1 ─────────────────────────
+
+  const handleSetTableFilter = useCallback((filter: AgreementStatusFilter) => {
+    setTableFilter(filter);
+    setCurrentPage(1);
+  }, []);
+
+  const handleSetSearchQuery = useCallback((query: string) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  }, []);
+
+  const toggleSortOrder = useCallback(() => {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    setCurrentPage(1);
+  }, []);
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  }, []);
 
   return {
     agreements,
-    loading,
+    loading: isLoading,
     currentPage,
     pageSize,
     totalAgreements,
     tableFilter,
-    setTableFilter,
+    setTableFilter: handleSetTableFilter,
     searchQuery,
-    setSearchQuery,
+    setSearchQuery: handleSetSearchQuery,
     sortOrder,
     toggleSortOrder,
     handlePageChange,
     handlePageSizeChange,
-    loadAgreements,
+    // loadAgreements is removed — call queryClient.invalidateQueries
+    // with agreementKeys.list(queryParams) if a manual refresh is needed
   };
 }

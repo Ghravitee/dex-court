@@ -22,10 +22,10 @@ export const formatNumberWithCommas = (value: string | undefined): string => {
 export const formatCreatorUsername = (username: string | undefined): string => {
   if (!username) return "Unknown";
   const clean = username.startsWith("@") ? username.slice(1) : username;
-  if (clean.startsWith("0x") && clean.length === 42) {
-    return `${clean.slice(0, 5)}...${clean.slice(-4)}`;
+  if (clean.startsWith("0x") && clean.length >= 42) {
+    return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
   }
-  return clean;
+  return `@${clean}`;
 };
 
 export const formatWalletAddress = (address: string | undefined): string => {

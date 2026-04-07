@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useNavigate, useParams } from "react-router-dom";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { FaUser, FaHandshake } from "react-icons/fa";
 import { FiAlertCircle } from "react-icons/fi";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../hooks/useAuth";
 import { LoginModal } from "../../components/LoginModal";
-import { useDisputesApi } from "../../hooks/useDisputesApi";
-import { useProfileAgreementsApi } from "../../hooks/useProfileAgreementsApi";
+import { useDisputes } from "../../hooks/useDisputes";
+import { useProfileAgreements } from "../..//hooks/useProfileAgreements";
 import useTrustScore from "../../hooks/useTrustScore";
 import { BentoCard } from "../profile/components/BentoCard";
 
@@ -28,6 +28,7 @@ import {
   formatDate,
   formatDisputeParty,
   formatHandle,
+  formatPartyUsername,
 } from "./utils/formatters";
 
 export default function UserProfile() {
@@ -54,7 +55,15 @@ export default function UserProfile() {
     );
   }, [currentUser, decodedHandle]);
 
-  const { user, loading, error, loadUserData } = useUserLoader();
+  const {
+    data: user,
+    isLoading: loading,
+    error: userError,
+    refetch,
+  } = useUserLoader(decodedHandle, isOwnProfile);
+
+  const error = userError ? (userError as Error).message : null;
+
   const { trustScore, loading: trustScoreLoading } = useTrustScore(
     user?.id || null,
   );
@@ -71,7 +80,7 @@ export default function UserProfile() {
     loadMoreEscrow,
     totalReputationalAgreements,
     totalEscrowAgreements,
-  } = useProfileAgreementsApi(user?.id, user?.walletAddress);
+  } = useProfileAgreements(user?.id, user?.walletAddress);
 
   const {
     disputes,
@@ -80,15 +89,7 @@ export default function UserProfile() {
     hasMore: hasMoreDisputes,
     totalUserDisputes,
     loadMore: loadMoreDisputes,
-  } = useDisputesApi(user?.id);
-
-  useEffect(() => {
-    if (decodedHandle && isAuthenticated) {
-      loadUserData(decodedHandle, isOwnProfile);
-    } else if (!isAuthenticated) {
-      // Not authenticated - will show login prompt
-    }
-  }, [decodedHandle, isAuthenticated, isOwnProfile, loadUserData]);
+  } = useDisputes(user?.id);
 
   const agreementStats = useMemo(() => {
     return {
@@ -225,7 +226,7 @@ export default function UserProfile() {
       <ErrorState
         error={error || "User not found"}
         handle={decodedHandle}
-        onRetry={() => loadUserData(decodedHandle, isOwnProfile)}
+        onRetry={() => refetch()}
         onGoToMyProfile={() => navigate("/profile")}
       />
     );
@@ -449,15 +450,10 @@ export default function UserProfile() {
                                 First Party:
                               </span>
                               <span className="text-white/80">
-                                {agreement.firstParty?.telegramUsername
-                                  ? agreement.firstParty.telegramUsername.startsWith(
-                                      "0x",
-                                    )
-                                    ? `${agreement.firstParty.telegramUsername.slice(0, 6)}…${agreement.firstParty.telegramUsername.slice(-4)}`
-                                    : `@${agreement.firstParty.telegramUsername}`
-                                  : agreement.firstParty?.wallet
-                                    ? `${agreement.firstParty.wallet.slice(0, 6)}…${agreement.firstParty.wallet.slice(-4)}`
-                                    : "Unknown User"}
+                                {formatPartyUsername(
+                                  agreement.firstParty?.telegramUsername,
+                                  agreement.firstParty?.wallet,
+                                )}
                               </span>
                             </div>
                             <div className="flex justify-between">
@@ -465,15 +461,10 @@ export default function UserProfile() {
                                 Counter Party:
                               </span>
                               <span className="text-white/80">
-                                {agreement.counterParty?.telegramUsername
-                                  ? agreement.counterParty.telegramUsername.startsWith(
-                                      "0x",
-                                    )
-                                    ? `${agreement.counterParty.telegramUsername.slice(0, 6)}…${agreement.counterParty.telegramUsername.slice(-4)}`
-                                    : `@${agreement.counterParty.telegramUsername}`
-                                  : agreement.counterParty?.wallet
-                                    ? `${agreement.counterParty.wallet.slice(0, 6)}…${agreement.counterParty.wallet.slice(-4)}`
-                                    : "Unknown User"}
+                                {formatPartyUsername(
+                                  agreement.counterParty?.telegramUsername,
+                                  agreement.counterParty?.wallet,
+                                )}
                               </span>
                             </div>
                             <div className="flex justify-between">

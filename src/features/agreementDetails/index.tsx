@@ -89,7 +89,7 @@ export default function AgreementDetails() {
     // disputeVotingId,
     setDisputeVotingId,
     isRefreshing,
-    lastUpdate,
+    // lastUpdate,
     rejectDisputeStatus,
     setRejectDisputeStatus,
     pendingModalState,
@@ -277,9 +277,9 @@ export default function AgreementDetails() {
             {isRefreshing && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
             )}
-            <span>
+            {/* <span>
               Last updated: {new Date(lastUpdate).toLocaleTimeString()}
-            </span>
+            </span> */}
           </div>
         </div>
 
@@ -318,16 +318,12 @@ export default function AgreementDetails() {
                       username={agreement.creator || ""}
                       size="sm"
                     />
-                    <button
-                      onClick={() =>
-                        navigate(
-                          `/profile/${(agreement.creator || "").replace(/^@/, "")}`,
-                        )
-                      }
+                    <Link
+                      to={`/profile/${(agreement.creator || "").replace(/^@/, "")}`}
                       className="text-[11px] text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                     >
                       {formatCreatorUsername(agreement.creator)}
-                    </button>
+                    </Link>
                     {isCreator && (
                       <VscVerifiedFilled className="size-5 text-green-400" />
                     )}
@@ -338,7 +334,7 @@ export default function AgreementDetails() {
               {/* Key details grid */}
               <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-[.6fr_.4fr]">
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-1 md:space-x-3">
                     <Users className="h-5 w-5 text-cyan-400" />
                     <div>
                       <div className="text-sm text-cyan-300">Parties</div>
@@ -370,18 +366,14 @@ export default function AgreementDetails() {
                                 username={party.username}
                                 size="sm"
                               />
-                              <button
-                                onClick={() =>
-                                  navigate(
-                                    `/profile/${encodeURIComponent(party.username.replace(/^@/, ""))}`,
-                                  )
-                                }
+                              <Link
+                                to={`/profile/${encodeURIComponent(party.username.replace(/^@/, ""))}`}
                                 className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                               >
                                 {party.username.startsWith("@0x")
-                                  ? `${party.username.slice(1, 5)}..${party.username.slice(-6)}`
+                                  ? `${party.username.slice(1, 7)}..${party.username.slice(-4)}`
                                   : party.username}
-                              </button>
+                              </Link>
                               {party.isMe && (
                                 <VscVerifiedFilled className="size-5 text-green-400" />
                               )}
@@ -679,12 +671,8 @@ export default function AgreementDetails() {
                                           size="sm"
                                         />
                                       )}
-                                      <button
-                                        onClick={() =>
-                                          navigate(
-                                            `/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`,
-                                          )
-                                        }
+                                      <Link
+                                        to={`/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`}
                                         className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
                                       >
                                         {disputeInfo.filedBy.startsWith("0x")
@@ -692,7 +680,7 @@ export default function AgreementDetails() {
                                               disputeInfo.filedBy,
                                             )
                                           : disputeInfo.filedBy}
-                                      </button>
+                                      </Link>
                                       {user &&
                                         disputeInfo.filedBy &&
                                         normalizeUsername(user.username) ===

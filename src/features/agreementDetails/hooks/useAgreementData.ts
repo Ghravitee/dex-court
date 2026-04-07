@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { agreementService } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
 import { connectSocket } from "../../../services/socket";
 import type { Agreement } from "../../../types";
@@ -10,6 +9,7 @@ import {
   isDisputeTriggeredByRejection,
 } from "../utils/helpers";
 import type { TypedSocket } from "../types";
+import { useAgreementDetails } from "../../../hooks/useAgreements";
 
 interface PendingModalState {
   isOpen: boolean;
@@ -18,12 +18,10 @@ interface PendingModalState {
 }
 
 export function useAgreementData(id: string | undefined) {
-  const [agreement, setAgreement] = useState<Agreement | null>(null);
-  const [loading, setLoading] = useState(true);
+  const agreementId = id ? parseInt(id) : null;
+
   const [disputeStatus, setDisputeStatus] = useState<any | null>(null);
   const [disputeVotingId, setDisputeVotingId] = useState<number | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
   const [rejectDisputeStatus, setRejectDisputeStatus] = useState<any | null>(
     null,
   );
@@ -35,73 +33,84 @@ export function useAgreementData(id: string | undefined) {
     },
   );
 
+  // Local agreement override — needed so mutations can optimistically update
+  // the agreement shape (e.g. adding disputeVotingId) without waiting for refetch
+  const [agreementOverride, setAgreement] = useState<Agreement | null>(null);
+
   const socketRef = useRef<TypedSocket | null>(null);
 
-  // ─── Fetch (foreground) ────────────────────────────────────────────────────
+  // ─── TanStack Query ────────────────────────────────────────────────────────
 
-  const fetchAgreementDetails = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const data = await agreementService.getAgreementDetails(parseInt(id));
-      setAgreement(transformApiAgreement(data, disputeVotingId));
-    } catch {
-      toast.error("Failed to load agreement details");
-      setAgreement(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id, disputeVotingId]);
+  const {
+    data: rawAgreementData,
+    isLoading: loading,
+    refetch,
+    isRefetching: isRefreshing,
+  } = useAgreementDetails(agreementId, {
+    // Don't show stale data while refetching in the background
+    refetchOnWindowFocus: false,
+  });
 
-  // ─── Fetch (background) ───────────────────────────────────────────────────
+  // Transform API data at render time, not inside the fetch.
+  // This breaks the old dependency on disputeVotingId inside the fetch callback.
+  const agreement: Agreement | null =
+    agreementOverride ??
+    (rawAgreementData
+      ? transformApiAgreement(rawAgreementData, disputeVotingId)
+      : null);
+
+  // ─── Background refetch (used by WebSocket + cross-tab listener) ───────────
 
   const fetchAgreementDetailsBackground = useCallback(async () => {
-    if (isRefreshing || !id) return;
-    setIsRefreshing(true);
-    try {
-      const data = await agreementService.getAgreementDetails(parseInt(id));
-      setAgreement(transformApiAgreement(data, disputeVotingId));
-    } catch {
-      // Background failures are silent
-    } finally {
-      setIsRefreshing(false);
-      setLastUpdate(Date.now());
-    }
-  }, [id, isRefreshing, disputeVotingId]);
+    if (!agreementId) return;
+    // TanStack Query guards against concurrent in-flight requests natively
+    await refetch();
+    // Clear the local override so the fresh cache data takes over
+    setAgreement(null);
+  }, [agreementId, refetch]);
 
-  // ─── Fetch dispute details ─────────────────────────────────────────────────
+  // ─── Foreground refetch (used by initial load and manual retry) ────────────
+
+  const fetchAgreementDetails = useCallback(async () => {
+    if (!agreementId) return;
+    try {
+      await refetch();
+      setAgreement(null);
+    } catch {
+      toast.error("Failed to load agreement details");
+    }
+  }, [agreementId, refetch]);
+
+  // ─── Fetch dispute details when disputeId is known ─────────────────────────
 
   useEffect(() => {
     if (!agreement?.disputeId) return;
     const disputeId = parseInt(agreement.disputeId);
     if (isNaN(disputeId)) return;
+
     const fetch = async () => {
       try {
         const details = await disputeService.getDisputeDetails(disputeId);
         const transformed =
           disputeService.transformDisputeDetailsToRow(details);
         setDisputeStatus(transformed.status);
-        if (transformed.votingId !== undefined)
+        if (transformed.votingId !== undefined) {
           setDisputeVotingId(transformed.votingId);
+        }
       } catch {
-        // non-critical
+        // Non-critical — dispute details are supplementary
       }
     };
+
     fetch();
   }, [agreement?.disputeId]);
-
-  // ─── Initial fetch ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    fetchAgreementDetails();
-  }, [id, fetchAgreementDetails]);
 
   // ─── WebSocket ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const token = localStorage.getItem("authToken") ?? "";
-    if (!token || !id) return;
-    const agreementId = Number(id);
+    if (!token || !agreementId) return;
+
     const socket = connectSocket(token) as TypedSocket;
     socketRef.current = socket;
 
@@ -112,7 +121,7 @@ export function useAgreementData(id: string | undefined) {
     socket.on("agreement:event", async (event) => {
       if (event.agreementId !== agreementId) return;
 
-      // Handle DisputeUpdated (type 19)
+      // Type 19 = DisputeUpdated
       if (event.type === 19) {
         setPendingModalState({ isOpen: false, votingId: null, flow: "reject" });
 
@@ -140,7 +149,7 @@ export function useAgreementData(id: string | undefined) {
                 });
               }
             } catch {
-              // non-critical
+              // Non-critical
             }
           }
         }
@@ -154,7 +163,7 @@ export function useAgreementData(id: string | undefined) {
       socket.disconnect();
     };
   }, [
-    id,
+    agreementId,
     fetchAgreementDetailsBackground,
     agreement?.disputeId,
     disputeStatus,
@@ -165,7 +174,7 @@ export function useAgreementData(id: string | undefined) {
 
   useEffect(() => {
     const handleAgreementUpdate = (event: CustomEvent) => {
-      if (event.detail.agreementId === parseInt(id || "")) {
+      if (event.detail.agreementId === agreementId) {
         fetchAgreementDetailsBackground();
       }
     };
@@ -178,23 +187,24 @@ export function useAgreementData(id: string | undefined) {
         "agreementUpdated",
         handleAgreementUpdate as EventListener,
       );
-  }, [id, fetchAgreementDetailsBackground]);
+  }, [agreementId, fetchAgreementDetailsBackground]);
 
   return {
     agreement,
     setAgreement,
     loading,
+    isRefreshing,
     disputeStatus,
     setDisputeStatus,
     disputeVotingId,
     setDisputeVotingId,
-    isRefreshing,
-    lastUpdate,
     rejectDisputeStatus,
     setRejectDisputeStatus,
     pendingModalState,
     setPendingModalState,
     fetchAgreementDetails,
     fetchAgreementDetailsBackground,
+    // lastUpdate is removed — consumers should react to `agreement` changing,
+    // not to a timestamp. If something genuinely needs it, use Date.now() where used.
   };
 }

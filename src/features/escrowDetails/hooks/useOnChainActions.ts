@@ -10,7 +10,7 @@ import {
 } from "wagmi";
 import { useAuth } from "../../../hooks/useAuth";
 import { useNetworkEnvironment } from "../../../config/useNetworkEnvironment";
-import { agreementService } from "../../../services/agreementServices";
+import { rejectDelivery } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
 import { getEscrowConfigs } from "../../../web3/readContract";
 import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS } from "../../../web3/config";
@@ -554,7 +554,7 @@ export function useOnChainActions({
       const generatedVotingId = votingId || votingIdToUse.toString();
       const isProBono = requestKind === DisputeTypeEnum.ProBono;
       try {
-        await agreementService.rejectDelivery(agreementId, {
+        await rejectDelivery(agreementId, {
           votingId: generatedVotingId,
           claim: claim.trim(),
           requestKind,

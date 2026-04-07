@@ -1,30 +1,14 @@
-import { useState, useEffect } from "react";
-import { apiService } from "../services/apiService";
+// hooks/useJudgesCount.ts
+import { useMemo } from "react";
+import { useAllAccounts } from "./useAccounts";
 
 export function useJudgesCount() {
-  const [judgesCount, setJudgesCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const { data: allAccounts = [], isLoading: loading } = useAllAccounts();
 
-  useEffect(() => {
-    const fetchJudgesCount = async () => {
-      try {
-        setLoading(true);
-        // Use the same method as the admin page
-        const allUsers = await apiService.getAdminUsers();
-
-        // Filter users with role === 2 (judges)
-        const judges = allUsers.filter((user) => user.role === 2);
-
-        setJudgesCount(judges.length);
-      } catch (error) {
-        console.error("Error fetching judges count:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchJudgesCount();
-  }, []);
+  const judgesCount = useMemo(
+    () => allAccounts.filter((user) => user.role === 2).length,
+    [allAccounts],
+  );
 
   return { judgesCount, loading };
 }

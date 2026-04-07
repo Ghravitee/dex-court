@@ -1,96 +1,60 @@
-import { useState, useCallback } from "react";
-import { apiService } from "../../../services/apiService";
-import { type UserProfileData } from "../types";
+import { useQuery } from "@tanstack/react-query";
+import {
+  fetchMyAccount,
+  fetchAccountById,
+  fetchAccountByUsername,
+  fetchAccountByWalletAddress,
+} from "../../../services/accountService";
 import { mapApiUserToUser } from "../utils/userMapper";
+import { resolveHandleType, cleanHandle } from "../utils/resolveHandle";
+import type { UserProfileData } from "../types";
 
-export const useUserLoader = () => {
-  const [user, setUser] = useState<UserProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// Query key includes both handle and isOwnProfile so switching between
+// "my profile" and "another user's profile" correctly triggers separate fetches.
+const userProfileKey = (handle: string, isOwnProfile: boolean) =>
+  ["userProfile", handle, isOwnProfile] as const;
 
-  const loadUserData = useCallback(
-    async (decodedHandle: string, isOwnProfile: boolean) => {
-      if (!decodedHandle) {
-        setError("No user handle provided");
-        setLoading(false);
-        return;
-      }
+async function fetchUserByHandle(
+  decodedHandle: string,
+  isOwnProfile: boolean,
+): Promise<UserProfileData> {
+  const type = resolveHandleType(decodedHandle, isOwnProfile);
+  const handle = cleanHandle(decodedHandle);
 
-      setLoading(true);
-      setError(null);
-
+  switch (type) {
+    case "own": {
+      const apiUser = await fetchMyAccount();
+      return mapApiUserToUser(apiUser);
+    }
+    case "wallet": {
+      // Try wallet lookup first, fall back to username — backend gap (no dedicated wallet endpoint)
       try {
-        let userData: UserProfileData | null = null;
-
-        if (isOwnProfile) {
-          console.log("🔐 Loading current user's profile");
-          const apiUser = await apiService.getMyAccount();
-          userData = mapApiUserToUser(apiUser);
-        } else {
-          const cleanHandle = decodedHandle.replace(/^@/, "");
-          const isWalletAddress = /^0x[a-fA-F0-9]{40}$/.test(cleanHandle);
-          const isNumericId = !isNaN(Number(cleanHandle));
-
-          if (isWalletAddress) {
-            console.log(
-              `🔐 Handle appears to be wallet address: ${cleanHandle}`,
-            );
-
-            try {
-              const apiUser =
-                await apiService.getUserByWalletAddress(cleanHandle);
-              userData = mapApiUserToUser(apiUser);
-            } catch (walletError) {
-              console.log("🔐 Wallet address lookup failed:", walletError);
-              try {
-                const apiUser = await apiService.getUserByUsername(cleanHandle);
-                userData = mapApiUserToUser(apiUser);
-              } catch (usernameError) {
-                console.log("🔐 Username lookup also failed:", usernameError);
-                throw new Error(
-                  `User with wallet address ${cleanHandle} not found`,
-                );
-              }
-            }
-          } else if (isNumericId) {
-            console.log(`🔐 Handle appears to be numeric ID: ${cleanHandle}`);
-            try {
-              const apiUser = await apiService.getUserById(cleanHandle);
-              userData = mapApiUserToUser(apiUser);
-            } catch (idError) {
-              console.log("🔐 ID lookup failed:", idError);
-              throw new Error(`User with ID ${cleanHandle} not found`);
-            }
-          } else {
-            console.log(`🔐 Handle appears to be username: ${cleanHandle}`);
-            try {
-              const apiUser = await apiService.getUserByUsername(cleanHandle);
-              userData = mapApiUserToUser(apiUser);
-            } catch (usernameError) {
-              console.log("🔐 Username lookup failed:", usernameError);
-              throw new Error(`User "${cleanHandle}" not found`);
-            }
-          }
-        }
-
-        setUser(userData);
-      } catch (err) {
-        console.error("Error loading user data:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load user profile",
-        );
-      } finally {
-        setLoading(false);
+        const apiUser = await fetchAccountByWalletAddress(handle);
+        return mapApiUserToUser(apiUser);
+      } catch {
+        const apiUser = await fetchAccountByUsername(handle);
+        return mapApiUserToUser(apiUser);
       }
-    },
-    [],
-  );
+    }
+    case "id": {
+      const apiUser = await fetchAccountById(handle);
+      return mapApiUserToUser(apiUser);
+    }
+    case "username": {
+      const apiUser = await fetchAccountByUsername(handle);
+      return mapApiUserToUser(apiUser);
+    }
+  }
+}
 
-  return {
-    user,
-    loading,
-    error,
-    loadUserData,
-    setUser,
-  };
-};
+export function useUserLoader(decodedHandle: string, isOwnProfile: boolean) {
+  const isLoggedIn = !!localStorage.getItem("authToken");
+
+  return useQuery({
+    queryKey: userProfileKey(decodedHandle, isOwnProfile),
+    queryFn: () => fetchUserByHandle(decodedHandle, isOwnProfile),
+    enabled: !!decodedHandle && isLoggedIn,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+}

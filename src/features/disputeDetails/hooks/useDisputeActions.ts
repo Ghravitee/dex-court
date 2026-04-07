@@ -10,7 +10,7 @@ import type {
   DefendantClaimRequest,
   VoteData,
 } from "../../../types";
-import { useVotingStatus } from "../../../hooks/useVotingStatus";
+import { useVotingStatus } from "../../voting/hooks/useVotingStatus";
 import { useAuth } from "../../../hooks/useAuth";
 
 interface UseDisputeActionsOptions {
@@ -155,7 +155,7 @@ export function useDisputeActions({
         comment: voteData.comment,
       });
       toast.dismiss(loadingToast);
-      markAsVoted(voteData.choice);
+      markAsVoted();
       const msg =
         voteData.choice === "plaintiff"
           ? "You voted for the Plaintiff"

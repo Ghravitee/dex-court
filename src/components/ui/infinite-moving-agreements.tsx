@@ -223,7 +223,7 @@ export const InfiniteMovingAgreements = ({
       {showControls && (
         <>
           {/* Left control */}
-          <div className="absolute top-1/2 left-0 z-30 -translate-y-1/2">
+          <div className="absolute top-1/2 left-0 z-20 -translate-y-1/2">
             <button
               onClick={scrollToPrevious}
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"
@@ -292,7 +292,7 @@ export const InfiniteMovingAgreements = ({
                   </h2>
 
                   {/* Quote - At the top */}
-                  <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
+                  <span className="relative z-20 line-clamp-2 text-sm leading-[1.6] font-normal text-white">
                     {item.quote}
                   </span>
 

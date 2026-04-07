@@ -1,17 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth";
-import {
-  agreementService,
-  type AgreementDeliveryRejectedRequest,
-} from "../../../services/agreementServices";
 import { api } from "../../../lib/apiClient";
 import type { Agreement } from "../../../types";
 import type { DisputeTypeEnumValue } from "../types";
 import { DisputeTypeEnum, AgreementEventTypeEnum } from "../types";
 import { generateVotingId } from "../utils/helpers";
+import { type AgreementDeliveryRejectedRequest } from "../../../services/agreementServices";
+import {
+  useSignAgreement,
+  useDeleteAgreement,
+  useRequestCancellation,
+  useRespondToCancellation,
+  useMarkAsDelivered,
+  useConfirmDelivery,
+  useRejectDelivery,
+} from "../../../hooks/useAgreements";
 
 interface UseAgreementActionsOptions {
   id: string | undefined;
@@ -41,12 +47,14 @@ export function useAgreementActions({
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [isSigning, setIsSigning] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [isRespondingToCancel, setIsRespondingToCancel] = useState(false);
-  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+  // Mutation hooks — each owns its own loading state via isPending
+  const signMutation = useSignAgreement();
+  const deleteMutation = useDeleteAgreement();
+  const requestCancellationMutation = useRequestCancellation();
+  const respondCancellationMutation = useRespondToCancellation();
+  const markDeliveredMutation = useMarkAsDelivered();
+  const confirmDeliveryMutation = useConfirmDelivery();
+  const rejectDeliveryMutation = useRejectDelivery();
 
   // ─── Sign ──────────────────────────────────────────────────────────────────
 
@@ -64,9 +72,12 @@ export function useAgreementActions({
       );
       return;
     }
-    setIsSigning(true);
+
     try {
-      await agreementService.signAgreement(parseInt(id), true);
+      await signMutation.mutateAsync({
+        agreementId: parseInt(id),
+        accepted: true,
+      });
       toast.success("Agreement signed successfully!");
       await fetchBackground();
     } catch (error: any) {
@@ -84,15 +95,14 @@ export function useAgreementActions({
       toast.error(
         errorMap[errorCode] || errorMessage || "Failed to sign agreement",
       );
-    } finally {
-      setIsSigning(false);
     }
-  }, [id, agreement, user, fetchBackground]);
+  }, [id, agreement, user, fetchBackground, signMutation]);
 
   // ─── Cancel ────────────────────────────────────────────────────────────────
 
   const handleCancelAgreement = useCallback(async () => {
     if (!id || !agreement) return;
+
     const hasCancellationRequest =
       agreement.cancelPending ||
       agreement._raw?.cancelPending ||
@@ -109,15 +119,14 @@ export function useAgreementActions({
     }
     if (!confirm("Are you sure you want to cancel this agreement?")) return;
 
-    setIsCancelling(true);
     try {
       const agreementId = parseInt(id);
       if (agreement.status === "pending") {
-        await agreementService.deleteAgreement(agreementId);
+        await deleteMutation.mutateAsync(agreementId);
         toast.success("Agreement cancelled successfully!");
         navigate("/agreements");
       } else {
-        await agreementService.requestCancelation(agreementId);
+        await requestCancellationMutation.mutateAsync(agreementId);
         toast.success(
           "Cancellation requested! Waiting for counterparty confirmation.",
         );
@@ -128,16 +137,22 @@ export function useAgreementActions({
         error.response?.data?.message ||
           "Failed to cancel agreement. Please try again.",
       );
-    } finally {
-      setIsCancelling(false);
     }
-  }, [id, agreement, navigate, fetchBackground]);
+  }, [
+    id,
+    agreement,
+    navigate,
+    fetchBackground,
+    deleteMutation,
+    requestCancellationMutation,
+  ]);
 
   // ─── Respond to cancellation ───────────────────────────────────────────────
 
   const handleRespondToCancelation = useCallback(
     async (accepted: boolean) => {
       if (!id || !agreement) return;
+
       const timeline = agreement.timeline || agreement._raw?.timeline || [];
       const hasCancelRequest = timeline.some(
         (e: any) =>
@@ -149,9 +164,11 @@ export function useAgreementActions({
         return;
       }
 
-      setIsRespondingToCancel(true);
       try {
-        await agreementService.respondToCancelation(parseInt(id), accepted);
+        await respondCancellationMutation.mutateAsync({
+          agreementId: parseInt(id),
+          accepted,
+        });
         toast.success(
           accepted
             ? "Cancellation accepted! Agreement has been cancelled."
@@ -163,20 +180,17 @@ export function useAgreementActions({
           error.response?.data?.message ||
             "Failed to respond to cancellation. Please try again.",
         );
-      } finally {
-        setIsRespondingToCancel(false);
       }
     },
-    [id, agreement, fetchBackground],
+    [id, agreement, fetchBackground, respondCancellationMutation],
   );
 
   // ─── Mark as delivered ─────────────────────────────────────────────────────
 
   const handleMarkAsDelivered = useCallback(async () => {
     if (!id || !agreement) return;
-    setIsCompleting(true);
     try {
-      await agreementService.markAsDelivered(parseInt(id));
+      await markDeliveredMutation.mutateAsync(parseInt(id));
       toast.success("Delivery marked! Waiting for the other party's approval.");
       await fetchBackground();
     } catch (error: any) {
@@ -184,18 +198,15 @@ export function useAgreementActions({
         error.response?.data?.message ||
           "Failed to mark as delivered. Please try again.",
       );
-    } finally {
-      setIsCompleting(false);
     }
-  }, [id, agreement, fetchBackground]);
+  }, [id, agreement, fetchBackground, markDeliveredMutation]);
 
   // ─── Confirm delivery ──────────────────────────────────────────────────────
 
   const handleConfirmDelivery = useCallback(async () => {
     if (!id || !agreement) return;
-    setIsConfirming(true);
     try {
-      await agreementService.confirmDelivery(parseInt(id));
+      await confirmDeliveryMutation.mutateAsync(parseInt(id));
       toast.success("Delivery confirmed! Agreement completed.");
       await fetchBackground();
     } catch (error: any) {
@@ -203,10 +214,8 @@ export function useAgreementActions({
         error.response?.data?.message ||
           "Failed to confirm delivery. Please try again.",
       );
-    } finally {
-      setIsConfirming(false);
     }
-  }, [id, agreement, fetchBackground]);
+  }, [id, agreement, fetchBackground, confirmDeliveryMutation]);
 
   // ─── Reject delivery ───────────────────────────────────────────────────────
 
@@ -218,7 +227,7 @@ export function useAgreementActions({
       votingId?: string,
     ) => {
       if (!id || !agreement) return;
-      setIsSubmittingReject(true);
+
       try {
         const agreementId = parseInt(id);
         const votingIdToUse = votingId || generateVotingId();
@@ -230,7 +239,10 @@ export function useAgreementActions({
           ...(chainId && { chainId }),
         };
 
-        await agreementService.rejectDelivery(agreementId, payload);
+        await rejectDeliveryMutation.mutateAsync({
+          agreementId,
+          data: payload,
+        });
 
         if (requestKind === DisputeTypeEnum.Paid) {
           setRejectDisputeStatus("Pending Payment");
@@ -260,8 +272,6 @@ export function useAgreementActions({
           duration: 5000,
         });
         throw error;
-      } finally {
-        setIsSubmittingReject(false);
       }
     },
     [
@@ -271,6 +281,7 @@ export function useAgreementActions({
       setDisputeStatus,
       setRejectDisputeStatus,
       setPendingModalState,
+      rejectDeliveryMutation,
     ],
   );
 
@@ -324,6 +335,8 @@ export function useAgreementActions({
   );
 
   // ─── File download ─────────────────────────────────────────────────────────
+  // Kept as a direct API call — no mutation needed since downloads
+  // don't mutate server state and don't benefit from cache invalidation.
 
   const handleDownloadFile = useCallback(
     async (fileIndex: number) => {
@@ -346,16 +359,16 @@ export function useAgreementActions({
           `/agreement/${agreementId}/file/${file.id}`,
           { responseType: "blob" },
         );
+
         let filename = file.fileName;
         if (!filename.includes(".")) {
           const match =
             response.headers["content-disposition"]?.match(/filename="?(.+)"?/);
           if (match?.[1]) filename = match[1];
         }
+
         const contentType = response.headers["content-type"];
-        const blob = contentType
-          ? new Blob([response.data], { type: contentType })
-          : new Blob([response.data]);
+        const blob = new Blob([response.data], { type: contentType });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -375,12 +388,15 @@ export function useAgreementActions({
   );
 
   return {
-    isSigning,
-    isCancelling,
-    isCompleting,
-    isConfirming,
-    isRespondingToCancel,
-    isSubmittingReject,
+    // Loading states — now sourced from mutation isPending
+    isSigning: signMutation.isPending,
+    isCancelling:
+      deleteMutation.isPending || requestCancellationMutation.isPending,
+    isCompleting: markDeliveredMutation.isPending,
+    isConfirming: confirmDeliveryMutation.isPending,
+    isRespondingToCancel: respondCancellationMutation.isPending,
+    isSubmittingReject: rejectDeliveryMutation.isPending,
+    // Handlers
     handleSignAgreement,
     handleCancelAgreement,
     handleRespondToCancelation,

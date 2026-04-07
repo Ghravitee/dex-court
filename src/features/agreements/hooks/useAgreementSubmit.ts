@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth";
-import { agreementService } from "../../../services/agreementServices";
+import { useCreateAgreement } from "../../../hooks/useAgreements";
 import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
@@ -10,6 +10,7 @@ import {
 import { AgreementTypeEnum, AgreementVisibilityEnum } from "../constants/enums";
 import { isValidUserIdentity } from "../utils/formatters";
 import type { AgreementFormState, AgreementType } from "../types/form";
+import type { AgreementsRequest } from "../../../services/agreementServices";
 
 interface SubmitOptions {
   form: AgreementFormState;
@@ -30,7 +31,7 @@ interface SubmitOptions {
 
 export function useAgreementSubmit() {
   const { isAuthenticated, user } = useAuth();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const createAgreement = useCreateAgreement();
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent, options: SubmitOptions) => {
@@ -120,65 +121,58 @@ export function useAgreementSubmit() {
         return;
       }
 
-      setIsSubmitting(true);
+      // ─── Build payload ─────────────────────────────────────────────────────
+      const agreementData: AgreementsRequest = {
+        title: form.title,
+        description: form.description,
+        type: AgreementTypeEnum.REPUTATION,
+        visibility:
+          typeValue === "Public"
+            ? AgreementVisibilityEnum.PUBLIC
+            : AgreementVisibilityEnum.PRIVATE,
+        firstParty:
+          agreementType === "myself"
+            ? currentUserTelegram || user?.walletAddress || ""
+            : cleanPartyA,
+        counterParty:
+          agreementType === "myself" ? cleanCounterparty : cleanPartyB,
+      };
 
-      try {
-        // ─── Build payload ──────────────────────────────────────────────────
-        const agreementData: any = {
-          title: form.title,
-          description: form.description,
-          type: AgreementTypeEnum.REPUTATION,
-          visibility:
-            typeValue === "Public"
-              ? AgreementVisibilityEnum.PUBLIC
-              : AgreementVisibilityEnum.PRIVATE,
-          firstParty:
-            agreementType === "myself"
-              ? currentUserTelegram || user?.walletAddress || ""
-              : cleanPartyA,
-          counterParty:
-            agreementType === "myself" ? cleanCounterparty : cleanPartyB,
-        };
+      if (deadline) agreementData.deadline = deadline.toISOString();
 
-        if (deadline) agreementData.deadline = deadline.toISOString();
+      if (includeFunds === "yes") {
+        agreementData.includesFunds = true;
 
-        if (includeFunds === "yes") {
-          agreementData.includesFunds = true;
-
-          if (secureWithEscrow === "yes") {
-            agreementData.secureTheFunds = true;
-            agreementData.type = AgreementTypeEnum.ESCROW;
-          } else {
-            agreementData.secureTheFunds = false;
-          }
-
-          // Resolve the token/amount source based on escrow choice
-          const token =
-            secureWithEscrow === "yes"
-              ? selectedToken
-              : fundsWithoutEscrow.token;
-          const amount =
-            secureWithEscrow === "yes"
-              ? form.amount
-              : fundsWithoutEscrow.amount;
-          const contractAddress =
-            secureWithEscrow === "yes"
-              ? customTokenAddress
-              : fundsWithoutEscrow.customTokenAddress;
-
-          if (token && token !== "custom") agreementData.tokenSymbol = token;
-          if (token === "custom" && contractAddress)
-            agreementData.contractAddress = contractAddress;
-          if (amount) agreementData.amount = parseFloat(amount);
+        if (secureWithEscrow === "yes") {
+          agreementData.secureTheFunds = true;
+          agreementData.type = AgreementTypeEnum.ESCROW;
         } else {
-          agreementData.includesFunds = false;
           agreementData.secureTheFunds = false;
         }
 
-        await agreementService.createAgreement(
-          agreementData,
-          form.images.length > 0 ? form.images.map((f) => f.file) : [],
-        );
+        const token =
+          secureWithEscrow === "yes" ? selectedToken : fundsWithoutEscrow.token;
+        const amount =
+          secureWithEscrow === "yes" ? form.amount : fundsWithoutEscrow.amount;
+        const contractAddress =
+          secureWithEscrow === "yes"
+            ? customTokenAddress
+            : fundsWithoutEscrow.customTokenAddress;
+
+        if (token && token !== "custom") agreementData.tokenSymbol = token;
+        if (token === "custom" && contractAddress)
+          agreementData.customTokenAddress = contractAddress;
+        if (amount) agreementData.amount = parseFloat(amount);
+      } else {
+        agreementData.includesFunds = false;
+        agreementData.secureTheFunds = false;
+      }
+
+      try {
+        await createAgreement.mutateAsync({
+          data: agreementData,
+          files: form.images.length > 0 ? form.images.map((f) => f.file) : [],
+        });
 
         const successMessage =
           agreementType === "myself"
@@ -245,12 +239,13 @@ export function useAgreementSubmit() {
             description: "Please check your information and try again.",
           });
         }
-      } finally {
-        setIsSubmitting(false);
       }
     },
-    [isAuthenticated, user],
+    [isAuthenticated, user, createAgreement],
   );
 
-  return { handleSubmit, isSubmitting };
+  return {
+    handleSubmit,
+    isSubmitting: createAgreement.isPending,
+  };
 }
