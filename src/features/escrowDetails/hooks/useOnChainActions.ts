@@ -472,8 +472,6 @@ export function useOnChainActions({
     setUiSuccess(`Milestone ${hold ? "held" : "unheld"} transaction submitted`);
   };
 
-  // ─── Raise dispute ────────────────────────────────────────────────────────
-
   const fetchOnchainEscrowConfigs = useCallback(
     async (eAddress: `0x${string}`, agreement: any) => {
       try {
@@ -487,6 +485,8 @@ export function useOnChainActions({
     },
     [networkInfo.chainId],
   );
+
+  // ─── Raise dispute ──────────────────────────────────────────────────────
 
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,

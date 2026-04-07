@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import ReactDatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import {
@@ -69,6 +69,7 @@ interface EscrowFormProps {
   selectedMainnetId: number | null;
   onSelectChain: (mainnetId: number) => Promise<void>;
 }
+
 
 export function EscrowForm({
   form,
@@ -157,6 +158,12 @@ export function EscrowForm({
 
     return () => { cancelled = true; };
   }, [form.token, form.customTokenAddress, selectedMainnetId, setForm, resolvedChainId]);
+
+  const nativeTokenSymbol = useMemo(() => {
+    if (!selectedMainnetId) return "ETH";
+    const chain = displayChains.find((c) => c.mainnetId === selectedMainnetId);
+    return chain?.symbol ?? "ETH";
+  }, [selectedMainnetId, displayChains]);
 
   const busy =
     isSubmitting || isTxPending || isApprovalPending || isApprovingToken;
@@ -477,9 +484,11 @@ export function EscrowForm({
             <span>
               {form.token === "custom" && resolvedTokenMeta
                 ? resolvedTokenMeta.symbol
-                : form.token
-                  ? TOKEN_OPTIONS.find((t) => t.value === form.token)?.label
-                  : "Select Token"}
+                : form.token === "ETH"
+                  ? nativeTokenSymbol
+                  : form.token
+                    ? TOKEN_OPTIONS.find((t) => t.value === form.token)?.label
+                    : "Select Token"}
             </span>
             <ChevronDown
               className={`transition-transform ${isTokenOpen ? "rotate-180" : ""}`}
@@ -501,7 +510,7 @@ export function EscrowForm({
                   }}
                   className="cursor-pointer px-4 py-2 text-sm text-white/80 hover:bg-cyan-500/30 hover:text-white"
                 >
-                  {opt.label}
+                  {opt.value === "ETH" ? nativeTokenSymbol : opt.label}
                 </div>
               ))}
             </div>

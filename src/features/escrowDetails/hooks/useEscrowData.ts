@@ -5,7 +5,6 @@ import { agreementService } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
 import { connectSocket } from "../../../services/socket";
 import { getAgreement } from "../../../web3/readContract";
-import { useNetworkEnvironment } from "../../../config/useNetworkEnvironment";
 import type { EscrowDetailsData, TypedSocket } from "../types";
 import { transformApiToEscrow } from "../utils/helpers";
 
@@ -20,7 +19,6 @@ interface PendingModalState {
 }
 
 export function useEscrowData(id: string | undefined) {
-  const networkInfo = useNetworkEnvironment();
   const socketRef = useRef<TypedSocket | null>(null);
 
   const [escrow, setEscrow] = useState<EscrowDetailsData | null>(null);
@@ -42,16 +40,19 @@ export function useEscrowData(id: string | undefined) {
 
   const fetchOnChainAgreement = useCallback(
     async (agreementData: any) => {
-      if (!agreementData || !networkInfo.chainId) return;
-      const onChainId = agreementData.contractAgreementId;
+      if (!agreementData) return;
+      const onChainAgreementId = agreementData.contractAgreementId;
       const escrowCA = agreementData.escrowContractAddress;
-      if (!onChainId || !escrowCA) return;
+      const agreementChainId = agreementData.chainId;
+      if (!onChainAgreementId || !escrowCA || !agreementChainId) return;
+
+      console.log (`Initiating on-chain fetch: agreementId=${onChainAgreementId}, escrowCA=${escrowCA}, chainId=${agreementChainId}`);
       setOnChainLoading(true);
       try {
         const res = await getAgreement(
           escrowCA,
-          networkInfo.chainId as number,
-          BigInt(onChainId),
+          agreementChainId as number,
+          BigInt(onChainAgreementId),
         );
         setOnChainAgreement(res);
       } catch (err) {
@@ -61,7 +62,7 @@ export function useEscrowData(id: string | undefined) {
         setOnChainLoading(false);
       }
     },
-    [networkInfo.chainId],
+    [],
   );
 
   // ─── Foreground fetch ─────────────────────────────────────────────────────

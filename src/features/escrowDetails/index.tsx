@@ -876,7 +876,7 @@ export default function EscrowDetails() {
                   {onChainAgreement.grace1Ends > 0n &&
                     !onChainAgreement?.disputed &&
                     onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.vesting && (
+                    !onChainAgreement.vesting && !onChainAgreement.completed && !onChainAgreement.frozen &&(
                       <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
                         <Clock className="h-4 w-4 text-blue-400" />
                         <span className="text-blue-300">
@@ -889,7 +889,7 @@ export default function EscrowDetails() {
                     )}
                   {onChainAgreement.grace1Ends > 0n &&
                     !onChainAgreement?.disputed &&
-                    onChainAgreement.deliverySubmited && (
+                    onChainAgreement.deliverySubmited && !onChainAgreement.completed && !onChainAgreement.frozen && (
                       <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
                         <Package className="h-4 w-4 text-green-400" />
                         <span className="text-green-300">
