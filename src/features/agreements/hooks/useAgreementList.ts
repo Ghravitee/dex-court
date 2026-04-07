@@ -25,7 +25,7 @@ export function useAgreementList() {
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
   };
 
-  const { data, isLoading, error } = useAgreements(queryParams, {
+  const { data, isLoading, error, refetch } = useAgreements(queryParams, {
     // Keep previous page data visible while next page loads
     // so the table doesn't flash empty between page changes
     placeholderData: (prev) => prev,
@@ -87,7 +87,6 @@ export function useAgreementList() {
     toggleSortOrder,
     handlePageChange,
     handlePageSizeChange,
-    // loadAgreements is removed — call queryClient.invalidateQueries
-    // with agreementKeys.list(queryParams) if a manual refresh is needed
+    loadAgreements: refetch,
   };
 }
