@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { loginTelegram, api } from "../lib/apiClient";
-import { agreementService } from "../services/agreementServices";
 import type { AccountSummaryDTO } from "../services/apiService";
 import { walletLinkingService } from "../services/walletLinkingService";
 import { authQueryKeys } from "../constants/auth";
@@ -127,23 +126,18 @@ async function fetchCurrentUser(): Promise<User | null> {
       error instanceof Error &&
       error.message.includes("Authentication failed")
     ) {
-      console.warn("🔐 Authentication error, clearing token");
       localStorage.removeItem("authToken");
-      agreementService.clearAuthToken();
     }
-
     return createFallbackUser();
   }
 }
 
 function storeAuthToken(token: string): void {
   localStorage.setItem("authToken", token);
-  agreementService.setAuthToken(token);
 }
 
 function clearAuthToken(): void {
   localStorage.removeItem("authToken");
-  agreementService.clearAuthToken();
 }
 
 // ONLY COMPONENT EXPORT - NO CONTEXT, NO HOOKS
@@ -271,7 +265,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (token) {
-        agreementService.setAuthToken(token);
         await refetchUser();
       }
 

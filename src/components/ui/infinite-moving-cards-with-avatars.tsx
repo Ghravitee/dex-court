@@ -308,7 +308,7 @@ export const InfiniteMovingCardsWithAvatars = ({
             </div>
           </div>
 
-          <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
+          <span className="relative z-20 line-clamp-1 max-w-[20rem] truncate text-sm leading-[1.6] font-normal text-white">
             {item.quote}
           </span>
 
@@ -370,11 +370,11 @@ export const InfiniteMovingCardsWithAvatars = ({
       const disputeItem = item as DisputeItem;
       return (
         <div className="flex flex-col">
-          <h2 className="mb-4 block text-[16px] leading-[1.6] font-normal text-amber-300">
+          <h2 className="mb-4 line-clamp-3 block max-w-[60rem] truncate text-[16px] leading-[1.6] font-normal text-amber-300">
             {disputeItem.title}
           </h2>
 
-          <span className="relative z-20 line-clamp-3 text-sm leading-[1.6] font-normal text-white">
+          <span className="relative z-20 line-clamp-1 max-w-[40rem] truncate text-sm leading-[1.6] font-normal text-white">
             {disputeItem.quote}
           </span>
 
@@ -530,7 +530,7 @@ export const InfiniteMovingCardsWithAvatars = ({
       {showControls && (
         <>
           {/* Left control */}
-          <div className="absolute top-1/2 left-0 z-30 -translate-y-1/2">
+          <div className="absolute top-1/2 left-0 z-20 -translate-y-1/2">
             <button
               onClick={scrollToPrevious}
               className="rounded-full bg-black/50 p-3 backdrop-blur-sm transition-all hover:scale-110 hover:bg-black/70"

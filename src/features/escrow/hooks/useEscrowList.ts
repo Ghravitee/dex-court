@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-import { agreementService } from "../../../services/agreementServices";
+import { fetchAgreements } from "../../../services/agreementServices";
 import { getAgreementExistOnchain } from "../../../web3/readContract";
 import { AgreementTypeEnum } from "../constants";
 import { transformApiAgreementToEscrow } from "../utils/transformers";
@@ -34,7 +34,7 @@ export function useEscrowList({
     try {
       setLoading(true);
 
-      const response = await agreementService.getAgreements({
+      const response = await fetchAgreements({
         top: 200,
         skip: 0,
         sort: "desc",
@@ -114,7 +114,9 @@ export function useEscrowList({
       setAllEscrows(final);
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : "Failed to load escrow agreements";
+        error instanceof Error
+          ? error.message
+          : "Failed to load escrow agreements";
       toast.error(message);
       setAllEscrows([]);
     } finally {

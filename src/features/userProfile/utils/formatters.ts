@@ -28,6 +28,19 @@ export const formatHandle = (handle: string | null | undefined): string => {
   return handle.startsWith("@") ? handle : `@${handle}`;
 };
 
+export function formatPartyUsername(
+  username: string | undefined,
+  wallet: string | undefined,
+): string {
+  if (username) {
+    return username.startsWith("0x")
+      ? `${username.slice(0, 6)}…${username.slice(-4)}`
+      : `@${username}`;
+  }
+  if (wallet) return `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
+  return "Unknown User";
+}
+
 export const formatDisputeParty = (party: string): string => {
   if (!party) return "Unknown";
 

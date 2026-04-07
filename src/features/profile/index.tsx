@@ -6,15 +6,14 @@ import { RiShieldCheckFill } from "react-icons/ri";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../hooks/useAuth";
 import { LoginModal } from "../../components/LoginModal";
-import { useAccountUpdate, useAvatarUpload } from "../../hooks/useAccountApi";
 import type { AccountUpdateRequest } from "../../services/apiService";
 import { useNavigate } from "react-router-dom";
-import { useDisputesApi } from "../../hooks/useDisputesApi";
+import { useDisputes } from "../../hooks/useDisputes";
 import type { DisputeRow } from "../../types";
 import { WalletLinkingModal } from "../../components/WalletLinkingModal";
 import useTrustScore from "../../hooks/useTrustScore";
-import { useReputationHistory } from "../../hooks/useReputation";
-import { useProfileAgreementsApi } from "../../hooks/useProfileAgreementsApi";
+import { useReputationHistory } from "../reputation";
+import { useProfileAgreements } from "../../hooks/useProfileAgreements";
 
 // Components
 import { Toaster } from "./components/Toaster";
@@ -39,6 +38,7 @@ import {
   formatShortWallet,
   formatUsername,
 } from "./utils/formatters";
+import { useUpdateAccount, useUploadAvatar } from "../../hooks/useAccounts";
 
 export default function Profile() {
   const { isAuthenticated, user, login } = useAuth();
@@ -72,7 +72,7 @@ export default function Profile() {
     loading: reputationLoading,
     error: reputationError,
     loadingMore: reputationLoadingMore,
-    loadMoreHistory,
+    loadMore: loadMoreHistory,
   } = useReputationHistory(user?.id?.toString() || null);
   const {
     disputes,
@@ -81,19 +81,35 @@ export default function Profile() {
     hasMore,
     totalUserDisputes,
     loadMore,
-  } = useDisputesApi(user?.id);
+  } = useDisputes(user?.id);
+  // const {
+  //   updateAccount,
+  //   loading: updating,
+  //   error: updateError,
+  //   success: updateSuccess,
+  // } = useAccountUpdate();
+  // const {
+  //   uploadAvatar,
+  //   loading: uploading,
+  //   error: uploadError,
+  //   success: uploadSuccess,
+  // } = useAvatarUpload();
+
   const {
-    updateAccount,
-    loading: updating,
-    error: updateError,
-    success: updateSuccess,
-  } = useAccountUpdate();
+    mutateAsync: updateAccount,
+    isPending: updating,
+    isError: isUpdateError,
+    isSuccess: updateSuccess,
+    error: updateErrorObj,
+  } = useUpdateAccount();
   const {
-    uploadAvatar,
-    loading: uploading,
-    error: uploadError,
-    success: uploadSuccess,
-  } = useAvatarUpload();
+    mutate: uploadAvatar,
+    isPending: uploading,
+    isError: isUploadError,
+    isSuccess: uploadSuccess,
+    error: uploadErrorObj,
+  } = useUploadAvatar();
+
   const {
     reputationalDisplay,
     escrowDisplay,
@@ -105,7 +121,7 @@ export default function Profile() {
     loadMoreEscrow,
     totalReputationalAgreements,
     totalEscrowAgreements,
-  } = useProfileAgreementsApi(user?.id, user?.walletAddress);
+  } = useProfileAgreements(user?.id, user?.walletAddress);
 
   // Custom hooks
   const userData = useUserData(user, trustScore);
@@ -173,20 +189,15 @@ export default function Profile() {
     [disputes, totalUserDisputes],
   );
 
-  // Handlers
   const handleUpdate = useCallback(
-    async (updateData: AccountUpdateRequest) => {
-      await updateAccount(updateData);
-    },
+    (updateData: AccountUpdateRequest) => updateAccount(updateData),
     [updateAccount],
   );
 
   const handleAvatarChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-        await uploadAvatar(file);
-      }
+      if (file) uploadAvatar(file);
     },
     [uploadAvatar],
   );
@@ -244,24 +255,24 @@ export default function Profile() {
   }, [uploadSuccess]);
 
   useEffect(() => {
-    if (updateError) {
+    if (isUpdateError && updateErrorObj) {
       setToaster({
-        message: updateError,
+        message: (updateErrorObj as Error).message,
         type: "error",
         isVisible: true,
       });
     }
-  }, [updateError]);
+  }, [isUpdateError, updateErrorObj]);
 
   useEffect(() => {
-    if (uploadError) {
+    if (isUploadError && uploadErrorObj) {
       setToaster({
-        message: uploadError,
+        message: (uploadErrorObj as Error).message,
         type: "error",
         isVisible: true,
       });
     }
-  }, [uploadError]);
+  }, [isUploadError, uploadErrorObj]);
 
   // Debug logs
   useEffect(() => {

@@ -22,10 +22,10 @@ export const RevenueChart = () => {
 
   return (
     <section className="card-cyan relative rounded-2xl border border-cyan-400/60 p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="space font-semibold text-white/90 lg:text-xl">
-          Platform Revenue
-        </h3>
+      <div className="mb-4 flex flex-col justify-between sm:flex-row sm:items-center">
+        <div>
+          <h3 className="text-xl font-bold text-white">Platform Revenue</h3>
+        </div>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="bg-white/5">
             <TabsTrigger value="daily">Daily</TabsTrigger>

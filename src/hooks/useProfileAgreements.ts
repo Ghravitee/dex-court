@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { agreementService } from "../services/agreementServices";
+import { fetchAgreements } from "../services/agreementServices";
+import { AgreementTypeEnum } from "../services/agreementServices";
 import { getAgreementExistOnchain } from "../web3/readContract";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 
-export function useProfileAgreementsApi(
+export function useProfileAgreements(
   userId?: string,
   userWalletAddress?: string | null,
 ) {
@@ -28,12 +29,12 @@ export function useProfileAgreementsApi(
   const ITEMS_PER_PAGE = 10;
   const networkInfo = useNetworkEnvironment();
 
-  // Use refs for stable references
   const allReputationalRef = useRef<any[]>([]);
   const allEscrowRef = useRef<any[]>([]);
   const hasFetchedRef = useRef(false);
 
-  // Helper function to extract roles from description (moved inside useCallback)
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+
   const extractRolesFromDescription = useCallback((description: string) => {
     if (!description) return { serviceProvider: null, serviceRecipient: null };
 
@@ -43,7 +44,6 @@ export function useProfileAgreementsApi(
     const serviceRecipientMatch = description.match(
       /Service Recipient:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
     );
-
     const alternativeProviderMatch = description.match(
       /Provider:\s*(0x[a-fA-F0-9]{40}|@[a-zA-Z0-9_]+)/i,
     );
@@ -53,13 +53,12 @@ export function useProfileAgreementsApi(
 
     return {
       serviceProvider:
-        serviceProviderMatch?.[1] || alternativeProviderMatch?.[1] || null,
+        serviceProviderMatch?.[1] ?? alternativeProviderMatch?.[1] ?? null,
       serviceRecipient:
-        serviceRecipientMatch?.[1] || alternativeRecipientMatch?.[1] || null,
+        serviceRecipientMatch?.[1] ?? alternativeRecipientMatch?.[1] ?? null,
     };
   }, []);
 
-  // Transform functions wrapped in useCallback
   const transformEscrowAgreement = useCallback(
     (apiAgreement: any) => {
       const formatWalletAddress = (address: string): string => {
@@ -114,12 +113,10 @@ export function useProfileAgreementsApi(
         payeeWalletAddress: apiAgreement.payeeWalletAddress,
         payerWalletAddress: apiAgreement.payerWalletAddress,
         type: apiAgreement.type,
-        // Add on-chain related fields
         onChainId: apiAgreement.contractAgreementId,
         escrowAddress: apiAgreement.escrowContractAddress,
         chainId: apiAgreement.chainId,
-        // Flag to track verification status
-        onChainVerified: false, // Will be updated after verification
+        onChainVerified: false,
       };
     },
     [extractRolesFromDescription],
@@ -138,27 +135,19 @@ export function useProfileAgreementsApi(
     };
   }, []);
 
-  // NEW: Function to verify escrow agreements on-chain
+  // ─── On-chain verification ─────────────────────────────────────────────────
+
   const verifyEscrowAgreementsOnChain = useCallback(
     async (escrows: any[]) => {
       if (!escrows.length) return [];
 
-      // Split escrows by status
       const confirmedAgreements = escrows.filter(
-        (e) => e.status !== 1 && e.status !== 7, // status 1 = pending, 7 = pending_approval
+        (e) => e.status !== 1 && e.status !== 7,
       );
-
       const pendingAgreements = escrows.filter(
         (e) => e.status === 1 || e.status === 7,
       );
 
-      console.log(`📊 Profile - Verifying escrow agreements:`, {
-        total: escrows.length,
-        confirmed: confirmedAgreements.length,
-        pending: pendingAgreements.length,
-      });
-
-      // Group pending agreements by (chainId, escrowAddress)
       const groupedPending: Record<
         string,
         {
@@ -170,12 +159,7 @@ export function useProfileAgreementsApi(
       > = {};
 
       pendingAgreements.forEach((agreement) => {
-        if (!agreement.onChainId || !agreement.escrowAddress) {
-          console.warn(
-            `⚠️ Profile - Pending escrow ${agreement.id} missing onChainId or escrowAddress`,
-          );
-          return;
-        }
+        if (!agreement.onChainId || !agreement.escrowAddress) return;
 
         const chainId = agreement.chainId || networkInfo.chainId;
         const escrowAddr = agreement.escrowAddress.toLowerCase();
@@ -194,19 +178,12 @@ export function useProfileAgreementsApi(
         groupedPending[key].onChainIds.push(BigInt(agreement.onChainId));
       });
 
-      // Batch check existence for pending agreements
       const verifiedPendingAgreements: any[] = [];
 
-      const groupPromises = Object.entries(groupedPending).map(
-        async ([key, group]) => {
+      await Promise.all(
+        Object.entries(groupedPending).map(async ([, group]) => {
           try {
             if (group.onChainIds.length === 0) return;
-
-            console.log(`🔍 Profile - Checking pending group ${key}:`, {
-              chainId: group.chainId,
-              contract: group.escrowAddress,
-              agreementCount: group.onChainIds.length,
-            });
 
             const existOnChain = await getAgreementExistOnchain(
               group.chainId,
@@ -214,44 +191,20 @@ export function useProfileAgreementsApi(
               group.escrowAddress as `0x${string}`,
             );
 
-            console.log(`✅ Profile - Group ${key} results:`, {
-              existCount: existOnChain.filter(Boolean).length,
-              notExistCount: existOnChain.filter((v) => !v).length,
-            });
-
-            // Add pending agreements that exist on-chain
             group.agreements.forEach((agreement, index) => {
               if (existOnChain[index]) {
                 verifiedPendingAgreements.push({
                   ...agreement,
                   onChainVerified: true,
                 });
-              } else {
-                console.warn(
-                  `❌ Profile - Pending agreement ${agreement.id} doesn't exist on-chain`,
-                );
               }
             });
-          } catch (error) {
-            console.error(
-              `❌ Profile - Error checking pending group ${key}:`,
-              error,
-            );
-            // Skip this group - don't add any pending agreements from it
+          } catch {
+            // Skip group on error — don't surface unverified pending agreements
           }
-        },
+        }),
       );
 
-      await Promise.all(groupPromises);
-
-      console.log("📊 Profile - Final escrow verification results:", {
-        confirmedAgreements: confirmedAgreements.length,
-        verifiedPendingAgreements: verifiedPendingAgreements.length,
-        filteredOut:
-          pendingAgreements.length - verifiedPendingAgreements.length,
-      });
-
-      // Combine confirmed (always included) + verified pending
       return [
         ...confirmedAgreements.map((a) => ({ ...a, onChainVerified: true })),
         ...verifiedPendingAgreements,
@@ -260,83 +213,83 @@ export function useProfileAgreementsApi(
     [networkInfo.chainId],
   );
 
-  // Function to fetch ALL user agreements once
+  // ─── Fetch ─────────────────────────────────────────────────────────────────
+  // NOTE: The API has no per-user filter endpoint. We fetch type-specific
+  // pages (capped at 100) and filter client-side by userId/walletAddress.
+  // For users with more than 100 agreements of a given type, results will
+  // be incomplete. TODO: Ask backend to add GET /agreement?userId=:id
+
   const fetchAllUserAgreements = useCallback(async () => {
     if (!userId && !userWalletAddress) return { reputational: [], escrow: [] };
 
     try {
-      // Fetch all agreements without pagination
-      const response = await agreementService.getAgreements({
-        top: 1000,
-        skip: 0,
-        sort: "desc",
-      });
+      // Two targeted requests instead of one 1000-record fetch
+      const [reputationalResponse, escrowResponse] = await Promise.all([
+        fetchAgreements({
+          top: 100,
+          skip: 0,
+          sort: "desc",
+          type: AgreementTypeEnum.REPUTATION,
+        }),
+        fetchAgreements({
+          top: 100,
+          skip: 0,
+          sort: "desc",
+          type: AgreementTypeEnum.ESCROW,
+        }),
+      ]);
 
-      const allAgreementsData: any[] = response.results || [];
+      const allReputational = reputationalResponse.results ?? [];
+      const allEscrow = escrowResponse.results ?? [];
 
-      // Separate by type
-      const allReputational = allAgreementsData.filter(
-        (agreement: any) => agreement.type === 1,
-      );
-      const allEscrow = allAgreementsData.filter(
-        (agreement: any) => agreement.type === 2,
-      );
-
-      // Filter reputational agreements by user involvement
+      // Filter reputational by user ID
       const userReputational = allReputational
-        .filter((agreement: any) => {
+        .filter((agreement) => {
           if (!userId) return false;
-          const userStrId = userId.toString();
-          const firstPartyId = agreement.firstParty?.id?.toString();
-          const counterPartyId = agreement.counterParty?.id?.toString();
-
-          return firstPartyId === userStrId || counterPartyId === userStrId;
+          return (
+            agreement.firstParty?.id?.toString() === userId ||
+            agreement.counterParty?.id?.toString() === userId
+          );
         })
         .map(transformReputationalAgreement);
 
-      // Filter escrow agreements by user involvement
+      // Filter escrow by user ID or wallet address
       const userEscrow = allEscrow
-        .filter((agreement: any) => {
-          const userWallet = userWalletAddress?.toLowerCase();
-
-          // Check by user ID
+        .filter((agreement) => {
           if (userId) {
-            const userStrId = userId.toString();
-            const firstPartyId = agreement.firstParty?.id?.toString();
-            const counterPartyId = agreement.counterParty?.id?.toString();
-
-            if (firstPartyId === userStrId || counterPartyId === userStrId) {
+            if (
+              agreement.firstParty?.id?.toString() === userId ||
+              agreement.counterParty?.id?.toString() === userId
+            ) {
               return true;
             }
           }
 
-          // Check by wallet address
+          const userWallet = userWalletAddress?.toLowerCase();
           if (userWallet) {
-            const payeeWallet = agreement.payeeWalletAddress?.toLowerCase();
-            const payerWallet = agreement.payerWalletAddress?.toLowerCase();
-
+            const payee = agreement.payeeWalletAddress?.toLowerCase();
+            const payer = agreement.payerWalletAddress?.toLowerCase();
             if (
-              (payeeWallet && payeeWallet === userWallet) ||
-              (payerWallet && payerWallet === userWallet)
+              (payee && payee === userWallet) ||
+              (payer && payer === userWallet)
             ) {
               return true;
             }
 
-            // Fallback to description extraction
+            // Fallback: extract from description
             const roles = extractRolesFromDescription(
               agreement.description || "",
             );
-            const provider = roles.serviceProvider?.toLowerCase();
-            const recipient = roles.serviceRecipient?.toLowerCase();
-
-            return provider === userWallet || recipient === userWallet;
+            return (
+              roles.serviceProvider?.toLowerCase() === userWallet ||
+              roles.serviceRecipient?.toLowerCase() === userWallet
+            );
           }
 
           return false;
         })
         .map(transformEscrowAgreement);
 
-      // NEW: Verify escrow agreements on-chain
       setVerifyingOnChain(true);
       const verifiedEscrowAgreements =
         await verifyEscrowAgreementsOnChain(userEscrow);
@@ -347,9 +300,8 @@ export function useProfileAgreementsApi(
         escrow: verifiedEscrowAgreements,
       };
     } catch (err) {
-      console.error("Error fetching user agreements:", err);
       setVerifyingOnChain(false);
-      return { reputational: [], escrow: [] };
+      throw err;
     }
   }, [
     userId,
@@ -360,7 +312,8 @@ export function useProfileAgreementsApi(
     verifyEscrowAgreementsOnChain,
   ]);
 
-  // Initial load
+  // ─── Initial load ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     const fetchInitialAgreements = async () => {
       if ((!userId && !userWalletAddress) || hasFetchedRef.current) return;
@@ -371,7 +324,6 @@ export function useProfileAgreementsApi(
       try {
         const { reputational, escrow } = await fetchAllUserAgreements();
 
-        // Store in refs and state
         allReputationalRef.current = reputational;
         allEscrowRef.current = escrow;
 
@@ -380,16 +332,11 @@ export function useProfileAgreementsApi(
         setTotalReputationalAgreements(reputational.length);
         setTotalEscrowAgreements(escrow.length);
 
-        // Get first page for display
-        const firstPageReputational = reputational.slice(0, ITEMS_PER_PAGE);
-        const firstPageEscrow = escrow.slice(0, ITEMS_PER_PAGE);
-
-        setReputationalDisplay(firstPageReputational);
-        setEscrowDisplay(firstPageEscrow);
+        setReputationalDisplay(reputational.slice(0, ITEMS_PER_PAGE));
+        setEscrowDisplay(escrow.slice(0, ITEMS_PER_PAGE));
         setHasMoreReputational(reputational.length > ITEMS_PER_PAGE);
         setHasMoreEscrow(escrow.length > ITEMS_PER_PAGE);
       } catch (err) {
-        console.error("Error fetching agreements:", err);
         setError(
           err instanceof Error ? err.message : "Failed to load agreements",
         );
@@ -400,44 +347,43 @@ export function useProfileAgreementsApi(
 
     fetchInitialAgreements();
 
-    // Reset when user changes
     return () => {
       hasFetchedRef.current = false;
     };
   }, [userId, userWalletAddress, fetchAllUserAgreements]);
 
-  // Function to load more reputational agreements
+  // ─── Load more ─────────────────────────────────────────────────────────────
+
   const loadMoreReputational = useCallback(() => {
     if (!loading && hasMoreReputational) {
       const nextPage = pageReputational + 1;
-      const startIndex = (nextPage - 1) * ITEMS_PER_PAGE;
-      const endIndex = startIndex + ITEMS_PER_PAGE;
-      const nextAgreements = allReputationalRef.current.slice(
-        startIndex,
-        endIndex,
-      );
-
-      setReputationalDisplay((prev) => [...prev, ...nextAgreements]);
-      setHasMoreReputational(endIndex < allReputationalRef.current.length);
+      const start = (nextPage - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+      setReputationalDisplay((prev) => [
+        ...prev,
+        ...allReputationalRef.current.slice(start, end),
+      ]);
+      setHasMoreReputational(end < allReputationalRef.current.length);
       setPageReputational(nextPage);
     }
   }, [loading, hasMoreReputational, pageReputational]);
 
-  // Function to load more escrow agreements
   const loadMoreEscrow = useCallback(() => {
     if (!loading && hasMoreEscrow) {
       const nextPage = pageEscrow + 1;
-      const startIndex = (nextPage - 1) * ITEMS_PER_PAGE;
-      const endIndex = startIndex + ITEMS_PER_PAGE;
-      const nextAgreements = allEscrowRef.current.slice(startIndex, endIndex);
-
-      setEscrowDisplay((prev) => [...prev, ...nextAgreements]);
-      setHasMoreEscrow(endIndex < allEscrowRef.current.length);
+      const start = (nextPage - 1) * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+      setEscrowDisplay((prev) => [
+        ...prev,
+        ...allEscrowRef.current.slice(start, end),
+      ]);
+      setHasMoreEscrow(end < allEscrowRef.current.length);
       setPageEscrow(nextPage);
     }
   }, [loading, hasMoreEscrow, pageEscrow]);
 
-  // Function to refresh agreements
+  // ─── Refetch ───────────────────────────────────────────────────────────────
+
   const refetch = useCallback(async () => {
     if (!userId && !userWalletAddress) return;
 
@@ -454,19 +400,13 @@ export function useProfileAgreementsApi(
       setEscrowAgreements(escrow);
       setTotalReputationalAgreements(reputational.length);
       setTotalEscrowAgreements(escrow.length);
-
-      // Reset to first page
-      const firstPageReputational = reputational.slice(0, ITEMS_PER_PAGE);
-      const firstPageEscrow = escrow.slice(0, ITEMS_PER_PAGE);
-
-      setReputationalDisplay(firstPageReputational);
-      setEscrowDisplay(firstPageEscrow);
+      setReputationalDisplay(reputational.slice(0, ITEMS_PER_PAGE));
+      setEscrowDisplay(escrow.slice(0, ITEMS_PER_PAGE));
       setHasMoreReputational(reputational.length > ITEMS_PER_PAGE);
       setHasMoreEscrow(escrow.length > ITEMS_PER_PAGE);
       setPageReputational(1);
       setPageEscrow(1);
     } catch (err) {
-      console.error("Error refetching agreements:", err);
       setError(
         err instanceof Error ? err.message : "Failed to refetch agreements",
       );
@@ -476,30 +416,19 @@ export function useProfileAgreementsApi(
   }, [userId, userWalletAddress, fetchAllUserAgreements]);
 
   return {
-    // All agreements (for stats)
     reputationalAgreements,
     escrowAgreements,
-
-    // Display agreements (paginated)
     reputationalDisplay,
     escrowDisplay,
-
-    // Loading states
     loading,
-    verifyingOnChain, // New: indicates on-chain verification in progress
+    verifyingOnChain,
     error,
-
-    // Pagination controls
     hasMoreReputational,
     hasMoreEscrow,
     loadMoreReputational,
     loadMoreEscrow,
-
-    // Totals
     totalReputationalAgreements,
     totalEscrowAgreements,
-
-    // Refresh function
     refetch,
   };
 }

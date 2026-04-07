@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   X,
   AlertTriangle,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../../../components/ui/button";
 import { toast } from "sonner";
-import { disputeService } from "../../../../services/disputeServices";
+import { useAllAccounts } from "../../../../hooks/useAccounts";
 import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
@@ -72,8 +72,7 @@ export const RaiseDisputeModal = ({
   const [localFiles, setLocalFiles] = useState<File[]>(files);
   const [witnessInput, setWitnessInput] = useState("");
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
-  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
-  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
+
   const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
@@ -97,42 +96,35 @@ export const RaiseDisputeModal = ({
 
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
-  const handleWitnessSearch = useCallback(
-    async (query: string) => {
-      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
-      if (cleanQuery.length < 2) {
-        setWitnessSearchResults([]);
-        setShowWitnessSuggestions(false);
-        return;
-      }
-      setIsWitnessSearchLoading(true);
-      setShowWitnessSuggestions(true);
-      try {
-        const results = await disputeService.searchUsers(cleanQuery);
-        const currentUserTelegram = currentUser?.username || "";
-        setWitnessSearchResults(
-          results.filter((u) => {
-            const t = u.telegramUsername || u.username;
-            return t && t.toLowerCase() !== currentUserTelegram.toLowerCase();
-          }),
-        );
-      } catch {
-        setWitnessSearchResults([]);
-      } finally {
-        setIsWitnessSearchLoading(false);
-      }
-    },
-    [currentUser],
-  );
+  const currentUserTelegram = currentUser?.username ?? "";
+
+  // Fetch all accounts once — cached, no per-keystroke network requests
+  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
+    useAllAccounts({
+      enabled: debouncedWitnessQuery.length >= 2,
+    });
+
+  const witnessSearchResults = useMemo(() => {
+    if (debouncedWitnessQuery.length < 2) return [];
+    const q = debouncedWitnessQuery.startsWith("@")
+      ? debouncedWitnessQuery.slice(1).toLowerCase()
+      : debouncedWitnessQuery.toLowerCase();
+
+    return allAccounts.filter((u) => {
+      const t = u.telegram?.username ?? u.telegramInfo ?? u.username ?? "";
+      if (t.toLowerCase() === currentUserTelegram.toLowerCase()) return false;
+      return (
+        u.username?.toLowerCase().includes(q) ||
+        u.telegram?.username?.toLowerCase().includes(q) ||
+        u.telegramInfo?.toLowerCase().includes(q) ||
+        u.walletAddress?.toLowerCase().includes(q)
+      );
+    });
+  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
 
   useEffect(() => {
-    if (debouncedWitnessQuery.length >= 2)
-      handleWitnessSearch(debouncedWitnessQuery);
-    else {
-      setWitnessSearchResults([]);
-      setShowWitnessSuggestions(false);
-    }
-  }, [debouncedWitnessQuery, handleWitnessSearch]);
+    setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
+  }, [debouncedWitnessQuery]);
 
   const addWitness = (witness?: string) => {
     const trimmed = witness || witnessInput.trim();

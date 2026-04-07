@@ -31,7 +31,7 @@ export function ConnectionStatus() {
   if (!show) return null;
 
   return (
-    <div className="fixed top-10 right-4 z-50">
+    <div className="fixed top-10 right-4 z-60">
       <div
         className={`flex items-center gap-2 rounded-lg border px-4 py-2 shadow-lg ${
           isConnecting || isReconnecting

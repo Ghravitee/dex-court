@@ -268,7 +268,7 @@ export function Sidebar({
     <aside
       className={cn(
         mobile ? "flex" : "hidden lg:flex",
-        "fixed top-0 left-0 z-40 h-[100vh] flex-col border-r border-white/10",
+        "fixed top-0 left-0 z-[60] h-[100vh] flex-col border-r border-white/10",
         "transition-all duration-200",
         expanded ? "w-64" : "w-16",
       )}
@@ -294,7 +294,7 @@ export function Sidebar({
         {!mobile && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="absolute -right-4 rounded-md border border-white/20 p-1 hover:text-white"
+            className="absolute right-0 z-[60] rounded-md border border-white/20 p-1 hover:text-white"
           >
             {expanded ? (
               <ChevronLeft className="h-5 w-5" />

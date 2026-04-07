@@ -367,7 +367,7 @@ export const VoteModal = ({
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
                     Who is your vote for?
                   </h4>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Plaintiff Option */}
                     <VoteOption
                       label={

@@ -364,7 +364,7 @@ export function Topbar({
 
   return (
     <>
-      <header className="from-background/60 to-background/30 sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-gradient-to-b px-4 backdrop-blur-xl sm:px-6">
+      <header className="from-background/60 to-background/30 sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/10 bg-gradient-to-b px-4 backdrop-blur-xl sm:px-6">
         <div className="absolute inset-0 -z-[50] bg-cyan-500/10 blur-3xl"></div>
 
         {/* Left: Logo (shown on mobile when showLogo is true) */}

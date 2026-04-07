@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import type { DisputeRow, UploadedFile } from "../../../types";
-import { disputeService } from "../../../services/disputeServices";
 import {
   cleanTelegramUsername,
   formatTelegramUsernameForDisplay,
@@ -24,8 +22,9 @@ import {
   Send,
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
-import { useDebounce } from "../../../hooks/useDebounce";
 import { UserSearchResult } from "../UserSearchResult";
+import { useAllAccounts } from "../../../hooks/useAccounts";
+import { useDebounce } from "../../../hooks/useDebounce";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
@@ -63,72 +62,47 @@ export const DefendantReplyModal = ({
 
   // Witness search state
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
-  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
-  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
   const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const witnessSearchRef = useRef<HTMLDivElement>(null);
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
-  // Witness search function
-  const handleWitnessSearch = useCallback(
-    async (query: string) => {
-      if (query.length < 2) {
-        setWitnessSearchResults([]);
-        setShowWitnessSuggestions(false);
-        return;
-      }
+  const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-      setIsWitnessSearchLoading(true);
-      setShowWitnessSuggestions(true);
+  // Fetch all accounts once — cached, no per-keystroke requests
+  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
+    useAllAccounts({
+      enabled: debouncedWitnessQuery.length >= 2,
+    });
 
-      try {
-        const results = await disputeService.searchUsers(query);
+  const witnessSearchResults = useMemo(() => {
+    if (debouncedWitnessQuery.length < 2) return [];
+    const q = debouncedWitnessQuery.toLowerCase();
 
-        const currentUserTelegram = getCurrentUserTelegram(currentUser);
-        const filteredResults = results.filter((resultUser) => {
-          const resultTelegram = cleanTelegramUsername(
-            resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
-          );
+    return allAccounts.filter((u) => {
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      // Exclude current user
+      if (
+        telegram &&
+        telegram.toLowerCase() === currentUserTelegram.toLowerCase()
+      )
+        return false;
 
-          return (
-            resultTelegram &&
-            resultTelegram.toLowerCase() !== currentUserTelegram.toLowerCase()
-          );
-        });
+      return (
+        u.username?.toLowerCase().includes(q) ||
+        u.telegram?.username?.toLowerCase().includes(q) ||
+        u.telegramInfo?.toLowerCase().includes(q) ||
+        u.walletAddress?.toLowerCase().includes(q)
+      );
+    });
+  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
 
-        setWitnessSearchResults(filteredResults);
-      } catch (error) {
-        console.error("Witness search failed:", error);
-        setWitnessSearchResults([]);
-      } finally {
-        setIsWitnessSearchLoading(false);
-      }
-    },
-    [currentUser],
-  );
-
-  // Debounced search effect
   useEffect(() => {
-    if (debouncedWitnessQuery.length >= 2) {
-      handleWitnessSearch(debouncedWitnessQuery);
-    } else {
-      setWitnessSearchResults([]);
-      setShowWitnessSuggestions(false);
-    }
-  }, [debouncedWitnessQuery, handleWitnessSearch]);
+    setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
+  }, [debouncedWitnessQuery]);
 
-  // Handle witness selection
-  const handleWitnessSelect = (username: string) => {
-    if (!witnesses.includes(username)) {
-      setWitnesses((prev) => [...prev, username]);
-    }
-    setShowWitnessSuggestions(false);
-    setWitnessSearchQuery("");
-  };
-
-  // Click outside handler for witness search
+  // Click outside handler
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -221,6 +195,29 @@ export const DefendantReplyModal = ({
       prev.filter((witness) => witness !== witnessToRemove),
     );
   };
+
+  const handleWitnessSelect = useCallback(
+    (user: (typeof allAccounts)[number]) => {
+      const telegram = cleanTelegramUsername(
+        user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
+      );
+
+      if (!telegram) {
+        toast.error("Selected user has no valid Telegram username");
+        return;
+      }
+
+      if (witnesses.includes(telegram)) {
+        toast.error("Witness already added");
+        return;
+      }
+
+      setWitnesses((prev) => [...prev, telegram]);
+      setWitnessSearchQuery("");
+      setShowWitnessSuggestions(false);
+    },
+    [witnesses],
+  );
 
   const handleSubmit = async () => {
     // Validation for Defendant

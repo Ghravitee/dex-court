@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "../components/ui/button";
 import {
   Search,
@@ -10,15 +10,14 @@ import {
   Users,
   Scale,
   Info,
-  ChevronRight,
   X,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
-import { disputeService } from "../services/disputeServices";
+import { createDisputeFromAgreement } from "../services/disputeServices";
 import { DisputeTypeEnum } from "../types";
 import type { UploadedFile } from "../types";
-import { UserAvatar } from "../components/UserAvatar";
+// import { UserAvatar } from "../components/UserAvatar";
 import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
@@ -28,12 +27,15 @@ import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
+import { useAllAccounts } from "../hooks/useAccounts";
+import { useDebounce } from "../hooks/useDebounce";
+import { UserSearchResult } from "./disputes/UserSearchResult";
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const formatDefendantDisplay = (defendant: string): string => {
   const cleanDefendant = defendant.replace(/^@/, "");
-  if (isWalletAddress(cleanDefendant)) {
-    return cleanDefendant;
-  }
+  if (isWalletAddress(cleanDefendant)) return cleanDefendant;
   return defendant.startsWith("@") ? defendant : `@${defendant}`;
 };
 
@@ -43,31 +45,14 @@ const getTotalFileSize = (files: UploadedFile[]): string => {
   return `${mb.toFixed(2)} MB`;
 };
 
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-};
-
 const isSecondRejection = (agreement: any): boolean => {
   if (!agreement?.timeline) return false;
-  const rejectionEvents = agreement.timeline.filter(
-    (event: any) => event.eventType === 6,
-  );
-  return rejectionEvents.length >= 2;
+  return agreement.timeline.filter((e: any) => e.eventType === 6).length >= 2;
 };
 
 const isWalletAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value);
+
+// ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface OpenDisputeModalProps {
   isOpen: boolean;
@@ -77,60 +62,7 @@ interface OpenDisputeModalProps {
   onPaidDisputeCreated?: (votingId: number | string, flow: "open") => void;
 }
 
-const UserSearchResult = ({
-  user,
-  onSelect,
-}: {
-  user: any;
-  onSelect: (username: string) => void;
-  field: "defendant" | "witness";
-}) => {
-  const { user: currentUser } = useAuth();
-
-  const telegramUsername = cleanTelegramUsername(
-    user.telegramUsername || user.telegram?.username || user.telegramInfo,
-  );
-
-  if (!telegramUsername) {
-    return null;
-  }
-
-  const displayUsername = telegramUsername ? `@${telegramUsername}` : "Unknown";
-  const displayName = user.displayName || displayUsername;
-  const isCurrentUser = user.id === currentUser?.id;
-
-  return (
-    <div
-      onClick={() => onSelect(telegramUsername)}
-      className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
-        isCurrentUser ? "opacity-80" : ""
-      }`}
-    >
-      <UserAvatar
-        userId={user.id}
-        avatarId={user.avatarId || user.avatar?.id}
-        username={telegramUsername}
-        size="sm"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-white">
-          {displayName}
-        </div>
-        {telegramUsername && (
-          <div className="truncate text-xs text-cyan-300">
-            @{telegramUsername}
-          </div>
-        )}
-        {user.bio && (
-          <div className="mt-1 truncate text-xs text-cyan-200/70">
-            {user.bio}
-          </div>
-        )}
-      </div>
-      <ChevronRight className="h-4 w-4 flex-shrink-0 text-cyan-400" />
-    </div>
-  );
-};
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function OpenDisputeModal({
   isOpen,
@@ -142,6 +74,7 @@ export default function OpenDisputeModal({
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const networkInfo = useNetworkEnvironment();
+
   const [form, setForm] = useState({
     title: "",
     kind: "" as "" | "Pro Bono" | "Paid",
@@ -152,42 +85,78 @@ export default function OpenDisputeModal({
     witnesses: [""] as string[],
   });
 
-  // Search states for witnesses
+  // Witness search state
   const [witnessSearchQuery, setWitnessSearchQuery] = useState("");
-  const [witnessSearchResults, setWitnessSearchResults] = useState<any[]>([]);
-  const [isWitnessSearchLoading, setIsWitnessSearchLoading] = useState(false);
   const [showWitnessSuggestions, setShowWitnessSuggestions] = useState(false);
   const [activeWitnessIndex, setActiveWitnessIndex] = useState<number>(0);
 
-  // File upload state
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Use the custom hook for transaction management
   const { transactionStep, transactionHash, resetTransaction, isSuccess } =
     useDisputeTransaction(networkInfo.chainId);
 
-  // Add this ref to track if form has been initialized
   const hasInitialized = useRef(false);
-
-  // Refs for form data that changes
   const formRef = useRef(form);
   const agreementIdRef = useRef(agreement?.id);
   const networkInfoRef = useRef(networkInfo);
 
-  // Update refs when dependencies change
   useEffect(() => {
     formRef.current = form;
   }, [form]);
-
   useEffect(() => {
     agreementIdRef.current = agreement?.id;
   }, [agreement?.id]);
-
   useEffect(() => {
     networkInfoRef.current = networkInfo;
   }, [networkInfo]);
 
-  // Initialize form from agreement
+  // ─── Account search ──────────────────────────────────────────────────────────
+
+  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+
+  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
+    useAllAccounts({
+      enabled: debouncedWitnessQuery.length >= 2,
+    });
+
+  const currentUserTelegram = getCurrentUserTelegram(currentUser);
+
+  const witnessSearchResults = useMemo(() => {
+    if (debouncedWitnessQuery.length < 2) return [];
+
+    const cleanQuery = debouncedWitnessQuery.startsWith("@")
+      ? debouncedWitnessQuery.slice(1)
+      : debouncedWitnessQuery;
+    const q = cleanQuery.toLowerCase();
+
+    const cleanDefendant = form.defendant.startsWith("@")
+      ? form.defendant.slice(1).toLowerCase()
+      : form.defendant.toLowerCase();
+
+    return allAccounts.filter((u) => {
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      if (!telegram) return false;
+      if (telegram.toLowerCase() === currentUserTelegram.toLowerCase())
+        return false;
+      if (telegram.toLowerCase() === cleanDefendant) return false;
+
+      return (
+        u.username?.toLowerCase().includes(q) ||
+        u.telegram?.username?.toLowerCase().includes(q) ||
+        u.telegramInfo?.toLowerCase().includes(q) ||
+        u.walletAddress?.toLowerCase().includes(q)
+      );
+    });
+  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram, form.defendant]);
+
+  useEffect(() => {
+    setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
+  }, [debouncedWitnessQuery]);
+
+  // ─── Form initialization ─────────────────────────────────────────────────────
+
   useEffect(() => {
     if (isOpen && agreement && !hasInitialized.current) {
       const isFirstParty =
@@ -199,16 +168,15 @@ export default function OpenDisputeModal({
       const formattedDefendant = defendant
         ? formatDefendantDisplay(defendant)
         : "";
-
       const isFromSecondRejection = isSecondRejection(agreement._raw);
 
-      let title = `Dispute from Agreement: ${agreement.title}`;
-      let description = `This dispute originates from agreement "${agreement.title}".\n\nOriginal Agreement Description:\n${agreement.description}\n\nDispute Details: `;
+      const title = isFromSecondRejection
+        ? `Dispute: ${agreement.title} - Second Delivery Rejection`
+        : `Dispute from Agreement: ${agreement.title}`;
 
-      if (isFromSecondRejection) {
-        title = `Dispute: ${agreement.title} - Second Delivery Rejection`;
-        description = `This dispute was automatically triggered after the second rejection of delivery for agreement "${agreement.title}".\n\nOriginal Agreement Description:\n${agreement.description}\n\nDispute Details: The delivery has been rejected twice, indicating unresolved issues with the work performed.`;
-      }
+      const description = isFromSecondRejection
+        ? `This dispute was automatically triggered after the second rejection of delivery for agreement "${agreement.title}".\n\nOriginal Agreement Description:\n${agreement.description}\n\nDispute Details: The delivery has been rejected twice, indicating unresolved issues with the work performed.`
+        : `This dispute originates from agreement "${agreement.title}".\n\nOriginal Agreement Description:\n${agreement.description}\n\nDispute Details: `;
 
       setForm({
         title,
@@ -224,7 +192,6 @@ export default function OpenDisputeModal({
     }
   }, [isOpen, agreement, currentUser]);
 
-  // Reset the initialized flag when modal closes
   useEffect(() => {
     if (!isOpen) {
       hasInitialized.current = false;
@@ -232,7 +199,8 @@ export default function OpenDisputeModal({
     }
   }, [isOpen, resetTransaction]);
 
-  // Helper function to reset and close
+  // ─── Handlers ────────────────────────────────────────────────────────────────
+
   const resetFormAndClose = useCallback(() => {
     setForm({
       title: "",
@@ -248,28 +216,17 @@ export default function OpenDisputeModal({
     onClose();
   }, [resetTransaction, onDisputeCreated, onClose]);
 
-  // Handle transaction success
   useEffect(() => {
     if (isSuccess && transactionHash && form.kind === "Paid") {
-      console.log(
-        "✅ [OpenDisputeModal] Transaction successful! Hash:",
-        transactionHash,
-      );
-
       toast.success("Paid dispute created successfully!", {
         description:
           "Transaction confirmed on blockchain. The dispute is now active.",
         duration: 5000,
       });
-
-      setTimeout(() => {
-        console.log("🔄 Closing modal after success");
-        resetFormAndClose();
-      }, 2000);
+      setTimeout(() => resetFormAndClose(), 2000);
     }
   }, [isSuccess, transactionHash, form.kind, resetFormAndClose]);
 
-  // Create dispute in backend (used for Pro Bono only now)
   const createDisputeOffchain = useCallback(
     async (
       title: string,
@@ -279,33 +236,12 @@ export default function OpenDisputeModal({
       claim: string,
       witnesses: string[],
       files: File[],
-      transactionHash?: string,
+      txHash?: string,
     ) => {
-      console.log(
-        "🟡 createDisputeOffchain called with hash:",
-        transactionHash,
-      );
-
-      if (isSubmitting) {
-        console.log("⏸️ Already submitting, skipping");
-        return;
-      }
-
+      if (isSubmitting) return;
       setIsSubmitting(true);
-
       try {
-        console.log("🚀 Creating dispute from agreement...");
-
-        console.log("📋 Creating dispute with:", {
-          agreementId: agreement?.id,
-          title,
-          kind: requestKind === DisputeTypeEnum.ProBono ? "Pro Bono" : "Paid",
-          chainId: networkInfo.chainId,
-          transactionHash,
-        });
-
-        // Create the dispute - let backend generate voting ID
-        const result = await disputeService.createDisputeFromAgreement(
+        const result = await createDisputeFromAgreement(
           parseInt(agreement.id),
           {
             title,
@@ -315,26 +251,20 @@ export default function OpenDisputeModal({
             claim,
             witnesses,
             chainId: networkInfo.chainId,
-            txHash: transactionHash,
+            txHash,
           },
           files,
           networkInfo.chainId,
         );
 
-        console.log("✅ Dispute created successfully:", result);
-
         toast.success("Pro Bono dispute created successfully!", {
-          description: `${title} has been submitted for review`,
+          description: `${result.id} has been submitted for review`,
         });
 
-        // Reset form and close modal
         resetFormAndClose();
       } catch (error: any) {
-        console.error("❌ Dispute creation failed:", error);
-
-        const errorMessage = error.message || "Failed to submit dispute";
         toast.error("Submission Failed", {
-          description: errorMessage,
+          description: error.message || "Failed to submit dispute",
           duration: 6000,
         });
       } finally {
@@ -344,120 +274,64 @@ export default function OpenDisputeModal({
     [agreement?.id, networkInfo.chainId, isSubmitting, resetFormAndClose],
   );
 
-  const handleWitnessSearch = useCallback(
-    async (query: string) => {
-      const cleanQuery = query.startsWith("@") ? query.substring(1) : query;
+  // Witness select — receives full user object from UserSearchResult
+  const handleWitnessSelect = useCallback(
+    (user: (typeof allAccounts)[number], index: number) => {
+      const telegram = cleanTelegramUsername(
+        user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
+      );
 
-      if (cleanQuery.length < 2) {
-        setWitnessSearchResults([]);
-        setShowWitnessSuggestions(false);
+      if (!telegram) {
+        toast.error("Selected user has no valid Telegram username");
         return;
       }
 
-      setIsWitnessSearchLoading(true);
-      setShowWitnessSuggestions(true);
+      const cleanDefendant = form.defendant.startsWith("@")
+        ? form.defendant.slice(1)
+        : form.defendant;
 
-      try {
-        const results = await disputeService.searchUsers(cleanQuery);
-
-        const currentUserTelegram = getCurrentUserTelegram(currentUser);
-        const cleanDefendant = form.defendant.startsWith("@")
-          ? form.defendant.substring(1)
-          : form.defendant;
-
-        // Filter out current user and defendant from search results
-        const filteredResults = results.filter((resultUser) => {
-          const resultTelegram = cleanTelegramUsername(
-            resultUser.telegramUsername ||
-              resultUser.telegram?.username ||
-              resultUser.telegramInfo,
-          );
-
-          if (!resultTelegram) return false;
-
-          const isCurrentUser =
-            resultTelegram.toLowerCase() === currentUserTelegram.toLowerCase();
-          const isDefendant =
-            resultTelegram.toLowerCase() === cleanDefendant.toLowerCase();
-
-          return !isCurrentUser && !isDefendant;
+      if (telegram.toLowerCase() === currentUserTelegram.toLowerCase()) {
+        toast.error("Invalid Witness", {
+          description: "You cannot add yourself as a witness.",
+          duration: 4000,
         });
-
-        setWitnessSearchResults(filteredResults);
-      } catch (error) {
-        console.error("Witness search failed:", error);
-        setWitnessSearchResults([]);
-      } finally {
-        setIsWitnessSearchLoading(false);
+        return;
       }
-    },
-    [currentUser, form.defendant],
-  );
 
-  const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
+      if (telegram.toLowerCase() === cleanDefendant.toLowerCase()) {
+        toast.error("Invalid Witness", {
+          description: "The defendant cannot be a witness.",
+          duration: 4000,
+        });
+        return;
+      }
 
-  useEffect(() => {
-    if (debouncedWitnessQuery.length >= 2) {
-      handleWitnessSearch(debouncedWitnessQuery);
-    } else {
-      setWitnessSearchResults([]);
+      updateWitness(index, `@${telegram}`);
       setShowWitnessSuggestions(false);
-    }
-  }, [debouncedWitnessQuery, handleWitnessSearch]);
-
-  // Handle witness selection
-  const handleWitnessSelect = (username: string, index: number) => {
-    const cleanDefendant = form.defendant.startsWith("@")
-      ? form.defendant.substring(1)
-      : form.defendant;
-
-    const currentUserTelegram = getCurrentUserTelegram(currentUser);
-
-    if (username.toLowerCase() === currentUserTelegram.toLowerCase()) {
-      toast.error("Invalid Witness", {
-        description:
-          "You cannot add yourself as a witness. Please select another user.",
-        duration: 4000,
-      });
-      return;
-    }
-
-    if (username.toLowerCase() === cleanDefendant.toLowerCase()) {
-      toast.error("Invalid Witness", {
-        description:
-          "The defendant cannot be a witness. Please select another user.",
-        duration: 4000,
-      });
-      return;
-    }
-
-    updateWitness(index, `@${username}`);
-    setShowWitnessSuggestions(false);
-    setWitnessSearchQuery("");
-  };
+      setWitnessSearchQuery("");
+    },
+    [form.defendant, currentUserTelegram],
+  );
 
   const handleWitnessInputChange = (index: number, value: string) => {
     updateWitness(index, value);
     setWitnessSearchQuery(value);
 
-    if (value && value.length >= 2) {
-      const cleanWitness = value.startsWith("@") ? value.substring(1) : value;
+    if (value.length >= 2) {
+      const clean = value.startsWith("@") ? value.slice(1) : value;
       const cleanDefendant = form.defendant.startsWith("@")
-        ? form.defendant.substring(1)
+        ? form.defendant.slice(1)
         : form.defendant;
-      const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-      if (cleanWitness.toLowerCase() === currentUserTelegram.toLowerCase()) {
+      if (clean.toLowerCase() === currentUserTelegram.toLowerCase()) {
         toast.warning("Invalid Witness", {
-          description:
-            "You cannot add yourself as a witness. Please remove this entry.",
+          description: "You cannot add yourself as a witness.",
           duration: 5000,
           id: "self-witness-warning",
         });
-      } else if (cleanWitness.toLowerCase() === cleanDefendant.toLowerCase()) {
+      } else if (clean.toLowerCase() === cleanDefendant.toLowerCase()) {
         toast.warning("Invalid Witness", {
-          description:
-            "The defendant cannot be a witness. Please remove this entry.",
+          description: "The defendant cannot be a witness.",
           duration: 5000,
           id: "defendant-witness-warning",
         });
@@ -481,7 +355,6 @@ export default function OpenDisputeModal({
         );
         return;
       }
-
       if (fileType === "document" && fileSizeMB > 3) {
         toast.error(
           `Document "${file.name}" exceeds 3MB limit (${fileSizeMB.toFixed(2)}MB)`,
@@ -489,20 +362,19 @@ export default function OpenDisputeModal({
         return;
       }
 
-      const fileSize = fileSizeMB.toFixed(2) + " MB";
       const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         file,
         type: fileType,
-        size: fileSize,
+        size: fileSizeMB.toFixed(2) + " MB",
       };
 
       newFiles.push(newFile);
 
       if (fileType === "image") {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          newFile.preview = e.target?.result as string;
+        reader.onload = (ev) => {
+          newFile.preview = ev.target?.result as string;
           setForm((prev) => ({
             ...prev,
             evidence: prev.evidence.map((f) =>
@@ -514,60 +386,37 @@ export default function OpenDisputeModal({
       }
     });
 
-    setForm((prev) => ({
-      ...prev,
-      evidence: [...prev.evidence, ...newFiles],
-    }));
+    setForm((prev) => ({ ...prev, evidence: [...prev.evidence, ...newFiles] }));
   };
 
   const removeFile = (id: string) => {
     setForm((prev) => ({
       ...prev,
-      evidence: prev.evidence.filter((file) => file.id !== id),
+      evidence: prev.evidence.filter((f) => f.id !== id),
     }));
   };
 
-  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
   };
-
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
   };
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-
-    const droppedFiles = e.dataTransfer.files;
-    if (!droppedFiles) return;
-
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.accept = "image/*,.pdf,.doc,.docx,.txt";
     const dataTransfer = new DataTransfer();
-    Array.from(droppedFiles).forEach((file) => dataTransfer.items.add(file));
-    input.files = dataTransfer.files;
-
-    const event = new Event("change", { bubbles: true });
-    input.dispatchEvent(event);
-
+    Array.from(e.dataTransfer.files).forEach((f) => dataTransfer.items.add(f));
     handleFileSelect({
       target: { files: dataTransfer.files },
     } as React.ChangeEvent<HTMLInputElement>);
   };
 
-  // Witness management
   const addWitness = () => {
     if (form.witnesses.length < 5) {
-      setForm((prev) => ({
-        ...prev,
-        witnesses: [...prev.witnesses, ""],
-      }));
+      setForm((prev) => ({ ...prev, witnesses: [...prev.witnesses, ""] }));
     }
   };
 
@@ -585,10 +434,25 @@ export default function OpenDisputeModal({
     }));
   };
 
+  // Click-outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const el = document.querySelector("[data-witness-search]");
+      if (el && !el.contains(event.target as Node)) {
+        setShowWitnessSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleModalClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Form validation
     if (!form.title.trim()) {
       toast.error("Please enter a title");
       return;
@@ -622,32 +486,28 @@ export default function OpenDisputeModal({
       return;
     }
 
-    const currentUserTelegram = getCurrentUserTelegram(currentUser);
     const cleanDefendant = form.defendant.startsWith("@")
-      ? form.defendant.substring(1)
+      ? form.defendant.slice(1)
       : form.defendant;
 
     const invalidWitnesses = form.witnesses
       .filter((w) => w.trim())
-      .map((w) => (w.startsWith("@") ? w.substring(1) : w))
+      .map((w) => (w.startsWith("@") ? w.slice(1) : w))
       .filter((w) => {
-        const isValidFormat = isValidTelegramUsername(w);
         const isPlaintiff =
           w.toLowerCase() === currentUserTelegram.toLowerCase();
         const isDefendant = w.toLowerCase() === cleanDefendant.toLowerCase();
-        return !isValidFormat || isPlaintiff || isDefendant;
+        return !isValidTelegramUsername(w) || isPlaintiff || isDefendant;
       });
 
     if (invalidWitnesses.length > 0) {
       const invalidReasons = invalidWitnesses
         .map((w) => {
-          if (w.toLowerCase() === currentUserTelegram.toLowerCase()) {
+          if (w.toLowerCase() === currentUserTelegram.toLowerCase())
             return `"${w}" - You cannot add yourself as a witness`;
-          } else if (w.toLowerCase() === cleanDefendant.toLowerCase()) {
+          if (w.toLowerCase() === cleanDefendant.toLowerCase())
             return `"${w}" - The defendant cannot be a witness`;
-          } else {
-            return `"${w}" - Invalid Telegram username format`;
-          }
+          return `"${w}" - Invalid Telegram username format`;
         })
         .join("\n");
 
@@ -662,8 +522,15 @@ export default function OpenDisputeModal({
       return;
     }
 
-    // Validate file sizes and types
-    const maxFileSize = 10 * 1024 * 1024;
+    const totalSize = form.evidence.reduce((t, f) => t + f.file.size, 0);
+    if (totalSize > 50 * 1024 * 1024) {
+      toast.error("Total file size too large", {
+        description: `${(totalSize / 1024 / 1024).toFixed(2)}MB exceeds 50MB limit.`,
+        duration: 8000,
+      });
+      return;
+    }
+
     const allowedImageTypes = [
       "image/jpeg",
       "image/jpg",
@@ -678,30 +545,14 @@ export default function OpenDisputeModal({
       "text/plain",
     ];
 
-    const totalSize = form.evidence.reduce(
-      (total, file) => total + file.file.size,
-      0,
-    );
-    const maxTotalSize = 50 * 1024 * 1024;
-
-    if (totalSize > maxTotalSize) {
-      toast.error("Total file size too large", {
-        description: `Total file size is ${(totalSize / 1024 / 1024).toFixed(2)}MB. Maximum total size is 50MB.`,
-        duration: 8000,
-      });
-      return;
-    }
-
     for (const file of form.evidence) {
-      if (file.file.size > maxFileSize) {
+      if (file.file.size > 10 * 1024 * 1024) {
         toast.error(`File ${file.file.name} exceeds 10MB size limit`);
         return;
       }
-
-      const fileType = file.file.type;
       if (
-        !allowedImageTypes.includes(fileType) &&
-        !allowedDocumentTypes.includes(fileType)
+        !allowedImageTypes.includes(file.file.type) &&
+        !allowedDocumentTypes.includes(file.file.type)
       ) {
         toast.error(
           `File ${file.file.name} has unsupported type. Allowed: images, PDFs, Word docs, text files`,
@@ -710,29 +561,19 @@ export default function OpenDisputeModal({
       }
     }
 
-    // Clean data before sending
-    const cleanedDefendant = form.defendant.startsWith("@")
-      ? form.defendant.substring(1)
-      : form.defendant;
-
+    const cleanedDefendant = cleanDefendant;
     const cleanedWitnesses = form.witnesses
       .filter((w) => w.trim())
-      .map((w) => {
-        const cleanW = w.startsWith("@") ? w.substring(1) : w;
-        return cleanTelegramUsername(cleanW);
-      });
+      .map((w) => cleanTelegramUsername(w.startsWith("@") ? w.slice(1) : w));
 
     const requestKind =
       form.kind === "Pro Bono" ? DisputeTypeEnum.ProBono : DisputeTypeEnum.Paid;
-
     const files = form.evidence.map((uf) => uf.file);
 
-    // Handle Paid disputes differently
     if (requestKind === DisputeTypeEnum.Paid) {
       setIsSubmitting(true);
       try {
-        // Don't send onchainVotingId - let backend generate it
-        const result = await disputeService.createDisputeFromAgreement(
+        const result = await createDisputeFromAgreement(
           parseInt(agreement.id),
           {
             title: form.title,
@@ -748,40 +589,23 @@ export default function OpenDisputeModal({
           networkInfo.chainId,
         );
 
-        // Extract voting ID from API response
-        const votingIdFromResponse = result.votingId || result.id;
-
-        console.log(
-          "🎯 Using voting ID from API response:",
-          votingIdFromResponse,
-        );
-
         toast.success("Dispute created! Complete payment to activate.", {
           description: "You'll be redirected to complete the payment.",
           duration: 5000,
         });
 
-        // Pass the API's voting ID to the parent
-        onPaidDisputeCreated?.(votingIdFromResponse, "open");
-
+        onPaidDisputeCreated?.(result.votingId ?? result.id, "open");
         onClose();
       } catch (error: any) {
-        console.error("❌ Failed to create paid dispute:", error);
-
-        const errorMessage =
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to create dispute. Please try again.";
-
         toast.error("Failed to create dispute", {
-          description: errorMessage,
+          description:
+            error.message || "Failed to create dispute. Please try again.",
           duration: 6000,
         });
       } finally {
         setIsSubmitting(false);
       }
     } else {
-      // Pro Bono flow
       await createDisputeOffchain(
         form.title,
         form.description,
@@ -793,27 +617,6 @@ export default function OpenDisputeModal({
       );
     }
   };
-
-  // Separate click outside handling
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const witnessSearchElement = document.querySelector(
-        "[data-witness-search]",
-      );
-      if (
-        witnessSearchElement &&
-        !witnessSearchElement.contains(event.target as Node)
-      ) {
-        setShowWitnessSuggestions(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleModalClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
 
   const isDisabled = isSubmitting;
 

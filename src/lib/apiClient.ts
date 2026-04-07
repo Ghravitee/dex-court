@@ -1,158 +1,82 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// lib/apiClient.ts
+//
+// Single source of truth for the configured axios instance.
+// All auth header injection and error normalisation lives here.
+// Do NOT add caching or deduplication here — TanStack Query handles that.
 
-// src/lib/apiClient.ts
-import { devError, devLog } from "../utils/logger";
 import axios from "axios";
+import { devError, devLog } from "../utils/logger";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
-// Create axios instance with optimized defaults
+// ─── Axios instance ────────────────────────────────────────────────────────────
+
 export const api = axios.create({
   baseURL: API_BASE,
-  timeout: 10000, // 10 second timeout
-  headers: {
-    "Content-Type": "application/json",
-  },
+  timeout: 10_000,
+  headers: { "Content-Type": "application/json" },
 });
 
-// Request deduplication cache
-const pendingRequests = new Map<string, Promise<any>>();
+// ─── Request interceptor ───────────────────────────────────────────────────────
+// Attaches the auth token to every outgoing request.
 
-// Request interceptor - optimized without excessive logging
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("authToken");
-
-    // Only log in development for non-GET requests or important endpoints
-    if (
-      import.meta.env.DEV &&
-      (config.method !== "get" || config.url?.includes("/mine"))
-    ) {
-      devLog(`🔐 [API] ${config.method?.toUpperCase()} ${config.url}`);
+    if (token) {
+      // API expects a raw token, not a "Bearer <token>" string
+      config.headers.Authorization = token;
     }
 
-    if (token) {
-      config.headers.Authorization = token; // Raw token without "Bearer"
+    if (import.meta.env.DEV && config.method !== "get") {
+      devLog(`[API] ${config.method?.toUpperCase()} ${config.url}`);
     }
 
     return config;
   },
   (error) => {
-    if (import.meta.env.DEV) {
-      devError("🔐 [API] Request error:", error);
-    }
+    devError("[API] Request setup error:", error);
     return Promise.reject(error);
   },
 );
 
-// Response interceptor - optimized
+// ─── Response interceptor ──────────────────────────────────────────────────────
+// Handles global error cases (e.g. expired token) so individual callers
+// don't have to repeat the same logic.
+
 api.interceptors.response.use(
   (response) => {
-    // Only log in development for non-GET requests or important endpoints
-    if (
-      import.meta.env.DEV &&
-      (response.config.method !== "get" ||
-        response.config.url?.includes("/mine"))
-    ) {
-      devLog(`🔐 [API] ${response.status} ${response.config.url}`);
+    if (import.meta.env.DEV && response.config.method !== "get") {
+      devLog(`[API] ${response.status} ${response.config.url}`);
     }
     return response;
   },
   (error) => {
-    if (import.meta.env.DEV) {
-      devError("🔐 [API] Response error:", {
-        status: error.response?.status,
-        url: error.config?.url,
-        message: error.response?.data?.message || error.message,
-      });
-    }
+    const status = error.response?.status;
+    const url = error.config?.url;
+    const message = error.response?.data?.message ?? error.message;
 
-    // Handle specific error cases
-    if (error.response?.status === 401) {
+    devError("[API] Response error:", { status, url, message });
+
+    // Clear stale token on 401 — components decide whether to redirect
+    if (status === 401) {
       localStorage.removeItem("authToken");
-      // Don't redirect here - let components handle it
     }
 
     return Promise.reject(error);
   },
 );
 
-// Enhanced API functions with caching and deduplication
-export class ApiService {
-  private cache = new Map();
-  private readonly cacheDuration = 30000; // 30 seconds
+// ─── Auth API calls ────────────────────────────────────────────────────────────
+// These are plain async functions, not hooks.
+// They are intentionally NOT wrapped with TanStack Query because they are
+// one-shot mutations triggered by user actions (login, register), not
+// cacheable queries.
 
-  // Generic cached GET request with deduplication
-  async cachedGet<T>(url: string, forceRefresh = false): Promise<T> {
-    const now = Date.now();
-    const cacheKey = `GET:${url}`;
-
-    // Return cached data if available and not expired
-    if (!forceRefresh && this.cache.has(cacheKey)) {
-      const { data, timestamp } = this.cache.get(cacheKey);
-      if (now - timestamp < this.cacheDuration) {
-        return data;
-      }
-    }
-
-    // Check for pending requests to avoid duplicates
-    if (pendingRequests.has(url)) {
-      return pendingRequests.get(url);
-    }
-
-    // Make fresh request
-    const request = api
-      .get<T>(url)
-      .then((response) => {
-        this.cache.set(cacheKey, {
-          data: response.data,
-          timestamp: now,
-        });
-        return response.data;
-      })
-      .finally(() => {
-        pendingRequests.delete(url);
-      });
-
-    pendingRequests.set(url, request);
-    return request;
-  }
-
-  // Clear cache for specific URL or all cache
-  clearCache(url?: string) {
-    if (url) {
-      const cacheKey = `GET:${url}`;
-      this.cache.delete(cacheKey);
-    } else {
-      this.cache.clear();
-    }
-  }
-
-  // Specialized methods for common endpoints
-  async getAgreements(): Promise<any> {
-    return this.cachedGet("/agreement", false);
-  }
-
-  async getMyAgreements(): Promise<any> {
-    return this.cachedGet("/agreement/mine", false);
-  }
-
-  async getAgreementDetails(id: number): Promise<any> {
-    return this.cachedGet(`/agreement/${id}`, false);
-  }
-}
-
-export const apiService = new ApiService();
-
-// Telegram Login
-// src/lib/apiClient.ts - Update the loginTelegram function
 export async function loginTelegram(otp: string) {
   try {
-    devLog("🔐 [API] Attempting Telegram login with OTP:", otp);
-
-    const response = await api.post(`/login/telegram`, { otp });
-
-    devLog("🔐 [API] Telegram login response:", response.data);
+    const response = await api.post("/login/telegram", { otp });
 
     if (!response.data.token) {
       throw new Error("No authentication token received from server");
@@ -160,55 +84,45 @@ export async function loginTelegram(otp: string) {
 
     return response.data;
   } catch (error: any) {
-    devError("🔐 [API] Telegram login failed:", {
+    devError("[API] Telegram login failed:", {
       status: error.response?.status,
       data: error.response?.data,
       message: error.message,
     });
 
-    // Re-throw with more descriptive error
-    if (error.response?.data?.message) {
-      throw new Error(error.response.data.message);
-    }
-    if (error.response?.status === 401) {
-      throw new Error("Invalid OTP or authentication failed");
-    }
-
-    if (error.response?.status === 404) {
+    const { status, data } = error.response ?? {};
+    if (data?.message) throw new Error(data.message);
+    if (status === 401) throw new Error("Invalid OTP or authentication failed");
+    if (status === 404)
       throw new Error("Telegram authentication service unavailable");
-    }
 
     throw error;
   }
 }
 
-// Telegram OTP
 export async function getTelegramOtp(telegramId: string) {
   const response = await api.get(`/otp/telegram/${telegramId}`);
   return response.data;
 }
 
-// Telegram Register
 export async function registerTelegram(telegramId: string, username: string) {
-  const response = await api.post(`/register/telegram`, {
+  const response = await api.post("/register/telegram", {
     telegramId,
     username,
   });
   return response.data;
 }
 
-// Wallet Login - Nonce
 export async function requestWalletNonce(walletAddress: string) {
-  const response = await api.post(`/login/wallet/nonce`, { walletAddress });
+  const response = await api.post("/login/wallet/nonce", { walletAddress });
   return response.data;
 }
 
-// Wallet Login - Verify
 export async function verifyWalletSignature(
   walletAddress: string,
   signature: string,
 ) {
-  const response = await api.post(`/login/wallet/verify`, {
+  const response = await api.post("/login/wallet/verify", {
     walletAddress,
     signature,
   });

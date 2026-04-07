@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { disputeService } from "../../../services/disputeServices";
 import { agreementService } from "../../../services/agreementServices";
 import { getAgreement } from "../../../web3/readContract";
-import { useVotingStatus } from "../../../hooks/useVotingStatus";
+import { useVotingStatus } from "../hooks/useVotingStatus";
 import { UsernameWithAvatar } from "./UsernameWithAvatar";
 import { MemoizedVoteOption } from "./VoteOption";
 import { fmtRemain } from "../utils/dateUtils";
@@ -131,7 +131,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
         duration: 4000,
       });
 
-      markAsVoted(choice);
+      markAsVoted();
       setChoice(null);
       setComment("");
       refetchVotingStatus();

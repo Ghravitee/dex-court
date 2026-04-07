@@ -228,20 +228,6 @@ class ApiService {
     }
   }
 
-  // async getAllUsers(): Promise<AccountSummaryDTO[]> {
-  //   try {
-  //     const response = await this.request<any[]>({
-  //       method: "GET",
-  //       url: "/accounts",
-  //     });
-
-  //     return response.map((user) => this.transformToAccountSummaryDTO(user));
-  //   } catch (error) {
-  //     console.error("🔐 [API] Error getting all users:", error);
-  //     throw new Error("Failed to fetch users list");
-  //   }
-  // }
-
   async getAllUsers(): Promise<AccountSummaryDTO[]> {
     try {
       const response = await this.request<any>({

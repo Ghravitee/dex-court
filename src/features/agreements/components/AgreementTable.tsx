@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
@@ -125,18 +125,13 @@ export const AgreementTable = ({
                             username={cleanTelegramUsername(a.createdBy)}
                             size="sm"
                           />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const target = cleanTelegramUsername(a.createdBy); // full wallet or telegram username
-                              navigate(
-                                `/profile/${encodeURIComponent(target)}`,
-                              );
-                            }}
+                          <Link
+                            to={`/profile/${encodeURIComponent(cleanTelegramUsername(a.createdBy))}`}
+                            onClick={(e) => e.stopPropagation()}
                             className="text-cyan-300 hover:text-cyan-200 hover:underline"
                           >
                             {formatParty(a.createdBy)}
-                          </button>
+                          </Link>
                         </div>
 
                         <span className="text-cyan-400">
@@ -154,20 +149,13 @@ export const AgreementTable = ({
                             username={cleanTelegramUsername(a.counterparty)}
                             size="sm"
                           />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const target = cleanTelegramUsername(
-                                a.counterparty,
-                              );
-                              navigate(
-                                `/profile/${encodeURIComponent(target)}`,
-                              );
-                            }}
+                          <Link
+                            to={`/profile/${encodeURIComponent(cleanTelegramUsername(a.counterparty))}`}
+                            onClick={(e) => e.stopPropagation()}
                             className="text-cyan-300 hover:text-cyan-200 hover:underline"
                           >
                             {formatParty(a.counterparty)}
-                          </button>
+                          </Link>
                         </div>
                       </div>
                     </td>

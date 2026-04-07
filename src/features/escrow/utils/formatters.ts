@@ -17,7 +17,7 @@ export const formatWalletAddress = (address: string): string => {
   if (address.length <= 15 && !address.startsWith("0x")) return `@${address}`;
 
   if (address.startsWith("0x") && address.length === 42) {
-    return `${address.slice(0, 4)}...${address.slice(-6)}`;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
 
   return address;

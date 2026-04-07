@@ -1,15 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { cleanTelegramUsername } from "../../lib/usernameUtils";
 import { useAuth } from "../../hooks/useAuth";
 import { UserAvatar } from "../UserAvatar";
 import { ChevronRight } from "lucide-react";
 
-export /* eslint-disable @typescript-eslint/no-explicit-any */
-const UserSearchResult = ({
+export const UserSearchResult = ({
   user,
   onSelect,
 }: {
   user: any;
-  onSelect: (username: string) => void;
+  onSelect: (user: any) => void; // changed from (username: string)
   field: "defendant" | "witness";
 }) => {
   const { user: currentUser } = useAuth();
@@ -18,9 +18,7 @@ const UserSearchResult = ({
     user.telegramUsername || user.telegram?.username || user.telegramInfo,
   );
 
-  if (!telegramUsername) {
-    return null;
-  }
+  if (!telegramUsername) return null;
 
   const displayUsername = telegramUsername ? `@${telegramUsername}` : "Unknown";
   const displayName = user.displayName || displayUsername;

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Vote, Users, Clock } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
-import { disputeService } from "../../../services/disputeServices";
+import { fetchVoteInProgressDisputes } from "../../../services/disputeServices";
 import { parseAPIDate, now } from "../utils/chartHelpers";
 import { DottedSpinner } from "./DottedSpinner";
 import { type LiveVotingItem } from "../types";
@@ -17,7 +17,7 @@ export const LiveVotingInfiniteCards = () => {
     const fetchLiveVotingDisputes = async () => {
       try {
         setLoading(true);
-        const response = await disputeService.getVoteInProgressDisputes();
+        const response = await fetchVoteInProgressDisputes(); // Changed function call
 
         if (response?.results) {
           const transformedDisputes = response.results.map((dispute: any) => {
@@ -72,7 +72,7 @@ export const LiveVotingInfiniteCards = () => {
     <div className="card-cyan rounded-2xl border border-cyan-400/30 p-4 sm:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h3 className="glow-text text-lg font-semibold text-cyan-100 sm:text-xl">
-          Live Voting Sessions
+          Live Voting
         </h3>
         <Link to="/voting">
           <Button

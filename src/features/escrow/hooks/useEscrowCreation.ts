@@ -14,7 +14,7 @@ import {
   ESCROW_CA,
   KNOWN_TOKEN_ADDRESSES,
 } from "../../../web3/config";
-import { agreementService } from "../../../services/agreementServices";
+import { createAgreement } from "../../../services/agreementServices";
 import { isValidAddress } from "../../../web3/helper";
 import { AgreementVisibilityEnum } from "../constants";
 import { extractContractErrorMessage } from "../utils/validators";
@@ -377,11 +377,11 @@ export function useEscrowCreation({
         const filesToUpload = form.evidence.map((f) => f.file);
 
         try {
-          await agreementService.createAgreement(
+          await createAgreement(
             {
               title: form.title,
               description: form.description,
-              type: 2, // ESCROW
+              type: 2,
               visibility:
                 form.type === "private"
                   ? AgreementVisibilityEnum.PRIVATE

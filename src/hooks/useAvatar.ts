@@ -1,25 +1,19 @@
 // hooks/useAvatar.ts
 import { useQuery } from "@tanstack/react-query";
-import { apiService } from "../services/apiService";
+import { fetchAvatar } from "../services/accountService";
 
-export const useAvatar = (
-  userId: string,
-  avatarId: number | null,
-  //   username: string,
-) => {
+export const useAvatar = (userId: string, avatarId: number | null) => {
   return useQuery({
     queryKey: ["avatar", userId, avatarId],
     queryFn: async () => {
-      if (!avatarId) {
-        throw new Error("No avatar ID");
-      }
+      if (!avatarId) throw new Error("No avatar ID");
 
-      const url = await apiService.getAvatar(userId, avatarId);
+      const url = await fetchAvatar(userId, avatarId);
       if (!url || typeof url !== "string" || url.trim() === "") {
         throw new Error("Invalid avatar URL");
       }
 
-      // Preload the image to ensure it's valid
+      // Preload to verify the blob URL resolves to a valid image
       return new Promise<string>((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(url);
@@ -27,9 +21,9 @@ export const useAvatar = (
         img.src = url;
       });
     },
-    enabled: !!avatarId, // Only fetch if we have an avatarId
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+    enabled: !!avatarId,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     retry: 2,
     retryDelay: 1000,
   });

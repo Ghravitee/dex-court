@@ -1,5 +1,5 @@
 // hooks/useTrustScore.ts
-import { useReputationHistory } from "./useReputation";
+import { useReputationHistory } from "../features/reputation/hooks/useReputationHistory";
 
 const useTrustScore = (accountId: string | null) => {
   const {

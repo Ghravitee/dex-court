@@ -1,15 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback, useEffect, useRef } from "react";
-import { agreementService } from "../../../services/agreementServices";
+// features/agreements/hooks/useUserSearch.ts
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
 } from "../../../lib/usernameUtils";
 import { useAuth } from "../../../hooks/useAuth";
+import { useAllAccounts } from "../../../hooks/useAccounts";
+import { devLog } from "../../../utils/logger";
 
 type SearchField = "counterparty" | "partyA" | "partyB";
 
-// Simple debounce hook
 function useDebounce(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -25,66 +25,53 @@ export function useUserSearch() {
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [activeSearchField, setActiveSearchField] =
     useState<SearchField>("counterparty");
-  const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
   const [showUserSuggestions, setShowUserSuggestions] = useState(false);
 
-  const [counterpartySearchResults, setCounterpartySearchResults] = useState<
-    any[]
-  >([]);
-  const [partyASearchResults, setPartyASearchResults] = useState<any[]>([]);
-  const [partyBSearchResults, setPartyBSearchResults] = useState<any[]>([]);
-
   const userSearchRef = useRef<HTMLDivElement>(null);
-
   const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
 
-  const handleUserSearch = useCallback(
-    async (query: string, field: SearchField) => {
-      setUserSearchQuery(query);
-      setActiveSearchField(field);
+  // All accounts are fetched once and cached for 10 minutes by useAllAccounts.
+  // No per-keystroke network requests — filtering happens entirely client-side.
+  const { data: allAccounts = [], isLoading: isUserSearchLoading } =
+    useAllAccounts({
+      // Only fetch when the user has typed enough to show suggestions
+      enabled: debouncedSearchQuery.length >= 2,
+    });
 
-      if (query.length < 2) {
-        if (field === "counterparty") setCounterpartySearchResults([]);
-        if (field === "partyA") setPartyASearchResults([]);
-        if (field === "partyB") setPartyBSearchResults([]);
-        setShowUserSuggestions(false);
-        return;
+  const currentUserTelegram = getCurrentUserTelegram(user);
+
+  // Filter accounts against the debounced query, excluding the current user
+  const filteredResults = useMemo(() => {
+    if (debouncedSearchQuery.length < 2) return [];
+
+    const q = debouncedSearchQuery.toLowerCase();
+
+    return allAccounts.filter((u) => {
+      // Exclude current user from suggestions
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      if (
+        telegram &&
+        telegram.toLowerCase() === currentUserTelegram.toLowerCase()
+      ) {
+        return false;
       }
 
-      setIsUserSearchLoading(true);
-      setShowUserSuggestions(true);
+      // Match against username, telegram username, telegramInfo, or wallet address
+      return (
+        u.username?.toLowerCase().includes(q) ||
+        u.telegram?.username?.toLowerCase().includes(q) ||
+        u.telegramInfo?.toLowerCase().includes(q) ||
+        u.walletAddress?.toLowerCase().includes(q)
+      );
+    });
+  }, [allAccounts, debouncedSearchQuery, currentUserTelegram]);
 
-      try {
-        const results = await agreementService.searchUsers(query);
-        const currentUserTelegram = getCurrentUserTelegram(user);
-
-        const filtered = results.filter((u) => {
-          const t = cleanTelegramUsername(
-            u.telegramUsername || u.telegram?.username || u.telegramInfo,
-          );
-          return t && t.toLowerCase() !== currentUserTelegram.toLowerCase();
-        });
-
-        if (field === "counterparty") setCounterpartySearchResults(filtered);
-        else if (field === "partyA") setPartyASearchResults(filtered);
-        else if (field === "partyB") setPartyBSearchResults(filtered);
-      } catch {
-        if (field === "counterparty") setCounterpartySearchResults([]);
-        else if (field === "partyA") setPartyASearchResults([]);
-        else if (field === "partyB") setPartyBSearchResults([]);
-      } finally {
-        setIsUserSearchLoading(false);
-      }
-    },
-    [user],
-  );
-
-  // Debounced trigger
+  // Show/hide suggestions based on query length and results
   useEffect(() => {
-    if (debouncedSearchQuery.length >= 2 && activeSearchField) {
-      handleUserSearch(debouncedSearchQuery, activeSearchField);
-    }
-  }, [debouncedSearchQuery, activeSearchField, handleUserSearch]);
+    setShowUserSuggestions(debouncedSearchQuery.length >= 2);
+  }, [debouncedSearchQuery]);
 
   // Click-outside handler
   useEffect(() => {
@@ -100,10 +87,28 @@ export function useUserSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const clearResults = (field: SearchField) => {
-    if (field === "counterparty") setCounterpartySearchResults([]);
-    else if (field === "partyA") setPartyASearchResults([]);
-    else if (field === "partyB") setPartyBSearchResults([]);
+  const handleUserSearch = (query: string, field: SearchField) => {
+    setUserSearchQuery(query);
+    setActiveSearchField(field);
+    if (query.length < 2) setShowUserSuggestions(false);
+  };
+
+  // Results are the same filtered list regardless of field —
+  // the active field determines where the selected result gets applied
+  const searchResults = filteredResults;
+
+  // Kept for backwards compatibility with the parent component's field-specific destructuring
+  const counterpartySearchResults =
+    activeSearchField === "counterparty" ? searchResults : [];
+  const partyASearchResults =
+    activeSearchField === "partyA" ? searchResults : [];
+  const partyBSearchResults =
+    activeSearchField === "partyB" ? searchResults : [];
+
+  const clearResults = (_field: SearchField) => {
+    devLog(`Clearing search results for field: ${_field}`);
+    setUserSearchQuery("");
+    setShowUserSuggestions(false);
   };
 
   return {
