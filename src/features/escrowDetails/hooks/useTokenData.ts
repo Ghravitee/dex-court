@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useContractReads } from "wagmi";
-import { useNetworkEnvironment } from "../../../config/useNetworkEnvironment";
 import {
   getTokenDecimals,
   getTokenSymbol,
@@ -15,7 +14,6 @@ export function useTokenData(
   onChainAgreement: any,
   escrow: EscrowDetailsData | null,
 ) {
-  const networkInfo = useNetworkEnvironment();
   const [onChainTokenDecimals, setOnChainTokenDecimals] = useState<
     number | null
   >(null);
@@ -49,7 +47,7 @@ export function useTokenData(
 
   // Fetch token metadata
   useEffect(() => {
-    if (!tokenAddress || !networkInfo.chainId || !onChainAgreement) {
+    if (!tokenAddress || !escrow?._raw?.chainId || !onChainAgreement) {
       setOnChainTokenDecimals(null);
       setOnChainTokenSymbol(null);
       setManageMilestoneCount(null);
@@ -62,7 +60,7 @@ export function useTokenData(
     (async () => {
       try {
         const dec = await getTokenDecimals(
-          networkInfo.chainId as number,
+          escrow._raw.chainId as number,
           tokenAddress,
         );
         if (!cancelled) setOnChainTokenDecimals(Number(dec));
@@ -72,7 +70,7 @@ export function useTokenData(
 
       try {
         const sym = await getTokenSymbol(
-          networkInfo.chainId as number,
+          escrow._raw.chainId as number,
           tokenAddress,
         );
         if (!cancelled) setOnChainTokenSymbol(sym);
@@ -82,7 +80,7 @@ export function useTokenData(
 
       try {
         const mlc = await getMilestoneCount(
-          networkInfo.chainId as number,
+          escrow._raw.chainId as number,
           onChainAgreement?.id as bigint,
         );
         if (!cancelled) setManageMilestoneCount(mlc);
@@ -96,7 +94,7 @@ export function useTokenData(
     return () => {
       cancelled = true;
     };
-  }, [tokenAddress, networkInfo.chainId, onChainAgreement]);
+  }, [tokenAddress, escrow?._raw?.chainId, onChainAgreement]);
 
   // Build milestone contracts
   const contractsForMilestones = useMemo(() => {

@@ -58,7 +58,7 @@ export function useAgreementData(id: string | undefined) {
     (rawAgreementData
       ? transformApiAgreement(rawAgreementData, disputeVotingId)
       : null);
-
+    
   // ─── Background refetch (used by WebSocket + cross-tab listener) ───────────
 
   const fetchAgreementDetailsBackground = useCallback(async () => {

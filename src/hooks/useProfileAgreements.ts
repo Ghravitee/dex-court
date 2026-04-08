@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchAgreements } from "../services/agreementServices";
 import { AgreementTypeEnum } from "../services/agreementServices";
 import { getAgreementExistOnchain } from "../web3/readContract";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 
 export function useProfileAgreements(
   userId?: string,
@@ -27,7 +26,6 @@ export function useProfileAgreements(
   const [verifyingOnChain, setVerifyingOnChain] = useState(false);
 
   const ITEMS_PER_PAGE = 10;
-  const networkInfo = useNetworkEnvironment();
 
   const allReputationalRef = useRef<any[]>([]);
   const allEscrowRef = useRef<any[]>([]);
@@ -161,7 +159,7 @@ export function useProfileAgreements(
       pendingAgreements.forEach((agreement) => {
         if (!agreement.onChainId || !agreement.escrowAddress) return;
 
-        const chainId = agreement.chainId || networkInfo.chainId;
+        const chainId = agreement.chainId || null;
         const escrowAddr = agreement.escrowAddress.toLowerCase();
         const key = `${chainId}-${escrowAddr}`;
 
@@ -210,7 +208,7 @@ export function useProfileAgreements(
         ...verifiedPendingAgreements,
       ];
     },
-    [networkInfo.chainId],
+    [],
   );
 
   // ─── Fetch ─────────────────────────────────────────────────────────────────

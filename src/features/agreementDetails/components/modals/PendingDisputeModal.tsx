@@ -31,6 +31,7 @@ export const PendingDisputeModal = ({
   onDisputeCreated,
   flow = "reject",
 }: Props) => {
+  
   const networkInfo = useNetworkEnvironment();
   const [userInitiated, setUserInitiated] = useState(false);
   const [modalState, setModalState] = useState<

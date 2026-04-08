@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Search } from "lucide-react";
-import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
 import { useChainSelection } from "../../config/useChainSelection";
 import { useAccount, useReadContract, useSwitchChain } from "wagmi";
 import { ERC20_ABI, ESCROW_CA, SUPPORTED_CHAINS } from "../../web3/config";
@@ -22,7 +21,7 @@ import { StatusMessages } from "./components/EscrowModal/StatusMessages";
 import { MAX_IMAGE_SIZE, MAX_DOCUMENT_SIZE, MAX_TOTAL_SIZE } from "./constants";
 
 export default function EscrowPage() {
-  const networkInfo = useNetworkEnvironment();
+
   const { isConnected } = useAccount();
   const { user: currentUser } = useAuth();
   const { switchChainAsync } = useSwitchChain();
@@ -35,7 +34,7 @@ export default function EscrowPage() {
 
   const activeChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : networkInfo.chainId ?? resolveChainId(SUPPORTED_CHAINS[0].mainnetId);
+    : resolveChainId(SUPPORTED_CHAINS[0].mainnetId);
 
   // ── Contract address ──────────────────────────────────────────────────────
   const contractAddress = useMemo(() => {
@@ -69,7 +68,7 @@ export default function EscrowPage() {
     handlePageChange,
     handlePageSizeChange,
     pageSize,
-  } = useEscrowList({ contractAddress, networkChainId: activeChainId });
+  } = useEscrowList();
 
   const {
     form,

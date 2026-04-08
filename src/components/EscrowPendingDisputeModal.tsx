@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 // import { TransactionStatus } from "../components/TransactionStatus";
 import { useEscrowDisputeTransaction } from "../hooks/useEscrowDisputeTransaction";
 
@@ -43,7 +42,6 @@ export default function EscrowPendingDisputeModal({
   agreement,
   action,
 }: EscrowPendingDisputeModalProps) {
-  const networkInfo = useNetworkEnvironment();
   const [userInitiated, setUserInitiated] = useState(false);
   const [, setModalState] = useState<"initializing" | "active" | "closing">(
     "initializing",
@@ -90,7 +88,7 @@ export default function EscrowPendingDisputeModal({
     isSuccess,
     isError,
     isTransactionLoading,
-  } = useEscrowDisputeTransaction(escrowAddress, networkInfo.chainId);
+  } = useEscrowDisputeTransaction(escrowAddress, agreement.chainId);
 
   // Set modal to active when opened (just showing UI, not starting transaction)
   useEffect(() => {
@@ -134,7 +132,7 @@ export default function EscrowPendingDisputeModal({
         error: transactionError,
         votingId,
         contractAgreementId: contractIdAsBigInt().toString(),
-        chainId: networkInfo.chainId,
+        chainId: agreement.chainId,
       });
 
       // Keep modal open for retry
@@ -146,7 +144,7 @@ export default function EscrowPendingDisputeModal({
     transactionError,
     votingId,
     contractAgreementId,
-    networkInfo.chainId,
+    agreement.chainId,
     contractIdAsBigInt,
   ]);
 
@@ -183,7 +181,7 @@ export default function EscrowPendingDisputeModal({
       `🚀 [EscrowPendingDisputeModal] User initiated transaction for ${action} with voting ID:`,
       votingId,
     );
-    console.log("🔗 Chain ID:", networkInfo.chainId);
+    console.log("🔗 Chain ID:", agreement.chainId);
     console.log("📄 Agreement:", {
       id: agreement?.id,
       title: agreement?.title,
@@ -221,20 +219,7 @@ export default function EscrowPendingDisputeModal({
       );
       setUserInitiated(false); // Allow retry on error
     }
-  }, [
-    votingId,
-    // contractAgreementId,
-    userInitiated,
-    isProcessing,
-    raiseDisputeOnchain,
-    rejectDeliveryOnchain,
-    networkInfo.chainId,
-    agreement,
-    action,
-    isProBono,
-    contractIdAsBigInt,
-    votingIdAsBigInt,
-  ]);
+  }, [votingId, userInitiated, isProcessing, raiseDisputeOnchain, rejectDeliveryOnchain, agreement, action, isProBono, contractIdAsBigInt, votingIdAsBigInt]);
 
   const handleRetryPayment = useCallback(async () => {
     if (!votingId || contractIdAsBigInt() === 0n) {
@@ -249,7 +234,7 @@ export default function EscrowPendingDisputeModal({
       `🔄 [EscrowPendingDisputeModal] Retrying payment for voting ID:`,
       votingId,
     );
-    console.log("🔗 Chain ID:", networkInfo.chainId);
+    console.log("🔗 Chain ID:", agreement.chainId);
 
     setUserInitiated(true); // Set initiated state for retry
 
@@ -276,7 +261,7 @@ export default function EscrowPendingDisputeModal({
     votingId,
     // contractAgreementId,
     retryTransaction,
-    networkInfo.chainId,
+    agreement.chainId,
     action,
     isProBono,
     contractIdAsBigInt,
@@ -603,7 +588,7 @@ export default function EscrowPendingDisputeModal({
 
                   <div className="flex justify-between">
                     <span className="text-purple-200/80">Network:</span>
-                    <span className="text-white">{networkInfo.chainName}</span>
+                    <span className="text-white">{agreement.chainName}</span>
                   </div>
 
                   {transactionHash && (

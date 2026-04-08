@@ -4,18 +4,9 @@ import { fetchAgreements } from "../../../services/agreementServices";
 import { getAgreementExistOnchain } from "../../../web3/readContract";
 import { AgreementTypeEnum } from "../constants";
 import { transformApiAgreementToEscrow } from "../utils/transformers";
-import { normalizeContractAddress } from "../utils/formatters";
 import type { OnChainEscrowData } from "../types";
 
-interface UseEscrowListOptions {
-  contractAddress?: `0x${string}`;
-  networkChainId?: number;
-}
-
-export function useEscrowList({
-  contractAddress,
-  networkChainId,
-}: UseEscrowListOptions) {
+export function useEscrowList() {
   const [allEscrows, setAllEscrows] = useState<OnChainEscrowData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,6 +43,8 @@ export function useEscrowList({
         (e) => e.status === "pending" || e.status === "pending_approval",
       );
 
+      console.log("Pending agreements before on-chain verification", { count: pending.length, pending });
+
       // Group pending by (chainId, escrowContractAddress) for batch on-chain checks
       const groups: Record<
         string,
@@ -64,10 +57,18 @@ export function useEscrowList({
       > = {};
 
       pending.forEach((agreement) => {
+
         if (!agreement.onChainId || !agreement.escrowAddress) return;
 
-        const chainId = agreement.chainId || networkChainId;
+        const chainId = agreement.chainId || null;
         if (!chainId) return;
+
+        console.log("Processing pending agreement", {
+          id: agreement.id,
+          onChainId: agreement.onChainId,
+          escrowAddress: agreement.escrowAddress,
+          chainId: agreement.chainId,
+        });
 
         const escrowAddr = agreement.escrowAddress.toLowerCase();
         const key = `${chainId}-${escrowAddr}`;
@@ -91,6 +92,11 @@ export function useEscrowList({
         Object.entries(groups).map(async ([, group]) => {
           try {
             if (group.onChainIds.length === 0) return;
+              console.log("Verifying on-chain existence for group", {
+                chainId: group.chainId,
+                escrowContractAddress: group.escrowContractAddress,
+                onChainIds: group.onChainIds,
+              });
 
             const existOnChain = await getAgreementExistOnchain(
               group.chainId,
@@ -122,7 +128,7 @@ export function useEscrowList({
     } finally {
       setLoading(false);
     }
-  }, [networkChainId]);
+  }, []);
 
   useEffect(() => {
     loadEscrowAgreements();
@@ -132,15 +138,7 @@ export function useEscrowList({
   const filteredEscrows = useMemo(() => {
     if (allEscrows.length === 0) return [];
 
-    const normalizedContract = contractAddress
-      ? normalizeContractAddress(contractAddress)
-      : null;
-
     let result = allEscrows.filter((e) => {
-      if (normalizedContract) {
-        if (normalizeContractAddress(e.escrowAddress) !== normalizedContract)
-          return false;
-      }
 
       if (statusTab !== "all" && e.status !== statusTab) return false;
 
@@ -162,7 +160,7 @@ export function useEscrowList({
     );
 
     return result;
-  }, [allEscrows, statusTab, query, sortAsc, contractAddress]);
+  }, [allEscrows, statusTab, query, sortAsc]);
 
   // ─── Pagination application ───────────────────────────────────────────────
   const applyPagination = useCallback(

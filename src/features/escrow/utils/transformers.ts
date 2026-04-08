@@ -66,6 +66,7 @@ export const transformApiAgreementToEscrow = (
     title: apiAgreement.title,
     from: serviceRecipient,
     to: serviceProvider,
+    chainId: apiAgreement.chainId,
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
     status: mapAgreementStatusToEscrow(apiAgreement.status),

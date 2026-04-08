@@ -71,9 +71,11 @@ export default function OpenDisputeModal({
   onDisputeCreated,
   onPaidDisputeCreated,
 }: OpenDisputeModalProps) {
+  
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const networkInfo = useNetworkEnvironment();
+
 
   const [form, setForm] = useState({
     title: "",

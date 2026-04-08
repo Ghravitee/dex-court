@@ -47,6 +47,7 @@ export const CreateDisputeModal = ({
     resetOnModalClose,
     votingIdToUse,
     networkInfo,
+    
     isDisabled,
   } = useDisputeSubmit({
     onSuccess: () => {

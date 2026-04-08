@@ -4,7 +4,6 @@ import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useChainSelection } from "../config/useChainSelection";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import {
   Search,
   SortAsc,
@@ -147,7 +146,7 @@ type ExtendedEscrowBase = Omit<ExtendedEscrow, "status">;
 interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
   txHash?: string;
   onChainId?: string;
-  chainId?: number;
+  chainId?: number | null;
   includeFunds?: "yes" | "no";
   useEscrow?: boolean;
   escrowAddress?: string;
@@ -311,6 +310,7 @@ const transformApiAgreementToEscrow = (
     title: apiAgreement.title,
     from: serviceRecipient,
     to: serviceProvider,
+    chainId: apiAgreement.chainId,
     token: apiAgreement.tokenSymbol || "ETH",
     amount: apiAgreement.amount ? parseFloat(apiAgreement.amount) : 0,
     status: mapAgreementStatusToEscrow(apiAgreement.status),
@@ -380,7 +380,6 @@ export default function Escrow() {
   const { user: currentUser } = useAuth();
   const { switchChainAsync } = useSwitchChain();
   // const wagmiChainId = useChainId();
-  const networkInfo = useNetworkEnvironment();
 
   // Add this state near the top of the component
   const [creationStep, setCreationStep] = useState<CreationStep>("idle");
@@ -395,7 +394,7 @@ export default function Escrow() {
 
   const activeChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : networkInfo.chainId;
+    : null;
 
   const contractAddress = useMemo(() => {
     if (!activeChainId) return undefined;
@@ -406,16 +405,6 @@ export default function Escrow() {
     }
     return undefined;
   }, [activeChainId]);
-
-  // const switchToTokenChain = useCallback(async () => {
-  //   if (!networkInfo.chainId || !switchChain) return;
-
-  //   try {
-  //     switchChain({ chainId: networkInfo.chainId });
-  //   } catch (error) {
-  //     console.error("Failed to switch network:", error);
-  //   }
-  // }, [networkInfo.chainId, switchChain]);
 
   // Separate write hooks
   const {
@@ -521,21 +510,19 @@ export default function Escrow() {
       > = {};
 
       pendingAgreements.forEach((agreement) => {
-        if (!agreement.onChainId || !agreement.escrowAddress) {
+        if (!agreement.onChainId || !agreement.escrowAddress || !agreement.chainId) {
           console.warn(
             `⚠️ Pending agreement ${agreement.id} missing onChainId or escrowAddress`,
           );
           return;
         }
 
-        // Use agreement's chainId if available, otherwise use current network
-        const chainId = agreement.chainId || networkInfo.chainId;
         const escrowAddr = agreement.escrowAddress.toLowerCase();
-        const key = `${chainId}-${escrowAddr}`;
+        const key = `${agreement.chainId}-${escrowAddr}`;
 
         if (!groupedPendingAgreements[key]) {
           groupedPendingAgreements[key] = {
-            chainId,
+            chainId: agreement.chainId,
             escrowContractAddress: escrowAddr,
             agreements: [],
             onChainIds: [],
@@ -632,7 +619,7 @@ export default function Escrow() {
     } finally {
       setLoading(false);
     }
-  }, [networkInfo.chainId]); // Add dependencies
+  }, []); // Add dependencies
 
   // Load agreements on mount
   useEffect(() => {
@@ -1499,11 +1486,11 @@ export default function Escrow() {
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true,
             secureTheFunds: true,
-            chainId: actualChainId,
+            chainId: actualChainId ?? 0,
             payeeWalletAddress: serviceProviderAddr, // The service provider (who receives funds)
             payerWalletAddress: serviceRecipientAddr, // The service recipient (who pays funds)
             contractAgreementId: contractAgreementId,
-            escrowContractAddress: ESCROW_CA[actualChainId] ?? contractAddress,
+            escrowContractAddress: contractAddress,
           },
           filesToUpload,
         );
@@ -1847,25 +1834,6 @@ export default function Escrow() {
     );
   };
 
-  // useEffect(() => {
-  //   if (
-  //     currentUser?.walletAddress &&
-  //     isConnected &&
-  //     wagmiChainId !== networkInfo.chainId
-  //   ) {
-  //     toast.info(
-  //       `Wallet Connected, switching to supported chain ${networkInfo.chainId === 1 ? "Ethereum [id:1]" : "Sepolia [id:11155111]"}...`,
-  //     );
-  //     switchToTokenChain();
-  //   }
-  // }, [
-  //   currentUser?.walletAddress,
-  //   isConnected,
-  //   networkInfo.chainId,
-  //   switchToTokenChain,
-  //   wagmiChainId,
-  // ]);
-
   useEffect(() => {
     if (isConnected) {
       console.log("🔗 Chain configuration:", {
@@ -1884,7 +1852,7 @@ export default function Escrow() {
         setChainConfigError(null);
       }
     }
-  }, [networkInfo.chainId, isConnected, contractAddress, activeChainId]);
+  }, [isConnected, contractAddress, activeChainId]);
 
   const CreationProgress = () => {
     if (creationStep === "idle") return null;

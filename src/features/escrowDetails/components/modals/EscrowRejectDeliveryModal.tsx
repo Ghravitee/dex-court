@@ -17,7 +17,6 @@ import { Button } from "../../../../components/ui/button";
 import { toast } from "sonner";
 import { useAllAccounts } from "../../../../hooks/useAccounts";
 import { useAuth } from "../../../../hooks/useAuth";
-import { useNetworkEnvironment } from "../../../../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../../../../hooks/useDisputeTransaction";
 import { TransactionStatus } from "../../../../components/TransactionStatus";
 import { DisputeTypeEnum } from "../../../../types";
@@ -66,7 +65,6 @@ export const EscrowRejectDeliveryModal = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
 
-  const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
   const {
     transactionStep,
@@ -74,7 +72,7 @@ export const EscrowRejectDeliveryModal = ({
     transactionHash,
     retryTransaction,
     resetTransaction,
-  } = useDisputeTransaction(networkInfo.chainId);
+  } = useDisputeTransaction(agreement?.chainId);
 
   const votingIdToUse = useMemo(() => {
     if (votingId) return votingId;
@@ -88,8 +86,8 @@ export const EscrowRejectDeliveryModal = ({
     if (agreement && currentUser && !localDefendant) {
       const currentUsername = currentUser?.username;
       if (!currentUsername) return;
-      const firstPartyUsername = agreement.firstParty?.username;
-      const counterPartyUsername = agreement.counterParty?.username;
+      const firstPartyUsername = agreement?.firstParty?.username;
+      const counterPartyUsername = agreement?.counterParty?.username;
       if (
         firstPartyUsername &&
         normalizeUsername(currentUsername) ===
@@ -116,7 +114,7 @@ export const EscrowRejectDeliveryModal = ({
       onConfirm(
         claim,
         requestKind,
-        networkInfo.chainId,
+        agreement?.chainId,
         votingIdToUse.toString(),
         transactionHash,
       )
@@ -139,7 +137,7 @@ export const EscrowRejectDeliveryModal = ({
     onConfirm,
     claim,
     requestKind,
-    networkInfo.chainId,
+    agreement?.chainId,
     votingIdToUse,
     onClose,
     setClaim,
@@ -313,7 +311,7 @@ export const EscrowRejectDeliveryModal = ({
     await onConfirm(
       claim,
       requestKind,
-      networkInfo.chainId,
+      agreement?.chainId,
       votingIdToUse.toString(),
     );
     onClose();

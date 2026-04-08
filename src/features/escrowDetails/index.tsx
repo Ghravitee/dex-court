@@ -1899,7 +1899,7 @@ export default function EscrowDetails() {
         claim={rejectClaim}
         setClaim={setRejectClaim}
         isSubmitting={isSubmittingReject || loadingStates.rejectDelivery}
-        agreement={escrow?._raw || onChainAgreement}
+        agreement={escrow?._raw}
       />
     </div>
   );

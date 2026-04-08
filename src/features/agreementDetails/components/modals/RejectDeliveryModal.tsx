@@ -36,6 +36,7 @@ export const RejectDeliveryModal = ({
   const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue | null>(
     null,
   );
+  
   const networkInfo = useNetworkEnvironment();
   const { user: currentUser } = useAuth();
 

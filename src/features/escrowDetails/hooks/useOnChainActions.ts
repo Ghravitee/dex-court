@@ -517,12 +517,12 @@ export function useOnChainActions({
       });
       setUiSuccess("Dispute created. Waiting for blockchain confirmation...");
 
-      writeContract({
-        address: escrowAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "raiseDispute",
-        args: [BigInt(onChainAgreement.id), BigInt(votingIdToUseLocal), probono],
-      });
+      // writeContract({
+      //   address: escrowAddress as `0x${string}`,
+      //   abi: ESCROW_ABI.abi,
+      //   functionName: "raiseDispute",
+      //   args: [BigInt(onChainAgreement.id), BigInt(votingIdToUseLocal), probono],
+      // });
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
       setIsSubmittingDispute(false);
@@ -585,12 +585,12 @@ export function useOnChainActions({
           : "Dispute created! Please confirm the transaction in your wallet.",
       );
 
-      writeContract({
-        address: escrowAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "approveDelivery",
-        args: [BigInt(onChainAgreement.id), false, BigInt(generatedVotingId), isProBono],
-      });
+      // writeContract({
+      //   address: escrowAddress as `0x${string}`,
+      //   abi: ESCROW_ABI.abi,
+      //   functionName: "approveDelivery",
+      //   args: [BigInt(onChainAgreement.id), false, BigInt(generatedVotingId), isProBono],
+      // });
     } catch (error: any) {
       const msg =
         error.response?.data?.message ||
