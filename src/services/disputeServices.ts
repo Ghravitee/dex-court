@@ -19,6 +19,7 @@ import type {
   EvidenceFile,
   VoteOutcomeData,
 } from "../types";
+import { VOTING_CA } from "../web3/config";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,10 @@ function buildDisputeFormData(
   formData.append("claim", data.claim);
   formData.append("votingId", generateVotingId());
 
-  if (chainId !== undefined) formData.append("chainId", String(chainId));
+  if (chainId !== undefined) {
+    formData.append("chainId", String(chainId));
+    formData.append("disputeContractAddress", VOTING_CA[chainId] ?? "");
+  }
 
   data.witnesses?.forEach((witness, i) => {
     formData.append(`witnesses[${i}]`, cleanTelegramUsername(witness));

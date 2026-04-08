@@ -9,10 +9,9 @@ import {
   useChainId,
 } from "wagmi";
 import { useAuth } from "../../../hooks/useAuth";
-import { useNetworkEnvironment } from "../../../config/useNetworkEnvironment";
 import { rejectDelivery } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
-import { getEscrowConfigs } from "../../../web3/readContract";
+// import { getEscrowConfigs } from "../../../web3/readContract";
 import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS } from "../../../web3/config";
 import {
   DisputeTypeEnum,
@@ -61,7 +60,6 @@ export function useOnChainActions({
   const { user } = useAuth();
   const { switchChain } = useSwitchChain();
   const wagmiChainId = useChainId();
-  const networkInfo = useNetworkEnvironment();
 
   const [loadingStates, setLoadingStates] =
     useState<LoadingStates>(INITIAL_LOADING);
@@ -129,13 +127,13 @@ export function useOnChainActions({
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceProvider?.toString().toLowerCase();
+    onChainAgreement.serviceProvider?.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-      onChainAgreement.serviceRecipient?.toString().toLowerCase();
+    onChainAgreement.serviceRecipient?.toString().toLowerCase();
 
   const userId = user?.id?.toString();
   const isFirstParty = userId === escrow?._raw?.firstParty?.id?.toString();
@@ -143,23 +141,22 @@ export function useOnChainActions({
   const isCreator = userId === escrow?._raw?.creator?.id?.toString();
 
   // ─── Network switch ───────────────────────────────────────────────────────
-
   const switchToTokenChain = useCallback(async () => {
-    if (!networkInfo.chainId || !switchChain) return;
+    if (!switchChain) return;
     try {
-      switchChain({ chainId: networkInfo.chainId });
+      switchChain({ chainId: escrow?._raw?.chainId || null });
     } catch {
       /* silent */
     }
-  }, [networkInfo.chainId, switchChain]);
+  }, [escrow?._raw?.chainId, switchChain]);
 
   useEffect(() => {
-    if (user?.walletAddress && wagmiChainId !== networkInfo.chainId) {
+    if (user?.walletAddress && wagmiChainId !== escrow?._raw?.chainId) {
       toast.info(`Switching to supported chain...`);
       switchToTokenChain();
     }
   }, [
-    networkInfo.chainId,
+    escrow?._raw?.chainId,
     switchToTokenChain,
     user?.walletAddress,
     wagmiChainId,
@@ -217,7 +214,6 @@ export function useOnChainActions({
   }, [isSuccess, resetWrite]);
 
   // ─── Dispute success ──────────────────────────────────────────────────────
-
   useEffect(() => {
     if (isSuccess && hash && isSubmittingDispute) {
       (async () => {
@@ -280,7 +276,6 @@ export function useOnChainActions({
   }, [approvalSuccess, depositState.needsApproval, depositDirectly]);
 
   // ─── All action handlers ──────────────────────────────────────────────────
-
   const handleSignAgreement = () => {
     resetMessages();
     setLoading("signAgreement", true);
@@ -448,10 +443,10 @@ export function useOnChainActions({
       return;
     }
     writeContract({
-      address: escrowAddress,
+      address: escrowAddress as `0x${string}`,
       abi: ESCROW_ABI.abi,
       functionName: "claimMilestone",
-      args: [onChainAgreement.id, BigInt(index)],
+      args: [BigInt(onChainAgreement.id), BigInt(index)],
     });
     setUiSuccess("Claim milestone transaction submitted");
   };
@@ -464,27 +459,27 @@ export function useOnChainActions({
       return;
     }
     writeContract({
-      address: escrowAddress,
+      address: escrowAddress as `0x${string}`,
       abi: ESCROW_ABI.abi,
       functionName: "setMilestoneHold",
-      args: [onChainAgreement.id, BigInt(index), hold],
+      args: [BigInt(onChainAgreement.id), BigInt(index), hold],
     });
     setUiSuccess(`Milestone ${hold ? "held" : "unheld"} transaction submitted`);
   };
 
-  const fetchOnchainEscrowConfigs = useCallback(
-    async (eAddress: `0x${string}`, agreement: any) => {
-      try {
-        return await getEscrowConfigs(
-          eAddress,
-          agreement.chainId || networkInfo.chainId,
-        );
-      } catch {
-        return null;
-      }
-    },
-    [networkInfo.chainId],
-  );
+  // const fetchOnchainEscrowConfigs = useCallback(
+  //   async (eAddress: `0x${string}`, agreement: any) => {
+  //     try {
+  //       return await getEscrowConfigs(
+  //         eAddress,
+  //         agreement.chainId || null,
+  //       );
+  //     } catch {
+  //       return null;
+  //     }
+  //   },
+  //   [],
+  // );
 
   // ─── Raise dispute ──────────────────────────────────────────────────────
 
@@ -502,7 +497,7 @@ export function useOnChainActions({
         return;
       }
       const agreementId = parseInt(id);
-      const chainId = networkInfo.chainId;
+      const chainId = escrow?._raw?.chainId as number | undefined;
       const disputeResponse = await disputeService.createDisputeFromAgreement(
         agreementId,
         data,
@@ -510,7 +505,7 @@ export function useOnChainActions({
         chainId,
       );
       const votingIdToUseLocal = disputeResponse.votingId || votingId;
-      await fetchOnchainEscrowConfigs(escrowAddress!, onChainAgreement);
+      // await fetchOnchainEscrowConfigs(escrowAddress!, onChainAgreement);
       setPendingDisputeModal({
         isOpen: true,
         data: {
@@ -521,6 +516,13 @@ export function useOnChainActions({
         },
       });
       setUiSuccess("Dispute created. Waiting for blockchain confirmation...");
+
+      writeContract({
+        address: escrowAddress as `0x${string}`,
+        abi: ESCROW_ABI.abi,
+        functionName: "raiseDispute",
+        args: [BigInt(onChainAgreement.id), BigInt(votingIdToUseLocal), probono],
+      });
     } catch (error: unknown) {
       setLoading("raiseDispute", false);
       setIsSubmittingDispute(false);
@@ -558,7 +560,7 @@ export function useOnChainActions({
           votingId: generatedVotingId,
           claim: claim.trim(),
           requestKind,
-          chainId: chainId || networkInfo.chainId,
+          chainId: chainId,
           contractAgreementId: onChainAgreement?.id?.toString(),
         });
       } catch {
@@ -582,6 +584,13 @@ export function useOnChainActions({
           ? "Dispute created! Waiting for blockchain confirmation..."
           : "Dispute created! Please confirm the transaction in your wallet.",
       );
+
+      writeContract({
+        address: escrowAddress as `0x${string}`,
+        abi: ESCROW_ABI.abi,
+        functionName: "approveDelivery",
+        args: [BigInt(onChainAgreement.id), false, BigInt(generatedVotingId), isProBono],
+      });
     } catch (error: any) {
       const msg =
         error.response?.data?.message ||

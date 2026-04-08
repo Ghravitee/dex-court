@@ -114,7 +114,6 @@ export function useDisputeSubmit({
   );
 
   // ─── Watch transaction states ───────────────────────────────────────────────
-
   const formRef = useRef<DisputeFormState>(INITIAL_FORM_STATE);
   const setFormRef = (form: DisputeFormState) => {
     formRef.current = form;
@@ -160,7 +159,6 @@ export function useDisputeSubmit({
   ]);
 
   // ─── On-chain transaction ───────────────────────────────────────────────────
-
   const createDisputeOnchain = useCallback(async () => {
     try {
       const contractAddress = VOTING_CA[networkInfo.chainId as number];
@@ -247,7 +245,6 @@ export function useDisputeSubmit({
   };
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
-
   const submit = async (e: React.FormEvent, form: DisputeFormState) => {
     e.preventDefault();
 

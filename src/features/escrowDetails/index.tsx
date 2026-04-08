@@ -71,7 +71,6 @@ export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  //   const networkInfo = useNetworkEnvironment();
 
   // ─── Data ──────────────────────────────────────────────────────────────────
   const {
