@@ -170,18 +170,20 @@ const ELIGIBILITY_REASON_MESSAGES: Partial<Record<number, string>> = {
   [ErrorCodeEnum.InvalidEnum]: "Invalid dispute data",
   [ErrorCodeEnum.InvalidData]: "Invalid dispute data",
   [ErrorCodeEnum.InvalidStatus]: "Dispute is not in voting phase",
-  [ErrorCodeEnum.Forbidden]: "You are a party in this dispute",
+  [ErrorCodeEnum.Forbidden]:
+    "You must hold at least 0.5% of the $LAW token supply to vote",
 };
 
 // Export for use in hooks
 export const VOTE_ELIGIBILITY_REASONS = {
-  ALREADY_VOTED: "User has already voted",
-  NOT_IN_VOTING_PHASE: "Dispute is not in voting phase",
-  IS_PARTY: "You are a party in this dispute",
-  NO_WALLET: "Wallet connection required to vote",
-  ACCOUNT_NOT_FOUND: "Account not found",
-  INVALID_DISPUTE: "Invalid dispute",
-} as const;
+  ACCOUNT_NOT_FOUND: "Account not found.",
+  NO_WALLET: "You must connect a wallet to vote.",
+  INVALID_DISPUTE: "Invalid dispute.",
+  NOT_IN_VOTING_PHASE: "This dispute is not currently in the voting phase.",
+  IS_PARTY: "You cannot vote on a dispute you are involved in.",
+  INSUFFICIENT_LAW:
+    "You must hold at least 0.5% of the $LAW token supply to vote.",
+};
 
 // ─── Status mapping ────────────────────────────────────────────────────────────
 
@@ -341,7 +343,7 @@ export async function checkVoteEligibility(
         userMessage = VOTE_ELIGIBILITY_REASONS.NOT_IN_VOTING_PHASE;
         break;
       case ErrorCodeEnum.Forbidden: // 17
-        userMessage = VOTE_ELIGIBILITY_REASONS.IS_PARTY;
+        userMessage = VOTE_ELIGIBILITY_REASONS.INSUFFICIENT_LAW;
         break;
       default:
         userMessage =

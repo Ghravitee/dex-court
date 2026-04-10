@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { FileSignature, Users } from "lucide-react";
+import { FileSignature, Users, AlertCircle } from "lucide-react";
 import { InfiniteMovingAgreements } from "../../../components/ui/infinite-moving-agreements";
 import { usePublicAgreements } from "../../../hooks/usePublicAgreements";
 import { PulseLoader } from "./PulseLoader";
 
 export const SignedAgreementsInfiniteCards = () => {
-  const { agreements, loading } = usePublicAgreements();
+  const { agreements, loading, error } = usePublicAgreements();
 
   const signedAgreements = useMemo(
     () =>
@@ -37,6 +37,7 @@ export const SignedAgreementsInfiniteCards = () => {
       <h3 className="glow-text mb-4 text-lg font-semibold text-cyan-100 sm:text-xl">
         Signed Agreements
         {!loading &&
+          !error &&
           signedAgreements.length > 0 &&
           ` (${signedAgreements.length})`}
       </h3>
@@ -48,7 +49,23 @@ export const SignedAgreementsInfiniteCards = () => {
         </div>
       )}
 
-      {!loading && signedAgreements.length === 0 && (
+      {!loading && error && (
+        <div className="py-2">
+          <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-200">
+              Failed to load agreements
+            </p>
+            <p className="max-w-[260px] text-xs leading-relaxed text-slate-500">
+              {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && signedAgreements.length === 0 && (
         <div className="py-2">
           <p className="mb-4 text-sm leading-relaxed text-slate-400">
             Agreements that both parties have signed will appear here as a live
@@ -85,7 +102,7 @@ export const SignedAgreementsInfiniteCards = () => {
         </div>
       )}
 
-      {!loading && signedAgreements.length > 0 && (
+      {!loading && !error && signedAgreements.length > 0 && (
         <InfiniteMovingAgreements
           items={agreementItems}
           direction="left"

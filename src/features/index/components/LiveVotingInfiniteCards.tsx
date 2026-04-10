@@ -1,72 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+// LiveVotingInfiniteCards.tsx
 import { Link } from "react-router-dom";
-import { Vote, Users, Clock } from "lucide-react";
+import { Vote, Users, Clock, AlertCircle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
-import { fetchVoteInProgressDisputes } from "../../../services/disputeServices";
-import { parseAPIDate, now } from "../utils/chartHelpers";
+import { useLiveVotingDisputes } from "../hooks/useLiveVotingDisputes";
 import { DottedSpinner } from "./DottedSpinner";
-import { type LiveVotingItem } from "../types";
 
 export const LiveVotingInfiniteCards = () => {
-  const [liveDisputes, setLiveDisputes] = useState<LiveVotingItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchLiveVotingDisputes = async () => {
-      try {
-        setLoading(true);
-        const response = await fetchVoteInProgressDisputes(); // Changed function call
-
-        if (response?.results) {
-          const transformedDisputes = response.results.map((dispute: any) => {
-            const base = dispute.voteStartedAt
-              ? parseAPIDate(dispute.voteStartedAt)
-              : parseAPIDate(dispute.createdAt);
-            const endsAt = base + 24 * 60 * 60 * 1000;
-            const remain = Math.max(0, endsAt - now());
-            const daysLeft = Math.ceil(remain / (24 * 60 * 60 * 1000));
-
-            return {
-              id: dispute.id.toString(),
-              quote:
-                dispute.claim ||
-                dispute.description ||
-                `Dispute: ${dispute.title}`,
-              name: `${dispute.parties?.plaintiff?.username || "@plaintiff"} vs ${dispute.parties?.defendant?.username || "@defendant"}`,
-              title: `Community Voting • ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`,
-              plaintiff: dispute.parties?.plaintiff?.username || "@plaintiff",
-              defendant: dispute.parties?.defendant?.username || "@defendant",
-              plaintiffData: dispute.parties?.plaintiff,
-              defendantData: dispute.parties?.defendant,
-              plaintiffUserId:
-                dispute.parties?.plaintiff?.id?.toString() ||
-                dispute.parties?.plaintiff?.userId ||
-                "",
-              defendantUserId:
-                dispute.parties?.defendant?.id?.toString() ||
-                dispute.parties?.defendant?.userId ||
-                "",
-              endsAt,
-              hasVoted: dispute.hasVoted || false,
-            };
-          });
-
-          setLiveDisputes(transformedDisputes);
-        } else {
-          setLiveDisputes([]);
-        }
-      } catch (error) {
-        console.error("Error fetching live voting disputes:", error);
-        setLiveDisputes([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLiveVotingDisputes();
-  }, []);
+  const { liveDisputes, loading, error } = useLiveVotingDisputes();
 
   return (
     <div className="card-cyan rounded-2xl border border-cyan-400/30 p-4 sm:p-6">
@@ -94,7 +35,23 @@ export const LiveVotingInfiniteCards = () => {
         </div>
       )}
 
-      {!loading && liveDisputes.length === 0 && (
+      {!loading && error && (
+        <div className="py-2">
+          <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-200">
+              Failed to load live voting
+            </p>
+            <p className="max-w-[260px] text-xs leading-relaxed text-slate-500">
+              {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && liveDisputes.length === 0 && (
         <div className="py-2">
           <p className="mb-4 text-sm leading-relaxed text-slate-400">
             Disputes currently open for community voting will scroll here. Each
@@ -131,7 +88,7 @@ export const LiveVotingInfiniteCards = () => {
         </div>
       )}
 
-      {!loading && liveDisputes.length > 0 && (
+      {!loading && !error && liveDisputes.length > 0 && (
         <InfiniteMovingCardsWithAvatars
           items={liveDisputes}
           direction="left"

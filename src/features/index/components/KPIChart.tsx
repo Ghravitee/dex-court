@@ -17,8 +17,24 @@ import { groupByTimeframe } from "../utils/chartHelpers";
 import { CustomTooltip } from "./CustomTooltip";
 import { PulseLoader } from "./PulseLoader";
 
+const TabsHeader = ({
+  timeframe,
+  setTimeframe,
+}: {
+  timeframe: "daily" | "weekly" | "monthly";
+  setTimeframe: (v: "daily" | "weekly" | "monthly") => void;
+}) => (
+  <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
+    <TabsList className="bg-gray-800">
+      <TabsTrigger value="daily">Daily</TabsTrigger>
+      <TabsTrigger value="weekly">Weekly</TabsTrigger>
+      <TabsTrigger value="monthly">Monthly</TabsTrigger>
+    </TabsList>
+  </Tabs>
+);
+
 export const KPIChart = () => {
-  const { data: rawData, loading } = useAllAgreementsForGrowth();
+  const { data: rawData, loading, error } = useAllAgreementsForGrowth();
   const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">(
     "daily",
   );
@@ -31,20 +47,81 @@ export const KPIChart = () => {
     return (
       <div className="card-cyan relative flex h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
         <div className="mb-4 flex flex-col justify-between gap-2 p-4 sm:flex-row sm:items-center sm:p-0">
-          <div>
-            <h3 className="text-xl font-bold text-white">Network Growth</h3>
-          </div>
-          <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
-            <TabsList className="bg-gray-800">
-              <TabsTrigger value="daily">Daily</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly</TabsTrigger>
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <h3 className="text-xl font-bold text-white">Network Growth</h3>
+          <TabsHeader timeframe={timeframe} setTimeframe={setTimeframe} />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center">
           <PulseLoader size="large" />
           <span className="ml-4 text-cyan-300">Loading growth data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
+        <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <h3 className="text-xl font-bold text-white">Network Growth</h3>
+          <TabsHeader timeframe={timeframe} setTimeframe={setTimeframe} />
+        </div>
+
+        <div className="flex flex-1 flex-col items-center justify-center gap-0 pb-6">
+          <svg
+            width="56"
+            height="56"
+            viewBox="0 0 56 56"
+            fill="none"
+            className="mb-5 opacity-70"
+          >
+            <rect width="56" height="56" rx="12" fill="rgba(239,68,68,0.08)" />
+            <circle
+              cx="28"
+              cy="28"
+              r="14"
+              stroke="rgba(239,68,68,0.5)"
+              strokeWidth="2"
+              fill="none"
+            />
+            <line
+              x1="28"
+              y1="20"
+              x2="28"
+              y2="30"
+              stroke="#ef4444"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            <circle cx="28" cy="35" r="1.5" fill="#ef4444" />
+          </svg>
+
+          <p className="mb-2 text-base font-semibold text-slate-200">
+            Failed to load growth data
+          </p>
+          <p className="mb-6 max-w-[280px] text-center text-sm leading-relaxed text-slate-500">
+            {error}
+          </p>
+
+          <div className="grid w-full max-w-[340px] grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] p-3.5">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-sm bg-cyan-400/60" />
+                <span className="text-[11px] tracking-wide text-slate-500 uppercase">
+                  New agreements
+                </span>
+              </div>
+              <span className="text-xl font-medium text-slate-400">—</span>
+            </div>
+            <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/[0.06] p-3.5">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <div className="h-0.5 w-2.5 rounded bg-yellow-400" />
+                <span className="text-[11px] tracking-wide text-slate-500 uppercase">
+                  Total agreements
+                </span>
+              </div>
+              <span className="text-xl font-medium text-slate-400">—</span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -55,17 +132,10 @@ export const KPIChart = () => {
       <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 p-5">
         <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
           <h3 className="text-xl font-bold text-white">Network Growth</h3>
-          <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
-            <TabsList className="bg-gray-800">
-              <TabsTrigger value="daily">Daily</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly</TabsTrigger>
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <TabsHeader timeframe={timeframe} setTimeframe={setTimeframe} />
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center gap-0 pb-6">
-          {/* Mini chart icon */}
           <svg
             width="56"
             height="56"
@@ -118,7 +188,6 @@ export const KPIChart = () => {
             totals will appear here.
           </p>
 
-          {/* Legend preview cards */}
           <div className="grid w-full max-w-[340px] grid-cols-2 gap-2.5">
             <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] p-3.5">
               <div className="mb-1.5 flex items-center gap-1.5">
@@ -147,16 +216,8 @@ export const KPIChart = () => {
   return (
     <div className="card-cyan relative flex min-h-[400px] flex-col rounded-2xl border border-cyan-400/60 sm:p-5">
       <div className="mb-4 flex flex-col justify-between gap-2 p-4 sm:flex-row sm:items-center sm:p-0">
-        <div>
-          <h3 className="text-xl font-bold text-white">Network Growth</h3>
-        </div>
-        <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as any)}>
-          <TabsList className="bg-gray-800">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <h3 className="text-xl font-bold text-white">Network Growth</h3>
+        <TabsHeader timeframe={timeframe} setTimeframe={setTimeframe} />
       </div>
 
       <div className="min-h-[300px] flex-1 p-4 sm:p-0">

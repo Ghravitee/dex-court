@@ -33,6 +33,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
   const [isVoting, setIsVoting] = useState(false);
   const [onChainAgreement, setOnChainAgreement] = useState<any | null>(null);
   const [onChainLoading, setOnChainLoading] = useState(false);
+  const [localVoted, setLocalVoted] = useState(false);
 
   const {
     hasVoted,
@@ -42,7 +43,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
     weight,
     markAsVoted,
     isInitialCheck,
-    refetch: refetchVotingStatus,
+    // refetch: refetchVotingStatus,
   } = useVotingStatus(parseInt(c.id), c.rawDispute);
 
   const remain = Math.max(0, c.endsAt - currentTime);
@@ -131,10 +132,11 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
         duration: 4000,
       });
 
-      markAsVoted();
+      setLocalVoted(true); // immediate local override
+      markAsVoted(); // keeps the hook state consistent
       setChoice(null);
       setComment("");
-      refetchVotingStatus();
+      // remove refetchVotingStatus() entirely
 
       if ("requestIdleCallback" in window) {
         requestIdleCallback(() => {
@@ -164,7 +166,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
     c.id,
     refetchLiveDisputes,
     markAsVoted,
-    refetchVotingStatus,
+    // refetchVotingStatus,
   ]);
 
   const handleCommentChange = useCallback(
@@ -185,6 +187,8 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
 
     return info.length > 0 ? `(${info.join(", ")})` : "";
   }, [canVote, tier, weight]);
+
+  const voted = localVoted || hasVoted;
 
   return (
     <div
@@ -229,7 +233,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                     Checking eligibility...
                   </span>
-                ) : hasVoted ? (
+                ) : voted ? (
                   <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
                     ✓ You have voted
                   </span>
@@ -403,14 +407,14 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
               {!isExpired && voteStarted && !isInitialCheck && canVote && (
                 <div className="mt-2">
                   <h4 className="mb-3 text-lg font-semibold tracking-wide text-cyan-200 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)]">
-                    {hasVoted
+                    {voted
                       ? "Your Vote Has Been Cast"
                       : isExpired
                         ? "Voting Completed"
                         : "Who is your vote for?"}
                   </h4>
 
-                  {!hasVoted && !isExpired && (
+                  {!voted && !isExpired && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <MemoizedVoteOption
                         label={`Plaintiff (${c.parties.plaintiff})`}
@@ -447,7 +451,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                     </div>
                   )}
 
-                  {hasVoted && (
+                  {voted && (
                     <div className="rounded-md border border-green-400/30 bg-green-500/10 p-4 text-center">
                       <div className="mb-2 text-lg text-green-300">
                         ✓ Vote Submitted
@@ -459,7 +463,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                     </div>
                   )}
 
-                  {isExpired && !hasVoted && (
+                  {isExpired && !voted && (
                     <div className="mt-3 rounded-md border border-yellow-400/30 bg-yellow-500/10 p-3 text-center">
                       <div className="text-sm text-yellow-300">
                         Voting has ended. Results will be available soon.
@@ -469,7 +473,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                 </div>
               )}
 
-              {!hasVoted && !isExpired && voteStarted && canVote && isJudge && (
+              {!voted && !isExpired && voteStarted && canVote && isJudge && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -502,27 +506,23 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                 </div>
               )}
 
-              {!hasVoted &&
-                !isExpired &&
-                voteStarted &&
-                canVote &&
-                !isJudge && (
-                  <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <Info className="h-4 w-4 text-cyan-300" />
-                      <div>
-                        <div className="text-sm text-cyan-200">
-                          Comments are restricted to judges only
-                        </div>
-                        <div className="text-xs text-cyan-200/70">
-                          Only judges can add comments to their votes
-                        </div>
+              {!voted && !isExpired && voteStarted && canVote && !isJudge && (
+                <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-cyan-300" />
+                    <div>
+                      <div className="text-sm text-cyan-200">
+                        Comments are restricted to judges only
+                      </div>
+                      <div className="text-xs text-cyan-200/70">
+                        Only judges can add comments to their votes
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-              {!hasVoted && !isExpired && voteStarted && canVote && (
+              {!voted && !isExpired && voteStarted && canVote && (
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <Button
                     variant="neon"
@@ -560,7 +560,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                     <br />
                     Can Vote: {canVote ? "Yes" : "No"}
                     <br />
-                    Has Voted: {hasVoted ? "Yes" : "No"}
+                    Has Voted: {voted ? "Yes" : "No"}
                     <br />
                     Reason: {reason || "None"}
                     <br />

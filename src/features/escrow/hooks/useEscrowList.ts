@@ -9,6 +9,7 @@ import type { OnChainEscrowData } from "../types";
 export function useEscrowList() {
   const [allEscrows, setAllEscrows] = useState<OnChainEscrowData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // ─── Pagination ───────────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
@@ -24,6 +25,7 @@ export function useEscrowList() {
   const loadEscrowAgreements = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
 
       const response = await fetchAgreements({
         top: 200,
@@ -124,6 +126,7 @@ export function useEscrowList() {
           ? error.message
           : "Failed to load escrow agreements";
       toast.error(message);
+      setError(message); //
       setAllEscrows([]);
     } finally {
       setLoading(false);
@@ -201,6 +204,7 @@ export function useEscrowList() {
     visibleEscrows,
     filteredEscrows,
     loading,
+    error,
     loadEscrowAgreements,
     // Filters
     statusTab,
