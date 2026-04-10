@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X, Scale } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import { DisputeForm } from "./DisputeForm";
 import { useDisputeForm } from "../../hooks/useDisputeForm";
 import { useDisputeSubmit } from "../../hooks/useDisputeSubmit";
 import { useUserSearch } from "../../hooks/useUserSearch";
+import { useAccount, useSwitchChain } from "wagmi";
+import { useChainSelection } from "../../../../config/useChainSelection";
 // import { INITIAL_FORM_STATE } from "../../types/form";
 
 interface Props {
@@ -38,6 +40,40 @@ export const CreateDisputeModal = ({
 
   const userSearch = useUserSearch();
 
+  const { isConnected, address } = useAccount();
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(null);
+  const { switchChainAsync } = useSwitchChain();
+
+  const [isSwitchingChain, setIsSwitchingChain] = useState(false);
+
+  const handleSelectChain = async (mainnetId: number) => {
+    if (isSwitchingChain) return; // prevent duplicate requests
+
+    setIsSwitchingChain(true);
+    setSelectedMainnetId(mainnetId); // optimistic update
+    const resolved = resolveChainId(mainnetId);
+    try {
+      await switchChainAsync({ chainId: resolved });
+    } catch (err) {
+      // -32002 means MetaMask already has a pending request
+      if (err === -32002) {
+        toast.error("MetaMask is busy", {
+          description: "Please open MetaMask and complete the pending request first.",
+        });
+      } else {
+        toast.error("Failed to switch chain");
+      }
+      setSelectedMainnetId(null); // revert optimistic update
+    } finally {
+      setIsSwitchingChain(false);
+    }
+  };
+
+  const resolvedChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : null;
+
   const {
     submit,
     isSubmitting,
@@ -46,8 +82,7 @@ export const CreateDisputeModal = ({
     retryTransaction,
     resetOnModalClose,
     votingIdToUse,
-    networkInfo,
-    
+
     isDisabled,
   } = useDisputeSubmit({
     onSuccess: () => {
@@ -56,6 +91,7 @@ export const CreateDisputeModal = ({
       onDisputeCreated();
     },
     reloadDisputes: onDisputeCreated,
+    selectedChainId: resolvedChainId,
   });
 
   // Reset state when modal closes
@@ -142,11 +178,24 @@ export const CreateDisputeModal = ({
             isSubmitting={isSubmitting}
             transactionStep={transactionStep}
             votingIdToUse={votingIdToUse}
-            networkChainName={networkInfo.chainName}
             isDragOver={isDragOver}
             defendantSearch={userSearch.defendant}
             witnessSearch={userSearch.witness}
-            onSubmit={(e) => submit(e, form)}
+            onSubmit={(e) => {
+              if (form.kind === "Paid") {
+                if (!isConnected || !address) {
+                  toast.error("Wallet required", {
+                    description: "Please connect and authenticate your wallet to create a paid dispute.",
+                  });
+                  return;
+                }
+                if (!selectedMainnetId) {
+                  toast.error("Please select a network");
+                  return;
+                }
+              }
+              submit(e, form);
+            }}
             onRetryTransaction={() => retryTransaction(form.kind)}
             onSaveDraft={handleSaveDraft}
             onAddWitness={addWitness}
@@ -158,6 +207,11 @@ export const CreateDisputeModal = ({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onUserSelect={handleUserSelect}
+            displayChains={displayChains}
+            isProd={isProd}
+            selectedMainnetId={selectedMainnetId}
+            isConnected={isConnected}
+            onSelectChain={handleSelectChain}
           />
         </motion.div>
       </motion.div>

@@ -19,7 +19,6 @@ import type {
   EvidenceFile,
   VoteOutcomeData,
 } from "../types";
-import { VOTING_CA } from "../web3/config";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +65,7 @@ function buildDisputeFormData(
 
   if (chainId !== undefined) {
     formData.append("chainId", String(chainId));
-    formData.append("disputeContractAddress", VOTING_CA[chainId] ?? "");
+    // formData.append("disputeContractAddress", VOTING_CA[chainId] ?? "");
   }
 
   data.witnesses?.forEach((witness, i) => {
@@ -378,23 +377,38 @@ export async function checkVoteEligibility(
 
 export async function createDispute(
   data: CreateDisputeRequest,
+  disputeContractAddress: string,
   files: File[],
   chainId?: number,
 ): Promise<CreateDisputeResult> {
   const formData = buildDisputeFormData(data, files, chainId);
+  if (chainId !== undefined) {
+    formData.append("disputeContractAddress", disputeContractAddress);
+  }
   // Read the generated votingId back out of the formData
   const votingId = formData.get("votingId") as string;
+  
+  console.log("Creating dispute with createDispute Function");
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      console.log(` - ${key}: ${value.name} (${value.size} bytes)`);
+    } else {
+      console.log(` - ${key}: ${value}`);
+    }
+  });
 
   try {
-    const response = await api.post("/dispute", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 30_000,
-    });
+    // const response = await api.post("/dispute", formData, {
+    //   headers: { "Content-Type": "multipart/form-data" },
+    //   timeout: 30_000,
+    // });
 
-    const disputeId = response.data?.id;
-    if (!disputeId || typeof disputeId !== "number") {
-      throw new Error("Server response missing dispute ID.");
-    }
+    // const disputeId = response.data?.id;
+    // if (!disputeId || typeof disputeId !== "number") {
+    //   throw new Error("Server response missing dispute ID.");
+    // }
+
+    const disputeId = 0;
 
     return { id: disputeId, votingId };
   } catch (error: any) {
@@ -404,23 +418,39 @@ export async function createDispute(
 
 export async function createDisputeFromAgreement(
   agreementId: number,
+  disputeContractAddress: string,
   data: CreateDisputeFromAgreementRequest,
   files: File[],
   chainId?: number,
 ): Promise<CreateDisputeResult> {
   const formData = buildDisputeFormData(data, files, chainId);
+  if (chainId !== undefined) {
+    formData.append("disputeContractAddress", disputeContractAddress);
+  }
   const votingId = formData.get("votingId") as string;
 
-  try {
-    const response = await api.post(`/dispute/${agreementId}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 30_000,
-    });
-
-    const disputeId = response.data?.id;
-    if (!disputeId || typeof disputeId !== "number") {
-      throw new Error("Server response missing dispute ID.");
+  
+  console.log("Creating dispute with createDisputeFromAgreement Function");
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      console.log(` - ${key}: ${value.name} (${value.size} bytes)`);
+    } else {
+      console.log(` - ${key}: ${value}`);
     }
+  });
+
+  try {
+    // const response = await api.post(`/dispute/${agreementId}`, formData, {
+    //   headers: { "Content-Type": "multipart/form-data" },
+    //   timeout: 30_000,
+    // });
+
+    // const disputeId = response.data?.id;
+    // if (!disputeId || typeof disputeId !== "number") {
+    //   throw new Error("Server response missing dispute ID.");
+    // }
+
+    const disputeId = 0;
 
     return { id: disputeId, votingId };
   } catch (error: any) {

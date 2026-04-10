@@ -11,27 +11,22 @@ import {
 import type { TypedSocket } from "../types";
 import { useAgreementDetails } from "../../../hooks/useAgreements";
 
-interface PendingModalState {
-  isOpen: boolean;
-  votingId: number | null;
-  flow: "reject" | "open";
-}
 
 export function useAgreementData(id: string | undefined) {
   const agreementId = id ? parseInt(id) : null;
 
   const [disputeStatus, setDisputeStatus] = useState<any | null>(null);
+  const [disputeChainId, setDisputeChainId] = useState<number | null>(null);
   const [disputeVotingId, setDisputeVotingId] = useState<number | null>(null);
   const [rejectDisputeStatus, setRejectDisputeStatus] = useState<any | null>(
     null,
   );
-  const [pendingModalState, setPendingModalState] = useState<PendingModalState>(
-    {
-      isOpen: false,
-      votingId: null,
-      flow: "reject",
-    },
-  );
+  const [pendingModalState, setPendingModalState] = useState<{
+    isOpen: boolean;
+    votingId: number | null;
+    flow: "reject" | "open";
+    chainId: number | null;
+  }>({ isOpen: false, votingId: null, flow: "reject", chainId: null });
 
   // Local agreement override — needed so mutations can optimistically update
   // the agreement shape (e.g. adding disputeVotingId) without waiting for refetch
@@ -58,7 +53,7 @@ export function useAgreementData(id: string | undefined) {
     (rawAgreementData
       ? transformApiAgreement(rawAgreementData, disputeVotingId)
       : null);
-    
+
   // ─── Background refetch (used by WebSocket + cross-tab listener) ───────────
 
   const fetchAgreementDetailsBackground = useCallback(async () => {
@@ -84,6 +79,7 @@ export function useAgreementData(id: string | undefined) {
   // ─── Fetch dispute details when disputeId is known ─────────────────────────
 
   useEffect(() => {
+    // console.log("Agreement in effect", agreement);
     if (!agreement?.disputeId) return;
     const disputeId = parseInt(agreement.disputeId);
     if (isNaN(disputeId)) return;
@@ -91,11 +87,21 @@ export function useAgreementData(id: string | undefined) {
     const fetch = async () => {
       try {
         const details = await disputeService.getDisputeDetails(disputeId);
-        const transformed =
-          disputeService.transformDisputeDetailsToRow(details);
+        const transformed = disputeService.transformDisputeDetailsToRow(details);
+        // console.log("Fetched dispute details", details, transformed.chainId);
         setDisputeStatus(transformed.status);
         if (transformed.votingId !== undefined) {
           setDisputeVotingId(transformed.votingId);
+        }
+        // Read chainId from dispute — works for both agreement-linked and standalone disputes
+        const disputeChainId = transformed.chainId ?? transformed.chainId ?? null;
+        console.log("Dispute chain ID", disputeChainId);
+        if (disputeChainId) {
+          setDisputeChainId(disputeChainId);
+          setPendingModalState((prev) => ({
+            ...prev,
+            chainId: Number(disputeChainId),
+          }));
         }
       } catch {
         // Non-critical — dispute details are supplementary
@@ -123,7 +129,7 @@ export function useAgreementData(id: string | undefined) {
 
       // Type 19 = DisputeUpdated
       if (event.type === 19) {
-        setPendingModalState({ isOpen: false, votingId: null, flow: "reject" });
+        setPendingModalState({ isOpen: false, votingId: null, flow: "reject", chainId: null });
 
         if (agreement?.disputeId) {
           const disputeIdNum = parseInt(agreement.disputeId);
@@ -204,6 +210,7 @@ export function useAgreementData(id: string | undefined) {
     setPendingModalState,
     fetchAgreementDetails,
     fetchAgreementDetailsBackground,
+    disputeChainId,
     // lastUpdate is removed — consumers should react to `agreement` changing,
     // not to a timestamp. If something genuinely needs it, use Date.now() where used.
   };

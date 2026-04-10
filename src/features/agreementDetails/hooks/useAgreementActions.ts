@@ -31,6 +31,7 @@ interface UseAgreementActionsOptions {
     isOpen: boolean;
     votingId: number | null;
     flow: "reject" | "open";
+    chainId: number | null;
   }) => void;
 }
 
@@ -86,7 +87,7 @@ export function useAgreementActions({
       const errorMap: Record<number, string> = {
         12:
           agreement.includeFunds === "yes" &&
-          (agreement.useEscrow || agreement._raw?.secureTheFunds)
+            (agreement.useEscrow || agreement._raw?.secureTheFunds)
             ? "Wallet connection required for escrow-secured agreements"
             : "Unexpected wallet requirement. Please contact support.",
         16: "Agreement is not in a signable state",
@@ -135,7 +136,7 @@ export function useAgreementActions({
     } catch (error: any) {
       toast.error(
         error.response?.data?.message ||
-          "Failed to cancel agreement. Please try again.",
+        "Failed to cancel agreement. Please try again.",
       );
     }
   }, [
@@ -178,7 +179,7 @@ export function useAgreementActions({
       } catch (error: any) {
         toast.error(
           error.response?.data?.message ||
-            "Failed to respond to cancellation. Please try again.",
+          "Failed to respond to cancellation. Please try again.",
         );
       }
     },
@@ -196,7 +197,7 @@ export function useAgreementActions({
     } catch (error: any) {
       toast.error(
         error.response?.data?.message ||
-          "Failed to mark as delivered. Please try again.",
+        "Failed to mark as delivered. Please try again.",
       );
     }
   }, [id, agreement, fetchBackground, markDeliveredMutation]);
@@ -212,7 +213,7 @@ export function useAgreementActions({
     } catch (error: any) {
       toast.error(
         error.response?.data?.message ||
-          "Failed to confirm delivery. Please try again.",
+        "Failed to confirm delivery. Please try again.",
       );
     }
   }, [id, agreement, fetchBackground, confirmDeliveryMutation]);
@@ -251,6 +252,7 @@ export function useAgreementActions({
             isOpen: true,
             votingId: parseInt(votingIdToUse),
             flow: "reject",
+            chainId: chainId ?? null,  // chainId comes from the onConfirm param
           });
           toast.success(
             "Dispute created! Please confirm the transaction in your wallet.",
@@ -304,6 +306,7 @@ export function useAgreementActions({
       isOpen: true,
       votingId: votingIdAsNumber,
       flow: "open",
+      chainId: null,
     });
   }, [id, agreement, setPendingModalState]);
 
@@ -323,7 +326,7 @@ export function useAgreementActions({
       );
       setDisputeStatus("Pending Payment");
       setRejectDisputeStatus("Pending Payment");
-      setPendingModalState({ isOpen: true, votingId: votingIdAsNumber, flow });
+      setPendingModalState({ isOpen: true, votingId: votingIdAsNumber, flow, chainId: null });
     },
     [
       setDisputeVotingId,

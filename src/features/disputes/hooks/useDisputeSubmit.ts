@@ -5,7 +5,6 @@ import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { disputeService } from "../../../services/disputeServices";
 import { DisputeTypeEnum } from "../../../types";
 import type { CreateDisputeRequest } from "../../../types";
-import { useNetworkEnvironment } from "../../../config/useNetworkEnvironment";
 import { VOTING_ABI, VOTING_CA } from "../../../web3/config";
 import { getVoteConfigs } from "../../../web3/readContract";
 import {
@@ -27,14 +26,16 @@ type TransactionStep = "idle" | "pending" | "success" | "error";
 interface UseDisputeSubmitOptions {
   onSuccess: () => void;
   reloadDisputes: () => void;
+  selectedChainId?: number | null;
 }
 
 export function useDisputeSubmit({
   onSuccess,
   reloadDisputes,
+  selectedChainId,
 }: UseDisputeSubmitOptions) {
-  
-  const networkInfo = useNetworkEnvironment();
+
+  const effectiveChainId = selectedChainId;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [transactionStep, setTransactionStep] =
     useState<TransactionStep>("idle");
@@ -83,14 +84,15 @@ export function useDisputeSubmit({
           defendant: cleanedDefendant,
           claim: form.claim,
           witnesses: cleanedWitnesses,
-          chainId: networkInfo.chainId,
+          ...(effectiveChainId !== null && { chainId: effectiveChainId }),
         };
 
         const files = form.evidence.map((uf) => uf.file);
         await disputeService.createDispute(
           createDisputeData,
+          VOTING_CA[effectiveChainId as number], //97 or 56 depending on Environment
           files,
-          networkInfo.chainId,
+          effectiveChainId as number, // 97 or 56 depenidng on Environment
         );
 
         // Use the parameter here if needed for logging or tracking
@@ -111,7 +113,7 @@ export function useDisputeSubmit({
         setIsSubmitting(false);
       }
     },
-    [networkInfo.chainId, onSuccess, reloadDisputes],
+    [effectiveChainId, onSuccess, reloadDisputes],
   );
 
   // ─── Watch transaction states ───────────────────────────────────────────────
@@ -162,13 +164,13 @@ export function useDisputeSubmit({
   // ─── On-chain transaction ───────────────────────────────────────────────────
   const createDisputeOnchain = useCallback(async () => {
     try {
-      const contractAddress = VOTING_CA[networkInfo.chainId as number];
+      const contractAddress = VOTING_CA[effectiveChainId as number];
       if (!contractAddress) {
         throw new Error(
-          `No contract address found for chain ID ${networkInfo.chainId}`,
+          `No contract address found for chain ID ${effectiveChainId}`,
         );
       }
-      const configs = await getVoteConfigs(networkInfo.chainId);
+      const configs = await getVoteConfigs(effectiveChainId as number);
       const feeValue = configs ? configs.feeAmount : undefined;
 
       writeContract({
@@ -186,7 +188,7 @@ export function useDisputeSubmit({
       setTransactionStep("error");
       setIsProcessingPaidDispute(false);
     }
-  }, [networkInfo.chainId, votingIdToUse, writeContract]);
+  }, [effectiveChainId, votingIdToUse, writeContract]);
 
   // ─── Retry ─────────────────────────────────────────────────────────────────
 
@@ -283,7 +285,7 @@ export function useDisputeSubmit({
       };
 
       const files = form.evidence.map((uf) => uf.file);
-      await disputeService.createDispute(createDisputeData, files);
+      await disputeService.createDispute(createDisputeData, VOTING_CA[97], files);
 
       toast.success("Pro Bono dispute submitted successfully", {
         description: `${form.title} has been submitted for review`,
@@ -318,7 +320,6 @@ export function useDisputeSubmit({
     retryTransaction,
     resetOnModalClose,
     votingIdToUse,
-    networkInfo,
     isDisabled,
   };
 }

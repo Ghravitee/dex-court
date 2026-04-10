@@ -34,7 +34,6 @@ import { VscVerifiedFilled } from "react-icons/vsc";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import EvidenceViewer from "../../components/disputes/modals/EvidenceViewer";
 import { EvidenceDisplay } from "../../components/disputes/EvidenceDisplay";
-
 import EscrowPendingDisputeModal from "../../components/EscrowPendingDisputeModal";
 import { MilestoneTableRow } from "../../web3/MilestoneTableRow";
 import { CountdownTimer } from "../../web3/Timer";

@@ -95,6 +95,7 @@ export default function AgreementDetails() {
     pendingModalState,
     setPendingModalState,
     fetchAgreementDetailsBackground,
+    disputeChainId,
   } = useAgreementData(id);
 
   // ─── Actions ───────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ export default function AgreementDetails() {
     setEvidenceViewerOpen(true);
   }, []);
 
-  const handleDisputeCreated = useCallback(() => {}, []);
+  const handleDisputeCreated = useCallback(() => { }, []);
 
   // const getFileIcon = (fileType: string) => {
   //   const cls = "h-5 w-5";
@@ -677,16 +678,16 @@ export default function AgreementDetails() {
                                       >
                                         {disputeInfo.filedBy.startsWith("0x")
                                           ? formatWalletAddress(
-                                              disputeInfo.filedBy,
-                                            )
+                                            disputeInfo.filedBy,
+                                          )
                                           : disputeInfo.filedBy}
                                       </Link>
                                       {user &&
                                         disputeInfo.filedBy &&
                                         normalizeUsername(user.username) ===
-                                          normalizeUsername(
-                                            disputeInfo.filedBy,
-                                          ) && (
+                                        normalizeUsername(
+                                          disputeInfo.filedBy,
+                                        ) && (
                                           <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                         )}
                                     </div>
@@ -1016,7 +1017,7 @@ export default function AgreementDetails() {
       )}
 
       {pendingModalState.isOpen &&
-        disputeStatus === "Pending Payment" &&
+        (disputeStatus === "Pending Payment" || rejectDisputeStatus === "Pending Payment") &&
         getDisputeFiledByFromTimeline(agreement, user) && (
           <PendingDisputeModal
             key={`pending-modal-${pendingModalState.votingId}`}
@@ -1026,6 +1027,7 @@ export default function AgreementDetails() {
                 isOpen: false,
                 votingId: null,
                 flow: "reject",
+                chainId: null,
               })
             }
             votingId={
@@ -1034,6 +1036,7 @@ export default function AgreementDetails() {
             agreement={agreement}
             onDisputeCreated={handleDisputeCreated}
             flow={pendingModalState.flow}
+            chainId={pendingModalState.chainId ?? disputeChainId ?? 0}
           />
         )}
     </div>

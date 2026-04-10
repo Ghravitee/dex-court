@@ -12,7 +12,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import { rejectDelivery } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
 // import { getEscrowConfigs } from "../../../web3/readContract";
-import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS } from "../../../web3/config";
+import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS, ESCROW_CA } from "../../../web3/config";
 import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
@@ -482,7 +482,6 @@ export function useOnChainActions({
   // );
 
   // ─── Raise dispute ──────────────────────────────────────────────────────
-
   const handleRaiseDispute = async (
     data: CreateDisputeFromAgreementRequest,
     files: File[],
@@ -498,8 +497,13 @@ export function useOnChainActions({
       }
       const agreementId = parseInt(id);
       const chainId = escrow?._raw?.chainId as number | undefined;
+      if (!chainId) {
+        setUiError("Chain ID required");
+        return;
+      }
       const disputeResponse = await disputeService.createDisputeFromAgreement(
         agreementId,
+        ESCROW_CA[chainId],
         data,
         files,
         chainId,

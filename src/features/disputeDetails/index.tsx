@@ -110,6 +110,8 @@ export default function DisputeDetails() {
     dispute.evidence || [],
     dispute.id || id || "",
   );
+
+  console.log("dispute", dispute)
   const defendantEvidence = dispute.defendantResponse
     ? processEvidence(
         dispute.defendantResponse.evidence || [],

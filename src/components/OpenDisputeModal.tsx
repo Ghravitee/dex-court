@@ -12,6 +12,7 @@ import {
   Info,
   X,
   Wallet,
+  CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createDisputeFromAgreement } from "../services/disputeServices";
@@ -25,14 +26,15 @@ import {
 } from "../lib/usernameUtils";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNetworkEnvironment } from "../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../hooks/useDisputeTransaction";
 import { useAllAccounts } from "../hooks/useAccounts";
 import { useDebounce } from "../hooks/useDebounce";
 import { UserSearchResult } from "./disputes/UserSearchResult";
+import { SUPPORTED_CHAINS, VOTING_CA } from "../web3/config";
+import { useAccount, useSwitchChain } from "wagmi";
+import { useChainSelection } from "../config/useChainSelection";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
-
 const formatDefendantDisplay = (defendant: string): string => {
   const cleanDefendant = defendant.replace(/^@/, "");
   if (isWalletAddress(cleanDefendant)) return cleanDefendant;
@@ -71,11 +73,45 @@ export default function OpenDisputeModal({
   onDisputeCreated,
   onPaidDisputeCreated,
 }: OpenDisputeModalProps) {
-  
+
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const networkInfo = useNetworkEnvironment();
 
+
+  const { isConnected, address } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(null);
+
+  const [isSwitchingChain, setIsSwitchingChain] = useState(false);
+
+
+  const handleSelectChain = async (mainnetId: number) => {
+    if (isSwitchingChain) return; // prevent duplicate requests
+
+    setIsSwitchingChain(true);
+    setSelectedMainnetId(mainnetId); // optimistic update
+    const resolved = resolveChainId(mainnetId);
+    try {
+      await switchChainAsync({ chainId: resolved });
+    } catch (err: any) {
+      // -32002 means MetaMask already has a pending request
+      if (err?.code === -32002) {
+        toast.error("MetaMask is busy", {
+          description: "Please open MetaMask and complete the pending request first.",
+        });
+      } else {
+        toast.error("Failed to switch chain");
+      }
+      setSelectedMainnetId(null); // revert optimistic update
+    } finally {
+      setIsSwitchingChain(false);
+    }
+  };
+
+  const resolvedChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : isProd ? SUPPORTED_CHAINS[1].mainnetId : SUPPORTED_CHAINS[1].testnetId;
 
   const [form, setForm] = useState({
     title: "",
@@ -95,12 +131,11 @@ export default function OpenDisputeModal({
   const [isDragOver, setIsDragOver] = useState(false);
 
   const { transactionStep, transactionHash, resetTransaction, isSuccess } =
-    useDisputeTransaction(networkInfo.chainId);
+    useDisputeTransaction(resolvedChainId);
 
   const hasInitialized = useRef(false);
   const formRef = useRef(form);
   const agreementIdRef = useRef(agreement?.id);
-  const networkInfoRef = useRef(networkInfo);
 
   useEffect(() => {
     formRef.current = form;
@@ -108,9 +143,6 @@ export default function OpenDisputeModal({
   useEffect(() => {
     agreementIdRef.current = agreement?.id;
   }, [agreement?.id]);
-  useEffect(() => {
-    networkInfoRef.current = networkInfo;
-  }, [networkInfo]);
 
   // ─── Account search ──────────────────────────────────────────────────────────
 
@@ -245,6 +277,7 @@ export default function OpenDisputeModal({
       try {
         const result = await createDisputeFromAgreement(
           parseInt(agreement.id),
+          VOTING_CA[resolvedChainId],
           {
             title,
             description,
@@ -252,11 +285,11 @@ export default function OpenDisputeModal({
             defendant,
             claim,
             witnesses,
-            chainId: networkInfo.chainId,
+            chainId: resolvedChainId,
             txHash,
           },
           files,
-          networkInfo.chainId,
+          resolvedChainId,
         );
 
         toast.success("Pro Bono dispute created successfully!", {
@@ -273,7 +306,7 @@ export default function OpenDisputeModal({
         setIsSubmitting(false);
       }
     },
-    [agreement?.id, networkInfo.chainId, isSubmitting, resetFormAndClose],
+    [isSubmitting, agreement.id, resolvedChainId, resetFormAndClose],
   );
 
   // Witness select — receives full user object from UserSearchResult
@@ -573,10 +606,25 @@ export default function OpenDisputeModal({
     const files = form.evidence.map((uf) => uf.file);
 
     if (requestKind === DisputeTypeEnum.Paid) {
+      if (!isConnected || !address) {
+        toast.error("Wallet required", {
+          description: "Please connect your wallet to create a paid dispute.",
+        });
+        return;
+      }
+      if (!selectedMainnetId) {
+        toast.error("Please select a network");
+        return;
+      }
+    }
+
+    if (requestKind === DisputeTypeEnum.Paid) {
       setIsSubmitting(true);
       try {
         const result = await createDisputeFromAgreement(
+          // agreement,
           parseInt(agreement.id),
+          VOTING_CA[resolvedChainId],
           {
             title: form.title,
             description: form.description,
@@ -584,11 +632,11 @@ export default function OpenDisputeModal({
             defendant: cleanedDefendant,
             claim: form.claim,
             witnesses: cleanedWitnesses,
-            chainId: networkInfo.chainId,
+            chainId: resolvedChainId,
             txHash: transactionHash,
           },
           files,
-          networkInfo.chainId,
+          resolvedChainId,
         );
 
         toast.success("Dispute created! Complete payment to activate.", {
@@ -724,11 +772,10 @@ export default function OpenDisputeModal({
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
                       key={kind}
-                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                        form.kind === kind
-                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                          : "border-white/10 bg-white/5"
-                      } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
+                        ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                        : "border-white/10 bg-white/5"
+                        } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
                     >
                       <input
                         type="radio"
@@ -744,6 +791,45 @@ export default function OpenDisputeModal({
                   ))}
                 </div>
               </div>
+
+              {/* ── Chain selector (only for Paid disputes) ─────────── */}
+              {form.kind === "Paid" && (
+                <div>
+                  <label className="text-muted-foreground mb-3 block text-sm font-semibold">
+                    Select Network <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {displayChains.map((chain) => (
+                      <button
+                        key={chain.mainnetId}
+                        type="button"
+                        onClick={() => handleSelectChain(chain.mainnetId)}
+                        disabled={isSwitchingChain}
+                        className={`relative flex flex-col ... ${isSwitchingChain ? "cursor-wait opacity-60" : ""}`}
+                      >
+                        <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
+                        <span className="text-xs font-medium">{chain.name}</span>
+                        <span className="text-[10px] opacity-60">
+                          {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+                        </span>
+                        {selectedMainnetId === chain.mainnetId && (
+                          isSwitchingChain
+                            ? <Loader2 className="absolute top-1.5 right-1.5 h-3.5 w-3.5 animate-spin text-cyan-400" />
+                            : <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {!selectedMainnetId && (
+                    <div className="mt-1 text-xs text-red-400">Please select a network</div>
+                  )}
+                  {!isConnected && (
+                    <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+                      ⚠️ You need to connect your wallet to create a paid dispute.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Smart Contract Info for Paid Disputes */}
               {form.kind === "Paid" &&
@@ -764,8 +850,7 @@ export default function OpenDisputeModal({
                     <div className="mt-3 text-xs text-cyan-400">
                       <div className="flex items-center gap-1">
                         <span>•</span>
-                        <span>Network: {networkInfo.chainName}</span>
-                      </div>
+                        <span>Network: {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name ?? "Not selected"}</span>                      </div>
                     </div>
                   </div>
                 )}
@@ -955,11 +1040,10 @@ export default function OpenDisputeModal({
                 </label>
 
                 <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
-                    isDragOver
-                      ? "border-cyan-400/60 bg-cyan-500/20"
-                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                  } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
+                    ? "border-cyan-400/60 bg-cyan-500/20"
+                    : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                    } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -975,9 +1059,8 @@ export default function OpenDisputeModal({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${
-                      isDisabled ? "cursor-not-allowed" : ""
-                    }`}
+                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${isDisabled ? "cursor-not-allowed" : ""
+                      }`}
                   >
                     <Upload className="mb-2 h-6 w-6 text-cyan-400" />
                     <div className="text-sm text-cyan-300">

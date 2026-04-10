@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../../components/ui/button";
-import { useNetworkEnvironment } from "../../../../config/useNetworkEnvironment";
 import { useDisputeTransaction } from "../../../../hooks/useDisputeTransaction";
+import { SUPPORTED_CHAINS } from "../../../../web3/config";
 
 interface Props {
   isOpen: boolean;
@@ -21,6 +21,7 @@ interface Props {
   agreement: any;
   onDisputeCreated: () => void;
   flow?: "reject" | "open";
+  chainId: number;
 }
 
 export const PendingDisputeModal = ({
@@ -30,14 +31,16 @@ export const PendingDisputeModal = ({
   agreement,
   onDisputeCreated,
   flow = "reject",
+  chainId,
 }: Props) => {
-  
-  const networkInfo = useNetworkEnvironment();
+
   const [userInitiated, setUserInitiated] = useState(false);
   const [modalState, setModalState] = useState<
     "initializing" | "active" | "closing"
   >("initializing");
   const hasStartedTransaction = useRef(false);
+
+  console.log("PendingDisputeModal props", { votingId, agreement, flow, chainId });
 
   const {
     transactionStep,
@@ -49,7 +52,7 @@ export const PendingDisputeModal = ({
     resetTransaction,
     isSuccess,
     isError,
-  } = useDisputeTransaction(networkInfo.chainId);
+  } = useDisputeTransaction(chainId);
 
   useEffect(() => {
     if (isSuccess && transactionHash) {
@@ -68,6 +71,8 @@ export const PendingDisputeModal = ({
     }
   }, [isError]);
 
+  console.log("Agreement", agreement);
+
   useEffect(() => {
     if (!isOpen) {
       resetTransaction();
@@ -79,6 +84,12 @@ export const PendingDisputeModal = ({
 
   const handleStartPayment = useCallback(async () => {
     if (!votingId || userInitiated || isProcessing) return;
+    if (!chainId) {
+      toast.error("Network not configured", {
+        description: "Could not determine the chain to use. Please refresh and try again.",
+      });
+      return;
+    }
     setUserInitiated(true);
     setModalState("active");
     console.log(
@@ -93,6 +104,10 @@ export const PendingDisputeModal = ({
 
   const handleRetryPayment = useCallback(async () => {
     setUserInitiated(false);
+    if (!chainId) {
+      toast.error("Network not configured. Please refresh and try again.");
+      return;
+    }
     await retryTransaction(votingId);
   }, [votingId, retryTransaction]);
 
@@ -241,7 +256,9 @@ export const PendingDisputeModal = ({
                   ["Type", "Paid Dispute"],
                   // ["Flow", flow],
                   ["Voting ID", votingId],
-                  ["Network", networkInfo.chainName],
+                  ["Network", SUPPORTED_CHAINS.find(c =>
+                    c.mainnetId === chainId || c.testnetId === chainId
+                  )?.name ?? "Unknown Network"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-purple-200/80">{label}:</span>

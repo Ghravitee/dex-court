@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useDisputeTransaction.ts
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { VOTING_ABI, VOTING_CA } from "../web3/config";
 import { getVoteConfigs } from "../web3/readContract";
@@ -38,9 +38,10 @@ export const useDisputeTransaction = (chainId: number) => {
         setTransactionStep("pending");
         setIsProcessing(true);
 
-        const contractAddress = VOTING_CA[chainId];
+        const effectiveChainId = chainIdRef.current;
+        const contractAddress = VOTING_CA[effectiveChainId];
         console.log("📝 [useDisputeTransaction] Contract lookup:", {
-          chainId,
+          chainId: effectiveChainId,
           contractAddress,
         });
 
@@ -51,7 +52,7 @@ export const useDisputeTransaction = (chainId: number) => {
         // Fetch fee amount from contract
         let feeValue = undefined;
         try {
-          const configs = await getVoteConfigs(chainId);
+          const configs = await getVoteConfigs(effectiveChainId);
           feeValue = configs?.feeAmount;
           console.log(
             "💰 [useDisputeTransaction] Fee amount:",
@@ -108,7 +109,7 @@ export const useDisputeTransaction = (chainId: number) => {
         throw error;
       }
     },
-    [chainId, writeContract],
+    [writeContract],
   );
 
   // Retry transaction function
@@ -142,6 +143,11 @@ export const useDisputeTransaction = (chainId: number) => {
     setTransactionStep("idle");
     setIsProcessing(false);
   }, [resetWrite]);
+
+  const chainIdRef = useRef(chainId);
+  useEffect(() => {
+    chainIdRef.current = chainId;
+  }, [chainId]);
 
   // Monitor transaction status changes
   useEffect(() => {

@@ -447,6 +447,7 @@ export interface CreateDisputeFromAgreementRequest {
   onchainVotingId?: string;
   chainId?: number;
   txHash?: string;
+  // escrowDisputeContract: string;
 }
 
 export interface DefendantClaimRequest {

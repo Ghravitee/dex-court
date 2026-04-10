@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Info, Search, Loader2, Wallet, Send } from "lucide-react";
+import { Info, Search, Loader2, Wallet, Send, CheckCircle } from "lucide-react";
 import { Button } from "../../../../components/ui/button";
 import { UserSearchResult } from "../UserSearchResult";
 import { EvidenceUpload } from "./EvidenceUpload";
@@ -37,7 +37,6 @@ interface Props {
   isSubmitting: boolean;
   transactionStep: "idle" | "pending" | "success" | "error";
   votingIdToUse: number;
-  networkChainName: string;
   isDragOver: boolean;
   defendantSearch: DefendantSearchState;
   witnessSearch: WitnessSearchState;
@@ -57,6 +56,17 @@ interface Props {
     field: "defendant" | "witness",
     index?: number,
   ) => void;
+
+  displayChains: Array<{
+    mainnetId: number;
+    name: string;
+    symbol: string;
+    icon: string;
+  }>;
+  isProd: boolean;
+  selectedMainnetId: number | null;
+  isConnected: boolean;
+  onSelectChain: (mainnetId: number) => Promise<void>;
 }
 
 export const DisputeForm = ({
@@ -66,7 +76,6 @@ export const DisputeForm = ({
   isSubmitting,
   transactionStep,
   votingIdToUse,
-  networkChainName,
   isDragOver,
   defendantSearch,
   witnessSearch,
@@ -82,6 +91,11 @@ export const DisputeForm = ({
   onDragLeave,
   onDrop,
   onUserSelect,
+  displayChains,
+  isProd,
+  selectedMainnetId,
+  isConnected,
+  onSelectChain,
 }: Props) => (
   <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
     {/* Transaction status banner */}
@@ -154,11 +168,10 @@ export const DisputeForm = ({
           {(["Pro Bono", "Paid"] as const).map((kind) => (
             <label
               key={kind}
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
-                form.kind === kind
-                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                  : "border-white/10 bg-white/5"
-              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
+                ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                : "border-white/10 bg-white/5"
+                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -174,6 +187,47 @@ export const DisputeForm = ({
           ))}
         </div>
       </div>
+
+      {/* ── Chain selector (only for Paid disputes) ─────────── */}
+      {form.kind === "Paid" && (
+        <div>
+          <label className="text-muted-foreground mb-3 block text-sm font-semibold">
+            Select Network <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {displayChains.map((chain) => (
+              <button
+                key={chain.mainnetId}
+                type="button"
+                onClick={() => onSelectChain(chain.mainnetId)}
+                className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${selectedMainnetId === chain.mainnetId
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                  }`}
+              >
+                <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
+                <span className="text-xs font-medium">{chain.name}</span>
+                <span className="text-[10px] opacity-60">
+                  {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+                </span>
+                {selectedMainnetId === chain.mainnetId && (
+                  <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
+                )}
+              </button>
+            ))}
+          </div>
+          {!selectedMainnetId && (
+            <div className="mt-1 text-xs text-red-400">Please select a network</div>
+          )}
+
+          {/* Wallet warning */}
+          {!isConnected && (
+            <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+              ⚠️ You need to connect and authenticate your wallet to create a paid dispute.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Defendant */}
       <div className="relative" ref={defendantSearch.ref}>
@@ -220,7 +274,7 @@ export const DisputeForm = ({
                 />
               ))
             ) : defendantSearch.searchQuery.replace(/^@/, "").trim().length >=
-                1 && !defendantSearch.isLoading ? (
+              1 && !defendantSearch.isLoading ? (
               <div className="px-4 py-3 text-center text-sm text-cyan-300">
                 No users found for "
                 {defendantSearch.searchQuery.replace(/^@/, "")}"
@@ -232,10 +286,10 @@ export const DisputeForm = ({
 
             {defendantSearch.searchQuery.replace(/^@/, "").trim().length <
               1 && (
-              <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                Type at least 1 character to search
-              </div>
-            )}
+                <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                  Type at least 1 character to search
+                </div>
+              )}
           </div>
         )}
       </div>
@@ -321,7 +375,7 @@ export const DisputeForm = ({
             </div>
             <div className="flex items-center gap-1">
               <span>•</span>
-              <span>Network: {networkChainName}</span>
+              <span>Network: {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name ?? "Not selected"}</span>
             </div>
           </div>
         </div>

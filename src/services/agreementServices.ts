@@ -8,6 +8,7 @@
 import { api } from "../lib/apiClient";
 import { devLog } from "../utils/logger";
 import type { DisputeTypeEnum } from "../types";
+import { VOTING_CA } from "../web3/config";
 
 // ─── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -397,6 +398,7 @@ export async function rejectDelivery(
         contractAgreementId: data.contractAgreementId,
       }),
       ...(data.chainId && { chainId: data.chainId }),
+      ...(data.chainId && {disputeContractAddress: VOTING_CA[data.chainId]}),
       ...(data.txHash && { txHash: data.txHash }),
     };
     await api.patch(`/agreement/${agreementId}/delivery/reject`, payload);

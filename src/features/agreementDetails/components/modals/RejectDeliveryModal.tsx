@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo } from "react";
-import { X, AlertTriangle, Scale, Wallet, Info, Ban } from "lucide-react";
+import { X, AlertTriangle, Scale, Wallet, Info, Ban, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../../components/ui/button";
-import { useNetworkEnvironment } from "../../../../config/useNetworkEnvironment";
 import { useAuth } from "../../../../hooks/useAuth";
 import { DisputeTypeEnum, type DisputeTypeEnumValue } from "../../types/index";
 import { isCurrentUserFirstParty } from "../../utils/helpers";
+import { useChainSelection } from "../../../../config/useChainSelection";
+import { useAccount, useSwitchChain } from "wagmi";
 
 interface Props {
   isOpen: boolean;
@@ -36,9 +37,44 @@ export const RejectDeliveryModal = ({
   const [requestKind, setRequestKind] = useState<DisputeTypeEnumValue | null>(
     null,
   );
-  
-  const networkInfo = useNetworkEnvironment();
+
+  const { isConnected } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { resolveChainId, displayChains, isProd } = useChainSelection();
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(
+    null,
+  );
+
   const { user: currentUser } = useAuth();
+
+  const [isSwitchingChain, setIsSwitchingChain] = useState(false);
+
+  const handleSelectChain = async (mainnetId: number) => {
+    if (isSwitchingChain) return; // prevent duplicate requests
+
+    setIsSwitchingChain(true);
+    setSelectedMainnetId(mainnetId); // optimistic update
+    const resolved = resolveChainId(mainnetId);
+    try {
+      await switchChainAsync({ chainId: resolved });
+    } catch (err: any) {
+      // -32002 means MetaMask already has a pending request
+      if (err?.code === -32002) {
+        toast.error("MetaMask is busy", {
+          description: "Please open MetaMask and complete the pending request first.",
+        });
+      } else {
+        toast.error("Failed to switch chain");
+      }
+      setSelectedMainnetId(null); // revert optimistic update
+    } finally {
+      setIsSwitchingChain(false);
+    }
+  };
+
+  const resolvedChainId = selectedMainnetId
+    ? resolveChainId(selectedMainnetId)
+    : null;
 
   const votingIdToUse = useMemo(() => {
     const array = new Uint32Array(1);
@@ -63,11 +99,23 @@ export const RejectDeliveryModal = ({
       toast.error("Claim description is required");
       return;
     }
+    if (requestKind === DisputeTypeEnum.Paid) {
+      if (!isConnected) {
+        toast.error("Wallet required", {
+          description: "Please connect your wallet to create a paid dispute.",
+        });
+        return;
+      }
+      if (!selectedMainnetId || !resolvedChainId) {
+        toast.error("Please select a network");
+        return;
+      }
+    }
     try {
       await onConfirm(
         claim,
         requestKind,
-        networkInfo.chainId,
+        resolvedChainId ?? undefined,
         votingIdToUse.toString(),
       );
       setClaim("");
@@ -163,11 +211,10 @@ export const RejectDeliveryModal = ({
             ].map(({ kind, Icon, label, sub, activeClass }) => (
               <label
                 key={kind}
-                className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${
-                  requestKind === kind
-                    ? activeClass
-                    : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
-                }`}
+                className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-4 text-center transition ${requestKind === kind
+                  ? activeClass
+                  : "border-white/10 bg-white/5 text-gray-300 hover:border-white/20"
+                  }`}
               >
                 <input
                   type="radio"
@@ -184,6 +231,47 @@ export const RejectDeliveryModal = ({
               </label>
             ))}
           </div>
+
+          {/* ── Chain selector (only for Paid disputes) ─────────── */}
+          {requestKind === DisputeTypeEnum.Paid && (
+            <div>
+              <label className="text-muted-foreground mb-3 block text-sm font-semibold">
+                Select Network <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {displayChains.map((chain) => (
+                  <button
+                    key={chain.mainnetId}
+                    type="button"
+                    onClick={() => handleSelectChain(chain.mainnetId)}
+                    disabled={isSwitchingChain}
+                    className={`relative flex flex-col ... ${isSwitchingChain ? "cursor-wait opacity-60" : ""}`}
+                  >
+                    <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
+                    <span className="text-xs font-medium">{chain.name}</span>
+                    <span className="text-[10px] opacity-60">
+                      {isProd ? chain.symbol : `${chain.symbol} Testnet`}
+                    </span>
+                    {selectedMainnetId === chain.mainnetId && (
+                      isSwitchingChain
+                        ? <Loader2 className="absolute top-1.5 right-1.5 h-3.5 w-3.5 animate-spin text-cyan-400" />
+                        : <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {!selectedMainnetId && (
+                <div className="mt-1 text-xs text-red-400">Please select a network</div>
+              )}
+
+              {/* Wallet warning */}
+              {!isConnected && (
+                <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+                  ⚠️ You need to connect and authenticate your wallet to create a paid dispute.
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 p-3">
             <div className="flex items-start gap-2">
@@ -221,7 +309,7 @@ export const RejectDeliveryModal = ({
             <div className="mt-3 text-xs text-emerald-400">
               <div className="flex items-center gap-1">
                 <span>•</span>
-                <span>Network: {networkInfo.chainName}</span>
+                <span>Network: {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name ?? "Not selected"}</span>
               </div>
             </div>
           </div>
@@ -289,11 +377,10 @@ export const RejectDeliveryModal = ({
           </Button>
           <Button
             variant="outline"
-            className={`w-full py-2 sm:w-auto ${
-              requestKind === DisputeTypeEnum.Paid
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
-                : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
-            }`}
+            className={`w-full py-2 sm:w-auto ${requestKind === DisputeTypeEnum.Paid
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+              : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400 hover:bg-purple-500/20"
+              }`}
             onClick={handleSubmit}
             disabled={isSubmitting}
           >
