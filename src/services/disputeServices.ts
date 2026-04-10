@@ -398,17 +398,17 @@ export async function createDispute(
   });
 
   try {
-    // const response = await api.post("/dispute", formData, {
-    //   headers: { "Content-Type": "multipart/form-data" },
-    //   timeout: 30_000,
-    // });
+    const response = await api.post("/dispute", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 30_000,
+    });
 
-    // const disputeId = response.data?.id;
-    // if (!disputeId || typeof disputeId !== "number") {
-    //   throw new Error("Server response missing dispute ID.");
-    // }
+    const disputeId = response.data?.id;
+    if (!disputeId || typeof disputeId !== "number") {
+      throw new Error("Server response missing dispute ID.");
+    }
 
-    const disputeId = 0;
+    // const disputeId = 0;
 
     return { id: disputeId, votingId };
   } catch (error: any) {
@@ -440,17 +440,17 @@ export async function createDisputeFromAgreement(
   });
 
   try {
-    // const response = await api.post(`/dispute/${agreementId}`, formData, {
-    //   headers: { "Content-Type": "multipart/form-data" },
-    //   timeout: 30_000,
-    // });
+    const response = await api.post(`/dispute/${agreementId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 30_000,
+    });
 
-    // const disputeId = response.data?.id;
-    // if (!disputeId || typeof disputeId !== "number") {
-    //   throw new Error("Server response missing dispute ID.");
-    // }
+    const disputeId = response.data?.id;
+    if (!disputeId || typeof disputeId !== "number") {
+      throw new Error("Server response missing dispute ID.");
+    }
 
-    const disputeId = 0;
+    // const disputeId = 0;
 
     return { id: disputeId, votingId };
   } catch (error: any) {
