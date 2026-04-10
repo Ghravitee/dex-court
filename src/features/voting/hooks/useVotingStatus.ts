@@ -28,12 +28,13 @@ export const useVotingStatus = (
 
   const checkVotingStatus = useCallback(async () => {
     if (!disputeId || !user) {
-      setVotingStatus({
+      setVotingStatus((prev) => ({
+        ...prev,
         hasVoted: false,
         canVote: false,
         isLoading: false,
         isInitialCheck: false,
-      });
+      }));
       return;
     }
 

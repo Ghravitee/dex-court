@@ -82,18 +82,6 @@ export default function Profile() {
     totalUserDisputes,
     loadMore,
   } = useDisputes(user?.id);
-  // const {
-  //   updateAccount,
-  //   loading: updating,
-  //   error: updateError,
-  //   success: updateSuccess,
-  // } = useAccountUpdate();
-  // const {
-  //   uploadAvatar,
-  //   loading: uploading,
-  //   error: uploadError,
-  //   success: uploadSuccess,
-  // } = useAvatarUpload();
 
   const {
     mutateAsync: updateAccount,

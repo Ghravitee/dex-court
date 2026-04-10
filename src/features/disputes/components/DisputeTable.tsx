@@ -89,6 +89,40 @@ export const DisputeTable = ({
               Array.from({ length: pageSize }).map((_, i) => (
                 <DisputeSkeleton key={i} />
               ))
+            ) : fetchError ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-10">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                      <AlertCircle className="h-5 w-5 text-red-400" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-200">
+                      Unable to load disputes
+                    </p>
+                    <p className="max-w-[300px] text-xs leading-relaxed text-slate-500">
+                      {fetchError}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={onRefetch}
+                      disabled={isRefetching}
+                      className="mt-1 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                    >
+                      {isRefetching ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Refetching...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Refetch Disputes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </td>
+              </tr>
             ) : disputes.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-5 py-8 text-center text-cyan-300">
@@ -183,39 +217,6 @@ export const DisputeTable = ({
             )}
           </tbody>
         </table>
-
-        {/* Error state */}
-        {fetchError && !loading && (
-          <div className="px-5 py-6 text-center">
-            <div className="mx-auto max-w-md">
-              <div className="mb-4 flex justify-center">
-                <AlertCircle className="h-12 w-12 text-red-400" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold text-white">
-                Unable to Load Disputes
-              </h3>
-              <p className="mb-4 text-cyan-300">{fetchError}</p>
-              <Button
-                variant="outline"
-                onClick={onRefetch}
-                disabled={isRefetching}
-                className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-              >
-                {isRefetching ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Refetching...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refetch Disputes
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Pagination */}

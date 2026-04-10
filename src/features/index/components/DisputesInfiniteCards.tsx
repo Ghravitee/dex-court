@@ -1,38 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Scale, Users, FileText } from "lucide-react";
+import { Scale, Users, FileText, AlertCircle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
-import { disputeService } from "../../../services/disputeServices";
-import type { DisputeListItem, DisputeRow } from "../../../types";
+import { useRecentDisputes } from "../hooks/useRecentDisputes";
 import { PulseLoader } from "./PulseLoader";
 
 export const DisputesInfiniteCards = () => {
-  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchRecentDisputes = async () => {
-      try {
-        setLoading(true);
-        const response = await disputeService.getDisputes({
-          top: 10,
-          sort: "desc",
-        });
-        const recentDisputes = response.results || [];
-        const transformedDisputes = recentDisputes.map(
-          (dispute: DisputeListItem) =>
-            disputeService.transformDisputeListItemToRow(dispute),
-        );
-        setDisputes(transformedDisputes);
-      } catch (error) {
-        console.error("Error fetching recent disputes:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRecentDisputes();
-  }, []);
+  const { disputes, loading, error } = useRecentDisputes();
 
   const disputeItems = useMemo(
     () =>
@@ -55,11 +30,8 @@ export const DisputesInfiniteCards = () => {
     [disputes],
   );
 
-  const isEmpty = !loading && disputeItems.length === 0;
-
   return (
     <div className="rounded-2xl border border-cyan-400/60 bg-gradient-to-br from-cyan-500/10 to-transparent p-4 sm:p-6">
-      {/* Header */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h3 className="glow-text text-lg font-semibold text-cyan-100 sm:text-xl">
           Recent Disputes
@@ -77,7 +49,6 @@ export const DisputesInfiniteCards = () => {
         </Link>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex h-32 flex-col items-center justify-center gap-3 text-cyan-300">
           <PulseLoader size="medium" />
@@ -85,8 +56,23 @@ export const DisputesInfiniteCards = () => {
         </div>
       )}
 
-      {/* Empty state */}
-      {isEmpty && (
+      {!loading && error && (
+        <div className="py-2">
+          <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-200">
+              Failed to load disputes
+            </p>
+            <p className="max-w-[260px] text-xs leading-relaxed text-slate-500">
+              {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && disputeItems.length === 0 && (
         <div className="py-2">
           <p className="mb-4 text-sm leading-relaxed text-slate-400">
             Disputes filed through the network will appear here. When parties
@@ -123,8 +109,7 @@ export const DisputesInfiniteCards = () => {
         </div>
       )}
 
-      {/* Cards */}
-      {!loading && !isEmpty && (
+      {!loading && !error && disputeItems.length > 0 && (
         <InfiniteMovingCardsWithAvatars
           items={disputeItems}
           direction="left"

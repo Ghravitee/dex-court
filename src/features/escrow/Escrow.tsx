@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
-import { Search } from "lucide-react";
+import { AlertCircle, RefreshCw, Search } from "lucide-react";
 import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
 import { useChainSelection } from "../../config/useChainSelection";
 import { useAccount, useReadContract, useSwitchChain } from "wagmi";
@@ -35,7 +35,7 @@ export default function EscrowPage() {
 
   const activeChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : networkInfo.chainId ?? resolveChainId(SUPPORTED_CHAINS[0].mainnetId);
+    : (networkInfo.chainId ?? resolveChainId(SUPPORTED_CHAINS[0].mainnetId));
 
   // ── Contract address ──────────────────────────────────────────────────────
   const contractAddress = useMemo(() => {
@@ -55,6 +55,7 @@ export default function EscrowPage() {
     visibleEscrows,
     filteredEscrows,
     loading,
+    error,
     loadEscrowAgreements,
     statusTab,
     setStatusTab,
@@ -159,19 +160,19 @@ export default function EscrowPage() {
       step: Parameters<typeof previewStep>[0];
       msg: string;
     }> = [
-        { step: "creating_backend", msg: "Creating agreement in database..." },
-        {
-          step: "awaiting_approval",
-          msg: "Token approval required. Please check your wallet...",
-        },
-        { step: "approving", msg: "Approving token spending..." },
-        { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
-        {
-          step: "waiting_confirmation",
-          msg: "Transaction submitted. Waiting for blockchain confirmation...",
-        },
-        { step: "success", msg: "Escrow created successfully!" },
-      ];
+      { step: "creating_backend", msg: "Creating agreement in database..." },
+      {
+        step: "awaiting_approval",
+        msg: "Token approval required. Please check your wallet...",
+      },
+      { step: "approving", msg: "Approving token spending..." },
+      { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
+      {
+        step: "waiting_confirmation",
+        msg: "Transaction submitted. Waiting for blockchain confirmation...",
+      },
+      { step: "success", msg: "Escrow created successfully!" },
+    ];
 
     PREVIEW_STEPS.forEach(({ step, msg }, i) => {
       setTimeout(() => previewStep(step, msg), i * 2000);
@@ -381,6 +382,26 @@ export default function EscrowPage() {
             {[...Array(6)].map((_, i) => (
               <EscrowSkeleton key={i} />
             ))}
+          </div>
+        ) : error ? ( // 👈 new — before empty check
+          <div className="mt-8 flex flex-col items-center justify-center py-12 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
+              <AlertCircle className="h-7 w-7 text-red-400" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-white/90">
+              Failed to load escrows
+            </h3>
+            <p className="mb-5 max-w-[280px] text-sm leading-relaxed text-slate-500">
+              {error}
+            </p>
+            <Button
+              variant="outline"
+              onClick={loadEscrowAgreements}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try again
+            </Button>
           </div>
         ) : visibleEscrows.length === 0 ? (
           <div className="mt-8 flex flex-col items-center justify-center py-12 text-center">

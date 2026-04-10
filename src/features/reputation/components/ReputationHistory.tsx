@@ -1,8 +1,13 @@
 // features/reputation/components/ReputationHistory.tsx
 import { getEventTypeDetails } from "../utils/eventTypes";
-import { formatShortDate, formatTime } from "../utils/formatters";
+import {
+  formatShortDate,
+  formatTime,
+  getDisplayName,
+} from "../utils/formatters";
 import { ReputationTimeline } from "./ReputationTimeline";
 import type { ReputationHistoryResponse, ReputationEvent } from "../types";
+import { Link } from "react-router-dom";
 
 interface Props {
   profile: { username: string };
@@ -34,10 +39,15 @@ export function ReputationHistory({
       {/* Header */}
       <div className="flex flex-col items-start justify-between gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center">
         <div>
-          <h3 className="text-sm font-semibold text-white/90">
+          <h2 className="">
             Reputation History for{" "}
-            <span className="text-cyan-300">@{profile.username}</span>
-          </h3>
+            <Link
+              to={`/profile/${profile.username}`}
+              className="text-cyan-300 transition hover:text-cyan-400 hover:underline"
+            >
+              {getDisplayName(profile.username)}
+            </Link>
+          </h2>
           <p className="text-xs text-white/50">
             Showing {eventsShown} of {history.total} events · Base:{" "}
             {history.baseScore} → Final: {history.finalScore}
@@ -115,7 +125,10 @@ function HistoryTable({ events }: { events: ReputationEvent[] }) {
           {events.map((event, i) => {
             const details = getEventTypeDetails(event.eventType);
             return (
-              <tr key={event.id} className="border-t border-white/10 hover:bg-white/5">
+              <tr
+                key={event.id}
+                className="border-t border-white/10 hover:bg-white/5"
+              >
                 <td className="px-4 py-4 text-white/50">{i + 1}</td>
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-2">
@@ -136,7 +149,9 @@ function HistoryTable({ events }: { events: ReputationEvent[] }) {
                 </td>
                 <td className="px-4 py-4 text-xs text-white/50">
                   {formatShortDate(event.createdAt)}
-                  <div className="text-white/40">{formatTime(event.createdAt)}</div>
+                  <div className="text-white/40">
+                    {formatTime(event.createdAt)}
+                  </div>
                 </td>
               </tr>
             );
@@ -150,7 +165,9 @@ function HistoryTable({ events }: { events: ReputationEvent[] }) {
 function EmptyHistory() {
   return (
     <div className="py-8 text-center">
-      <div className="mb-2 text-lg text-cyan-300">No reputation history yet</div>
+      <div className="mb-2 text-lg text-cyan-300">
+        No reputation history yet
+      </div>
       <p className="text-sm text-white/50">
         Complete agreements, participate in disputes, or verify your account to
         start building reputation.
@@ -159,7 +176,13 @@ function EmptyHistory() {
   );
 }
 
-function LoadMoreButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+function LoadMoreButton({
+  loading,
+  onClick,
+}: {
+  loading: boolean;
+  onClick: () => void;
+}) {
   return (
     <div className="mt-4 flex justify-center border-t border-white/10 pt-4">
       <button
@@ -182,7 +205,7 @@ function LoadMoreButton({ loading, onClick }: { loading: boolean; onClick: () =>
 
 function CenteredSpinner({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center py-8 gap-2">
+    <div className="flex items-center justify-center gap-2 py-8">
       <Spinner />
       <span className="text-cyan-300">{label}</span>
     </div>

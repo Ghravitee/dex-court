@@ -26,7 +26,8 @@ export const UserSearchResult = ({
 
   return (
     <div
-      onClick={() => onSelect(`@${telegramUsername}`)} // 🆕 FIX: Add @ symbol here
+      // UserSearchResult.tsx
+      onClick={() => onSelect(user)} // pass the full object, not the string // 🆕 FIX: Add @ symbol here
       className={`glass card-cyan flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:opacity-60 ${
         isCurrentUser ? "opacity-80" : ""
       }`}

@@ -354,33 +354,43 @@ export function useProfileAgreements(
 
   // ─── Load more ─────────────────────────────────────────────────────────────
 
+  const loadingMoreReputationalRef = useRef(false);
+
   const loadMoreReputational = useCallback(() => {
-    if (!loading && hasMoreReputational) {
-      const nextPage = pageReputational + 1;
-      const start = (nextPage - 1) * ITEMS_PER_PAGE;
-      const end = start + ITEMS_PER_PAGE;
-      setReputationalDisplay((prev) => [
-        ...prev,
-        ...allReputationalRef.current.slice(start, end),
-      ]);
-      setHasMoreReputational(end < allReputationalRef.current.length);
-      setPageReputational(nextPage);
-    }
-  }, [loading, hasMoreReputational, pageReputational]);
+    if (loadingMoreReputationalRef.current || !hasMoreReputational) return;
+    loadingMoreReputationalRef.current = true;
+
+    const nextPage = pageReputational + 1;
+    const start = (nextPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    setReputationalDisplay((prev) => [
+      ...prev,
+      ...allReputationalRef.current.slice(start, end),
+    ]);
+    setHasMoreReputational(end < allReputationalRef.current.length);
+    setPageReputational(nextPage);
+
+    loadingMoreReputationalRef.current = false;
+  }, [hasMoreReputational, pageReputational]);
+
+  const loadingMoreEscrowRef = useRef(false);
 
   const loadMoreEscrow = useCallback(() => {
-    if (!loading && hasMoreEscrow) {
-      const nextPage = pageEscrow + 1;
-      const start = (nextPage - 1) * ITEMS_PER_PAGE;
-      const end = start + ITEMS_PER_PAGE;
-      setEscrowDisplay((prev) => [
-        ...prev,
-        ...allEscrowRef.current.slice(start, end),
-      ]);
-      setHasMoreEscrow(end < allEscrowRef.current.length);
-      setPageEscrow(nextPage);
-    }
-  }, [loading, hasMoreEscrow, pageEscrow]);
+    if (loadingMoreEscrowRef.current || !hasMoreEscrow) return;
+    loadingMoreEscrowRef.current = true;
+
+    const nextPage = pageEscrow + 1;
+    const start = (nextPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    setEscrowDisplay((prev) => [
+      ...prev,
+      ...allEscrowRef.current.slice(start, end),
+    ]);
+    setHasMoreEscrow(end < allEscrowRef.current.length);
+    setPageEscrow(nextPage);
+
+    loadingMoreEscrowRef.current = false;
+  }, [hasMoreEscrow, pageEscrow]);
 
   // ─── Refetch ───────────────────────────────────────────────────────────────
 

@@ -294,7 +294,7 @@ export function Sidebar({
         {!mobile && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="absolute right-0 z-[60] rounded-md border border-white/20 p-1 hover:text-white"
+            className="absolute -right-4 z-[70] rounded-md border border-white/20 p-1 hover:text-white"
           >
             {expanded ? (
               <ChevronLeft className="h-5 w-5" />
@@ -410,6 +410,9 @@ export function Sidebar({
                     >
                       <ChevronDown className="h-4 w-4" />
                       <span className="truncate">{account.displayName}</span>
+                      <span className="ml-auto opacity-80">
+                        {account.displayBalance}
+                      </span>
                     </button>
                   );
                 }
@@ -431,6 +434,9 @@ export function Sidebar({
                     >
                       <ChevronDown className="h-4 w-4" />
                       <span className="truncate">{account.displayName}</span>
+                      <span className="ml-auto opacity-80">
+                        {account.displayBalance}
+                      </span>
                     </button>
                   );
                 }
