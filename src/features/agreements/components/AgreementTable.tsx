@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
@@ -14,6 +14,7 @@ import { AgreementStatusBadge } from "./AgreementStatusBadge";
 interface Props {
   agreements: Agreement[];
   loading: boolean;
+  error: string | null;
   totalAgreements: number;
   pageSize: number;
   currentPage: number;
@@ -29,6 +30,7 @@ const formatParty = (username: string) =>
 export const AgreementTable = ({
   agreements,
   loading,
+  error,
   totalAgreements,
   pageSize,
   currentPage,
@@ -86,6 +88,22 @@ export const AgreementTable = ({
               Array.from({ length: pageSize }).map((_, i) => (
                 <AgreementSkeleton key={i} />
               ))
+            ) : error ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-10">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                      <AlertCircle className="h-5 w-5 text-red-400" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-200">
+                      Failed to load agreements
+                    </p>
+                    <p className="max-w-[300px] text-xs leading-relaxed text-slate-500">
+                      {error}
+                    </p>
+                  </div>
+                </td>
+              </tr>
             ) : agreements.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-5 py-8 text-center text-cyan-300">

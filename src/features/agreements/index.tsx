@@ -16,6 +16,7 @@ export default function Agreements() {
     agreements,
     loading,
     currentPage,
+    error,
     pageSize,
     totalAgreements,
     tableFilter,
@@ -80,6 +81,7 @@ export default function Agreements() {
           <AgreementTable
             agreements={agreements}
             loading={loading}
+            error={error}
             totalAgreements={totalAgreements}
             pageSize={pageSize}
             currentPage={currentPage}

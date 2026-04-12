@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // features/agreements/hooks/useAgreementList.ts
 import { useState, useCallback } from "react";
-import { toast } from "sonner";
 import type { AgreementStatusFilter } from "../../../types";
 import { STATUS_TO_API_MAP } from "../constants/enums";
 import { transformApiAgreement } from "../utils/formatters";
@@ -30,19 +29,6 @@ export function useAgreementList() {
     // so the table doesn't flash empty between page changes
     placeholderData: (prev) => prev,
   });
-
-  // Surface errors via toast — mirrors the old behaviour
-  if (error) {
-    const message = (error as any).message ?? "";
-    if (message.includes("timeout") || (error as any).code === "ECONNABORTED") {
-      toast.error("Request timed out", {
-        description:
-          "Please try again with fewer results or a smaller page size",
-      });
-    } else {
-      toast.error(message || "Failed to load agreements");
-    }
-  }
 
   const agreements = (data?.results ?? []).map(transformApiAgreement);
   const totalAgreements = data?.totalAgreements ?? 0;
@@ -73,9 +59,18 @@ export function useAgreementList() {
     setCurrentPage(1);
   }, []);
 
+  function resolveErrorMessage(error: any): string {
+    const message = error?.message ?? "";
+    if (message.includes("timeout") || error?.code === "ECONNABORTED") {
+      return "Request timed out. Try a smaller page size or fewer filters.";
+    }
+    return message || "Failed to load agreements.";
+  }
+
   return {
     agreements,
     loading: isLoading,
+    error: error ? resolveErrorMessage(error as any) : null,
     currentPage,
     pageSize,
     totalAgreements,

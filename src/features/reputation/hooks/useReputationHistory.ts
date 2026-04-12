@@ -1,86 +1,55 @@
 // features/reputation/hooks/useReputationHistory.ts
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { reputationService } from "../services/reputationService";
-import type { ReputationHistoryResponse } from "../types";
 
 const ITEMS_PER_PAGE = 30;
 
 export function useReputationHistory(accountId: string | null) {
-  const [data, setData] = useState<ReputationHistoryResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Track skip in a ref — avoids stale closure issues in loadMore
-  const skipRef = useRef(0);
-
-  const loadInitial = useCallback(async () => {
-    if (!accountId) return;
-    setLoading(true);
-    setError(null);
-    skipRef.current = 0;
-
-    try {
-      const history = await reputationService.getReputationHistory(
-        accountId,
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    error,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["reputation-history", accountId],
+    queryFn: ({ pageParam = 0 }) =>
+      reputationService.getReputationHistory(
+        accountId!,
         ITEMS_PER_PAGE,
-        0,
-      );
-      setData(history);
-      skipRef.current = history.results.length;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch reputation history");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [accountId]);
+        pageParam,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore
+        ? lastPage.results.length > 0
+          ? lastPage.results.length
+          : undefined
+        : undefined,
+    enabled: !!accountId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
 
-  const loadMore = useCallback(async () => {
-    if (!accountId || !data?.hasMore || loadingMore) return;
-
-    setLoadingMore(true);
-    try {
-      const next = await reputationService.getReputationHistory(
-        accountId,
-        ITEMS_PER_PAGE,
-        skipRef.current,
-      );
-
-      setData((prev) => {
-        if (!prev) return next;
-        return {
-          ...prev,
-          results: [...prev.results, ...next.results],
-          hasMore: next.hasMore,
-        };
-      });
-
-      skipRef.current += next.results.length;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load more history");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [accountId, data?.hasMore, loadingMore]);
-
-  // Reset and reload whenever the selected account changes
-  useEffect(() => {
-    setData(null);
-    setError(null);
-    skipRef.current = 0;
-
-    if (accountId) loadInitial();
-  }, [accountId, loadInitial]);
+  // Merge pages into a single results array for consumers
+  const allResults = data?.pages.flatMap((p) => p.results) ?? [];
+  const firstPage = data?.pages[0];
 
   return {
-    data,
-    loading,
-    loadingMore,
-    error,
-    loadMore,
-    hasMore: data?.hasMore ?? false,
-    eventsShown: data?.results.length ?? 0,
-    total: data?.total ?? 0,
+    data: firstPage
+      ? { ...firstPage, results: allResults, hasMore: hasNextPage ?? false }
+      : null,
+    loading: isLoading,
+    loadingMore: isFetchingNextPage,
+    error: error
+      ? error instanceof Error
+        ? error.message
+        : "Failed to fetch reputation history"
+      : null,
+    hasMore: hasNextPage ?? false,
+    loadMore: fetchNextPage,
+    eventsShown: allResults.length,
+    total: firstPage?.total ?? 0,
   };
 }

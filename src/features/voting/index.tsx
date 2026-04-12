@@ -41,6 +41,7 @@ export default function Voting() {
   }, []);
 
   useEffect(() => {
+    setError(null); // 👈 clear before each fetch attempt
     if (tab === "live") {
       fetchLiveDisputes().catch((err) => {
         setError("Failed to load voting disputes");
@@ -135,20 +136,49 @@ export default function Voting() {
   };
 
   const renderLiveContent = useMemo(() => {
+    // renderLiveContent error block
     if (error) {
       return (
-        <div className="col-span-2 mt-10 h-[20rem]">
-          <div className="text-center">
-            <div className="mb-4 text-2xl">❌</div>
-            <div className="text-lg text-red-400">{error}</div>
-            <Button
-              variant="outline"
-              className="mt-4 border-cyan-400 text-cyan-300"
-              onClick={() => fetchLiveDisputes()}
+        <div className="col-span-2 flex min-h-[400px] flex-col items-center justify-center gap-6 py-12 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-red-400/30 bg-red-500/10">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-red-400"
             >
-              Try Again
-            </Button>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
           </div>
+          <div className="flex max-w-sm flex-col gap-2">
+            <p className="text-base font-medium text-white/90">
+              Failed to load active votes
+            </p>
+            <p className="text-sm leading-relaxed text-white/50">
+              Something went wrong while fetching results. Check your connection
+              and try again.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-white/15 text-cyan-300 hover:bg-cyan-500/10"
+            onClick={() => {
+              setError(null);
+              fetchLiveDisputes().catch((err) => {
+                setError("Failed to load voting disputes");
+                console.error(err);
+              });
+            }}
+          >
+            Try again
+          </Button>
         </div>
       );
     }
@@ -213,20 +243,49 @@ export default function Voting() {
   ]);
 
   const renderConcludedContent = useMemo(() => {
+    // renderConcludedContent error block
     if (error) {
       return (
-        <div className="col-span-2 mt-10 h-[20rem]">
-          <div className="text-center">
-            <div className="mb-4 text-2xl">❌</div>
-            <div className="text-lg text-red-400">{error}</div>
-            <Button
-              variant="outline"
-              className="mt-4 border-cyan-400 text-cyan-300"
-              onClick={() => fetchConcludedDisputes()}
+        <div className="col-span-2 flex min-h-[400px] flex-col items-center justify-center gap-6 py-12 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-red-400/30 bg-red-500/10">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-red-400"
             >
-              Try Again
-            </Button>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
           </div>
+          <div className="flex max-w-sm flex-col gap-2">
+            <p className="text-base font-medium text-white/90">
+              Failed to load concluded cases
+            </p>
+            <p className="text-sm leading-relaxed text-white/50">
+              Something went wrong while fetching results. Check your connection
+              and try again.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-white/15 text-cyan-300 hover:bg-cyan-500/10"
+            onClick={() => {
+              setError(null);
+              fetchConcludedDisputes().catch((err) => {
+                setError("Failed to load concluded disputes");
+                console.error(err);
+              });
+            }}
+          >
+            Try again
+          </Button>
         </div>
       );
     }

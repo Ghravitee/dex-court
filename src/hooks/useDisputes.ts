@@ -1,4 +1,4 @@
-// hooks/useDisputesApi.ts
+// hooks/useDisputes
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchDisputes,
@@ -77,8 +77,11 @@ export function useDisputes(userId?: string) {
     };
   }, [userId, fetchAllUserDisputes]);
 
+  const loadingMoreRef = useRef(false);
+
   const loadMore = useCallback(() => {
-    if (loading || !hasMore || !userIdRef.current) return;
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
 
     const nextPage = page + 1;
     const start = (nextPage - 1) * DISPUTES_PER_PAGE;
@@ -90,7 +93,9 @@ export function useDisputes(userId?: string) {
     ]);
     setHasMore(end < allDisputesRef.current.length);
     setPage(nextPage);
-  }, [loading, hasMore, page]);
+
+    loadingMoreRef.current = false;
+  }, [hasMore, page]);
 
   const refetch = useCallback(async () => {
     const uid = userIdRef.current;

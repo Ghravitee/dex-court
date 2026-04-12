@@ -27,7 +27,7 @@ export default function Layout() {
           {/* Backdrop */}
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-10 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden"
             onClick={() => setMobileOpen(false)}
           />
           {/* Sidebar Drawer */}
