@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { AlertCircle, RefreshCw, Search } from "lucide-react";
-// import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
 import { useChainSelection } from "../../config/useChainSelection";
 import { useAccount, useReadContract, useSwitchChain } from "wagmi";
 import { ERC20_ABI, ESCROW_CA, SUPPORTED_CHAINS } from "../../web3/config";

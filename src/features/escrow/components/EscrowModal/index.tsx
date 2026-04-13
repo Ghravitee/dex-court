@@ -1,5 +1,6 @@
 import { EscrowForm } from "./EscrowForm";
 import type { CreationStep, EscrowFormState, EscrowType } from "../../types";
+import { SUPPORTED_CHAINS } from "../../../../web3/config";
 
 interface DisplayChain {
   mainnetId: number;
@@ -76,12 +77,18 @@ export function EscrowModal({
   if (!open) return null;
 
   const footerNote = () => {
+    // Get the native symbol from SUPPORTED_CHAINS using the mainnetId
+    const nativeSymbol =
+      form.token === "ETH" && selectedMainnetId
+        ? (SUPPORTED_CHAINS.find((c) => c.mainnetId === selectedMainnetId)?.symbol ?? "ETH")
+        : form.token;
+
     if (escrowType === "myself" && form.payer === "me") {
       return (
         <p className="text-muted-foreground mt-4 text-xs">
           After signing, you will be prompted to deposit{" "}
           <span className="text-cyan-300">
-            {form.amount || "amount"} {form.token}
+            {form.amount || "amount"} {nativeSymbol}
           </span>{" "}
           to activate this escrow.
         </p>
@@ -90,8 +97,7 @@ export function EscrowModal({
     if (escrowType === "myself" && form.payer === "counterparty") {
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          Counterparty will be notified to deposit funds. You can sign
-          immediately.
+          Counterparty will be notified to deposit funds. You can sign immediately.
         </p>
       );
     }
@@ -99,8 +105,8 @@ export function EscrowModal({
       const payer = form.payerOther === "partyA" ? form.partyA : form.partyB;
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          {payer || "The selected party"} will be notified to deposit funds.
-          Both parties can sign immediately.
+          {payer || "The selected party"} will be notified to deposit funds. Both
+          parties can sign immediately.
         </p>
       );
     }

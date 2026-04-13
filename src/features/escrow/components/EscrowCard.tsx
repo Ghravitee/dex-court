@@ -2,8 +2,9 @@ import { Link } from "react-router-dom";
 import { Eye } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
-import { formatWalletAddress } from "../utils/formatters";
+import { formatWalletAddress, resolveTokenDisplay } from "../utils/formatters";
 import type { OnChainEscrowData } from "../types";
+import { SUPPORTED_CHAINS } from "../../../web3/config";
 
 interface EscrowCardProps {
   escrow: OnChainEscrowData;
@@ -48,7 +49,7 @@ function PartyInfo({
           {!details?.telegramUsername && details?.username && (
             <div className="truncate text-xs text-gray-400">
               {details.username.startsWith("0x") &&
-              details.username.length === 42
+                details.username.length === 42
                 ? `${details.username.slice(0, 6)}...${details.username.slice(-4)}`
                 : details.username}
             </div>
@@ -70,6 +71,11 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export function EscrowCard({ escrow: e }: EscrowCardProps) {
+  const tokenDisplay = resolveTokenDisplay(e.token, e.chainId);
+  const chain = SUPPORTED_CHAINS.find(
+    (c) => c.mainnetId === e.chainId || c.testnetId === e.chainId,
+  );
+
   return (
     <Link
       to={`/escrow/${e.id}`}
@@ -81,6 +87,17 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
             <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
               {e.title}
             </h3>
+            {/* Chain badge */}
+            {chain && (
+              <div className="ml-2 flex flex-shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                <img
+                  src={chain.icon}
+                  alt={chain.name}
+                  className="h-4 w-4 rounded-full"
+                />
+                <span className="text-xs text-white/60">{chain.name}</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
@@ -96,11 +113,13 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
               details={e.payeeDetails}
               color="pink"
             />
-
             <div>
               <div className="text-muted-foreground">Amount</div>
-              <div className="font-bold text-green-500/90">
-                {e.amount} {e.token}
+              <div className="flex items-center gap-1.5 font-bold text-green-500/90">
+                {chain && (
+                  <img src={chain.icon} alt={chain.name} className="h-4 w-4 rounded-full" />
+                )}
+                {e.amount} {tokenDisplay}
               </div>
             </div>
 

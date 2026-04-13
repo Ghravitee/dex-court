@@ -1,3 +1,4 @@
+import { SUPPORTED_CHAINS } from "../../../web3/config";
 import type { UploadedFile } from "../types";
 
 /** Extract a tx hash embedded in an agreement description string */
@@ -35,4 +36,13 @@ export const normalizeContractAddress = (
 export const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
   return `${(totalBytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
+export const resolveTokenDisplay = (token: string, chainId?: number | null): string => {
+  if (token !== "ETH" || !chainId) return token;
+  // Find by mainnetId or testnetId
+  const chain = SUPPORTED_CHAINS.find(
+    (c) => c.mainnetId === chainId || c.testnetId === chainId,
+  );
+  return chain?.symbol ?? token;
 };

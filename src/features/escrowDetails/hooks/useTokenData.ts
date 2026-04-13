@@ -6,7 +6,7 @@ import {
   getTokenSymbol,
   getMilestoneCount,
 } from "../../../web3/readContract";
-import { ESCROW_ABI, ZERO_ADDRESS } from "../../../web3/config";
+import { ESCROW_ABI, SUPPORTED_CHAINS, ZERO_ADDRESS } from "../../../web3/config";
 import type { MilestoneData } from "../../../web3/interfaces";
 import type { EscrowDetailsData } from "../types";
 
@@ -34,10 +34,19 @@ export function useTokenData(
 
   const decimalsNumber =
     typeof onChainTokenDecimals === "number" ? onChainTokenDecimals : 18;
+  const nativeSymbol = (() => {
+    const chainId = escrow?._raw?.chainId as number | undefined;
+    if (!chainId) return "ETH";
+    const chain = SUPPORTED_CHAINS.find(
+      (c) => c.mainnetId === chainId || c.testnetId === chainId,
+    );
+    return chain?.symbol ?? "ETH";
+  })();
+
   const tokenSymbol =
     onChainTokenSymbol ??
     (onChainAgreement?.token === ZERO_ADDRESS
-      ? "ETH"
+      ? nativeSymbol
       : (escrow?.token ?? "TOKEN"));
 
   const triggerMilestoneRefetch = useCallback(

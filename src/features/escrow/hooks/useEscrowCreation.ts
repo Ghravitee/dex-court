@@ -372,138 +372,151 @@ export function useEscrowCreation({
 
       // ── Backend ───────────────────────────────────────────────────────────
       updateStep("creating_backend", "Creating agreement in database...");
+      const filesToUpload = form.evidence.map((f) => f.file);
+
+      let agreementResponse;
 
       try {
-        const filesToUpload = form.evidence.map((f) => f.file);
+        agreementResponse = await createAgreement(
+          {
+            title: form.title,
+            description: form.description,
+            type: 2,
+            visibility:
+              form.type === "private"
+                ? AgreementVisibilityEnum.PRIVATE
+                : AgreementVisibilityEnum.PUBLIC,
+            firstParty: firstPartyAddr,
+            counterParty: counterPartyAddr,
+            deadline: deadline.toISOString(),
+            amount: parseFloat(form.amount),
+            tokenSymbol: form.token === "custom" ? "custom" : form.token,
+            customTokenAddress:
+              form.token === "custom" ? form.customTokenAddress : undefined,
+            includesFunds: true,
+            secureTheFunds: true,
+            chainId: networkChainId,
+            payeeWalletAddress: serviceProviderAddr,
+            payerWalletAddress: serviceRecipientAddr,
+            contractAgreementId,
+            escrowContractAddress:
+              ESCROW_CA[networkChainId as number] ?? contractAddress,
+          },
+          filesToUpload,
+        );
+      } catch (backendErr: any) {
+        const statusCode = backendErr?.response?.status;
+        const errorCode = backendErr?.response?.data?.error ?? backendErr?.response?.data?.errorCode;
 
-        try {
-          await createAgreement(
-            {
-              title: form.title,
-              description: form.description,
-              type: 2,
-              visibility:
-                form.type === "private"
-                  ? AgreementVisibilityEnum.PRIVATE
-                  : AgreementVisibilityEnum.PUBLIC,
-              firstParty: firstPartyAddr,
-              counterParty: counterPartyAddr,
-              deadline: deadline.toISOString(),
-              amount: parseFloat(form.amount),
-              tokenSymbol: form.token === "custom" ? "custom" : form.token,
-              customTokenAddress:
-                form.token === "custom" ? form.customTokenAddress : undefined,
-              includesFunds: true,
-              secureTheFunds: true,
-              chainId: networkChainId,
-              payeeWalletAddress: serviceProviderAddr,
-              payerWalletAddress: serviceRecipientAddr,
-              contractAgreementId,
-              escrowContractAddress:
-                ESCROW_CA[networkChainId as number] ?? contractAddress,
-            },
-            filesToUpload,
-          );
-        } catch (backendErr) {
-          console.warn(
-            "Backend creation had minor issues, continuing:",
-            backendErr,
-          );
-        }
+        const msg =
+          errorCode === 1 ? "Missing required fields. Please fill in all required information."
+            : errorCode === 5 ? "Deadline is invalid or must be a future date."
+              : errorCode === 7 ? "Your account was not found. Please re-authenticate."
+                : errorCode === 11 ? "Creator, payer, and payee cannot be the same account."
+                  : errorCode === 12 ? "Escrow requires a wallet address but none was found for one or both parties."
+                    : errorCode === 13 ? "Invalid agreement type or visibility value selected."
+                      : errorCode === 14 ? "Too many files attached. Maximum is 10 files."
+                        : errorCode === 17 ? "Your account is currently restricted from creating agreements."
+                          : errorCode === 22 ? "One or more wallet addresses are invalid blockchain addresses."
+                            : errorCode === 23 ? "One or more files exceed the 10MB size limit."
+                              : errorCode === 10 ? "An unexpected server error occurred. Please try again."
+                                : statusCode === 401 ? "Authentication expired. Please log in again."
+                                  : statusCode === 500 ? "Internal server error. Please try again later."
+                                    : backendErr?.message || "Failed to create agreement on server.";
 
-        transactionDataRef.current = { contractAgreementId };
+        setUiError(msg);
+        updateStep("error", msg);
+        toast.error("Agreement Error", { description: msg });
+        return;
+      }
 
-        // ── Smart contract call ───────────────────────────────────────────
-        const agreementIdBN = BigInt(contractAgreementId);
-        const callerIsDepositor =
-          serviceRecipientAddr.toLowerCase() === address.toLowerCase();
-        const tokenIsETH = tokenAddr === ZERO_ADDRESS;
-        const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
-        const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
+      if (!agreementResponse?.id) {
+        const msg = "Server did not return a valid agreement. Please try again.";
+        setUiError(msg);
+        updateStep("error", msg);
+        toast.error("Server Error", { description: msg });
+        return; // ← blocks MetaMask entirely
+      }
 
-        const contractArgs = [
-          agreementIdBN,
-          serviceProviderAddr as `0x${string}`,
-          serviceRecipientAddr as `0x${string}`,
-          tokenAddr as `0x${string}`,
-          BigInt(amountBN),
-          BigInt(deadlineDuration),
-          vestingMode,
-          form.type === "private",
-          milestonePercsBN as readonly bigint[],
-          milestoneOffsetsBN as readonly bigint[],
-        ] as const;
+      updateStep("creating_backend", "Backend agreement created successfully");
+      transactionDataRef.current = { contractAgreementId };
 
-        // ERC20 + caller is depositor → approval flow
-        if (!tokenIsETH && callerIsDepositor) {
-          updateStep(
-            "awaiting_approval",
-            "Token approval required. Please check your wallet...",
-          );
-          setCreateApprovalState({
-            isApprovingToken: true,
-            needsApproval: true,
-          });
+      // ── Smart contract call ───────────────────────────────────────────
+      const agreementIdBN = BigInt(contractAgreementId);
+      const callerIsDepositor =
+        serviceRecipientAddr.toLowerCase() === address.toLowerCase();
+      const tokenIsETH = tokenAddr === ZERO_ADDRESS;
+      const milestonePercsBN = milestonePercs.map((p) => BigInt(p));
+      const milestoneOffsetsBN = milestoneOffsets.map((o) => BigInt(o));
 
-          setPendingCreatePayload({
-            address: contractAddress as `0x${string}`,
-            abi: ESCROW_ABI.abi,
-            functionName: "createAgreement",
-            args: contractArgs,
-            value: 0n,
-          });
+      const contractArgs = [
+        agreementIdBN,
+        serviceProviderAddr as `0x${string}`,
+        serviceRecipientAddr as `0x${string}`,
+        tokenAddr as `0x${string}`,
+        BigInt(amountBN),
+        BigInt(deadlineDuration),
+        vestingMode,
+        form.type === "private",
+        milestonePercsBN as readonly bigint[],
+        milestoneOffsetsBN as readonly bigint[],
+      ] as const;
 
-          updateStep("approving", "Approving token spending...");
-          writeApproval({
-            address: tokenAddr as `0x${string}`,
-            abi: ERC20_ABI.abi,
-            functionName: "approve",
-            args: [contractAddress as `0x${string}`, amountBN],
-          });
+      // ERC20 + caller is depositor → approval flow
+      if (!tokenIsETH && callerIsDepositor) {
+        updateStep(
+          "awaiting_approval",
+          "Token approval required. Please check your wallet...",
+        );
+        setCreateApprovalState({
+          isApprovingToken: true,
+          needsApproval: true,
+        });
 
-          setUiSuccess(
-            "Approval submitted; will create agreement after confirmation",
-          );
-          return;
-        }
-
-        // Direct call
-        updateStep("creating_onchain", "Creating escrow on blockchain...");
-        const valueToSend = tokenIsETH && callerIsDepositor ? amountBN : 0n;
-
-        writeContract({
+        setPendingCreatePayload({
           address: contractAddress as `0x${string}`,
           abi: ESCROW_ABI.abi,
           functionName: "createAgreement",
           args: contractArgs,
-          value: valueToSend,
+          value: 0n,
         });
 
-        updateStep(
-          "waiting_confirmation",
-          "Transaction submitted. Waiting for blockchain confirmation...",
+        updateStep("approving", "Approving token spending...");
+        writeApproval({
+          address: tokenAddr as `0x${string}`,
+          abi: ERC20_ABI.abi,
+          functionName: "approve",
+          args: [contractAddress as `0x${string}`, amountBN],
+        });
+
+        setUiSuccess(
+          "Approval submitted; will create agreement after confirmation",
         );
-        setUiSuccess("CreateAgreement transaction submitted — check wallet");
-      } catch (err: any) {
-        updateStep("error", "Failed to create agreement");
-
-        const errorCode = err.response?.data?.error;
-        const messages: Record<number, string> = {
-          1: "Missing required information",
-          7: "One or both parties need to register first",
-          11: "Parties cannot be the same account",
-        };
-
-        const msg = messages[errorCode] || "Failed to create agreement";
-        setUiError(msg);
-        toast.error("Error", { description: msg });
+        return;
       }
-    },
+
+      // Direct call
+      updateStep("creating_onchain", "Creating escrow on blockchain...");
+      const valueToSend = tokenIsETH && callerIsDepositor ? amountBN : 0n;
+
+      writeContract({
+        address: contractAddress as `0x${string}`,
+        abi: ESCROW_ABI.abi,
+        functionName: "createAgreement",
+        args: contractArgs,
+        value: valueToSend,
+      });
+
+      updateStep(
+        "waiting_confirmation",
+        "Transaction submitted. Waiting for blockchain confirmation...",
+      );
+      setUiSuccess("CreateAgreement transaction submitted — check wallet");
+    },                                    // ← closes createEscrowOnChain arrow function
     [address, contractAddress, networkChainId, writeContract, writeApproval],
-  );
+  );                                      // ← closes useCallback(...)
 
   return {
-    // State
     creationStep,
     currentStepMessage,
     uiError,
@@ -512,14 +525,12 @@ export function useEscrowCreation({
     isApprovalPending,
     createApprovalState,
     txHash,
-    // Actions
     createEscrowOnChain,
     resetMessages,
     resetCreationStep: () => {
       setCreationStep("idle");
       setCurrentStepMessage("");
     },
-    /** Drive the step indicator manually — used for the Preview Steps demo */
     previewStep: (step: CreationStep, message: string) =>
       updateStep(step, message),
   };

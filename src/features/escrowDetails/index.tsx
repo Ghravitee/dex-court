@@ -38,7 +38,7 @@ import EscrowPendingDisputeModal from "../../components/EscrowPendingDisputeModa
 import { MilestoneTableRow } from "../../web3/MilestoneTableRow";
 import { CountdownTimer } from "../../web3/Timer";
 // import { type DisputeTypeEnum } from "../../types";
-import { ZERO_ADDRESS } from "../../web3/config";
+import { SUPPORTED_CHAINS, ZERO_ADDRESS } from "../../web3/config";
 import {
   formatAmount,
   formatDateWithTime,
@@ -168,12 +168,12 @@ export default function EscrowDetails() {
       escrow
         ? getDisputeInfo(escrow)
         : {
-            filedAt: null,
-            filedBy: null,
-            filedById: null,
-            filedByAvatarId: null,
-            filedViaRejection: false,
-          },
+          filedAt: null,
+          filedBy: null,
+          filedById: null,
+          filedByAvatarId: null,
+          filedViaRejection: false,
+        },
     [escrow],
   );
   const disputeEvent = useMemo(
@@ -234,9 +234,9 @@ export default function EscrowDetails() {
 
   const daysRemaining = escrow
     ? Math.ceil(
-        (new Date(escrow.deadline).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24),
-      )
+      (new Date(escrow.deadline).getTime() - Date.now()) /
+      (1000 * 60 * 60 * 24),
+    )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -362,7 +362,7 @@ export default function EscrowDetails() {
             {(() => {
               const statusKey =
                 disputeStatus === "pending_locking_funds" ||
-                disputeStatus === "pending_payment"
+                  disputeStatus === "pending_payment"
                   ? disputeStatus
                   : currentStatus;
               const info = getStatusInfo(statusKey);
@@ -511,7 +511,14 @@ export default function EscrowDetails() {
                       <div>
                         <div className="text-sm text-cyan-300">Amount</div>
                         <div className="text-white">
-                          {formatNumberWithCommas(escrow.amount)} {escrow.token}
+                          {formatNumberWithCommas(escrow.amount)}{" "}
+                          {escrow.token === "ETH"
+                            ? (SUPPORTED_CHAINS.find(
+                              (c) =>
+                                c.mainnetId === escrow._raw?.chainId ||
+                                c.testnetId === escrow._raw?.chainId,
+                            )?.symbol ?? "ETH")
+                            : escrow.token}
                         </div>
                       </div>
                     </div>
@@ -667,8 +674,7 @@ export default function EscrowDetails() {
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1 font-mono text-sm break-all text-white">
                             {onChainAgreement.token === ZERO_ADDRESS
-                              ? "ETH"
-                              : onChainAgreement.token}
+                              ? tokenSymbol : onChainAgreement.token}
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -874,7 +880,7 @@ export default function EscrowDetails() {
                   {onChainAgreement.grace1Ends > 0n &&
                     !onChainAgreement?.disputed &&
                     onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.vesting && !onChainAgreement.completed && !onChainAgreement.frozen &&(
+                    !onChainAgreement.vesting && !onChainAgreement.completed && !onChainAgreement.frozen && (
                       <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
                         <Clock className="h-4 w-4 text-blue-400" />
                         <span className="text-blue-300">
@@ -1086,9 +1092,9 @@ export default function EscrowDetails() {
                           escrow &&
                           escrow._raw?.firstParty?.walletAddress &&
                           escrow._raw.firstParty.walletAddress.toLowerCase() !==
-                            String(
-                              onChainAgreement.grace1EndsCalledBy,
-                            ).toLowerCase() &&
+                          String(
+                            onChainAgreement.grace1EndsCalledBy,
+                          ).toLowerCase() &&
                           !onChainAgreement.deliverySubmited && (
                             <>
                               <Button
@@ -1464,9 +1470,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                      normalizeUsername(
-                                        disputeInfo.filedBy,
-                                      ) && (
+                                    normalizeUsername(
+                                      disputeInfo.filedBy,
+                                    ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -1478,7 +1484,7 @@ export default function EscrowDetails() {
                       {getDisputeStatusFromAgreement(escrow) !==
                         "pending_payment" &&
                         getDisputeStatusFromAgreement(escrow) !==
-                          "pending_locking_funds" && (
+                        "pending_locking_funds" && (
                           <Link
                             to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
                             className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
