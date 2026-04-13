@@ -31,7 +31,10 @@ import type {
 import { CreationProgress } from "./CreationProgress";
 import { StatusMessages } from "./StatusMessages";
 import { isValidAddress } from "../../../../web3/helper";
-import { getTokenDecimals, getTokenSymbol } from "../../../../web3/readContract";
+import {
+  getTokenDecimals,
+  getTokenSymbol,
+} from "../../../../web3/readContract";
 
 interface EscrowFormProps {
   form: EscrowFormState;
@@ -70,6 +73,35 @@ interface EscrowFormProps {
   onSelectChain: (mainnetId: number) => Promise<void>;
 }
 
+// Reusable inline feedback components
+function FieldError({ message }: { message: string }) {
+  return <div className="mt-1 text-xs text-red-400">{message}</div>;
+}
+
+function FieldSuccess({ message }: { message: string }) {
+  return (
+    <div className="mt-1 flex items-center gap-1 text-xs text-emerald-400">
+      <CheckCircle className="h-3 w-3" />
+      {message}
+    </div>
+  );
+}
+
+// Track which fields have been touched by the user
+type TouchedFields = {
+  network: boolean;
+  title: boolean;
+  type: boolean;
+  payer: boolean;
+  counterparty: boolean;
+  partyA: boolean;
+  partyB: boolean;
+  token: boolean;
+  customTokenAddress: boolean;
+  amount: boolean;
+  description: boolean;
+  deadline: boolean;
+};
 
 export function EscrowForm({
   form,
@@ -108,6 +140,44 @@ export function EscrowForm({
   const typeRef = useRef<HTMLDivElement>(null);
   const tokenRef = useRef<HTMLDivElement>(null);
 
+  // Track which fields the user has interacted with
+  const [touched, setTouched] = useState<TouchedFields>({
+    network: false,
+    title: false,
+    type: false,
+    payer: false,
+    counterparty: false,
+    partyA: false,
+    partyB: false,
+    token: false,
+    customTokenAddress: false,
+    amount: false,
+    description: false,
+    deadline: false,
+  });
+
+  const touch = (field: keyof TouchedFields) =>
+    setTouched((prev) => ({ ...prev, [field]: true }));
+
+  // Mark all fields as touched on submit attempt so errors become visible
+  const handleSubmit = (e: React.FormEvent) => {
+    setTouched({
+      network: true,
+      title: true,
+      type: true,
+      payer: true,
+      counterparty: true,
+      partyA: true,
+      partyB: true,
+      token: true,
+      customTokenAddress: true,
+      amount: true,
+      description: true,
+      deadline: true,
+    });
+    onSubmit(e);
+  };
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -139,8 +209,14 @@ export function EscrowForm({
     (async () => {
       try {
         const [symbol, decimals] = await Promise.all([
-          getTokenSymbol(resolvedChainId, form.customTokenAddress as `0x${string}`),
-          getTokenDecimals(resolvedChainId, form.customTokenAddress as `0x${string}`),
+          getTokenSymbol(
+            resolvedChainId,
+            form.customTokenAddress as `0x${string}`,
+          ),
+          getTokenDecimals(
+            resolvedChainId,
+            form.customTokenAddress as `0x${string}`,
+          ),
         ]);
 
         if (!cancelled) {
@@ -156,8 +232,16 @@ export function EscrowForm({
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [form.token, form.customTokenAddress, selectedMainnetId, setForm, resolvedChainId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    form.token,
+    form.customTokenAddress,
+    selectedMainnetId,
+    setForm,
+    resolvedChainId,
+  ]);
 
   const nativeTokenSymbol = useMemo(() => {
     if (!selectedMainnetId) return "ETH";
@@ -168,9 +252,26 @@ export function EscrowForm({
   const busy =
     isSubmitting || isTxPending || isApprovalPending || isApprovingToken;
 
+  // Derived validation states
+  const isAmountValid =
+    !!form.amount.trim() &&
+    !isNaN(Number(form.amount)) &&
+    Number(form.amount) > 0;
+
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (creationStep !== "idle" && progressRef.current) {
+      progressRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [creationStep]);
+
   return (
     <form
-      onSubmit={onSubmit}
+      onSubmit={handleSubmit}
       className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
     >
       {/* ── Escrow type ─────────────────────────────────────────────────── */}
@@ -184,10 +285,11 @@ export function EscrowForm({
               key={t}
               type="button"
               onClick={() => setEscrowType(t)}
-              className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${escrowType === t
-                ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                }`}
+              className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
+                escrowType === t
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+              }`}
             >
               {t === "myself" ? (
                 <User className="mb-2 h-6 w-6" />
@@ -243,11 +345,15 @@ export function EscrowForm({
             <button
               key={chain.mainnetId}
               type="button"
-              onClick={() => onSelectChain(chain.mainnetId)}
-              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${selectedMainnetId === chain.mainnetId
-                ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                }`}
+              onClick={() => {
+                touch("network");
+                onSelectChain(chain.mainnetId);
+              }}
+              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${
+                selectedMainnetId === chain.mainnetId
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+              }`}
             >
               <img
                 src={chain.icon}
@@ -264,10 +370,11 @@ export function EscrowForm({
             </button>
           ))}
         </div>
-        {!selectedMainnetId && (
-          <div className="mt-1 text-xs text-red-400">
-            Please select a network
-          </div>
+        {touched.network && !selectedMainnetId && (
+          <FieldError message="Please select a network" />
+        )}
+        {touched.network && selectedMainnetId && (
+          <FieldSuccess message="Network selected" />
         )}
       </div>
 
@@ -287,12 +394,16 @@ export function EscrowForm({
         <input
           value={form.title}
           onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+          onBlur={() => touch("title")}
           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
           placeholder="e.g. Website Design & Development"
           required
         />
-        {!form.title.trim() && (
-          <div className="mt-1 text-xs text-red-400">Please enter a title</div>
+        {touched.title && !form.title.trim() && (
+          <FieldError message="Please enter a title" />
+        )}
+        {touched.title && form.title.trim() && (
+          <FieldSuccess message="Looks good" />
         )}
       </div>
 
@@ -304,7 +415,10 @@ export function EscrowForm({
             Type <span className="text-red-500">*</span>
           </label>
           <div
-            onClick={() => setIsTypeOpen((p) => !p)}
+            onClick={() => {
+              touch("type");
+              setIsTypeOpen((p) => !p);
+            }}
             className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none"
           >
             <span>
@@ -335,10 +449,11 @@ export function EscrowForm({
               ))}
             </div>
           )}
-          {!form.type && (
-            <div className="mt-1 text-xs text-red-400">
-              Please select escrow type
-            </div>
+          {touched.type && !form.type && (
+            <FieldError message="Please select escrow type" />
+          )}
+          {touched.type && form.type && (
+            <FieldSuccess message="Type selected" />
           )}
         </div>
 
@@ -361,27 +476,30 @@ export function EscrowForm({
               {(["me", "counterparty"] as const).map((p) => (
                 <label
                   key={p}
-                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payer === p
-                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                    : "border-white/10 bg-white/5 text-white/70"
-                    }`}
+                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                    form.payer === p
+                      ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  }`}
                 >
                   <input
                     type="radio"
                     name="payer"
                     className="hidden"
                     checked={form.payer === p}
-                    onChange={() => setForm((prev) => ({ ...prev, payer: p }))}
+                    onChange={() => {
+                      touch("payer");
+                      setForm((prev) => ({ ...prev, payer: p }));
+                    }}
                   />
                   {p === "me" ? "Me" : "Counterparty"}
                 </label>
               ))}
             </div>
-            {!form.payer && (
-              <div className="mt-1 text-xs text-red-400">
-                Please select who pays
-              </div>
+            {touched.payer && !form.payer && (
+              <FieldError message="Please select who pays" />
             )}
+            {touched.payer && form.payer && <FieldSuccess message="Got it" />}
           </div>
         ) : (
           <div>
@@ -394,28 +512,31 @@ export function EscrowForm({
               {(["partyA", "partyB"] as const).map((p) => (
                 <label
                   key={p}
-                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${form.payerOther === p
-                    ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                    : "border-white/10 bg-white/5 text-white/70"
-                    }`}
+                  className={`cursor-pointer rounded-md border px-2 py-3 text-center text-xs transition hover:border-cyan-400/40 ${
+                    form.payerOther === p
+                      ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  }`}
                 >
                   <input
                     type="radio"
                     name="payerOther"
                     className="hidden"
                     checked={form.payerOther === p}
-                    onChange={() =>
-                      setForm((prev) => ({ ...prev, payerOther: p }))
-                    }
+                    onChange={() => {
+                      touch("payer");
+                      setForm((prev) => ({ ...prev, payerOther: p }));
+                    }}
                   />
                   {p === "partyA" ? "First Party" : "Second Party"}
                 </label>
               ))}
             </div>
-            {!form.payerOther && (
-              <div className="mt-1 text-xs text-red-400">
-                Please select who pays
-              </div>
+            {touched.payer && !form.payerOther && (
+              <FieldError message="Please select who pays" />
+            )}
+            {touched.payer && form.payerOther && (
+              <FieldSuccess message="Got it" />
             )}
           </div>
         )}
@@ -432,14 +553,16 @@ export function EscrowForm({
             onChange={(e) =>
               setForm((p) => ({ ...p, counterparty: e.target.value }))
             }
+            onBlur={() => touch("counterparty")}
             className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
             placeholder="0x..."
             required
           />
-          {!form.counterparty.trim() && (
-            <div className="mt-1 text-xs text-red-400">
-              Please enter counterparty's wallet address
-            </div>
+          {touched.counterparty && !form.counterparty.trim() && (
+            <FieldError message="Please enter counterparty's wallet address" />
+          )}
+          {touched.counterparty && form.counterparty.trim() && (
+            <FieldSuccess message="Address entered" />
           )}
         </div>
       ) : (
@@ -455,15 +578,18 @@ export function EscrowForm({
                 onChange={(e) =>
                   setForm((p) => ({ ...p, [key]: e.target.value }))
                 }
+                onBlur={() => touch(key)}
                 className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
                 placeholder="0x..."
                 required
               />
-              {!form[key].trim() && (
-                <div className="mt-1 text-xs text-red-400">
-                  Please enter {key === "partyA" ? "first" : "second"} party's
-                  wallet address
-                </div>
+              {touched[key] && !form[key].trim() && (
+                <FieldError
+                  message={`Please enter ${key === "partyA" ? "first" : "second"} party's wallet address`}
+                />
+              )}
+              {touched[key] && form[key].trim() && (
+                <FieldSuccess message="Address entered" />
               )}
             </div>
           ))}
@@ -478,7 +604,10 @@ export function EscrowForm({
             Payment Token <span className="text-red-500">*</span>
           </label>
           <div
-            onClick={() => setIsTokenOpen((p) => !p)}
+            onClick={() => {
+              touch("token");
+              setIsTokenOpen((p) => !p);
+            }}
             className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none"
           >
             <span>
@@ -515,6 +644,7 @@ export function EscrowForm({
               ))}
             </div>
           )}
+
           {form.token === "custom" && (
             <div className="mt-3">
               <label className="text-muted-foreground mb-2 block text-sm">
@@ -526,6 +656,7 @@ export function EscrowForm({
                 onChange={(e) =>
                   setForm((p) => ({ ...p, customTokenAddress: e.target.value }))
                 }
+                onBlur={() => touch("customTokenAddress")}
                 placeholder="0x..."
                 className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
                 required
@@ -540,26 +671,38 @@ export function EscrowForm({
                 <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-400">
                   <CheckCircle className="h-3.5 w-3.5" />
                   <span>
-                    <span className="font-semibold">{resolvedTokenMeta.symbol}</span>
+                    <span className="font-semibold">
+                      {resolvedTokenMeta.symbol}
+                    </span>{" "}
+                    verified
                   </span>
                 </div>
               )}
-              {!isResolvingToken && !resolvedTokenMeta && form.customTokenAddress && isValidAddress(form.customTokenAddress) && (
-                <div className="mt-1 text-xs text-red-400">
-                  Not a valid ERC-20 on {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name || "selected network"}
-                </div>
-              )}
+              {touched.customTokenAddress &&
+                !isResolvingToken &&
+                !resolvedTokenMeta &&
+                form.customTokenAddress &&
+                isValidAddress(form.customTokenAddress) && (
+                  <FieldError
+                    message={`Not a valid ERC-20 on ${
+                      displayChains.find(
+                        (c) => c.mainnetId === selectedMainnetId,
+                      )?.name || "selected network"
+                    }`}
+                  />
+                )}
+              {touched.customTokenAddress &&
+                !form.customTokenAddress.trim() && (
+                  <FieldError message="Please enter custom token address" />
+                )}
             </div>
           )}
-          {form.token === "custom" && !form.customTokenAddress.trim() && (
-            <div className="mt-1 text-xs text-red-400">
-              Please enter custom token address
-            </div>
+
+          {touched.token && !form.token && (
+            <FieldError message="Please select payment token" />
           )}
-          {!form.token && (
-            <div className="mt-1 text-xs text-red-400">
-              Please select payment token
-            </div>
+          {touched.token && form.token && form.token !== "custom" && (
+            <FieldSuccess message="Token selected" />
           )}
         </div>
 
@@ -572,19 +715,19 @@ export function EscrowForm({
             type="number"
             value={form.amount}
             onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+            onBlur={() => touch("amount")}
             className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
             placeholder="1000"
             min="0"
             step="0.01"
             required
           />
-          {(!form.amount.trim() ||
-            isNaN(Number(form.amount)) ||
-            Number(form.amount) <= 0) && (
-              <div className="mt-1 text-xs text-red-400">
-                Please enter a valid amount
-              </div>
-            )}
+          {touched.amount && !isAmountValid && (
+            <FieldError message="Please enter a valid amount" />
+          )}
+          {touched.amount && isAmountValid && (
+            <FieldSuccess message="Amount set" />
+          )}
         </div>
       </div>
 
@@ -598,14 +741,16 @@ export function EscrowForm({
           onChange={(e) =>
             setForm((p) => ({ ...p, description: e.target.value }))
           }
+          onBlur={() => touch("description")}
           className="min-h-28 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-sm placeholder:text-white/50 focus:border-cyan-400/40"
           placeholder="Describe deliverables, expectations, and terms"
           required
         />
-        {!form.description.trim() && (
-          <div className="mt-1 text-xs text-red-400">
-            Please enter a description
-          </div>
+        {touched.description && !form.description.trim() && (
+          <FieldError message="Please enter a description" />
+        )}
+        {touched.description && form.description.trim() && (
+          <FieldSuccess message="Description looks good" />
         )}
       </div>
 
@@ -621,10 +766,11 @@ export function EscrowForm({
         </label>
 
         <div
-          className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-            ? "border-cyan-400/60 bg-cyan-500/20"
-            : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-            }`}
+          className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+            isDragOver
+              ? "border-cyan-400/60 bg-cyan-500/20"
+              : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+          }`}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragOver(true);
@@ -851,13 +997,14 @@ export function EscrowForm({
               <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2">
                 <span className="text-xs text-white/50">Total allocated</span>
                 <span
-                  className={`text-xs font-semibold ${form.milestones.reduce(
-                    (s, m) => s + (Number(m.percent) || 0),
-                    0,
-                  ) === 100
-                    ? "text-emerald-400"
-                    : "text-amber-400"
-                    }`}
+                  className={`text-xs font-semibold ${
+                    form.milestones.reduce(
+                      (s, m) => s + (Number(m.percent) || 0),
+                      0,
+                    ) === 100
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  }`}
                 >
                   {form.milestones.reduce(
                     (s, m) => s + (Number(m.percent) || 0),
@@ -894,7 +1041,10 @@ export function EscrowForm({
           <Calendar className="pointer-events-none absolute top-[1.3rem] left-3 h-4 w-4 -translate-y-1/2 text-cyan-300" />
           <ReactDatePicker
             selected={deadline}
-            onChange={setDeadline}
+            onChange={(date) => {
+              touch("deadline");
+              setDeadline(date);
+            }}
             placeholderText="Select a date"
             dateFormat="dd/MM/yyyy"
             className="w-full cursor-pointer rounded-md border border-white/10 bg-white/5 py-2 pr-3 pl-10 text-white outline-none placeholder:text-white/50 focus:border-cyan-400/40"
@@ -903,10 +1053,11 @@ export function EscrowForm({
             minDate={new Date()}
             required
           />
-          {!deadline && (
-            <div className="mt-1 text-xs text-red-400">
-              Please select a deadline
-            </div>
+          {touched.deadline && !deadline && (
+            <FieldError message="Please select a deadline" />
+          )}
+          {touched.deadline && deadline && (
+            <FieldSuccess message="Deadline set" />
           )}
         </div>
       </div>
@@ -942,12 +1093,14 @@ export function EscrowForm({
       />
 
       {/* ── Creation progress ──────────────────────────────────────────── */}
-      <CreationProgress
-        creationStep={creationStep}
-        currentStepMessage={currentStepMessage}
-        txHash={txHash}
-        onRetry={onRetry}
-      />
+      <div ref={progressRef}>
+        <CreationProgress
+          creationStep={creationStep}
+          currentStepMessage={currentStepMessage}
+          txHash={txHash}
+          onRetry={onRetry}
+        />
+      </div>
     </form>
   );
 }

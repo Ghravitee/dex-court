@@ -49,7 +49,7 @@ function PartyInfo({
           {!details?.telegramUsername && details?.username && (
             <div className="truncate text-xs text-gray-400">
               {details.username.startsWith("0x") &&
-                details.username.length === 42
+              details.username.length === 42
                 ? `${details.username.slice(0, 6)}...${details.username.slice(-4)}`
                 : details.username}
             </div>
@@ -83,19 +83,25 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
     >
       <div className="flex h-full flex-col rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
         <div>
-          <div className="mb-4 min-h-[3.5rem]">
+          {/* Title + chain icon */}
+          <div className="mb-4 flex min-h-[3.5rem] items-start justify-between gap-3">
             <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
               {e.title}
             </h3>
-            {/* Chain badge */}
+
             {chain && (
-              <div className="ml-2 flex flex-shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+              <div
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1"
+                title={chain.name}
+              >
                 <img
                   src={chain.icon}
                   alt={chain.name}
                   className="h-4 w-4 rounded-full"
                 />
-                <span className="text-xs text-white/60">{chain.name}</span>
+                <span className="text-[11px] font-medium text-white/70">
+                  {chain.name}
+                </span>
               </div>
             )}
           </div>
@@ -113,11 +119,16 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
               details={e.payeeDetails}
               color="pink"
             />
+
             <div>
               <div className="text-muted-foreground">Amount</div>
               <div className="flex items-center gap-1.5 font-bold text-green-500/90">
                 {chain && (
-                  <img src={chain.icon} alt={chain.name} className="h-4 w-4 rounded-full" />
+                  <img
+                    src={chain.icon}
+                    alt={chain.name}
+                    className="h-4 w-4 rounded-full"
+                  />
                 )}
                 {e.amount} {tokenDisplay}
               </div>
