@@ -13,6 +13,7 @@ import {
   ZERO_ADDRESS,
   ESCROW_CA,
   KNOWN_TOKEN_ADDRESSES,
+  SUPPORTED_CHAINS,
 } from "../../../web3/config";
 import { createAgreement } from "../../../services/agreementServices";
 import { isValidAddress } from "../../../web3/helper";
@@ -292,17 +293,39 @@ export function useEscrowCreation({
         }
         tokenAddr = form.customTokenAddress;
       } else if (form.token !== "ETH") {
-        const knownAddress = KNOWN_TOKEN_ADDRESSES[form.token]?.[networkChainId as number];
+        const knownAddress =
+          KNOWN_TOKEN_ADDRESSES[form.token]?.[networkChainId as number];
         if (knownAddress) {
           tokenAddr = knownAddress;
-        } else if (form.customTokenAddress && isValidAddress(form.customTokenAddress)) {
+        } else if (
+          form.customTokenAddress &&
+          isValidAddress(form.customTokenAddress)
+        ) {
           tokenAddr = form.customTokenAddress;
         } else {
-          setUiError(`No contract address found for ${form.token} on this network. Please use Custom Token.`);
+          setUiError(
+            `No contract address found for ${form.token} on this network. Please use Custom Token.`,
+          );
           updateStep("error", `Missing ${form.token} contract address`);
           return;
         }
       }
+
+      // ── Resolve the token symbol to persist to the backend ────────────────
+      // form.token is always "ETH" for native tokens regardless of chain, so
+      // we look up the actual symbol from SUPPORTED_CHAINS using the resolved
+      // chain ID (which may be a testnet ID in non-prod environments).
+      const resolvedTokenSymbol = (() => {
+        if (form.token === "custom") return "custom";
+        if (form.token === "ETH") {
+          const chain = SUPPORTED_CHAINS.find(
+            (c) =>
+              c.mainnetId === networkChainId || c.testnetId === networkChainId,
+          );
+          return chain?.symbol ?? "ETH";
+        }
+        return form.token; // USDC, USDT, etc.
+      })();
 
       // ── Deadline ──────────────────────────────────────────────────────────
       const now = Math.floor(Date.now() / 1000);
@@ -346,14 +369,21 @@ export function useEscrowCreation({
         let resolvedDecimals = form.tokenDecimals;
         if (tokenAddr !== ZERO_ADDRESS) {
           try {
-            const fetched = await getTokenDecimals(networkChainId as number, tokenAddr as `0x${string}`);
+            const fetched = await getTokenDecimals(
+              networkChainId as number,
+              tokenAddr as `0x${string}`,
+            );
             resolvedDecimals = Number(fetched);
           } catch {
             // fall back to form.tokenDecimals
           }
         }
 
-        amountBN = parseAmount(form.amount, tokenAddr, resolvedDecimals) as bigint;
+        amountBN = parseAmount(
+          form.amount,
+          tokenAddr,
+          resolvedDecimals,
+        ) as bigint;
         if (amountBN <= 0n) {
           setUiError("Parsed amount invalid");
           updateStep("error", "Invalid amount");
@@ -390,7 +420,7 @@ export function useEscrowCreation({
               counterParty: counterPartyAddr,
               deadline: deadline.toISOString(),
               amount: parseFloat(form.amount),
-              tokenSymbol: form.token === "custom" ? "custom" : form.token,
+              tokenSymbol: resolvedTokenSymbol,
               customTokenAddress:
                 form.token === "custom" ? form.customTokenAddress : undefined,
               includesFunds: true,

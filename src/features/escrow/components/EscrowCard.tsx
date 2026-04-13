@@ -3,6 +3,7 @@ import { Eye } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { formatWalletAddress } from "../utils/formatters";
+import { useChainSelection } from "../../../config/useChainSelection";
 import type { OnChainEscrowData } from "../types";
 
 interface EscrowCardProps {
@@ -69,7 +70,21 @@ const STATUS_BADGE: Record<string, string> = {
   expired: "badge-gray",
 };
 
+function useChainMeta(chainId: number | null | undefined) {
+  const { displayChains } = useChainSelection();
+  if (!chainId) return null;
+  // The stored chainId may be either a mainnetId or a testnetId depending on
+  // the environment the escrow was created in, so check both sides.
+  return (
+    displayChains.find(
+      (c) => c.mainnetId === chainId || c.testnetId === chainId,
+    ) ?? null
+  );
+}
+
 export function EscrowCard({ escrow: e }: EscrowCardProps) {
+  const chain = useChainMeta(e.chainId);
+
   return (
     <Link
       to={`/escrow/${e.id}`}
@@ -77,10 +92,27 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
     >
       <div className="flex h-full flex-col rounded-[1.4rem] bg-black/40 p-8 shadow-[0_0_40px_#00eaff20] backdrop-blur-xl transition-all duration-500 group-hover:shadow-[0_0_70px_#00eaff40]">
         <div>
-          <div className="mb-4 min-h-[3.5rem]">
+          {/* Title + chain icon */}
+          <div className="mb-4 flex min-h-[3.5rem] items-start justify-between gap-3">
             <h3 className="line-clamp-2 text-lg font-semibold tracking-wide text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
               {e.title}
             </h3>
+
+            {chain && (
+              <div
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1"
+                title={chain.name}
+              >
+                <img
+                  src={chain.icon}
+                  alt={chain.name}
+                  className="h-4 w-4 rounded-full"
+                />
+                <span className="text-[11px] font-medium text-white/70">
+                  {chain.name}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">

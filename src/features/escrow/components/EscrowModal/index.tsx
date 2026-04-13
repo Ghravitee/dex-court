@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { EscrowForm } from "./EscrowForm";
 import type { CreationStep, EscrowFormState, EscrowType } from "../../types";
 
@@ -73,6 +74,30 @@ export function EscrowModal({
   selectedMainnetId,
   onSelectChain,
 }: EscrowModalProps) {
+  // Resolve the human-readable token label for the footer note, mirroring the
+  // same logic used inside EscrowForm so they always agree.
+  //   "ETH"    → native symbol of the selected chain (e.g. "ETH", "MATIC")
+  //   "custom" → the decimals/symbol were fetched on-chain and stored in
+  //              form.tokenDecimals, but the symbol isn't persisted on form.
+  //              We surface it from form.token only when resolved; until then
+  //              we fall back to "selected token".
+  //   anything else → the value itself (e.g. "USDC", "USDT")
+  const displayToken = useMemo(() => {
+    if (form.token === "ETH") {
+      const chain = displayChains.find(
+        (c) => c.mainnetId === selectedMainnetId,
+      );
+      return chain?.symbol ?? "ETH";
+    }
+    if (form.token === "custom") {
+      // form doesn't store the resolved symbol — show address hint or fallback
+      return form.customTokenAddress
+        ? `${form.customTokenAddress.slice(0, 6)}…${form.customTokenAddress.slice(-4)}`
+        : "selected token";
+    }
+    return form.token;
+  }, [form.token, form.customTokenAddress, selectedMainnetId, displayChains]);
+
   if (!open) return null;
 
   const footerNote = () => {
@@ -81,7 +106,7 @@ export function EscrowModal({
         <p className="text-muted-foreground mt-4 text-xs">
           After signing, you will be prompted to deposit{" "}
           <span className="text-cyan-300">
-            {form.amount || "amount"} {form.token}
+            {form.amount || "amount"} {displayToken}
           </span>{" "}
           to activate this escrow.
         </p>
@@ -90,8 +115,11 @@ export function EscrowModal({
     if (escrowType === "myself" && form.payer === "counterparty") {
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          Counterparty will be notified to deposit funds. You can sign
-          immediately.
+          Counterparty will be notified to deposit{" "}
+          <span className="text-cyan-300">
+            {form.amount || "funds"} {displayToken}
+          </span>
+          . You can sign immediately.
         </p>
       );
     }
@@ -99,8 +127,11 @@ export function EscrowModal({
       const payer = form.payerOther === "partyA" ? form.partyA : form.partyB;
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          {payer || "The selected party"} will be notified to deposit funds.
-          Both parties can sign immediately.
+          {payer || "The selected party"} will be notified to deposit{" "}
+          <span className="text-cyan-300">
+            {form.amount || "funds"} {displayToken}
+          </span>
+          . Both parties can sign immediately.
         </p>
       );
     }

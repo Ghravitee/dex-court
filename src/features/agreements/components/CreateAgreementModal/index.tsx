@@ -13,6 +13,7 @@ import {
   User,
   Users,
   ChevronDown,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "../../../../components/ui/button";
 import { PartiesFields } from "./PartiesFields";
@@ -28,6 +29,20 @@ interface Props {
   onSuccess: () => void;
 }
 
+// Reusable inline feedback — matches the pattern from EscrowForm
+function FieldError({ message }: { message: string }) {
+  return <div className="mt-1 text-xs text-red-400">{message}</div>;
+}
+
+function FieldSuccess({ message }: { message: string }) {
+  return (
+    <div className="mt-1 flex items-center gap-1 text-xs text-emerald-400">
+      <CheckCircle className="h-3 w-3" />
+      {message}
+    </div>
+  );
+}
+
 export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
   const formHook = useAgreementForm();
   const userSearch = useUserSearch();
@@ -35,6 +50,16 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
 
   const [isTypeOpen, setIsTypeOpen] = useState(false);
   const typeRef = useRef<HTMLDivElement>(null);
+
+  // Local touched state for fields not covered by the useAgreementForm
+  // validation system (agreementType and typeValue dropdowns).
+  const [localTouched, setLocalTouched] = useState({
+    agreementType: false,
+    typeValue: false,
+  });
+
+  const touchLocal = (field: keyof typeof localTouched) =>
+    setLocalTouched((prev) => ({ ...prev, [field]: true }));
 
   if (!isOpen) return null;
 
@@ -70,32 +95,41 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
 
   const handleClose = () => {
     resetForm();
+    setLocalTouched({ agreementType: false, typeValue: false });
     onClose();
   };
 
   const onFormSuccess = () => {
     resetForm();
+    setLocalTouched({ agreementType: false, typeValue: false });
     onClose();
     onSuccess();
+  };
+
+  // On submit, mark every field as touched so all errors surface at once.
+  const handleFormSubmit = (e: React.FormEvent) => {
+    setLocalTouched({ agreementType: true, typeValue: true });
+    // Also touch the fields managed by useAgreementForm
+    updateValidation("title", form.title);
+    updateValidation("description", form.description);
+    handleSubmit(e, {
+      form,
+      agreementType,
+      typeValue,
+      deadline,
+      includeFunds,
+      secureWithEscrow,
+      selectedToken,
+      customTokenAddress,
+      fundsWithoutEscrow,
+      onSuccess: onFormSuccess,
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <form
-        onSubmit={(e) =>
-          handleSubmit(e, {
-            form,
-            agreementType,
-            typeValue,
-            deadline,
-            includeFunds,
-            secureWithEscrow,
-            selectedToken,
-            customTokenAddress,
-            fundsWithoutEscrow,
-            onSuccess: onFormSuccess,
-          })
-        }
+        onSubmit={handleFormSubmit}
         onClick={(e) => e.stopPropagation()}
         className="relative max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-[0.75rem] border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6"
       >
@@ -140,7 +174,10 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
               <button
                 key={value}
                 type="button"
-                onClick={() => setAgreementType(value as "myself" | "others")}
+                onClick={() => {
+                  touchLocal("agreementType");
+                  setAgreementType(value as "myself" | "others");
+                }}
                 className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 transition-all ${
                   agreementType === value
                     ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
@@ -153,6 +190,11 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
               </button>
             ))}
           </div>
+          {/* Agreement type has an implicit default so only show error if
+              somehow neither option is selected after interaction. */}
+          {localTouched.agreementType && !agreementType && (
+            <FieldError message="Please select who this agreement is for" />
+          )}
         </div>
 
         {/* Title */}
@@ -173,8 +215,11 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
           />
           {validation.title.isTouched && (
             <div
-              className={`mt-1 text-xs ${validation.title.isValid ? "text-green-400" : "text-amber-400"}`}
+              className={`mt-1 flex items-center gap-1 text-xs ${
+                validation.title.isValid ? "text-emerald-400" : "text-red-400"
+              }`}
             >
+              {validation.title.isValid && <CheckCircle className="h-3 w-3" />}
               {validation.title.message}
             </div>
           )}
@@ -188,7 +233,10 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
               Type <span className="text-red-500">*</span>
             </label>
             <div
-              onClick={() => setIsTypeOpen((p) => !p)}
+              onClick={() => {
+                touchLocal("typeValue");
+                setIsTypeOpen((p) => !p);
+              }}
               className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white outline-none"
             >
               <span>{typeValue || "Select Type"}</span>
@@ -211,6 +259,12 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
                   </div>
                 ))}
               </div>
+            )}
+            {localTouched.typeValue && !typeValue && (
+              <FieldError message="Please select agreement type" />
+            )}
+            {localTouched.typeValue && typeValue && (
+              <FieldSuccess message="Type selected" />
             )}
           </div>
 
@@ -243,8 +297,15 @@ export const CreateAgreementModal = ({ isOpen, onClose, onSuccess }: Props) => {
           />
           {validation.description.isTouched && (
             <div
-              className={`mt-1 text-xs ${validation.description.isValid ? "text-green-400" : "text-amber-400"}`}
+              className={`mt-1 flex items-center gap-1 text-xs ${
+                validation.description.isValid
+                  ? "text-emerald-400"
+                  : "text-red-400"
+              }`}
             >
+              {validation.description.isValid && (
+                <CheckCircle className="h-3 w-3" />
+              )}
               {validation.description.message}
             </div>
           )}
