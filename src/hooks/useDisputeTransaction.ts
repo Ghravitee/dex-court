@@ -109,7 +109,7 @@ export const useDisputeTransaction = (chainId: number) => {
         throw error;
       }
     },
-    [writeContract],
+    [writeContract, chainId],
   );
 
   // Retry transaction function

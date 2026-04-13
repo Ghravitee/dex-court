@@ -24,9 +24,6 @@ import {
   Ban,
   Info,
   Wallet,
-  //   Scale,
-  //   AlertCircle,
-  //   Loader2,
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
@@ -73,6 +70,7 @@ import {
   getCancellationDate,
   normalizeUsername,
 } from "./utils/helpers";
+import { ActionInfoBlurb } from "../../components/ActionInfoBlurb";
 
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
@@ -138,27 +136,7 @@ export default function AgreementDetails() {
     setEvidenceViewerOpen(true);
   }, []);
 
-  const handleDisputeCreated = useCallback(() => { }, []);
-
-  // const getFileIcon = (fileType: string) => {
-  //   const cls = "h-5 w-5";
-  //   switch (fileType) {
-  //     case "pdf":
-  //       return <FileText className={`${cls} text-red-400`} />;
-  //     case "image":
-  //       return <Image className={`${cls} text-green-400`} />;
-  //     case "word":
-  //       return <FileText className={`${cls} text-blue-400`} />;
-  //     case "excel":
-  //       return <FileText className={`${cls} text-green-500`} />;
-  //     case "archive":
-  //       return <Paperclip className={`${cls} text-yellow-400`} />;
-  //     case "text":
-  //       return <FileText className={`${cls} text-gray-400`} />;
-  //     default:
-  //       return <Paperclip className={`${cls} text-cyan-400`} />;
-  //   }
-  // };
+  const handleDisputeCreated = useCallback(() => {}, []);
 
   // ─── Early returns ─────────────────────────────────────────────────────────
   if (loading) return <LoadingScreen />;
@@ -232,6 +210,92 @@ export default function AgreementDetails() {
       agreement.status,
     );
 
+  // ─── Per-action contextual blurbs ─────────────────────────────────────────
+  // Collected here so the JSX below stays readable. Each entry mirrors the
+  // condition that gates its corresponding button.
+
+  const actionInfoItems: React.ReactNode[] = [];
+
+  if (canSign) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="sign" color="cyan">
+        {isCounterparty
+          ? "By signing you accept all terms and conditions of this agreement. Both parties will be bound once signed."
+          : "Sign to confirm your participation as the first party. The counterparty will also need to sign before the agreement becomes active."}
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canCancel) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="cancel" color="red">
+        Cancelling removes this agreement permanently. This action cannot be
+        undone — only do this before the counterparty has signed.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canRequestCancellation) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="req-cancel" color="orange">
+        A cancellation request will be sent to the other party for their
+        approval. The agreement remains active until they respond.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canRespondToCancellation) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="respond-cancel" color="orange">
+        The other party has requested to cancel this agreement.{" "}
+        <strong className="font-medium text-orange-200">Accepting</strong>{" "}
+        closes it immediately.{" "}
+        <strong className="font-medium text-orange-200">Rejecting</strong> keeps
+        the agreement active.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canMarkDelivered && !isCurrentUserInitiatedDelivery) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="deliver" color="green">
+        Mark your work as delivered to notify the other party. They will then
+        have the opportunity to accept or reject the delivery.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canReviewDelivery) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="review-delivery" color="green">
+        <strong className="font-medium text-green-200">Accept</strong> to
+        confirm the work is complete and release any escrowed funds.{" "}
+        <strong className="font-medium text-red-200">Reject</strong> if the
+        delivery doesn't meet the agreed terms — this will automatically open a
+        dispute for resolution.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canOpenDispute) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="dispute" color="purple">
+        Open a dispute if the other party is not fulfilling their obligations. A
+        small fee might be required to file if you choose a paid option, and the
+        case will be reviewed by community arbitrators.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  if (canCancelDispute) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="cancel-dispute" color="purple">
+        You can withdraw the active dispute if the issue has been resolved
+        directly with the other party.
+      </ActionInfoBlurb>,
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto py-8 lg:px-4">
@@ -278,9 +342,6 @@ export default function AgreementDetails() {
             {isRefreshing && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
             )}
-            {/* <span>
-              Last updated: {new Date(lastUpdate).toLocaleTimeString()}
-            </span> */}
           </div>
         </div>
 
@@ -490,40 +551,6 @@ export default function AgreementDetails() {
                       onViewEvidence={handleViewEvidence}
                     />
                   </div>
-                  {/* <div className="space-y-2">
-                    {(agreement.images || []).map(
-                      (file: string, index: number) => {
-                        const fileType = getFileType(file);
-                        return (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
-                          >
-                            <div className="flex min-w-0 flex-1 items-center space-x-3">
-                              {getFileIcon(fileType)}
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-white">
-                                  {file}
-                                </span>
-                                <span className="text-xs text-cyan-300/70 capitalize">
-                                  {fileType}
-                                </span>
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="border-white/15 whitespace-nowrap text-cyan-200 hover:bg-cyan-500/10"
-                              onClick={() => handleDownloadFile(index)}
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Download
-                            </Button>
-                          </div>
-                        );
-                      },
-                    )}
-                  </div> */}
                 </div>
               )}
 
@@ -678,16 +705,16 @@ export default function AgreementDetails() {
                                       >
                                         {disputeInfo.filedBy.startsWith("0x")
                                           ? formatWalletAddress(
-                                            disputeInfo.filedBy,
-                                          )
+                                              disputeInfo.filedBy,
+                                            )
                                           : disputeInfo.filedBy}
                                       </Link>
                                       {user &&
                                         disputeInfo.filedBy &&
                                         normalizeUsername(user.username) ===
-                                        normalizeUsername(
-                                          disputeInfo.filedBy,
-                                        ) && (
+                                          normalizeUsername(
+                                            disputeInfo.filedBy,
+                                          ) && (
                                           <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                         )}
                                     </div>
@@ -727,6 +754,7 @@ export default function AgreementDetails() {
                 <h3 className="mb-4 text-lg font-semibold text-white">
                   Agreement Actions
                 </h3>
+
                 <div className="flex flex-wrap gap-3">
                   {canSign && (
                     <Button
@@ -893,6 +921,11 @@ export default function AgreementDetails() {
                   )}
                 </div>
 
+                {/* ── Contextual info blurbs ──────────────────────────────── */}
+                {actionInfoItems.length > 0 && (
+                  <div className="mt-4 space-y-2">{actionInfoItems}</div>
+                )}
+
                 {cancellationPending && (
                   <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4">
                     <div className="flex items-start gap-3">
@@ -1017,7 +1050,8 @@ export default function AgreementDetails() {
       )}
 
       {pendingModalState.isOpen &&
-        (disputeStatus === "Pending Payment" || rejectDisputeStatus === "Pending Payment") &&
+        (disputeStatus === "Pending Payment" ||
+          rejectDisputeStatus === "Pending Payment") &&
         getDisputeFiledByFromTimeline(agreement, user) && (
           <PendingDisputeModal
             key={`pending-modal-${pendingModalState.votingId}`}

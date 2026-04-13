@@ -22,8 +22,6 @@ import {
   PackageCheck,
   Ban,
   Upload,
-  //   Info,
-  //   X,
   Wallet,
   Loader2,
 } from "lucide-react";
@@ -44,7 +42,6 @@ import {
   formatDateWithTime,
   formatNumberWithCommas,
 } from "../../web3/helper";
-// import { useNetworkEnvironment } from "../../config/useNetworkEnvironment";
 
 import { useEscrowData } from "./hooks/useEscrowData";
 import { useOnChainActions } from "./hooks/useOnChainActions";
@@ -65,6 +62,7 @@ import {
   normalizeUsername,
 } from "./utils/helpers";
 import { toast } from "sonner";
+import { ActionInfoBlurb } from "../../components/ActionInfoBlurb";
 
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
@@ -168,12 +166,12 @@ export default function EscrowDetails() {
       escrow
         ? getDisputeInfo(escrow)
         : {
-          filedAt: null,
-          filedBy: null,
-          filedById: null,
-          filedByAvatarId: null,
-          filedViaRejection: false,
-        },
+            filedAt: null,
+            filedBy: null,
+            filedById: null,
+            filedByAvatarId: null,
+            filedViaRejection: false,
+          },
     [escrow],
   );
   const disputeEvent = useMemo(
@@ -234,9 +232,9 @@ export default function EscrowDetails() {
 
   const daysRemaining = escrow
     ? Math.ceil(
-      (new Date(escrow.deadline).getTime() - Date.now()) /
-      (1000 * 60 * 60 * 24),
-    )
+        (new Date(escrow.deadline).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24),
+      )
     : 0;
   const isOverdue = daysRemaining < 0;
   const isUrgent = daysRemaining >= 0 && daysRemaining <= 3;
@@ -342,6 +340,188 @@ export default function EscrowDetails() {
 
   const currentStatus = getCurrentStatus();
 
+  const actionInfoItems: React.ReactNode[] = [];
+
+  // Sign
+  if (
+    (isServiceProvider && !onChainAgreement?.acceptedByServiceProvider) ||
+    (isServiceRecipient && !onChainAgreement?.acceptedByServiceRecipient)
+  ) {
+    if (onChainAgreement?.funded) {
+      actionInfoItems.push(
+        <ActionInfoBlurb key="sign" color="cyan">
+          {isServiceProvider
+            ? "Sign to confirm you accept the terms as the service provider. The agreement becomes active once both parties have signed."
+            : "Sign to confirm you accept the terms as the service recipient. The agreement becomes active once both parties have signed."}
+        </ActionInfoBlurb>,
+      );
+    }
+  }
+
+  // Deposit funds
+  if (
+    isServiceRecipient &&
+    !onChainAgreement?.funded &&
+    !onChainAgreement?.signed
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="deposit" color="green">
+        Locks the agreed amount into the escrow smart contract. The service
+        provider can only sign and begin work after funds are deposited.{" "}
+        <strong className="font-medium text-green-200">
+          ERC-20 tokens require a separate approval transaction first.
+        </strong>
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Submit delivery
+  if (
+    onChainAgreement?.signed &&
+    isServiceProvider &&
+    !onChainAgreement?.frozen &&
+    !onChainAgreement?.pendingCancellation &&
+    !onChainAgreement?.deliverySubmited
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="submit-delivery" color="green">
+        Signals that your work is complete and starts the grace period. The
+        service recipient will then be able to approve or reject the delivery.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Approve / Reject delivery
+  if (
+    onChainAgreement?.signed &&
+    isServiceRecipient &&
+    !onChainAgreement?.pendingCancellation &&
+    onChainAgreement?.deliverySubmited &&
+    !onChainAgreement?.completed
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="review-delivery" color="green">
+        <strong className="font-medium text-green-200">Approve</strong> to
+        confirm the work is complete and release escrowed funds to the provider.{" "}
+        <strong className="font-medium text-red-200">Reject</strong> if the
+        delivery doesn't meet the agreed terms — this will open a dispute for
+        arbitration review.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Cancel order
+  if (
+    onChainAgreement?.signed &&
+    !onChainAgreement?.pendingCancellation &&
+    !onChainAgreement?.deliverySubmited &&
+    !onChainAgreement?.frozen
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="cancel-order" color="orange">
+        Sends a cancellation request to the other party. The agreement stays
+        active until they approve or reject it within the grace period.{" "}
+        <strong className="font-medium text-orange-200">
+          Not available once delivery has been submitted or the agreement is
+          frozen.
+        </strong>
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Approve / Reject cancellation
+  if (
+    now < onChainAgreement?.grace1Ends &&
+    onChainAgreement?.signed &&
+    onChainAgreement?.pendingCancellation &&
+    escrow?._raw?.firstParty?.walletAddress &&
+    escrow._raw.firstParty.walletAddress.toLowerCase() !==
+      String(onChainAgreement.grace1EndsCalledBy).toLowerCase() &&
+    !onChainAgreement?.deliverySubmited
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="respond-cancel" color="orange">
+        The other party has requested to cancel this agreement.{" "}
+        <strong className="font-medium text-green-200">Approve</strong> to close
+        it and return funds.{" "}
+        <strong className="font-medium text-red-200">Reject</strong> to keep the
+        agreement active. You must respond before the grace period countdown
+        expires.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Partial release
+  if (
+    onChainAgreement?.grace1Ends !== BigInt(0) &&
+    !onChainAgreement?.vesting &&
+    now > onChainAgreement?.grace1Ends &&
+    onChainAgreement?.funded &&
+    !onChainAgreement?.pendingCancellation &&
+    onChainAgreement?.signed
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="partial-release" color="yellow">
+        Grace period 1 has elapsed. You can release a portion of the escrowed
+        funds to the service provider without a formal delivery approval. Not
+        available when vesting milestones are in use.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Final release
+  if (
+    onChainAgreement?.signed &&
+    !onChainAgreement?.vesting &&
+    now > onChainAgreement?.grace2Ends &&
+    onChainAgreement?.grace2Ends !== BigInt(0) &&
+    onChainAgreement?.funded &&
+    onChainAgreement?.pendingCancellation
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="final-release" color="yellow">
+        Grace period 2 has expired on the pending cancellation. Triggering final
+        release will close the agreement and return remaining funds to the
+        service recipient.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Cancellation timeout
+  if (
+    onChainAgreement?.signed &&
+    now > onChainAgreement?.grace1Ends &&
+    onChainAgreement?.pendingCancellation &&
+    onChainAgreement?.grace1Ends !== BigInt(0)
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="cancel-timeout" color="yellow">
+        The grace period for the cancellation request has expired without a
+        response. You can now trigger the timeout to automatically resolve the
+        cancellation on-chain.
+      </ActionInfoBlurb>,
+    );
+  }
+
+  // Raise dispute
+  if (
+    onChainAgreement?.funded &&
+    onChainAgreement?.signed &&
+    !onChainAgreement?.disputed &&
+    !onChainAgreement?.completed &&
+    !onChainAgreement?.frozen &&
+    !onChainAgreement?.pendingCancellation
+  ) {
+    actionInfoItems.push(
+      <ActionInfoBlurb key="raise-dispute" color="purple">
+        Open a dispute if the other party is not fulfilling their obligations. A
+        fee may be required to file, and the case will be reviewed by community
+        arbitrators. Ensure you have supporting evidence ready before
+        proceeding.
+      </ActionInfoBlurb>,
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto py-2 lg:px-4 lg:py-8">
@@ -362,7 +542,7 @@ export default function EscrowDetails() {
             {(() => {
               const statusKey =
                 disputeStatus === "pending_locking_funds" ||
-                  disputeStatus === "pending_payment"
+                disputeStatus === "pending_payment"
                   ? disputeStatus
                   : currentStatus;
               const info = getStatusInfo(statusKey);
@@ -514,10 +694,10 @@ export default function EscrowDetails() {
                           {formatNumberWithCommas(escrow.amount)}{" "}
                           {escrow.token === "ETH"
                             ? (SUPPORTED_CHAINS.find(
-                              (c) =>
-                                c.mainnetId === escrow._raw?.chainId ||
-                                c.testnetId === escrow._raw?.chainId,
-                            )?.symbol ?? "ETH")
+                                (c) =>
+                                  c.mainnetId === escrow._raw?.chainId ||
+                                  c.testnetId === escrow._raw?.chainId,
+                              )?.symbol ?? "ETH")
                             : escrow.token}
                         </div>
                       </div>
@@ -674,7 +854,8 @@ export default function EscrowDetails() {
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1 font-mono text-sm break-all text-white">
                             {onChainAgreement.token === ZERO_ADDRESS
-                              ? tokenSymbol : onChainAgreement.token}
+                              ? tokenSymbol
+                              : onChainAgreement.token}
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -880,7 +1061,9 @@ export default function EscrowDetails() {
                   {onChainAgreement.grace1Ends > 0n &&
                     !onChainAgreement?.disputed &&
                     onChainAgreement.deliverySubmited &&
-                    !onChainAgreement.vesting && !onChainAgreement.completed && !onChainAgreement.frozen && (
+                    !onChainAgreement.vesting &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen && (
                       <div className="flex items-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-3">
                         <Clock className="h-4 w-4 text-blue-400" />
                         <span className="text-blue-300">
@@ -893,7 +1076,9 @@ export default function EscrowDetails() {
                     )}
                   {onChainAgreement.grace1Ends > 0n &&
                     !onChainAgreement?.disputed &&
-                    onChainAgreement.deliverySubmited && !onChainAgreement.completed && !onChainAgreement.frozen && (
+                    onChainAgreement.deliverySubmited &&
+                    !onChainAgreement.completed &&
+                    !onChainAgreement.frozen && (
                       <div className="flex items-center gap-2 rounded-lg border border-green-400/30 bg-green-500/10 p-3">
                         <Package className="h-4 w-4 text-green-400" />
                         <span className="text-green-300">
@@ -1092,9 +1277,9 @@ export default function EscrowDetails() {
                           escrow &&
                           escrow._raw?.firstParty?.walletAddress &&
                           escrow._raw.firstParty.walletAddress.toLowerCase() !==
-                          String(
-                            onChainAgreement.grace1EndsCalledBy,
-                          ).toLowerCase() &&
+                            String(
+                              onChainAgreement.grace1EndsCalledBy,
+                            ).toLowerCase() &&
                           !onChainAgreement.deliverySubmited && (
                             <>
                               <Button
@@ -1361,6 +1546,10 @@ export default function EscrowDetails() {
                       </div>
                     </div>
                   )}
+                {/* ── Contextual info blurbs ──────────────────────────────── */}
+                {actionInfoItems.length > 0 && (
+                  <div className="mt-4 space-y-2">{actionInfoItems}</div>
+                )}
               </div>
             )}
 
@@ -1470,9 +1659,9 @@ export default function EscrowDetails() {
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
-                                    normalizeUsername(
-                                      disputeInfo.filedBy,
-                                    ) && (
+                                      normalizeUsername(
+                                        disputeInfo.filedBy,
+                                      ) && (
                                       <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                                     )}
                                 </div>
@@ -1484,7 +1673,7 @@ export default function EscrowDetails() {
                       {getDisputeStatusFromAgreement(escrow) !==
                         "pending_payment" &&
                         getDisputeStatusFromAgreement(escrow) !==
-                        "pending_locking_funds" && (
+                          "pending_locking_funds" && (
                           <Link
                             to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
                             className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
