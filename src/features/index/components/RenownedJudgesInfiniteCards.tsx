@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { InfiniteMovingJudges } from "../../../components/ui/infinite-moving-judges";
+import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
 import avatar1 from "../../../assets/avatar-1.svg";
 import avatar2 from "../../../assets/avatar-2.webp";
 import avatar3 from "../../../assets/avatar-3.webp";
@@ -58,8 +58,9 @@ export const RenownedJudgesInfiniteCards = () => {
       <h3 className="glow-text mb-4 text-xl font-semibold text-cyan-100">
         Renowned Judges
       </h3>
-      <InfiniteMovingJudges
+      <InfiniteMovingCardsWithAvatars
         items={judgeItems}
+        type="judges"
         direction="right"
         speed="slow"
         pauseOnHover={true}
