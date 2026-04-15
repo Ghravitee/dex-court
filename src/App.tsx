@@ -11,6 +11,8 @@ import { useAuth } from "./hooks/useAuth";
 import { LoginModal } from "./components/LoginModal";
 import { GlobalLoader } from "./components/GlobalLoader";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { PageTransitionLoader } from "./components/PageTransitionLoader";
+import { useRouteLoading } from "./hooks/useRouteLoading";
 
 const Reputation = lazy(
   () => import("./features/reputation/components/ReputationPage"),
@@ -98,8 +100,10 @@ function AutoLoginModal() {
 
 function AppContent() {
   const { isAuthInitialized, isLoading: authLoading } = useAuth();
+  const isRouteLoading = useRouteLoading();
 
   const showInitialLoader = !isAuthInitialized || authLoading;
+  const showTransitionLoader = isRouteLoading && isAuthInitialized;
 
   return (
     <TooltipProvider>
@@ -110,7 +114,11 @@ function AppContent() {
       <AutoLoginModal />
       <ConnectionStatus />
 
+      {/* Full screen initial loader */}
       {showInitialLoader && <GlobalLoader />}
+
+      {/* Small top transition loader */}
+      {showTransitionLoader && <PageTransitionLoader />}
 
       <Suspense fallback={<GlobalLoader />}>
         <Routes>
