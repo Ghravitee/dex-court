@@ -1,4 +1,5 @@
 // publicConfig.ts
+import { devLog } from "../utils/logger";
 import { createPublicClient, http, type PublicClient } from "viem";
 import {
   mainnet,
@@ -48,11 +49,8 @@ export const clients: Record<number, PublicClient> = {
 
 // Get client for specific chain with proper fallback logic
 export function getClientForChain(chainId: number): PublicClient {
-  // console.log("Requested chainId:", chainId);
-
   // Check if we have a client for the requested chain
   if (clients[chainId]) {
-    // console.log("Using client for chain:", chainId);
     return clients[chainId];
   }
 
@@ -79,7 +77,7 @@ export function getClientForChain(chainId: number): PublicClient {
     }
   }
 
-  console.log("Falling back to chain:", fallbackChainId);
+  devLog("Falling back to chain:", fallbackChainId);
 
   const fallbackClient = clients[fallbackChainId];
   if (!fallbackClient) {

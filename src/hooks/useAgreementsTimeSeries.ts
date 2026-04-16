@@ -2,6 +2,7 @@
 // hooks/useAgreementsTimeSeries.ts
 import { useState, useEffect } from "react";
 import { usePublicAgreements } from "./usePublicAgreements";
+import { devLog } from "../utils/logger";
 
 interface TimeSeriesData {
   t: string;
@@ -32,7 +33,7 @@ export function useAgreementsTimeSeries(
       const groupedData = groupAgreementsByTime(allAgreements, type);
       setData(groupedData);
 
-      console.log(`✅ Generated ${type} agreement time series:`, groupedData);
+      devLog(`✅ Generated ${type} agreement time series:`, groupedData);
     } catch (err) {
       console.error("Failed to generate agreement time series:", err);
       setError("Failed to load agreement statistics");

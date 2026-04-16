@@ -1,6 +1,6 @@
 // src/components/layout/AdminSidebar.tsx
 import { NavLink } from "react-router-dom";
-import { Users, BarChart3, Shield, ArrowLeft, LogOut } from "lucide-react";
+import { Users, Shield, ArrowLeft, LogOut } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../hooks/useAuth";
 import { UserAvatar } from "../UserAvatar";
@@ -12,12 +12,12 @@ const adminRoutes = [
     icon: <Users size={20} />,
     description: "Manage user roles and permissions",
   },
-  {
-    path: "/admin/analytics",
-    label: "Analytics",
-    icon: <BarChart3 size={20} />,
-    description: "View platform statistics",
-  },
+  // {
+  //   path: "/admin/analytics",
+  //   label: "Analytics",
+  //   icon: <BarChart3 size={20} />,
+  //   description: "View platform statistics",
+  // },
 ];
 
 interface AdminSidebarProps {
@@ -112,9 +112,6 @@ export const AdminSidebar = ({ mobile, onClose }: AdminSidebarProps) => {
               <span className="flex-shrink-0">{route.icon}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-medium">{route.label}</div>
-                {/* <div className="text-xs text-white/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  {route.description}
-                </div> */}
               </div>
             </NavLink>
           ))}

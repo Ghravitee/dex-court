@@ -20,6 +20,7 @@ import {
   type VOTING_CONFIG,
 } from "./interfaces";
 import { isZeroAddress, normalizeAgreement } from "./helper";
+import { devLog } from "../utils/logger";
 
 /**
  * Returns the nonce (transaction count) for an address on a chain.
@@ -54,7 +55,9 @@ export const getAgreement = async (
 ): Promise<Agreement> => {
   const publicClient: PublicClient = getClientForChain(chainId);
   const contractAddr = escrowCA;
-  console.log(`getAgreement: chainId=${chainId}, agreementId=${agreementId}, contractAddr=${contractAddr}`);
+  devLog(
+    `getAgreement: chainId=${chainId}, agreementId=${agreementId}, contractAddr=${contractAddr}`,
+  );
 
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);
@@ -97,7 +100,7 @@ export const getAgreement = async (
 export const getAgreementExistOnchain = async (
   chainId: number,
   contractAgreementIds: bigint[],
-  escrowContractAddress: `0x${string}`
+  escrowContractAddress: `0x${string}`,
 ): Promise<boolean[]> => {
   // Changed return type
   const publicClient: PublicClient = getClientForChain(chainId);
@@ -111,7 +114,6 @@ export const getAgreementExistOnchain = async (
   }
 
   if (contractAgreementIds.length === 0) return [];
-
 
   try {
     const raw = await publicClient.readContract({
@@ -129,7 +131,7 @@ export const getAgreementExistOnchain = async (
   } catch (err) {
     console.error(
       `getAgreementExistOnchain failed (chain=${chainId}, ids=${contractAgreementIds}):`,
-      err
+      err,
     );
     // Return false for all on error
     return contractAgreementIds.map(() => false);
@@ -264,7 +266,7 @@ export const getTokenSymbol = async (
   const publicClient: PublicClient = getClientForChain(chainId);
   const contractAddr = tokenAddr;
 
-  console.log(`getTokenSymbol: chainId=${chainId}, tokenAddr=${tokenAddr}`);
+  devLog(`getTokenSymbol: chainId=${chainId}, tokenAddr=${tokenAddr}`);
 
   if (!publicClient) {
     throw new Error(`No public client configured for chain ${chainId}`);

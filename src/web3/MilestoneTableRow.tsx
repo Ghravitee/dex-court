@@ -1,5 +1,6 @@
 // src/web3/MilestoneTableRow.tsx
 
+import { devLog } from "../utils/logger";
 import { formatAmount, useCountdown } from "./helper";
 
 export type Milestone = {
@@ -47,7 +48,7 @@ export function MilestoneTableRow({
   const canHold = isServiceRecipient && !milestone.claimed;
 
   const handleHoldToggle = () => {
-    console.log("Hold toggle clicked:", {
+    devLog("Hold toggle clicked:", {
       index,
       currentHold: milestone.heldByRecipient,
       canHold,
@@ -85,14 +86,15 @@ export function MilestoneTableRow({
       <td className="p-4">
         <div className="flex flex-col space-y-1">
           <span
-            className={`inline-block rounded px-2 py-1 text-xs ${milestone.claimed
+            className={`inline-block rounded px-2 py-1 text-xs ${
+              milestone.claimed
                 ? "bg-green-500/20 text-green-300"
                 : isUnlocked && !milestone.heldByRecipient
                   ? "bg-blue-500/20 text-blue-300"
                   : milestone.heldByRecipient
                     ? "bg-yellow-500/20 text-yellow-300"
                     : "bg-gray-500/20 text-gray-300"
-              }`}
+            }`}
           >
             {milestone.claimed
               ? "Claimed"
@@ -129,10 +131,11 @@ export function MilestoneTableRow({
             <button
               onClick={handleHoldToggle}
               disabled={isLoadingHold}
-              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${milestone.heldByRecipient
+              className={`flex items-center justify-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${
+                milestone.heldByRecipient
                   ? "bg-orange-600 hover:bg-orange-700"
                   : "bg-amber-600 hover:bg-amber-700"
-                } disabled:opacity-50`}
+              } disabled:opacity-50`}
             >
               {isLoadingHold ? (
                 <>

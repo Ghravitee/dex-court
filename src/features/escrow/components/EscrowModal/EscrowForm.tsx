@@ -408,7 +408,7 @@ export function EscrowForm({
       </div>
 
       {/* ── Type + Who Pays ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Type dropdown */}
         <div className="relative flex w-full flex-col gap-2" ref={typeRef}>
           <label className="text-muted-foreground text-sm">
@@ -597,7 +597,7 @@ export function EscrowForm({
       )}
 
       {/* ── Token + Amount ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Token dropdown */}
         <div className="relative flex w-full flex-col gap-2" ref={tokenRef}>
           <label className="text-muted-foreground text-sm">
@@ -914,7 +914,7 @@ export function EscrowForm({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {/* Percentage */}
                     <div>
                       <label className="text-muted-foreground mb-1 block text-xs">

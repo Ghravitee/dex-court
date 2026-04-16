@@ -435,7 +435,7 @@ export default function UserProfile() {
                     >
                       <div className="flex items-start justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                          <div className="mb-1 flex justify-between sm:flex-row sm:items-center">
                             <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
                               {agreement.title}
                             </h4>
@@ -569,7 +569,7 @@ export default function UserProfile() {
                     >
                       <div className="flex items-start justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-col justify-between sm:flex-row sm:items-center">
+                          <div className="mb-1 flex justify-between sm:flex-row sm:items-center">
                             <h4 className="truncate text-sm font-medium text-white/90 sm:max-w-[180px]">
                               {agreement.title}
                             </h4>

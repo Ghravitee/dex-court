@@ -133,14 +133,26 @@ export function useAllAccounts(
 // ─── Mutation hooks ────────────────────────────────────────────────────────────
 
 /** Update the authenticated user's username or bio. */
+export const userProfileKeys = {
+  all: () => ["userProfile"] as const,
+};
+
 export function useUpdateAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: AccountUpdateRequest) => updateAccount(data),
     onSuccess: () => {
-      // Invalidate own profile so next read reflects the update
       queryClient.invalidateQueries({ queryKey: accountKeys.me() });
+      queryClient.invalidateQueries({
+        queryKey: accountKeys.all(),
+        refetchType: "all",
+      });
+      // Invalidates ALL ["userProfile", ...] entries regardless of handle
+      queryClient.invalidateQueries({
+        queryKey: ["userProfile"],
+        refetchType: "all",
+      });
     },
   });
 }
@@ -152,13 +164,20 @@ export function useUploadAvatar() {
   return useMutation({
     mutationFn: (file: File) => uploadAvatar(file),
     onSuccess: () => {
-      // Clear the blob URL cache so the new avatar loads immediately
       const currentUser = JSON.parse(
         localStorage.getItem("currentUser") || "{}",
       );
       if (currentUser.id) clearAvatarCache(currentUser.id);
 
       queryClient.invalidateQueries({ queryKey: accountKeys.me() });
+      queryClient.invalidateQueries({
+        queryKey: accountKeys.all(),
+        refetchType: "all",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["userProfile"],
+        refetchType: "all",
+      });
     },
   });
 }

@@ -39,9 +39,10 @@ import {
   formatUsername,
 } from "./utils/formatters";
 import { useUpdateAccount, useUploadAvatar } from "../../hooks/useAccounts";
+import { devLog } from "../../utils/logger";
 
 export default function Profile() {
-  const { isAuthenticated, user, login } = useAuth();
+  const { isAuthenticated, user, login, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   // State
@@ -224,23 +225,25 @@ export default function Profile() {
   // Effects for toaster
   useEffect(() => {
     if (updateSuccess) {
+      refreshUser();
       setToaster({
         message: "Profile updated successfully!",
         type: "success",
         isVisible: true,
       });
     }
-  }, [updateSuccess]);
+  }, [updateSuccess, refreshUser]);
 
   useEffect(() => {
     if (uploadSuccess) {
+      refreshUser();
       setToaster({
         message: "Avatar updated successfully!",
         type: "success",
         isVisible: true,
       });
     }
-  }, [uploadSuccess]);
+  }, [uploadSuccess, refreshUser]);
 
   useEffect(() => {
     if (isUpdateError && updateErrorObj) {
@@ -265,7 +268,7 @@ export default function Profile() {
   // Debug logs
   useEffect(() => {
     if (user) {
-      console.log("🔐 User data:", user);
+      devLog("🔐 User data:", user);
     }
   }, [user]);
 
@@ -315,9 +318,41 @@ export default function Profile() {
         onClose={closeToaster}
       />
 
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold text-white/90">Profile</h2>
+
+        {user?.joinedDate && (
+          <div className="text-muted-foreground text-sm">
+            Joined {new Date(user.joinedDate).toLocaleDateString()}
+          </div>
+        )}
+
+        {user?.bio && <p className="mt-1 max-w-md text-white/70">{user.bio}</p>}
       </header>
+
+      {user?.role === 2 && !user?.bio && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-medium text-amber-300">
+                Judges should add a bio
+              </p>
+              <p className="text-white/70">
+                As a judge, your bio helps users understand your background and
+                why they can trust your decisions.
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => setShowProfileUpdateModal(true)}
+              className="border-amber-400/40 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30"
+            >
+              Add Bio
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Top Summary Section */}
       <section className="mx-auto w-full max-w-7xl py-6">

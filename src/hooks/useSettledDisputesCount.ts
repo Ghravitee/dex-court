@@ -1,6 +1,7 @@
 // Create a new file: hooks/useSettledDisputesCount.ts
 import { useState, useEffect } from "react";
 import { disputeService } from "../services/disputeServices";
+import { devLog } from "../utils/logger";
 
 export function useSettledDisputesCount() {
   const [settledCount, setSettledCount] = useState<number>(0);
@@ -23,7 +24,7 @@ export function useSettledDisputesCount() {
         const count = response?.results?.length || 0;
         setSettledCount(count);
 
-        console.log(`✅ Settled disputes count: ${count}`);
+        devLog(`✅ Settled disputes count: ${count}`);
       } catch (err) {
         console.error("Failed to fetch settled disputes count:", err);
         setError("Failed to load settled disputes count");

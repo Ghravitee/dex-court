@@ -39,7 +39,7 @@ export const WitnessFields = ({
   onUserSelect,
 }: Props) => (
   <div ref={witnessSearch.ref}>
-    <div className="mb-2 flex items-center justify-between">
+    <div className="mb-2 flex flex-col items-center justify-between sm:flex-row">
       <label className="text-muted-foreground text-sm">
         Witness list (max 5)
         <span className="ml-2 text-xs text-cyan-400">
@@ -49,7 +49,7 @@ export const WitnessFields = ({
       <Button
         type="button"
         variant="outline"
-        className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+        className="self-end border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
         onClick={onAddWitness}
         disabled={witnesses.length >= 5 || isDisabled}
       >

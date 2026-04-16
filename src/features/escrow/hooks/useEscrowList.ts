@@ -5,6 +5,7 @@ import { getAgreementExistOnchain } from "../../../web3/readContract";
 import { AgreementTypeEnum } from "../constants";
 import { transformApiAgreementToEscrow } from "../utils/transformers";
 import type { OnChainEscrowData } from "../types";
+import { devLog } from "../../../utils/logger";
 
 export function useEscrowList() {
   const [allEscrows, setAllEscrows] = useState<OnChainEscrowData[]>([]);
@@ -45,7 +46,10 @@ export function useEscrowList() {
         (e) => e.status === "pending" || e.status === "pending_approval",
       );
 
-      console.log("Pending agreements before on-chain verification", { count: pending.length, pending });
+      devLog("Pending agreements before on-chain verification", {
+        count: pending.length,
+        pending,
+      });
 
       // Group pending by (chainId, escrowContractAddress) for batch on-chain checks
       const groups: Record<
@@ -59,13 +63,12 @@ export function useEscrowList() {
       > = {};
 
       pending.forEach((agreement) => {
-
         if (!agreement.onChainId || !agreement.escrowAddress) return;
 
         const chainId = agreement.chainId || null;
         if (!chainId) return;
 
-        console.log("Processing pending agreement", {
+        devLog("Processing pending agreement", {
           id: agreement.id,
           onChainId: agreement.onChainId,
           escrowAddress: agreement.escrowAddress,
@@ -94,11 +97,11 @@ export function useEscrowList() {
         Object.entries(groups).map(async ([, group]) => {
           try {
             if (group.onChainIds.length === 0) return;
-              console.log("Verifying on-chain existence for group", {
-                chainId: group.chainId,
-                escrowContractAddress: group.escrowContractAddress,
-                onChainIds: group.onChainIds,
-              });
+            devLog("Verifying on-chain existence for group", {
+              chainId: group.chainId,
+              escrowContractAddress: group.escrowContractAddress,
+              onChainIds: group.onChainIds,
+            });
 
             const existOnChain = await getAgreementExistOnchain(
               group.chainId,
@@ -142,7 +145,6 @@ export function useEscrowList() {
     if (allEscrows.length === 0) return [];
 
     let result = allEscrows.filter((e) => {
-
       if (statusTab !== "all" && e.status !== statusTab) return false;
 
       if (query.trim()) {

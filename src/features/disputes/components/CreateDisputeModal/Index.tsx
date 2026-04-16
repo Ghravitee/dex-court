@@ -42,7 +42,9 @@ export const CreateDisputeModal = ({
 
   const { isConnected, address } = useAccount();
   const { resolveChainId, displayChains, isProd } = useChainSelection();
-  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(null);
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(
+    null,
+  );
   const { switchChainAsync } = useSwitchChain();
 
   const [isSwitchingChain, setIsSwitchingChain] = useState(false);
@@ -59,7 +61,8 @@ export const CreateDisputeModal = ({
       // -32002 means MetaMask already has a pending request
       if (err === -32002) {
         toast.error("MetaMask is busy", {
-          description: "Please open MetaMask and complete the pending request first.",
+          description:
+            "Please open MetaMask and complete the pending request first.",
         });
       } else {
         toast.error("Failed to switch chain");
@@ -148,7 +151,7 @@ export const CreateDisputeModal = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-cyan-400/30 bg-cyan-500/10 p-6">
+          <div className="flex items-center justify-between border-b border-cyan-400/30 bg-cyan-500/10 p-4">
             <div className="flex items-center gap-3">
               <Scale className="h-6 w-6 text-cyan-300" />
               <h3 className="text-xl font-semibold text-cyan-300">
@@ -185,7 +188,8 @@ export const CreateDisputeModal = ({
               if (form.kind === "Paid") {
                 if (!isConnected || !address) {
                   toast.error("Wallet required", {
-                    description: "Please connect and authenticate your wallet to create a paid dispute.",
+                    description:
+                      "Please connect and authenticate your wallet to create a paid dispute.",
                   });
                   return;
                 }

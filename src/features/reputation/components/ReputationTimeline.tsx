@@ -149,11 +149,11 @@ export function ReputationTimeline({ events }: Props) {
                       Total:{" "}
                       <span className="text-white/60">{event.cumulative}</span>
                     </span>
-                    <span>•</span>
+                    {/* <span>•</span>
                     <span>
                       Event ID:{" "}
                       <span className="text-cyan-300">#{event.eventId}</span>
-                    </span>
+                    </span> */}
                     <span>•</span>
                     <span>
                       {formatShortDate(event.createdAt)} ·{" "}

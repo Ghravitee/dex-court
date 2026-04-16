@@ -22,9 +22,9 @@ interface JudgeItem {
   quote: string;
   name: string;
   title: string;
-  avatar?: string;
   avatarId?: number | null;
   userId?: string;
+  rawName?: string;
 }
 
 interface DisputeItem {
@@ -324,11 +324,16 @@ export const InfiniteMovingCardsWithAvatars = ({
       );
     }
 
-    if (type === "judges" && "avatar" in item) {
+    if (type === "judges" && ("avatarId" in item || "avatar" in item)) {
+      const judgeItem = item as JudgeItem;
       return (
-        <>
+        <Link
+          to={`/profile/${judgeItem.rawName ?? judgeItem.userId}`}
+          className="block h-full w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="relative z-20 mb-4 flex items-center justify-start gap-3">
-            {"avatar" in item && item.avatar ? (
+            {"avatar" in item && typeof item.avatar === "string" ? (
               <img
                 src={item.avatar}
                 alt={item.name}
@@ -336,15 +341,15 @@ export const InfiniteMovingCardsWithAvatars = ({
               />
             ) : (
               <UserAvatar
-                userId={("userId" in item ? item.userId : item.name) || ""}
-                avatarId={"avatarId" in item ? (item.avatarId ?? null) : null}
+                userId={judgeItem.userId || item.name}
+                avatarId={judgeItem.avatarId ?? null}
                 username={item.name}
                 size="md"
               />
             )}
             <div>
               <div className="text-sm font-medium text-cyan-300">
-                {item.name}
+                {formatDisplayName(item.name)}
               </div>
               <div className="text-xs text-cyan-200/70">{item.title}</div>
             </div>
@@ -354,15 +359,15 @@ export const InfiniteMovingCardsWithAvatars = ({
             {item.quote}
           </span>
 
-          <div className="relative z-20 mt-4 flex flex-row items-center justify-between">
+          {/* <div className="relative z-20 mt-4 flex flex-row items-center justify-between">
             <span className="text-sm leading-[1.6] font-normal text-cyan-300">
-              {item.name}
+              {formatDisplayName(item.name)}
             </span>
             <span className="text-sm leading-[1.6] font-normal text-cyan-200/70">
               {item.title}
             </span>
-          </div>
-        </>
+          </div> */}
+        </Link>
       );
     }
 

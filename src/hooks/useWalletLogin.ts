@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useAccount, useSignMessage } from "wagmi";
 import { walletLinkingService } from "../services/walletLinkingService";
+import { devLog } from "../utils/logger";
 
 let globalLoginAttempted = false;
 let globalLastWalletAddress: string | null = null;
@@ -40,16 +41,16 @@ export function useWalletLogin() {
     setError(null);
 
     try {
-      console.log("🔗 Linking wallet to existing session:", address);
+      devLog("🔗 Linking wallet to existing session:", address);
 
       // Step 1: Get linking nonce (uses auth header — session already exists)
       const { nonce } =
         await walletLinkingService.generateLinkingNonce(address);
-      console.log("🔗 Linking nonce received");
+      devLog("🔗 Linking nonce received");
 
       // Step 2: Sign the nonce
       const signature = await signMessageAsync({ message: nonce });
-      console.log("🔗 Linking signature generated");
+      devLog("🔗 Linking signature generated");
 
       // Step 3: Verify and link
       await walletLinkingService.verifyAndLinkWallet({
@@ -57,7 +58,7 @@ export function useWalletLogin() {
         signature,
       });
 
-      console.log("🔗 Wallet linked successfully!");
+      devLog("🔗 Wallet linked successfully!");
       return true;
     } catch (error: any) {
       console.error("Wallet linking failed:", error);
@@ -71,14 +72,14 @@ export function useWalletLogin() {
   // ─── Auto sign-in — routes to link or login based on session state ─────────
   const autoSignIn = useCallback(async (): Promise<boolean> => {
     if (!isConnected || !address) {
-      console.log("🔐 Auto sign-in: Wallet not connected");
+      devLog("🔐 Auto sign-in: Wallet not connected");
       return false;
     }
 
     // Already authenticated via wallet with matching address — nothing to do
     if (isAuthenticated && loginMethod === "wallet" && user?.walletAddress) {
       if (user.walletAddress.toLowerCase() === address.toLowerCase()) {
-        console.log("🔐 Auto sign-in: Already authenticated with this wallet");
+        devLog("🔐 Auto sign-in: Already authenticated with this wallet");
         globalLoginAttempted = true;
         globalLastWalletAddress = address;
         componentLoginAttemptedRef.current = true;
@@ -93,7 +94,7 @@ export function useWalletLogin() {
         user?.walletAddress &&
         user.walletAddress.toLowerCase() === address.toLowerCase()
       ) {
-        console.log("🔗 Wallet already linked to this TG account");
+        devLog("🔗 Wallet already linked to this TG account");
         return true;
       }
 
@@ -109,20 +110,18 @@ export function useWalletLogin() {
       }
 
       // No wallet linked yet — link this one
-      console.log("🔗 TG user has no wallet linked — initiating link flow");
+      devLog("🔗 TG user has no wallet linked — initiating link flow");
       return await linkWalletToSession();
     }
 
     // ─── Fresh login flow (no session) ────────────────────────────────────────
     if (globalLoginAttempted && globalLastWalletAddress === address) {
-      console.log(
-        "🔐 Auto sign-in: Already attempted globally for this wallet",
-      );
+      devLog("🔐 Auto sign-in: Already attempted globally for this wallet");
       return false;
     }
 
     if (componentLoginAttemptedRef.current) {
-      console.log("🔐 Auto sign-in: Already attempted in this component");
+      devLog("🔐 Auto sign-in: Already attempted in this component");
       return false;
     }
 
@@ -130,7 +129,7 @@ export function useWalletLogin() {
     globalLastWalletAddress = address;
     componentLoginAttemptedRef.current = true;
 
-    console.log("🔐 Starting wallet login for:", address);
+    devLog("🔐 Starting wallet login for:", address);
     setIsLoggingIn(true);
     setError(null);
 
@@ -138,7 +137,7 @@ export function useWalletLogin() {
       const nonce = await generateLoginNonce(address);
       const signature = await signMessageAsync({ message: nonce });
       await loginWithWallet(address, signature);
-      console.log("🔐 Wallet login successful!");
+      devLog("🔐 Wallet login successful!");
       return true;
     } catch (error: any) {
       console.error("Auto sign-in failed:", error);

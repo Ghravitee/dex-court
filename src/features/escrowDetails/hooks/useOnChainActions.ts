@@ -12,7 +12,12 @@ import { useAuth } from "../../../hooks/useAuth";
 import { rejectDelivery } from "../../../services/agreementServices";
 import { disputeService } from "../../../services/disputeServices";
 // import { getEscrowConfigs } from "../../../web3/readContract";
-import { ESCROW_ABI, ERC20_ABI, ZERO_ADDRESS, ESCROW_CA } from "../../../web3/config";
+import {
+  ESCROW_ABI,
+  ERC20_ABI,
+  ZERO_ADDRESS,
+  ESCROW_CA,
+} from "../../../web3/config";
 import {
   DisputeTypeEnum,
   type CreateDisputeFromAgreementRequest,
@@ -30,6 +35,7 @@ const INITIAL_LOADING: LoadingStates = {
   rejectDelivery: false,
   cancelOrder: false,
   approveCancellation: false,
+  rejectCancellation: false,
   partialRelease: false,
   finalRelease: false,
   cancellationTimeout: false,
@@ -127,13 +133,13 @@ export function useOnChainActions({
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceProvider?.toString().toLowerCase();
+      onChainAgreement.serviceProvider?.toString().toLowerCase();
   const isServiceRecipient =
     isLoadedAgreement &&
     address &&
     onChainAgreement &&
     address.toLowerCase() ===
-    onChainAgreement.serviceRecipient?.toString().toLowerCase();
+      onChainAgreement.serviceRecipient?.toString().toLowerCase();
 
   const userId = user?.id?.toString();
   const isFirstParty = userId === escrow?._raw?.firstParty?.id?.toString();
@@ -189,6 +195,22 @@ export function useOnChainActions({
       resetApproval();
     }
   }, [approvalError, resetApproval]);
+
+  // For approve cancellation
+  useEffect(() => {
+    if (isSuccess && loadingStates.approveCancellation) {
+      setLoading("approveCancellation", false);
+      fetchBackground().catch(console.error);
+    }
+  }, [isSuccess, loadingStates.approveCancellation, fetchBackground]);
+
+  // For reject cancellation
+  useEffect(() => {
+    if (isSuccess && loadingStates.rejectCancellation) {
+      setLoading("rejectCancellation", false);
+      fetchBackground().catch(console.error);
+    }
+  }, [isSuccess, loadingStates.rejectCancellation, fetchBackground]);
 
   useEffect(() => {
     if (uiError) {
@@ -369,17 +391,26 @@ export function useOnChainActions({
 
   const handleApproveCancellation = (final: boolean) => {
     resetMessages();
-    setLoading("approveCancellation", true);
+
+    // Set different loading states based on action
+    if (final) {
+      setLoading("approveCancellation", true);
+    } else {
+      setLoading("rejectCancellation", true);
+    }
+
     if (!onChainAgreement?.id || !escrowAddress) {
       setUiError("Agreement ID required");
       return;
     }
+
     writeContract({
       address: escrowAddress,
       abi: ESCROW_ABI.abi,
       functionName: "approveCancellation",
       args: [BigInt(onChainAgreement.id), final],
     });
+
     setUiSuccess(
       final
         ? "Cancellation approval submitted"

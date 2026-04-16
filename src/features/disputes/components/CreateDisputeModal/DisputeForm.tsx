@@ -97,7 +97,7 @@ export const DisputeForm = ({
   isConnected,
   onSelectChain,
 }: Props) => (
-  <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
+  <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-3">
     {/* Transaction status banner */}
     {transactionStep !== "idle" && (
       <div className="mb-4">
@@ -168,10 +168,11 @@ export const DisputeForm = ({
           {(["Pro Bono", "Paid"] as const).map((kind) => (
             <label
               key={kind}
-              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
-                ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                : "border-white/10 bg-white/5"
-                } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-center text-sm transition hover:border-cyan-400/40 ${
+                form.kind === kind
+                  ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                  : "border-white/10 bg-white/5"
+              } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input
                 type="radio"
@@ -200,12 +201,17 @@ export const DisputeForm = ({
                 key={chain.mainnetId}
                 type="button"
                 onClick={() => onSelectChain(chain.mainnetId)}
-                className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${selectedMainnetId === chain.mainnetId
-                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
-                  }`}
+                className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 p-3 transition-all ${
+                  selectedMainnetId === chain.mainnetId
+                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                    : "border-white/10 bg-white/5 text-white/70 hover:border-cyan-400/40"
+                }`}
               >
-                <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
+                <img
+                  src={chain.icon}
+                  alt={chain.name}
+                  className="h-8 w-8 rounded-full"
+                />
                 <span className="text-xs font-medium">{chain.name}</span>
                 <span className="text-[10px] opacity-60">
                   {isProd ? chain.symbol : `${chain.symbol} Testnet`}
@@ -217,13 +223,16 @@ export const DisputeForm = ({
             ))}
           </div>
           {!selectedMainnetId && (
-            <div className="mt-1 text-xs text-red-400">Please select a network</div>
+            <div className="mt-1 text-xs text-red-400">
+              Please select a network
+            </div>
           )}
 
           {/* Wallet warning */}
           {!isConnected && (
             <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-300">
-              ⚠️ You need to connect and authenticate your wallet to create a paid dispute.
+              ⚠️ You need to connect and authenticate your wallet to create a
+              paid dispute.
             </div>
           )}
         </div>
@@ -274,7 +283,7 @@ export const DisputeForm = ({
                 />
               ))
             ) : defendantSearch.searchQuery.replace(/^@/, "").trim().length >=
-              1 && !defendantSearch.isLoading ? (
+                1 && !defendantSearch.isLoading ? (
               <div className="px-4 py-3 text-center text-sm text-cyan-300">
                 No users found for "
                 {defendantSearch.searchQuery.replace(/^@/, "")}"
@@ -286,10 +295,10 @@ export const DisputeForm = ({
 
             {defendantSearch.searchQuery.replace(/^@/, "").trim().length <
               1 && (
-                <div className="px-4 py-3 text-center text-sm text-cyan-300">
-                  Type at least 1 character to search
-                </div>
-              )}
+              <div className="px-4 py-3 text-center text-sm text-cyan-300">
+                Type at least 1 character to search
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -375,14 +384,18 @@ export const DisputeForm = ({
             </div>
             <div className="flex items-center gap-1">
               <span>•</span>
-              <span>Network: {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name ?? "Not selected"}</span>
+              <span>
+                Network:{" "}
+                {displayChains.find((c) => c.mainnetId === selectedMainnetId)
+                  ?.name ?? "Not selected"}
+              </span>
             </div>
           </div>
         </div>
       )}
 
       {/* Actions */}
-      <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-3">
+      <div className="mt-6 flex flex-col justify-end gap-3 border-t border-white/10 pt-3 sm:flex-row">
         <Button
           type="button"
           variant="outline"

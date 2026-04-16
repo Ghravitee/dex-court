@@ -342,16 +342,14 @@ class ApiService {
         userData.avatarUrl || userData.avatar || userData.profilePicture,
       avatarId: userData.avatarId || userData.avatarFileId || null,
       role: userData.role || userData.userRole || 0,
+      isAdmin: userData.isAdmin ?? false, // ← add this
       telegram: userData.telegram
         ? {
             username: userData.telegram.username || userData.telegramInfo,
             id: userData.telegram.id || userData.telegramUserId || "",
           }
         : userData.telegramInfo
-          ? {
-              username: userData.telegramInfo,
-              id: "",
-            }
+          ? { username: userData.telegramInfo, id: "" }
           : undefined,
     };
   }

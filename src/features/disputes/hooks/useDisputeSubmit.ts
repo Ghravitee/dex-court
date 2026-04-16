@@ -20,6 +20,7 @@ import {
 } from "../constants/fileUpload";
 import type { DisputeFormState } from "../types/form";
 import { INITIAL_FORM_STATE } from "../types/form";
+import { devLog } from "../../../utils/logger";
 
 type TransactionStep = "idle" | "pending" | "success" | "error";
 
@@ -34,7 +35,6 @@ export function useDisputeSubmit({
   reloadDisputes,
   selectedChainId,
 }: UseDisputeSubmitOptions) {
-
   const effectiveChainId = selectedChainId;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [transactionStep, setTransactionStep] =
@@ -96,7 +96,7 @@ export function useDisputeSubmit({
         );
 
         // Use the parameter here if needed for logging or tracking
-        console.log(`Transaction completed: ${transactionHash}`);
+        devLog(`Transaction completed: ${transactionHash}`);
 
         toast.success("Paid dispute submitted successfully!", {
           description: `${form.title} has been recorded on-chain and in our system`,
@@ -285,7 +285,11 @@ export function useDisputeSubmit({
       };
 
       const files = form.evidence.map((uf) => uf.file);
-      await disputeService.createDispute(createDisputeData, VOTING_CA[97], files);
+      await disputeService.createDispute(
+        createDisputeData,
+        VOTING_CA[97],
+        files,
+      );
 
       toast.success("Pro Bono dispute submitted successfully", {
         description: `${form.title} has been submitted for review`,

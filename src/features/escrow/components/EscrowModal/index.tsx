@@ -80,7 +80,8 @@ export function EscrowModal({
     // Get the native symbol from SUPPORTED_CHAINS using the mainnetId
     const nativeSymbol =
       form.token === "ETH" && selectedMainnetId
-        ? (SUPPORTED_CHAINS.find((c) => c.mainnetId === selectedMainnetId)?.symbol ?? "ETH")
+        ? (SUPPORTED_CHAINS.find((c) => c.mainnetId === selectedMainnetId)
+            ?.symbol ?? "ETH")
         : form.token;
 
     if (escrowType === "myself" && form.payer === "me") {
@@ -97,7 +98,8 @@ export function EscrowModal({
     if (escrowType === "myself" && form.payer === "counterparty") {
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          Counterparty will be notified to deposit funds. You can sign immediately.
+          Counterparty will be notified to deposit funds. You can sign
+          immediately.
         </p>
       );
     }
@@ -105,8 +107,8 @@ export function EscrowModal({
       const payer = form.payerOther === "partyA" ? form.partyA : form.partyB;
       return (
         <p className="text-muted-foreground mt-4 text-xs">
-          {payer || "The selected party"} will be notified to deposit funds. Both
-          parties can sign immediately.
+          {payer || "The selected party"} will be notified to deposit funds.
+          Both parties can sign immediately.
         </p>
       );
     }
@@ -119,7 +121,7 @@ export function EscrowModal({
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
-        className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 p-6 shadow-xl"
+        className="relative w-full max-w-2xl rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/10 px-4 py-6 shadow-xl"
       >
         <button
           onClick={onClose}

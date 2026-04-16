@@ -62,11 +62,11 @@ export const DisputeHeader = ({
   return (
     <div className="flex flex-col justify-between gap-2 sm:flex-row">
       {/* Left: back + status + role badges */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-6">
         <Button
           onClick={() => navigate("/disputes")}
           variant="outline"
-          className="w-fit border-white/15 text-cyan-200 hover:bg-cyan-500/10"
+          className="w-fit self-start border-white/15 text-cyan-200 hover:bg-cyan-500/10"
         >
           <ArrowLeft className="h-4 w-4" />
           <p className="flex items-center gap-1">
@@ -107,7 +107,7 @@ export const DisputeHeader = ({
         {dispute.status === "Pending" && (
           <Button
             variant="outline"
-            className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+            className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
             onClick={onEscalateToVote}
             disabled={escalating}
           >

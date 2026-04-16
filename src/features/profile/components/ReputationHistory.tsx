@@ -80,7 +80,7 @@ export const ReputationHistory = ({
 
   return (
     <>
-      <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3">
+      <div className="mb-4 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-3">
         <div className="flex items-center justify-between">
           <div className="text-sm text-white/80">
             <div className="font-medium">Reputation Score</div>
@@ -114,7 +114,7 @@ export const ReputationHistory = ({
               key={event.id}
               className="rounded-lg border border-white/10 bg-white/5 p-3 transition-colors hover:border-cyan-400/30 hover:bg-white/10"
             >
-              <div className="flex items-start gap-3">
+              <div className="grid grid-cols-[.2fr_6fr_.2fr] gap-1 sm:gap-3">
                 <div className="text-xl">{formattedEvent.icon}</div>
                 <div className="flex-1">
                   <div className="flex items-start justify-between">
@@ -127,7 +127,7 @@ export const ReputationHistory = ({
                       </div>
                     </div>
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         formattedEvent.isPositive
                           ? "bg-green-500/20 text-green-300"
                           : "bg-red-500/20 text-red-300"

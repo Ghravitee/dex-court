@@ -19,6 +19,7 @@ import { VotingStatus } from "./components/VotingStatus";
 import { PlaintiffColumn } from "./components/PlaintiffColumn";
 import { DefendantColumn } from "./components/DefendantColumn";
 import { ActionBar } from "./components/ActionBar";
+import { devLog } from "../../utils/logger";
 
 export default function DisputeDetails() {
   const { id } = useParams();
@@ -111,7 +112,7 @@ export default function DisputeDetails() {
     dispute.id || id || "",
   );
 
-  console.log("dispute", dispute)
+  devLog("dispute", dispute);
   const defendantEvidence = dispute.defendantResponse
     ? processEvidence(
         dispute.defendantResponse.evidence || [],

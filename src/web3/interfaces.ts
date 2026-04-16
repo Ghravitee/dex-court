@@ -127,6 +127,7 @@ export interface LoadingStates {
   rejectDelivery: boolean;
   cancelOrder: boolean;
   approveCancellation: boolean;
+  rejectCancellation: boolean;
   partialRelease: boolean;
   finalRelease: boolean;
   cancellationTimeout: boolean;

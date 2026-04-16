@@ -17,29 +17,8 @@ import { useRouteLoading } from "./hooks/useRouteLoading";
 const Reputation = lazy(
   () => import("./features/reputation/components/ReputationPage"),
 );
-const AdminUsers = lazy(() => import("./pages/AdminUsers"));
-const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
-
-// const Voting = lazy(() => import("./pages/Voting"));
-
-// const Escrow = lazy(() => import("./pages/Escrow"));
-
-// ---- Pages-based structure and routes (Previous) ─────────────────────────────────────────
-// const Index = lazy(() => import("./pages/Index"));
-// const Agreements = lazy(() => import("./pages/Agreements"));
-// const AgreementDetails = lazy(() => import("./pages/AgreementDetails"));
-
-// const Disputes = lazy(() => import("./pages/Disputes"));
-// const DisputeDetails = lazy(() => import("./pages/DisputeDetails"));
-// const Escrow = lazy(() => import("./pages/Escrow"));
-// const EscrowDetails = lazy(() => import("./pages/EscrowDetails"));
-
-// const Voting = lazy(() => import("./pages/Voting"));
-
-// const Profile = lazy(() => import("./pages/Profile"));
-// const UserProfile = lazy(() => import("./pages/UserProfile"));
-
-// const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminUsers = lazy(() => import("./features/admin/pages/AdminUsers"));
+// const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
 
 // ---- Feature-based sructure and routes ─────────────────────────────────────────
 const Index = lazy(() => import("./features/index"));
@@ -70,11 +49,15 @@ function AutoLoginModal() {
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
-    const isHomepage = location.pathname === "/";
+    if (isAuthenticated) {
+      setShowModal(false);
+      return;
+    }
 
+    const isHomepage = location.pathname === "/";
     if (!isAuthInitialized) return;
 
-    if (isHomepage && !isAuthenticated && !isLoading && !hasInteracted) {
+    if (isHomepage && !isLoading && !hasInteracted) {
       const timer = setTimeout(() => setShowModal(true), 3000);
       return () => clearTimeout(timer);
     }
@@ -149,7 +132,7 @@ function AppContent() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminUsers />} />
             <Route path="users" element={<AdminUsers />} />
-            <Route path="analytics" element={<AdminAnalytics />} />
+            {/* <Route path="analytics" element={<AdminAnalytics />} /> */}
           </Route>
 
           {/* ── Fallback ──────────────────────────────── */}

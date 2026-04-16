@@ -66,8 +66,8 @@ export interface JudgeItem {
   quote: string;
   name: string;
   title: string;
-  avatar: string;
-  userId: string;
+  avatarId?: number | null;
+  userId?: string;
 }
 
 export interface Stat {

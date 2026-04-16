@@ -25,6 +25,7 @@ import { Button } from "../../../components/ui/button";
 import { UserSearchResult } from "../UserSearchResult";
 import { useAllAccounts } from "../../../hooks/useAccounts";
 import { useDebounce } from "../../../hooks/useDebounce";
+import { devLog } from "../../../utils/logger";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
@@ -143,7 +144,7 @@ export const DefendantReplyModal = ({
     if (!selectedFiles) return;
 
     const newFiles: UploadedFile[] = [];
-    console.log("new files:", newFiles);
+    devLog("new files:", newFiles);
 
     Array.from(selectedFiles).forEach((file) => {
       const fileSizeMB = file.size / 1024 / 1024;

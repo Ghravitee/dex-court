@@ -20,6 +20,7 @@ import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../UserAvatar";
 import logo from "../../assets/logo.webp";
 import { Link } from "react-router-dom";
+import { devLog } from "../../utils/logger";
 
 export function Topbar({
   onMenuClick,
@@ -153,7 +154,7 @@ export function Topbar({
         return;
       }
 
-      console.log("🔐 [Topbar] Attempting auto sign-in...");
+      devLog("🔐 [Topbar] Attempting auto sign-in...");
       autoLoginInProgressRef.current = true;
       walletConnectionHandledRef.current = true;
 
@@ -181,12 +182,12 @@ export function Topbar({
 
   useAccountEffect({
     onConnect: (data) => {
-      console.log("🔗 Wallet connected:", data.address);
+      devLog("🔗 Wallet connected:", data.address);
       // Reset handling flags on new connection
       walletConnectionHandledRef.current = false;
     },
     onDisconnect: () => {
-      console.log("🔗 Wallet disconnected");
+      devLog("🔗 Wallet disconnected");
       // Reset all flags on disconnect
       autoLoginInProgressRef.current = false;
       walletConnectionHandledRef.current = false;

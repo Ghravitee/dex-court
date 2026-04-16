@@ -19,6 +19,7 @@ import type {
   EvidenceFile,
   VoteOutcomeData,
 } from "../types";
+import { devLog } from "../utils/logger";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -389,13 +390,13 @@ export async function createDispute(
   }
   // Read the generated votingId back out of the formData
   const votingId = formData.get("votingId") as string;
-  
-  console.log("Creating dispute with createDispute Function");
+
+  devLog("Creating dispute with createDispute Function");
   formData.forEach((value, key) => {
     if (value instanceof File) {
-      console.log(` - ${key}: ${value.name} (${value.size} bytes)`);
+      devLog(` - ${key}: ${value.name} (${value.size} bytes)`);
     } else {
-      console.log(` - ${key}: ${value}`);
+      devLog(` - ${key}: ${value}`);
     }
   });
 
@@ -431,13 +432,12 @@ export async function createDisputeFromAgreement(
   }
   const votingId = formData.get("votingId") as string;
 
-  
-  console.log("Creating dispute with createDisputeFromAgreement Function");
+  devLog("Creating dispute with createDisputeFromAgreement Function");
   formData.forEach((value, key) => {
     if (value instanceof File) {
-      console.log(` - ${key}: ${value.name} (${value.size} bytes)`);
+      devLog(` - ${key}: ${value.name} (${value.size} bytes)`);
     } else {
-      console.log(` - ${key}: ${value}`);
+      devLog(` - ${key}: ${value}`);
     }
   });
 

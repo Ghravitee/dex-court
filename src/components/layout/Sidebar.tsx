@@ -28,6 +28,7 @@ import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../../components/UserAvatar";
 import { useEffect, useRef } from "react";
 import logo from "../../assets/logo.webp";
+import { devLog } from "../../utils/logger";
 
 export function Sidebar({
   expanded,
@@ -89,7 +90,7 @@ export function Sidebar({
       )
         return;
 
-      console.log("🔐 [Sidebar] Attempting auto sign-in...");
+      devLog("🔐 [Sidebar] Attempting auto sign-in...");
       sidebarAutoSignInAttemptedRef.current = true;
       sidebarLastAddressRef.current = address;
 

@@ -10,7 +10,7 @@ import {
 } from "../utils/helpers";
 import type { TypedSocket } from "../types";
 import { useAgreementDetails } from "../../../hooks/useAgreements";
-
+import { devLog } from "../../../utils/logger";
 
 export function useAgreementData(id: string | undefined) {
   const agreementId = id ? parseInt(id) : null;
@@ -79,7 +79,7 @@ export function useAgreementData(id: string | undefined) {
   // ─── Fetch dispute details when disputeId is known ─────────────────────────
 
   useEffect(() => {
-    // console.log("Agreement in effect", agreement);
+    // devLog("Agreement in effect", agreement);
     if (!agreement?.disputeId) return;
     const disputeId = parseInt(agreement.disputeId);
     if (isNaN(disputeId)) return;
@@ -87,15 +87,17 @@ export function useAgreementData(id: string | undefined) {
     const fetch = async () => {
       try {
         const details = await disputeService.getDisputeDetails(disputeId);
-        const transformed = disputeService.transformDisputeDetailsToRow(details);
-        // console.log("Fetched dispute details", details, transformed.chainId);
+        const transformed =
+          disputeService.transformDisputeDetailsToRow(details);
+        // devLog("Fetched dispute details", details, transformed.chainId);
         setDisputeStatus(transformed.status);
         if (transformed.votingId !== undefined) {
           setDisputeVotingId(transformed.votingId);
         }
         // Read chainId from dispute — works for both agreement-linked and standalone disputes
-        const disputeChainId = transformed.chainId ?? transformed.chainId ?? null;
-        console.log("Dispute chain ID", disputeChainId);
+        const disputeChainId =
+          transformed.chainId ?? transformed.chainId ?? null;
+        devLog("Dispute chain ID", disputeChainId);
         if (disputeChainId) {
           setDisputeChainId(disputeChainId);
           setPendingModalState((prev) => ({
@@ -129,7 +131,12 @@ export function useAgreementData(id: string | undefined) {
 
       // Type 19 = DisputeUpdated
       if (event.type === 19) {
-        setPendingModalState({ isOpen: false, votingId: null, flow: "reject", chainId: null });
+        setPendingModalState({
+          isOpen: false,
+          votingId: null,
+          flow: "reject",
+          chainId: null,
+        });
 
         if (agreement?.disputeId) {
           const disputeIdNum = parseInt(agreement.disputeId);

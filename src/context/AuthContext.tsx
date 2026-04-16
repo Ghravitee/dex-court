@@ -8,6 +8,7 @@ import { walletLinkingService } from "../services/walletLinkingService";
 import { authQueryKeys } from "../constants/auth";
 import type { User, AuthContextType } from "../types/auth.types";
 import { AuthContext } from "./AuthContext.context";
+import { devLog } from "../utils/logger";
 
 // Helper functions (not exported)
 function isValidToken(token: string | null): boolean {
@@ -276,9 +277,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (otp: string): Promise<void> => {
     try {
-      console.log("🔐 [AuthContext] Starting Telegram login...");
+      devLog("🔐 [AuthContext] Starting Telegram login...");
       await telegramLoginMutation.mutateAsync(otp);
-      console.log("🔐 [AuthContext] Telegram login completed successfully");
+      devLog("🔐 [AuthContext] Telegram login completed successfully");
     } catch (error) {
       console.error("🔐 [AuthContext] Login failed:", error);
       throw error;

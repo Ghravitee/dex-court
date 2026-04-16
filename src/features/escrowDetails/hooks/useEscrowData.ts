@@ -7,6 +7,7 @@ import { connectSocket } from "../../../services/socket";
 import { getAgreement } from "../../../web3/readContract";
 import type { EscrowDetailsData, TypedSocket } from "../types";
 import { transformApiToEscrow } from "../utils/helpers";
+import { devLog } from "../../../utils/logger";
 
 interface PendingModalState {
   isOpen: boolean;
@@ -17,6 +18,13 @@ interface PendingModalState {
     action: "raise" | "reject";
   } | null;
 }
+
+type EscrowFetchError =
+  | { type: "not_found" }
+  | { type: "unauthorized" }
+  | { type: "network" }
+  | { type: "server"; status?: number }
+  | { type: "unknown" };
 
 export function useEscrowData(id: string | undefined) {
   const socketRef = useRef<TypedSocket | null>(null);
@@ -35,48 +43,61 @@ export function useEscrowData(id: string | undefined) {
       isOpen: false,
       data: null,
     });
+  const [fetchError, setFetchError] = useState<EscrowFetchError | null>(null);
 
   // ─── On-chain fetch ───────────────────────────────────────────────────────
 
-  const fetchOnChainAgreement = useCallback(
-    async (agreementData: any) => {
-      if (!agreementData) return;
-      const onChainAgreementId = agreementData.contractAgreementId;
-      const escrowCA = agreementData.escrowContractAddress;
-      const agreementChainId = agreementData.chainId;
-      if (!onChainAgreementId || !escrowCA || !agreementChainId) return;
+  const fetchOnChainAgreement = useCallback(async (agreementData: any) => {
+    if (!agreementData) return;
+    const onChainAgreementId = agreementData.contractAgreementId;
+    const escrowCA = agreementData.escrowContractAddress;
+    const agreementChainId = agreementData.chainId;
+    if (!onChainAgreementId || !escrowCA || !agreementChainId) return;
 
-      console.log (`Initiating on-chain fetch: agreementId=${onChainAgreementId}, escrowCA=${escrowCA}, chainId=${agreementChainId}`);
-      setOnChainLoading(true);
-      try {
-        const res = await getAgreement(
-          escrowCA,
-          agreementChainId as number,
-          BigInt(onChainAgreementId),
-        );
-        setOnChainAgreement(res);
-      } catch (err) {
-        console.error("Failed to fetch on-chain agreement:", err);
-        setOnChainAgreement(null);
-      } finally {
-        setOnChainLoading(false);
-      }
-    },
-    [],
-  );
+    devLog(
+      `Initiating on-chain fetch: agreementId=${onChainAgreementId}, escrowCA=${escrowCA}, chainId=${agreementChainId}`,
+    );
+    setOnChainLoading(true);
+    try {
+      const res = await getAgreement(
+        escrowCA,
+        agreementChainId as number,
+        BigInt(onChainAgreementId),
+      );
+      setOnChainAgreement(res);
+    } catch (err) {
+      console.error("Failed to fetch on-chain agreement:", err);
+      setOnChainAgreement(null);
+    } finally {
+      setOnChainLoading(false);
+    }
+  }, []);
 
   // ─── Foreground fetch ─────────────────────────────────────────────────────
 
   const fetchEscrowDetails = useCallback(async () => {
     if (!id) return;
     setInitialLoading(true);
+    setFetchError(null); // reset on each attempt
     try {
       const data = await agreementService.getAgreementDetails(parseInt(id));
       setEscrow(transformApiToEscrow(data));
       fetchOnChainAgreement(data).catch(console.warn);
-    } catch {
-      toast.error("Failed to load escrow details");
+    } catch (err: any) {
       setEscrow(null);
+      const status = err?.response?.status ?? err?.status;
+      if (status === 404) {
+        setFetchError({ type: "not_found" });
+      } else if (status === 403 || status === 401) {
+        setFetchError({ type: "unauthorized" });
+      } else if (status >= 500) {
+        setFetchError({ type: "server", status });
+      } else if (!navigator.onLine || err?.message === "Network Error") {
+        setFetchError({ type: "network" });
+      } else {
+        setFetchError({ type: "unknown" });
+      }
+      toast.error("Failed to load escrow details");
     } finally {
       setInitialLoading(false);
     }
@@ -218,5 +239,6 @@ export function useEscrowData(id: string | undefined) {
     fetchEscrowDetails,
     fetchEscrowDetailsBackground,
     fetchDisputeDetails,
+    fetchError,
   };
 }

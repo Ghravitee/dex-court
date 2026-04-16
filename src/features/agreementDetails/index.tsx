@@ -248,9 +248,9 @@ export default function AgreementDetails() {
     actionInfoItems.push(
       <ActionInfoBlurb key="respond-cancel" color="orange">
         The other party has requested to cancel this agreement.{" "}
-        <strong className="font-medium text-orange-200">Accepting</strong>{" "}
+        <strong className="font-medium text-orange-300">Accepting</strong>{" "}
         closes it immediately.{" "}
-        <strong className="font-medium text-orange-200">Rejecting</strong> keeps
+        <strong className="font-medium text-orange-300">Rejecting</strong> keeps
         the agreement active.
       </ActionInfoBlurb>,
     );
@@ -268,9 +268,9 @@ export default function AgreementDetails() {
   if (canReviewDelivery) {
     actionInfoItems.push(
       <ActionInfoBlurb key="review-delivery" color="green">
-        <strong className="font-medium text-green-200">Accept</strong> to
-        confirm the work is complete and release any escrowed funds.{" "}
-        <strong className="font-medium text-red-200">Reject</strong> if the
+        <strong className="font-medium text-green-300">Accept</strong> to
+        confirm the work is complete.{" "}
+        <strong className="font-medium text-red-300">Reject</strong> if the
         delivery doesn't meet the agreed terms — this will automatically open a
         dispute for resolution.
       </ActionInfoBlurb>,
@@ -282,7 +282,7 @@ export default function AgreementDetails() {
       <ActionInfoBlurb key="dispute" color="purple">
         Open a dispute if the other party is not fulfilling their obligations. A
         small fee might be required to file if you choose a paid option, and the
-        case will be reviewed by community arbitrators.
+        case will be reviewed by Judges and the community.
       </ActionInfoBlurb>,
     );
   }

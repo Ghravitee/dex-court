@@ -7,6 +7,7 @@ import { X, Wallet, Loader2, CheckCircle2 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useWalletLogin } from "../hooks/useWalletLogin";
+import { devLog } from "../utils/logger";
 
 const telegramBotUrl = import.meta.env.VITE_TELEGRAM_BOT_LINK;
 
@@ -22,7 +23,7 @@ export function LoginModal({
   mode = "login",
 }: LoginModalProps) {
   const [otp, setOtp] = useState("");
-  const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("wallet");
+  const [activeTab, setActiveTab] = useState<"wallet" | "telegram">("telegram");
   const { login, isLoading, linkTelegram, user, isAuthenticated, loginMethod } =
     useAuth();
   const { isConnected, address } = useAccount();
@@ -54,7 +55,7 @@ export function LoginModal({
       isConnected &&
       address
     ) {
-      console.log(
+      devLog(
         "🔐 [Modal] Wallet already connected, showing auto sign-in status",
       );
     }
@@ -67,14 +68,14 @@ export function LoginModal({
     }
 
     try {
-      console.log("🔐 Starting Telegram authentication...");
+      devLog("🔐 Starting Telegram authentication...");
 
       if (mode === "link") {
         await linkTelegram(otp);
-        console.log("🔐 Telegram linking successful");
+        devLog("🔐 Telegram linking successful");
       } else {
         await login(otp);
-        console.log("🔐 Telegram login successful");
+        devLog("🔐 Telegram login successful");
       }
 
       onClose();

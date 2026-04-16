@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "../../../../components/ui/button";
 import { useDisputeTransaction } from "../../../../hooks/useDisputeTransaction";
 import { SUPPORTED_CHAINS } from "../../../../web3/config";
+import { devLog } from "../../../../utils/logger";
 
 interface Props {
   isOpen: boolean;
@@ -33,14 +34,18 @@ export const PendingDisputeModal = ({
   flow = "reject",
   chainId,
 }: Props) => {
-
   const [userInitiated, setUserInitiated] = useState(false);
   const [modalState, setModalState] = useState<
     "initializing" | "active" | "closing"
   >("initializing");
   const hasStartedTransaction = useRef(false);
 
-  console.log("PendingDisputeModal props", { votingId, agreement, flow, chainId });
+  devLog("PendingDisputeModal props", {
+    votingId,
+    agreement,
+    flow,
+    chainId,
+  });
 
   const {
     transactionStep,
@@ -71,7 +76,7 @@ export const PendingDisputeModal = ({
     }
   }, [isError]);
 
-  console.log("Agreement", agreement);
+  devLog("Agreement", agreement);
 
   useEffect(() => {
     if (!isOpen) {
@@ -86,13 +91,14 @@ export const PendingDisputeModal = ({
     if (!votingId || userInitiated || isProcessing) return;
     if (!chainId) {
       toast.error("Network not configured", {
-        description: "Could not determine the chain to use. Please refresh and try again.",
+        description:
+          "Could not determine the chain to use. Please refresh and try again.",
       });
       return;
     }
     setUserInitiated(true);
     setModalState("active");
-    console.log(
+    devLog(
       `[PendingDisputeModal] Starting payment — flow: ${flow}, votingId: ${votingId}`,
     );
     try {
@@ -100,7 +106,14 @@ export const PendingDisputeModal = ({
     } catch {
       setUserInitiated(false);
     }
-  }, [votingId, userInitiated, isProcessing, createDisputeOnchain, flow]);
+  }, [
+    votingId,
+    userInitiated,
+    isProcessing,
+    createDisputeOnchain,
+    flow,
+    chainId,
+  ]);
 
   const handleRetryPayment = useCallback(async () => {
     setUserInitiated(false);
@@ -109,7 +122,7 @@ export const PendingDisputeModal = ({
       return;
     }
     await retryTransaction(votingId);
-  }, [votingId, retryTransaction]);
+  }, [votingId, retryTransaction, chainId]);
 
   const getStatusConfig = () => {
     if (
@@ -256,9 +269,12 @@ export const PendingDisputeModal = ({
                   ["Type", "Paid Dispute"],
                   // ["Flow", flow],
                   ["Voting ID", votingId],
-                  ["Network", SUPPORTED_CHAINS.find(c =>
-                    c.mainnetId === chainId || c.testnetId === chainId
-                  )?.name ?? "Unknown Network"],
+                  [
+                    "Network",
+                    SUPPORTED_CHAINS.find(
+                      (c) => c.mainnetId === chainId || c.testnetId === chainId,
+                    )?.name ?? "Unknown Network",
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-purple-200/80">{label}:</span>

@@ -1,3 +1,4 @@
+import { devLog } from "../utils/logger";
 import { io, Socket } from "socket.io-client";
 
 /**
@@ -27,7 +28,7 @@ export function connectSocket(jwt: string): Socket {
 
   // Log connection events
   socket.on("connect", () => {
-    console.log(`Socket connected: ${socket?.id}`);
+    devLog(`Socket connected: ${socket?.id}`);
   });
 
   socket.on("disconnect", (reason) => {

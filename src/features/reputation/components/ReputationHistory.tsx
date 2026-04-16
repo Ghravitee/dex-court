@@ -35,9 +35,9 @@ export function ReputationHistory({
   const events = history.results ?? [];
 
   return (
-    <section className="rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-5">
+    <section className="rounded-xl border border-cyan-400 bg-gradient-to-br from-cyan-500/20 to-transparent p-3">
       {/* Header */}
-      <div className="flex flex-col items-start justify-between gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-white/10 p-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="">
             Reputation History for{" "}
@@ -58,7 +58,7 @@ export function ReputationHistory({
       </div>
 
       {/* Body */}
-      <div className="p-5">
+      <div className="p-3">
         {loading ? (
           <CenteredSpinner label="Loading reputation history..." />
         ) : events.length === 0 ? (
@@ -116,7 +116,7 @@ function HistoryTable({ events }: { events: ReputationEvent[] }) {
           <tr className="text-left text-white/50">
             <th className="w-[5%] px-4 py-3">#</th>
             <th className="px-4 py-3">Event Type</th>
-            <th className="px-4 py-3">Event ID</th>
+            {/* <th className="px-4 py-3">Event ID</th> */}
             <th className="px-4 py-3">Change</th>
             <th className="px-4 py-3">Date</th>
           </tr>
@@ -136,7 +136,7 @@ function HistoryTable({ events }: { events: ReputationEvent[] }) {
                     <span className="text-white/80">{details.text}</span>
                   </div>
                 </td>
-                <td className="px-4 py-4 text-cyan-300">#{event.eventId}</td>
+                {/* <td className="px-4 py-4 text-cyan-300">#{event.eventId}</td> */}
                 <td className="px-4 py-4">
                   <span
                     className={`font-medium ${

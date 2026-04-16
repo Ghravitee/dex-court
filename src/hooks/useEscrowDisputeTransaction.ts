@@ -4,6 +4,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ESCROW_ABI } from "../web3/config";
 import { getEscrowConfigs } from "../web3/readContract";
 import { toast } from "sonner";
+import { devLog } from "../utils/logger";
 
 export type TransactionStep = "idle" | "pending" | "success" | "error";
 
@@ -47,7 +48,7 @@ export const useEscrowDisputeTransaction = (
       votingIdToUse: bigint,
       isProBono: boolean,
     ) => {
-      console.log(
+      devLog(
         "🟡 [useEscrowDisputeTransaction] Raising dispute on-chain with:",
         {
           contractAgreementId: contractAgreementId.toString(),
@@ -74,7 +75,7 @@ export const useEscrowDisputeTransaction = (
           try {
             const configs = await getEscrowConfigs(escrowAddress, chainId);
             feeAmount = configs?.feeAmount || 0n;
-            console.log(
+            devLog(
               "💰 [useEscrowDisputeTransaction] Fee amount from config:",
               feeAmount.toString(),
             );
@@ -89,7 +90,7 @@ export const useEscrowDisputeTransaction = (
         // Calculate the value to send
         const valueToSend = isProBono ? 0n : feeAmount;
 
-        console.log("🎯 [useEscrowDisputeTransaction] Transaction details:", {
+        devLog("🎯 [useEscrowDisputeTransaction] Transaction details:", {
           address: escrowAddress,
           functionName: "raiseDispute",
           args: [contractAgreementId, votingIdToUse, isProBono],
@@ -104,7 +105,7 @@ export const useEscrowDisputeTransaction = (
           value: valueToSend,
         });
 
-        console.log(
+        devLog(
           "✅ [useEscrowDisputeTransaction] writeContract called successfully",
         );
         return undefined;
@@ -141,7 +142,7 @@ export const useEscrowDisputeTransaction = (
       votingIdToUse: bigint,
       isProBono: boolean,
     ) => {
-      console.log(
+      devLog(
         "🟡 [useEscrowDisputeTransaction] Rejecting delivery on-chain with:",
         {
           contractAgreementId: contractAgreementId.toString(),
@@ -168,7 +169,7 @@ export const useEscrowDisputeTransaction = (
           try {
             const configs = await getEscrowConfigs(escrowAddress, chainId);
             feeAmount = configs?.feeAmount || 0n;
-            console.log(
+            devLog(
               "💰 [useEscrowDisputeTransaction] Fee amount from config:",
               feeAmount.toString(),
             );
@@ -183,15 +184,12 @@ export const useEscrowDisputeTransaction = (
         // Calculate the value to send
         const valueToSend = isProBono ? 0n : feeAmount;
 
-        console.log(
-          "🎯 [useEscrowDisputeTransaction] Reject delivery details:",
-          {
-            address: escrowAddress,
-            functionName: "approveDelivery",
-            args: [contractAgreementId, false, votingIdToUse, isProBono],
-            value: valueToSend.toString(),
-          },
-        );
+        devLog("🎯 [useEscrowDisputeTransaction] Reject delivery details:", {
+          address: escrowAddress,
+          functionName: "approveDelivery",
+          args: [contractAgreementId, false, votingIdToUse, isProBono],
+          value: valueToSend.toString(),
+        });
 
         writeContract({
           address: escrowAddress,
@@ -201,7 +199,7 @@ export const useEscrowDisputeTransaction = (
           value: valueToSend, // Add the value parameter
         });
 
-        console.log(
+        devLog(
           "✅ [useEscrowDisputeTransaction] rejectDeliveryOnchain called successfully",
         );
         return undefined;
@@ -236,7 +234,7 @@ export const useEscrowDisputeTransaction = (
       votingIdToUse: bigint,
       isProBono: boolean,
     ) => {
-      console.log(
+      devLog(
         "🔄 [useEscrowDisputeTransaction] Retrying transaction for votingId:",
         votingIdToUse.toString(),
       );
@@ -261,7 +259,7 @@ export const useEscrowDisputeTransaction = (
 
   // Reset transaction state
   const resetTransaction = useCallback(() => {
-    console.log("♻️ [useEscrowDisputeTransaction] Resetting transaction state");
+    devLog("♻️ [useEscrowDisputeTransaction] Resetting transaction state");
     resetWrite();
     setTransactionStep("idle");
     setIsProcessing(false);
@@ -272,10 +270,10 @@ export const useEscrowDisputeTransaction = (
   // Monitor transaction status changes
   useEffect(() => {
     if (isWritePending) {
-      console.log("⏳ [useEscrowDisputeTransaction] Transaction pending...");
+      devLog("⏳ [useEscrowDisputeTransaction] Transaction pending...");
       setTransactionStep("pending");
     } else if (isTransactionSuccess && hash) {
-      console.log(
+      devLog(
         "✅ [useEscrowDisputeTransaction] Transaction successful! Hash:",
         hash,
       );
@@ -288,7 +286,7 @@ export const useEscrowDisputeTransaction = (
         duration: 3000,
       });
     } else if (writeError || isTransactionError) {
-      console.log("❌ [useEscrowDisputeTransaction] Transaction failed");
+      devLog("❌ [useEscrowDisputeTransaction] Transaction failed");
       setTransactionStep("error");
       setIsProcessing(false);
 

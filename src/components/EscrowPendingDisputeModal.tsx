@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 // import { TransactionStatus } from "../components/TransactionStatus";
 import { useEscrowDisputeTransaction } from "../hooks/useEscrowDisputeTransaction";
+import { devLog } from "../utils/logger";
 
 interface EscrowPendingDisputeModalProps {
   isOpen: boolean;
@@ -93,7 +94,7 @@ export default function EscrowPendingDisputeModal({
   // Set modal to active when opened (just showing UI, not starting transaction)
   useEffect(() => {
     if (isOpen) {
-      console.log(`📂 [EscrowPendingDisputeModal] Modal opened for ${action}`);
+      devLog(`📂 [EscrowPendingDisputeModal] Modal opened for ${action}`);
       setModalState("active");
     }
   }, [isOpen, action]);
@@ -101,11 +102,11 @@ export default function EscrowPendingDisputeModal({
   // Handle transaction success
   useEffect(() => {
     if (isSuccess && transactionHash) {
-      console.log(
+      devLog(
         `✅ [EscrowPendingDisputeModal] Transaction successful! Hash:`,
         transactionHash,
       );
-      console.log(
+      devLog(
         "🔄 [EscrowPendingDisputeModal] Will close modal and call onDisputeCreated in 2 seconds",
       );
 
@@ -113,7 +114,7 @@ export default function EscrowPendingDisputeModal({
 
       // Close modal after success with delay
       const timer = setTimeout(() => {
-        console.log(
+        devLog(
           "🏁 [EscrowPendingDisputeModal] Closing modal and calling onDisputeCreated",
         );
         onDisputeCreated();
@@ -151,9 +152,7 @@ export default function EscrowPendingDisputeModal({
   // Reset states when modal closes
   useEffect(() => {
     if (!isOpen) {
-      console.log(
-        "♻️ [EscrowPendingDisputeModal] Modal closed, resetting state",
-      );
+      devLog("♻️ [EscrowPendingDisputeModal] Modal closed, resetting state");
       resetTransaction();
       setUserInitiated(false);
       setModalState("initializing");
@@ -171,18 +170,16 @@ export default function EscrowPendingDisputeModal({
     }
 
     if (userInitiated || isProcessing) {
-      console.log(
-        "⏸️ [EscrowPendingDisputeModal] Transaction already in progress",
-      );
+      devLog("⏸️ [EscrowPendingDisputeModal] Transaction already in progress");
       return;
     }
 
-    console.log(
+    devLog(
       `🚀 [EscrowPendingDisputeModal] User initiated transaction for ${action} with voting ID:`,
       votingId,
     );
-    console.log("🔗 Chain ID:", agreement.chainId);
-    console.log("📄 Agreement:", {
+    devLog("🔗 Chain ID:", agreement.chainId);
+    devLog("📄 Agreement:", {
       id: agreement?.id,
       title: agreement?.title,
       contractId: contractIdAsBigInt().toString(),
@@ -192,16 +189,14 @@ export default function EscrowPendingDisputeModal({
 
     try {
       if (action === "raise") {
-        console.log(
-          "💰 [EscrowPendingDisputeModal] Calling raiseDisputeOnchain...",
-        );
+        devLog("💰 [EscrowPendingDisputeModal] Calling raiseDisputeOnchain...");
         await raiseDisputeOnchain(
           contractIdAsBigInt(),
           votingIdAsBigInt(),
           isProBono,
         );
       } else if (action === "reject") {
-        console.log(
+        devLog(
           "💰 [EscrowPendingDisputeModal] Calling rejectDeliveryOnchain...",
         );
         await rejectDeliveryOnchain(
@@ -211,7 +206,7 @@ export default function EscrowPendingDisputeModal({
         );
       }
 
-      console.log("✅ [EscrowPendingDisputeModal] Transaction initiated");
+      devLog("✅ [EscrowPendingDisputeModal] Transaction initiated");
     } catch (error) {
       console.error(
         "❌ [EscrowPendingDisputeModal] Failed to start transaction:",
@@ -219,7 +214,18 @@ export default function EscrowPendingDisputeModal({
       );
       setUserInitiated(false); // Allow retry on error
     }
-  }, [votingId, userInitiated, isProcessing, raiseDisputeOnchain, rejectDeliveryOnchain, agreement, action, isProBono, contractIdAsBigInt, votingIdAsBigInt]);
+  }, [
+    votingId,
+    userInitiated,
+    isProcessing,
+    raiseDisputeOnchain,
+    rejectDeliveryOnchain,
+    agreement,
+    action,
+    isProBono,
+    contractIdAsBigInt,
+    votingIdAsBigInt,
+  ]);
 
   const handleRetryPayment = useCallback(async () => {
     if (!votingId || contractIdAsBigInt() === 0n) {
@@ -230,11 +236,11 @@ export default function EscrowPendingDisputeModal({
       return;
     }
 
-    console.log(
+    devLog(
       `🔄 [EscrowPendingDisputeModal] Retrying payment for voting ID:`,
       votingId,
     );
-    console.log("🔗 Chain ID:", agreement.chainId);
+    devLog("🔗 Chain ID:", agreement.chainId);
 
     setUserInitiated(true); // Set initiated state for retry
 
@@ -252,7 +258,7 @@ export default function EscrowPendingDisputeModal({
           isProBono,
         );
       }
-      console.log("✅ [EscrowPendingDisputeModal] Retry initiated");
+      devLog("✅ [EscrowPendingDisputeModal] Retry initiated");
     } catch (error) {
       console.error("❌ [EscrowPendingDisputeModal] Retry failed:", error);
       setUserInitiated(false); // Allow another retry on error
@@ -325,13 +331,11 @@ export default function EscrowPendingDisputeModal({
   }, []);
 
   if (!isOpen) {
-    console.log(
-      "🚫 [EscrowPendingDisputeModal] Modal not open, returning null",
-    );
+    devLog("🚫 [EscrowPendingDisputeModal] Modal not open, returning null");
     return null;
   }
 
-  // console.log("🎬 [EscrowPendingDisputeModal] Rendering modal with:", {
+  // devLog("🎬 [EscrowPendingDisputeModal] Rendering modal with:", {
   //   votingId,
   //   contractAgreementId: contractIdAsBigInt().toString(),
   //   transactionStep,

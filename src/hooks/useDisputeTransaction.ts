@@ -5,6 +5,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { VOTING_ABI, VOTING_CA } from "../web3/config";
 import { getVoteConfigs } from "../web3/readContract";
 import { toast } from "sonner";
+import { devLog } from "../utils/logger";
 
 export type TransactionStep = "idle" | "pending" | "success" | "error";
 
@@ -29,7 +30,7 @@ export const useDisputeTransaction = (chainId: number) => {
   // Main function to create dispute on-chain
   const createDisputeOnchain = useCallback(
     async (votingId: number | string) => {
-      console.log(
+      devLog(
         "🟡 [useDisputeTransaction] Creating on-chain dispute with votingId:",
         votingId,
       );
@@ -40,7 +41,7 @@ export const useDisputeTransaction = (chainId: number) => {
 
         const effectiveChainId = chainIdRef.current;
         const contractAddress = VOTING_CA[effectiveChainId];
-        console.log("📝 [useDisputeTransaction] Contract lookup:", {
+        devLog("📝 [useDisputeTransaction] Contract lookup:", {
           chainId: effectiveChainId,
           contractAddress,
         });
@@ -54,7 +55,7 @@ export const useDisputeTransaction = (chainId: number) => {
         try {
           const configs = await getVoteConfigs(effectiveChainId);
           feeValue = configs?.feeAmount;
-          console.log(
+          devLog(
             "💰 [useDisputeTransaction] Fee amount:",
             feeValue?.toString(),
           );
@@ -65,7 +66,7 @@ export const useDisputeTransaction = (chainId: number) => {
           );
         }
 
-        console.log("🎯 [useDisputeTransaction] Transaction details:", {
+        devLog("🎯 [useDisputeTransaction] Transaction details:", {
           contractAddress,
           functionName: "raiseDispute",
           args: [BigInt(votingId), false],
@@ -73,7 +74,7 @@ export const useDisputeTransaction = (chainId: number) => {
           hasFee: !!feeValue,
         });
 
-        console.log("⏳ [useDisputeTransaction] Calling writeContract...");
+        devLog("⏳ [useDisputeTransaction] Calling writeContract...");
 
         writeContract({
           address: contractAddress,
@@ -83,9 +84,7 @@ export const useDisputeTransaction = (chainId: number) => {
           value: feeValue,
         });
 
-        console.log(
-          "✅ [useDisputeTransaction] writeContract called successfully",
-        );
+        devLog("✅ [useDisputeTransaction] writeContract called successfully");
         return undefined; // The transaction hash will come from wagmi
       } catch (error: any) {
         console.error(
@@ -115,7 +114,7 @@ export const useDisputeTransaction = (chainId: number) => {
   // Retry transaction function
   const retryTransaction = useCallback(
     async (votingId: number | string): Promise<string | undefined> => {
-      console.log(
+      devLog(
         "🔄 [useDisputeTransaction] Retrying transaction for votingId:",
         votingId,
       );
@@ -138,7 +137,7 @@ export const useDisputeTransaction = (chainId: number) => {
 
   // Reset transaction state
   const resetTransaction = useCallback(() => {
-    console.log("♻️ [useDisputeTransaction] Resetting transaction state");
+    devLog("♻️ [useDisputeTransaction] Resetting transaction state");
     resetWrite();
     setTransactionStep("idle");
     setIsProcessing(false);
@@ -152,13 +151,10 @@ export const useDisputeTransaction = (chainId: number) => {
   // Monitor transaction status changes
   useEffect(() => {
     if (isWritePending) {
-      console.log("⏳ [useDisputeTransaction] Transaction pending...");
+      devLog("⏳ [useDisputeTransaction] Transaction pending...");
       setTransactionStep("pending");
     } else if (isTransactionSuccess && hash) {
-      console.log(
-        "✅ [useDisputeTransaction] Transaction successful! Hash:",
-        hash,
-      );
+      devLog("✅ [useDisputeTransaction] Transaction successful! Hash:", hash);
       setTransactionStep("success");
       setIsProcessing(false);
 
@@ -167,7 +163,7 @@ export const useDisputeTransaction = (chainId: number) => {
         duration: 3000,
       });
     } else if (writeError || isTransactionError) {
-      console.log("❌ [useDisputeTransaction] Transaction failed");
+      devLog("❌ [useDisputeTransaction] Transaction failed");
       setTransactionStep("error");
       setIsProcessing(false);
 

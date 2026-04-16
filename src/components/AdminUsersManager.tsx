@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "./UserAvatar";
+import { devLog } from "../utils/logger";
 
 export const AdminUsersManager = () => {
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
@@ -96,7 +97,7 @@ export const AdminUsersManager = () => {
     return error?.message || "An unexpected error occurred";
   };
 
-  console.log("Is admin:", isAdmin);
+  devLog("Is admin:", isAdmin);
 
   const getUserRoleBadge = (role: number) => {
     switch (role) {

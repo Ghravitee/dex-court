@@ -1,12 +1,5 @@
+import { Link } from "react-router-dom";
 import Admin from "../../../components/ui/svgcomponents/Admin";
-import { Button } from "../../../components/ui/button";
-import { useNavigate } from "react-router-dom";
-// import {
-//   Admin,
-//   Judge,
-//   Community,
-//   User,
-// } from "../../../components/ui/svgcomponents";
 
 interface RoleSectionProps {
   roles: {
@@ -18,8 +11,6 @@ interface RoleSectionProps {
 }
 
 export const RoleSection = ({ roles }: RoleSectionProps) => {
-  const navigate = useNavigate();
-
   if (roles.admin) {
     return (
       <section className="rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/20 to-transparent p-6">
@@ -37,12 +28,12 @@ export const RoleSection = ({ roles }: RoleSectionProps) => {
             You have full access to the admin panel for user management and
             platform analytics.
           </div>
-          <Button
-            onClick={() => navigate("/admin")}
-            className="border-yellow-400/40 bg-yellow-600/20 text-yellow-100 hover:bg-yellow-500/30"
+          <Link
+            to="/admin"
+            className="rounded-lg border-yellow-400/40 bg-yellow-600/20 px-4 py-2 font-medium text-yellow-100 transition-colors hover:bg-yellow-500/30"
           >
             Access Admin Panel
-          </Button>
+          </Link>
         </div>
       </section>
     );
