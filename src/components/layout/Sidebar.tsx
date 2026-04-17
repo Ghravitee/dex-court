@@ -250,7 +250,7 @@ export function Sidebar({
           {
             to: "/admin",
             label: "Admin",
-            icon: <Shield size={18} className="text-purple-300" />,
+            icon: <Shield size={18} className="text-amber-400" />,
           },
         ]
       : []),

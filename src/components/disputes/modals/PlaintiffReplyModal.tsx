@@ -25,6 +25,7 @@ import { UserAvatar } from "../../../components/UserAvatar";
 import { useAuth } from "../../../hooks/useAuth";
 import { UserSearchResult } from "../UserSearchResult";
 import { useAllAccounts } from "../../../hooks/useAccounts";
+import type { AccountSummaryDTO } from "../../../services/accountService";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
@@ -70,14 +71,15 @@ const PlaintiffReplyModal = ({
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
   // Fetch all accounts once — cached, no per-keystroke requests
-  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
-    useAllAccounts({
-      enabled: debouncedWitnessQuery.length >= 2,
-    });
+  const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
+    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
 
   // Client-side filter
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
+
+    const allAccounts = accountsResponse?.results ?? [];
+
     const q = debouncedWitnessQuery.toLowerCase();
     return allAccounts.filter((u) => {
       const telegram = cleanTelegramUsername(
@@ -95,7 +97,7 @@ const PlaintiffReplyModal = ({
         u.walletAddress?.toLowerCase().includes(q)
       );
     });
-  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
+  }, [accountsResponse, debouncedWitnessQuery, currentUserTelegram]);
 
   // Show/hide suggestions
   useEffect(() => {
@@ -118,7 +120,7 @@ const PlaintiffReplyModal = ({
 
   // Witness select handler
   const handleWitnessSelect = useCallback(
-    (user: (typeof allAccounts)[number]) => {
+    (user: AccountSummaryDTO) => {
       const telegram = cleanTelegramUsername(
         user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
       );

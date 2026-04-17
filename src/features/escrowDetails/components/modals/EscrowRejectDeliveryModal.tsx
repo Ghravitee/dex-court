@@ -149,13 +149,14 @@ export const EscrowRejectDeliveryModal = ({
   const currentUserTelegram = currentUser?.username ?? "";
 
   // Fetch all accounts once — cached, no per-keystroke network requests
-  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
-    useAllAccounts({
-      enabled: debouncedWitnessQuery.length >= 2,
-    });
+  const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
+    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
+
+    const allAccounts = accountsResponse?.results ?? [];
+
     const q = debouncedWitnessQuery.startsWith("@")
       ? debouncedWitnessQuery.slice(1).toLowerCase()
       : debouncedWitnessQuery.toLowerCase();
@@ -170,7 +171,7 @@ export const EscrowRejectDeliveryModal = ({
         u.walletAddress?.toLowerCase().includes(q)
       );
     });
-  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
+  }, [accountsResponse, debouncedWitnessQuery, currentUserTelegram]);
 
   useEffect(() => {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);

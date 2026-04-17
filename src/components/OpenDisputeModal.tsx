@@ -33,6 +33,7 @@ import { UserSearchResult } from "./disputes/UserSearchResult";
 import { SUPPORTED_CHAINS, VOTING_CA } from "../web3/config";
 import { useAccount, useSwitchChain } from "wagmi";
 import { useChainSelection } from "../config/useChainSelection";
+import type { AccountSummaryDTO } from "../services/accountService";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const formatDefendantDisplay = (defendant: string): string => {
@@ -73,18 +74,17 @@ export default function OpenDisputeModal({
   onDisputeCreated,
   onPaidDisputeCreated,
 }: OpenDisputeModalProps) {
-
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-
 
   const { isConnected, address } = useAccount();
   const { switchChainAsync } = useSwitchChain();
   const { resolveChainId, displayChains, isProd } = useChainSelection();
-  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(null);
+  const [selectedMainnetId, setSelectedMainnetId] = useState<number | null>(
+    null,
+  );
 
   const [isSwitchingChain, setIsSwitchingChain] = useState(false);
-
 
   const handleSelectChain = async (mainnetId: number) => {
     if (isSwitchingChain) return; // prevent duplicate requests
@@ -98,7 +98,8 @@ export default function OpenDisputeModal({
       // -32002 means MetaMask already has a pending request
       if (err?.code === -32002) {
         toast.error("MetaMask is busy", {
-          description: "Please open MetaMask and complete the pending request first.",
+          description:
+            "Please open MetaMask and complete the pending request first.",
         });
       } else {
         toast.error("Failed to switch chain");
@@ -111,7 +112,9 @@ export default function OpenDisputeModal({
 
   const resolvedChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : isProd ? SUPPORTED_CHAINS[1].mainnetId : SUPPORTED_CHAINS[1].testnetId;
+    : isProd
+      ? SUPPORTED_CHAINS[1].mainnetId
+      : SUPPORTED_CHAINS[1].testnetId;
 
   const [form, setForm] = useState({
     title: "",
@@ -148,15 +151,15 @@ export default function OpenDisputeModal({
 
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
-  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
-    useAllAccounts({
-      enabled: debouncedWitnessQuery.length >= 2,
-    });
+  const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
+    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
 
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
+
+    const allAccounts = accountsResponse?.results ?? []; // moved inside
 
     const cleanQuery = debouncedWitnessQuery.startsWith("@")
       ? debouncedWitnessQuery.slice(1)
@@ -183,7 +186,12 @@ export default function OpenDisputeModal({
         u.walletAddress?.toLowerCase().includes(q)
       );
     });
-  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram, form.defendant]);
+  }, [
+    accountsResponse,
+    debouncedWitnessQuery,
+    currentUserTelegram,
+    form.defendant,
+  ]);
 
   useEffect(() => {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
@@ -311,7 +319,7 @@ export default function OpenDisputeModal({
 
   // Witness select — receives full user object from UserSearchResult
   const handleWitnessSelect = useCallback(
-    (user: (typeof allAccounts)[number], index: number) => {
+    (user: AccountSummaryDTO, index: number) => {
       const telegram = cleanTelegramUsername(
         user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
       );
@@ -772,10 +780,11 @@ export default function OpenDisputeModal({
                   {(["Pro Bono", "Paid"] as const).map((kind) => (
                     <label
                       key={kind}
-                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${form.kind === kind
-                        ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
-                        : "border-white/10 bg-white/5"
-                        } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                      className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3 text-center text-sm transition hover:border-cyan-400/40 ${
+                        form.kind === kind
+                          ? "border-cyan-400/40 bg-cyan-500/30 text-cyan-200"
+                          : "border-white/10 bg-white/5"
+                      } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
                     >
                       <input
                         type="radio"
@@ -807,25 +816,35 @@ export default function OpenDisputeModal({
                         disabled={isSwitchingChain}
                         className={`relative flex flex-col ... ${isSwitchingChain ? "cursor-wait opacity-60" : ""}`}
                       >
-                        <img src={chain.icon} alt={chain.name} className="h-8 w-8 rounded-full" />
-                        <span className="text-xs font-medium">{chain.name}</span>
+                        <img
+                          src={chain.icon}
+                          alt={chain.name}
+                          className="h-8 w-8 rounded-full"
+                        />
+                        <span className="text-xs font-medium">
+                          {chain.name}
+                        </span>
                         <span className="text-[10px] opacity-60">
                           {isProd ? chain.symbol : `${chain.symbol} Testnet`}
                         </span>
-                        {selectedMainnetId === chain.mainnetId && (
-                          isSwitchingChain
-                            ? <Loader2 className="absolute top-1.5 right-1.5 h-3.5 w-3.5 animate-spin text-cyan-400" />
-                            : <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
-                        )}
+                        {selectedMainnetId === chain.mainnetId &&
+                          (isSwitchingChain ? (
+                            <Loader2 className="absolute top-1.5 right-1.5 h-3.5 w-3.5 animate-spin text-cyan-400" />
+                          ) : (
+                            <CheckCircle className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-cyan-400" />
+                          ))}
                       </button>
                     ))}
                   </div>
                   {!selectedMainnetId && (
-                    <div className="mt-1 text-xs text-red-400">Please select a network</div>
+                    <div className="mt-1 text-xs text-red-400">
+                      Please select a network
+                    </div>
                   )}
                   {!isConnected && (
                     <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-300">
-                      ⚠️ You need to connect your wallet to create a paid dispute.
+                      ⚠️ You need to connect your wallet to create a paid
+                      dispute.
                     </div>
                   )}
                 </div>
@@ -850,7 +869,13 @@ export default function OpenDisputeModal({
                     <div className="mt-3 text-xs text-cyan-400">
                       <div className="flex items-center gap-1">
                         <span>•</span>
-                        <span>Network: {displayChains.find(c => c.mainnetId === selectedMainnetId)?.name ?? "Not selected"}</span>                      </div>
+                        <span>
+                          Network:{" "}
+                          {displayChains.find(
+                            (c) => c.mainnetId === selectedMainnetId,
+                          )?.name ?? "Not selected"}
+                        </span>{" "}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1040,10 +1065,11 @@ export default function OpenDisputeModal({
                 </label>
 
                 <div
-                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${isDragOver
-                    ? "border-cyan-400/60 bg-cyan-500/20"
-                    : "border-white/15 bg-white/5 hover:border-cyan-400/40"
-                    } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`group relative cursor-pointer rounded-md border border-dashed transition-colors ${
+                    isDragOver
+                      ? "border-cyan-400/60 bg-cyan-500/20"
+                      : "border-white/15 bg-white/5 hover:border-cyan-400/40"
+                  } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
@@ -1059,8 +1085,9 @@ export default function OpenDisputeModal({
                   />
                   <label
                     htmlFor="evidence-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${isDisabled ? "cursor-not-allowed" : ""
-                      }`}
+                    className={`flex cursor-pointer flex-col items-center justify-center px-4 py-6 text-center ${
+                      isDisabled ? "cursor-not-allowed" : ""
+                    }`}
                   >
                     <Upload className="mb-2 h-6 w-6 text-cyan-400" />
                     <div className="text-sm text-cyan-300">

@@ -1,25 +1,23 @@
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
-import { useAllAccounts } from "../../../hooks/useAccounts";
+import { useJudges } from "../../../hooks/useAccounts";
 import { type JudgeItem } from "../types";
 
 export const RenownedJudgesInfiniteCards = () => {
-  const { data: accounts = [], isLoading } = useAllAccounts();
+  const { data, isLoading } = useJudges();
 
   const judgeItems: JudgeItem[] = useMemo(
     () =>
-      accounts
-        .filter((u) => u.role === 2)
-        .map((u) => ({
-          quote: u.bio ?? "Judge and arbitrator on the platform.",
-          name: u.username ?? u.walletAddress ?? "Unknown",
-          rawName: u.username ?? u.walletAddress ?? undefined, // ← raw, untruncated
-          title: "Judge",
-          avatarId: u.avatarId ?? null,
-          userId: String(u.id),
-        })),
-    [accounts],
+      (data?.results ?? []).map((u) => ({
+        quote: u.bio ?? "Judge and arbitrator on the platform.",
+        name: u.username ?? u.walletAddress ?? "Unknown",
+        rawName: u.username ?? u.walletAddress ?? undefined,
+        title: "Judge",
+        avatarId: u.avatarId ?? null,
+        userId: String(u.id),
+      })),
+    [data?.results],
   );
   if (isLoading) {
     return (

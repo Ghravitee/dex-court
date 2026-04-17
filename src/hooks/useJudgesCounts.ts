@@ -1,14 +1,12 @@
-// hooks/useJudgesCount.ts
-import { useMemo } from "react";
-import { useAllAccounts } from "./useAccounts";
+// AFTER — asks the API for judges directly; reads totalResults for the count
+import { useJudges } from "./useAccounts";
 
 export function useJudgesCount() {
-  const { data: allAccounts = [], isLoading: loading } = useAllAccounts();
+  const { data, isLoading: loading } = useJudges();
 
-  const judgesCount = useMemo(
-    () => allAccounts.filter((user) => user.role === 2).length,
-    [allAccounts],
-  );
+  // totalResults is the authoritative count from the server.
+  // Falls back to results.length in case the field is missing.
+  const judgesCount = data?.totalResults ?? data?.results.length ?? 0;
 
   return { judgesCount, loading };
 }

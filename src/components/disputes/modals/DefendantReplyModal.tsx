@@ -26,6 +26,7 @@ import { UserSearchResult } from "../UserSearchResult";
 import { useAllAccounts } from "../../../hooks/useAccounts";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { devLog } from "../../../utils/logger";
+import type { AccountSummaryDTO } from "../../../services/accountService";
 
 const getTotalFileSize = (files: UploadedFile[]): string => {
   const totalBytes = files.reduce((total, file) => total + file.file.size, 0);
@@ -69,21 +70,21 @@ export const DefendantReplyModal = ({
 
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-  // Fetch all accounts once — cached, no per-keystroke requests
-  const { data: allAccounts = [], isLoading: isWitnessSearchLoading } =
-    useAllAccounts({
-      enabled: debouncedWitnessQuery.length >= 2,
-    });
+  // AFTER
+  const { data: accountsData, isLoading: isWitnessSearchLoading } =
+    useAllAccounts(
+      { search: debouncedWitnessQuery || undefined },
+      { enabled: debouncedWitnessQuery.length >= 2 },
+    );
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
     const q = debouncedWitnessQuery.toLowerCase();
 
-    return allAccounts.filter((u) => {
+    return (accountsData?.results ?? []).filter((u: AccountSummaryDTO) => {
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
-      // Exclude current user
       if (
         telegram &&
         telegram.toLowerCase() === currentUserTelegram.toLowerCase()
@@ -97,7 +98,7 @@ export const DefendantReplyModal = ({
         u.walletAddress?.toLowerCase().includes(q)
       );
     });
-  }, [allAccounts, debouncedWitnessQuery, currentUserTelegram]);
+  }, [accountsData?.results, debouncedWitnessQuery, currentUserTelegram]);
 
   useEffect(() => {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
@@ -198,7 +199,7 @@ export const DefendantReplyModal = ({
   };
 
   const handleWitnessSelect = useCallback(
-    (user: (typeof allAccounts)[number]) => {
+    (user: AccountSummaryDTO) => {
       const telegram = cleanTelegramUsername(
         user.telegram?.username ?? user.telegramInfo ?? user.username ?? "",
       );

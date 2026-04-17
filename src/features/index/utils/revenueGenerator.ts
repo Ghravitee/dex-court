@@ -26,28 +26,34 @@ export const genRevenue = (
     "Dec",
   ];
 
+  const BASE_REVENUE = 0;
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-indexed
+  const currentDay = now.getDate(); // 1-31
+
   if (type === "daily") {
-    for (let i = 1; i <= 30; i++) {
-      out.push({
-        t: i,
-        revenue: 15000 + Math.random() * 4000 + i * 200,
-      });
+    let cumulative = BASE_REVENUE;
+    for (let i = 1; i <= currentDay; i++) {
+      cumulative += i * 200;
+      out.push({ t: i, revenue: cumulative });
     }
   } else if (type === "weekly") {
+    let cumulative = BASE_REVENUE;
     for (let m = 0; m < 12; m++) {
+      if (m > currentMonth) break;
       for (let w = 0; w < 4; w++) {
+        cumulative += (m * 4 + w) * 300;
         out.push({
           t: m === 0 ? "" : months[m],
-          revenue: 15000 + Math.random() * 4000 + (m * 4 + w) * 300,
+          revenue: cumulative,
         });
       }
     }
   } else {
-    for (let m = 0; m < 12; m++) {
-      out.push({
-        t: months[m],
-        revenue: 20000 + Math.random() * 6000 + m * 1000,
-      });
+    let cumulative = BASE_REVENUE;
+    for (let m = 0; m <= currentMonth; m++) {
+      cumulative += m * 1000;
+      out.push({ t: months[m], revenue: cumulative });
     }
   }
 

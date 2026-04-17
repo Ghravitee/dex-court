@@ -9,22 +9,22 @@ export const CHAIN_ENV_MAP: Record<
 };
 
 export const SUPPORTED_CHAINS = [
-  {
-    id: 1,
-    name: "Ethereum",
-    symbol: "ETH",
-    mainnetId: 1,
-    testnetId: 11155111,
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
-  },
-  {
-    id: 56,
-    name: "BNB Chain",
-    symbol: "BNB",
-    mainnetId: 56,
-    testnetId: 97,
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png",
-  },
+  // {
+  //   id: 1,
+  //   name: "Ethereum",
+  //   symbol: "ETH",
+  //   mainnetId: 1,
+  //   testnetId: 11155111,
+  //   icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
+  // },
+  // {
+  //   id: 56,
+  //   name: "BNB Chain",
+  //   symbol: "BNB",
+  //   mainnetId: 56,
+  //   testnetId: 97,
+  //   icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png",
+  // },
   {
     id: 8453,
     name: "Base",

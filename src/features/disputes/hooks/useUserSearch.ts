@@ -35,19 +35,21 @@ export function useUserSearch() {
   const isSearching =
     debouncedDefendantQuery.length >= 1 || debouncedWitnessQuery.length >= 2;
 
-  const { data: allAccounts = [], isLoading } = useAllAccounts({
-    enabled: isSearching,
-  });
-
+  const { data: accountsResponse, isLoading } = useAllAccounts(
+    {},
+    { enabled: isSearching },
+  );
   // Filter helper — excludes the current user from results
   const filterAccounts = useCallback(
     (query: string) => {
       if (!query) return [];
+
+      const allAccounts = accountsResponse?.results ?? []; // moved inside
+
       const clean = query.startsWith("@") ? query.slice(1) : query;
       const q = clean.toLowerCase();
 
       return allAccounts.filter((u) => {
-        // Exclude current user
         const telegram = cleanTelegramUsername(
           u.telegram?.username ?? u.telegramInfo ?? "",
         );
@@ -58,7 +60,6 @@ export function useUserSearch() {
           return false;
         }
 
-        // Match against username, telegram, telegramInfo, or wallet
         return (
           u.username?.toLowerCase().includes(q) ||
           u.telegram?.username?.toLowerCase().includes(q) ||
@@ -67,7 +68,7 @@ export function useUserSearch() {
         );
       });
     },
-    [allAccounts, currentUserTelegram],
+    [accountsResponse, currentUserTelegram],
   );
 
   const defendantResults = useMemo(

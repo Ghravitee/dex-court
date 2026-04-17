@@ -29,6 +29,8 @@ import {
   updateAccountsToCommunity,
   type AccountSummaryDTO,
   type AccountUpdateRequest,
+  type FetchAccountsParams,
+  type AccountListResponse,
 } from "../services/accountService";
 import { clearAvatarCache } from "../lib/avatarUtils";
 
@@ -40,7 +42,7 @@ export const accountKeys = {
   byId: (id: string) => ["account", "id", id] as const,
   byUsername: (username: string) => ["account", "username", username] as const,
   byWallet: (address: string) => ["account", "wallet", address] as const,
-  all: () => ["accounts", "all"] as const,
+  all: () => ["accounts", "all"] as const, // params appended at call site
 };
 
 // ─── Shared stale times ────────────────────────────────────────────────────────
@@ -120,11 +122,26 @@ export function useAccountByWallet(
 
 /** Full account list — used for admin panels and wallet lookups. */
 export function useAllAccounts(
-  options?: Partial<UseQueryOptions<AccountSummaryDTO[]>>,
+  params?: FetchAccountsParams,
+  options?: Partial<UseQueryOptions<AccountListResponse>>,
 ) {
   return useQuery({
-    queryKey: accountKeys.all(),
-    queryFn: fetchAllAccounts,
+    // params included in the key so different filters get separate cache entries
+    queryKey: [...accountKeys.all(), params] as const,
+    queryFn: () => fetchAllAccounts(params),
+    staleTime: STALE.list,
+    ...options,
+  });
+}
+
+/** Fetches only judge accounts using the new isJudge filter — no client-side filtering. */
+export function useJudges(
+  params?: Omit<FetchAccountsParams, "isJudge">,
+  options?: Partial<UseQueryOptions<AccountListResponse>>,
+) {
+  return useQuery({
+    queryKey: [...accountKeys.all(), { isJudge: true, ...params }] as const,
+    queryFn: () => fetchAllAccounts({ ...params, isJudge: true }),
     staleTime: STALE.list,
     ...options,
   });

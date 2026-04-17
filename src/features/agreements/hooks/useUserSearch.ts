@@ -30,24 +30,18 @@ export function useUserSearch() {
   const userSearchRef = useRef<HTMLDivElement>(null);
   const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
 
-  // All accounts are fetched once and cached for 10 minutes by useAllAccounts.
-  // No per-keystroke network requests — filtering happens entirely client-side.
-  const { data: allAccounts = [], isLoading: isUserSearchLoading } =
-    useAllAccounts({
-      // Only fetch when the user has typed enough to show suggestions
-      enabled: debouncedSearchQuery.length >= 2,
-    });
+  const { data: accountsResponse, isLoading: isUserSearchLoading } =
+    useAllAccounts({}, { enabled: debouncedSearchQuery.length >= 2 });
 
   const currentUserTelegram = getCurrentUserTelegram(user);
 
-  // Filter accounts against the debounced query, excluding the current user
   const filteredResults = useMemo(() => {
     if (debouncedSearchQuery.length < 2) return [];
 
+    const allAccounts = accountsResponse?.results ?? []; // moved inside
     const q = debouncedSearchQuery.toLowerCase();
 
     return allAccounts.filter((u) => {
-      // Exclude current user from suggestions
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
@@ -58,7 +52,6 @@ export function useUserSearch() {
         return false;
       }
 
-      // Match against username, telegram username, telegramInfo, or wallet address
       return (
         u.username?.toLowerCase().includes(q) ||
         u.telegram?.username?.toLowerCase().includes(q) ||
@@ -66,7 +59,7 @@ export function useUserSearch() {
         u.walletAddress?.toLowerCase().includes(q)
       );
     });
-  }, [allAccounts, debouncedSearchQuery, currentUserTelegram]);
+  }, [accountsResponse, debouncedSearchQuery, currentUserTelegram]);
 
   // Show/hide suggestions based on query length and results
   useEffect(() => {

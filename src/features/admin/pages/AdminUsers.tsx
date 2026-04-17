@@ -42,6 +42,8 @@ export default function AdminUsers() {
     [users],
   );
 
+  console.log(validUsers, "valid users");
+
   const stats = useMemo(() => deriveStats(validUsers), [validUsers]);
 
   return (
@@ -136,7 +138,7 @@ export default function AdminUsers() {
       )}
 
       {/* ── Users manager ── */}
-      <AdminUsersManager />
+      <AdminUsersManager users={validUsers} />
     </div>
   );
 }

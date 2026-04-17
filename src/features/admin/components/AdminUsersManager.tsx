@@ -14,11 +14,16 @@ import { useAdminAccess } from "../hooks/useAdminAccess";
 import { resolveErrorMessage } from "../AdminError";
 import { ActionToolbar } from "./ActionToolbar";
 import { UserCard } from "./UserCard";
+import type { AdminUser } from "../types";
 
 interface BannerProps {
   kind: "success" | "error";
   message: string;
   onDismiss: () => void;
+}
+
+interface AdminUsersManagerProps {
+  users: AdminUser[];
 }
 
 function Banner({ kind, message, onDismiss }: BannerProps) {
@@ -48,8 +53,8 @@ function Banner({ kind, message, onDismiss }: BannerProps) {
   );
 }
 
-export function AdminUsersManager() {
-  const { data: users = [], isLoading, error, refetch } = useAdminUsers();
+export function AdminUsersManager({ users }: AdminUsersManagerProps) {
+  const { isLoading, error, refetch } = useAdminUsers();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [feedback, setFeedback] = useState<{
     kind: "success" | "error";

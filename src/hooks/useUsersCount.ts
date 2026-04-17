@@ -1,22 +1,19 @@
-// hooks/useUsersCount.ts
+// AFTER — data is now AccountListResponse; read .results for the array
 import { useMemo } from "react";
 import { useAllAccounts } from "./useAccounts";
 
 export function useUsersCount() {
-  const {
-    data: allAccounts = [],
-    isLoading: loading,
-    isError,
-  } = useAllAccounts();
+  const { data, isLoading: loading, isError } = useAllAccounts();
 
+  // .results holds the array; fall back to [] if the query hasn't resolved yet
   const usersCount = useMemo(
     () =>
-      allAccounts.filter((user) => {
+      (data?.results ?? []).filter((user) => {
         const hasTelegram = !!user.telegram?.username?.trim();
         const hasWallet = !!user.walletAddress?.trim();
         return hasTelegram || hasWallet;
       }).length,
-    [allAccounts],
+    [data?.results],
   );
 
   return {

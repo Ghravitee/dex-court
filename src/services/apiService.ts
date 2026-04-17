@@ -239,12 +239,11 @@ class ApiService {
 
       let users: any[] = [];
 
-      // Based on your console output, the response has an 'accounts' property
-      if (response && response.accounts && Array.isArray(response.accounts)) {
-        users = response.accounts;
-        devLog(`🔐 [API] Found ${users.length} users in 'accounts' array`);
+      // AFTER — aligned with the new shape
+      if (response && Array.isArray(response.results)) {
+        users = response.results;
+        devLog(`🔐 [API] Found ${users.length} users in 'results' array`);
       } else if (Array.isArray(response)) {
-        // Fallback: direct array response
         users = response;
         devLog(`🔐 [API] Found ${users.length} users in direct array`);
       } else {
@@ -401,10 +400,8 @@ class ApiService {
 
       let users: any[] = [];
 
-      // Handle different response formats - same logic as agreementService
-      if (response && Array.isArray(response.accounts)) {
-        users = response.accounts;
-      } else if (response && Array.isArray(response.results)) {
+      // AFTER — .results is now the only shape; .accounts fallback removed
+      if (response && Array.isArray(response.results)) {
         users = response.results;
       } else if (Array.isArray(response)) {
         users = response;

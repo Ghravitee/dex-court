@@ -49,6 +49,25 @@ export interface AdminRoleUpdateResponse {
   errorCode?: number;
 }
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+// NEW: query params the updated GET /accounts endpoint accepts
+export interface FetchAccountsParams {
+  top?: number;
+  skip?: number;
+  sort?: "asc" | "desc";
+  search?: string;
+  isJudge?: boolean;
+  isAdmin?: boolean;
+}
+
+// NEW: the paginated response shape the endpoint now returns
+export interface AccountListResponse {
+  totalAccounts: number;
+  totalResults: number;
+  results: AccountSummaryDTO[];
+}
+
 // ─── Response normalisation ────────────────────────────────────────────────────
 // The /accounts endpoint returns inconsistent shapes depending on context.
 // This transform centralises the defensive fallbacks in one place.
@@ -77,7 +96,6 @@ function normaliseAccount(raw: any): AccountSummaryDTO {
 // Normalises whatever shape the list endpoints return into a plain array
 function extractAccountList(response: any): any[] {
   if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.accounts)) return response.accounts;
   if (Array.isArray(response?.results)) return response.results;
   console.warn("[accountService] Unexpected list response shape:", response);
   return [];
@@ -108,30 +126,37 @@ export async function fetchAccountByUsername(
   return normaliseAccount(response.data);
 }
 
-export async function fetchAllAccounts(): Promise<AccountSummaryDTO[]> {
-  const response = await api.get("/accounts");
-  return extractAccountList(response.data).map(normaliseAccount);
+export async function fetchAllAccounts(
+  params?: FetchAccountsParams,
+): Promise<AccountListResponse> {
+  const response = await api.get("/accounts", { params });
+  return {
+    totalAccounts: response.data.totalAccounts ?? 0,
+    totalResults: response.data.totalResults ?? 0,
+    results: extractAccountList(response.data).map(normaliseAccount),
+  };
 }
 
 // ─── Wallet lookup ─────────────────────────────────────────────────────────────
 // NOTE: There is no dedicated backend endpoint for wallet lookup.
 // This fetches all accounts and filters client-side, which is not scalable.
 // TODO: Ask backend to add GET /accounts/wallet/:address
+// AFTER
 export async function fetchAccountByWalletAddress(
   walletAddress: string,
 ): Promise<AccountSummaryDTO> {
   devLog(
     `[accountService] Wallet lookup — fetching all accounts to find: ${walletAddress}`,
   );
-  const all = await fetchAllAccounts();
-  const found = all.find(
-    (u) => u.walletAddress?.toLowerCase() === walletAddress.toLowerCase(),
+  const { results } = await fetchAllAccounts();
+  const found = results.find(
+    (u: AccountSummaryDTO) =>
+      u.walletAddress?.toLowerCase() === walletAddress.toLowerCase(),
   );
   if (!found)
     throw new Error(`No account found for wallet address: ${walletAddress}`);
   return found;
 }
-
 // ─── Avatar ────────────────────────────────────────────────────────────────────
 
 // Compresses an image file to JPEG before upload.
