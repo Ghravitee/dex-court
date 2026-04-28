@@ -79,24 +79,20 @@ export const DefendantReplyModal = ({
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
-    const q = debouncedWitnessQuery.toLowerCase();
 
     return (accountsData?.results ?? []).filter((u: AccountSummaryDTO) => {
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
+
+      // Exclude current user
       if (
         telegram &&
         telegram.toLowerCase() === currentUserTelegram.toLowerCase()
       )
         return false;
 
-      return (
-        u.username?.toLowerCase().includes(q) ||
-        u.telegram?.username?.toLowerCase().includes(q) ||
-        u.telegramInfo?.toLowerCase().includes(q) ||
-        u.walletAddress?.toLowerCase().includes(q)
-      );
+      return true;
     });
   }, [accountsData?.results, debouncedWitnessQuery, currentUserTelegram]);
 

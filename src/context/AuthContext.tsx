@@ -141,6 +141,14 @@ function clearAuthToken(): void {
   localStorage.removeItem("authToken");
 }
 
+function storeLoginMethod(method: "telegram" | "wallet"): void {
+  localStorage.setItem("loginMethod", method);
+}
+
+function clearLoginMethod(): void {
+  localStorage.removeItem("loginMethod");
+}
+
 // ONLY COMPONENT EXPORT - NO CONTEXT, NO HOOKS
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -150,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthInitialized, setIsAuthInitialized] = useState(false);
 
   const [loginMethod, setLoginMethod] = useState<"telegram" | "wallet" | null>(
-    null,
+    () => localStorage.getItem("loginMethod") as "telegram" | "wallet" | null,
   );
 
   const {
@@ -177,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!token) throw new Error("No token received from server");
       storeAuthToken(token);
       setLoginMethod("telegram"); // Track that user logged in via Telegram
+      storeLoginMethod("telegram");
       queryClient.invalidateQueries({ queryKey: authQueryKeys.user });
       refetchUser();
     },
@@ -199,12 +208,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!token) throw new Error("No token received from server");
       storeAuthToken(token);
       setLoginMethod("wallet"); // Track that user logged in via wallet
+      storeLoginMethod("wallet");
       queryClient.invalidateQueries({ queryKey: authQueryKeys.user });
       refetchUser();
     },
     onError: () => {
       clearAuthToken();
       setLoginMethod(null);
+      clearLoginMethod();
     },
   });
 
@@ -246,12 +257,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       setIsAuthenticated(userData.id !== "unknown");
     }
-
-    if (!userLoading) {
-      setIsAuthInitialized(true);
-    }
   }, [userData, userLoading]);
 
+  // Make initializeAuth the only place that sets isAuthInitialized
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -259,21 +267,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       const token = localStorage.getItem("authToken");
 
-      if (token && !isValidToken(token)) {
+      if (!token) {
+        // No token — auth is settled immediately with no user
+        setIsAuthInitialized(true);
+        return;
+      }
+
+      if (!isValidToken(token)) {
         clearAuthToken();
         setIsAuthInitialized(true);
         return;
       }
 
-      if (token) {
-        await refetchUser();
+      try {
+        // Use the result directly instead of relying on the userData effect timing
+        const result = await refetchUser();
+        if (result.data) {
+          // Set user state and isAuthInitialized atomically in the same render
+          setUser(result.data);
+          setIsAuthenticated(result.data.id !== "unknown");
+        }
+      } catch (error) {
+        console.error("Auth initialization failed:", error);
+      } finally {
+        // Only NOW is auth truly settled — isAuthenticated is already correct
+        setIsAuthInitialized(true);
       }
-
-      setIsAuthInitialized(true);
     };
 
     initializeAuth();
-  }, [refetchUser]);
+  }, [refetchUser, isAuthenticated]);
 
   const login = async (otp: string): Promise<void> => {
     try {

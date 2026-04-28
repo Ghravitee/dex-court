@@ -1,4 +1,6 @@
 // src/web3/config.ts
+import base from "../assets/base.jpg"
+
 export const CHAIN_ENV_MAP: Record<
   number,
   { mainnet: number; testnet: number }
@@ -31,7 +33,7 @@ export const SUPPORTED_CHAINS = [
     symbol: "ETH",
     mainnetId: 8453,
     testnetId: 84532,
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png",
+    icon: base,
   },
 ];
 

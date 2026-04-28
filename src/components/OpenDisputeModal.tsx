@@ -110,11 +110,15 @@ export default function OpenDisputeModal({
     }
   };
 
+  const defaultChain = SUPPORTED_CHAINS[0];
+
   const resolvedChainId = selectedMainnetId
     ? resolveChainId(selectedMainnetId)
-    : isProd
-      ? SUPPORTED_CHAINS[1].mainnetId
-      : SUPPORTED_CHAINS[1].testnetId;
+    : defaultChain
+      ? isProd
+        ? defaultChain.mainnetId
+        : defaultChain.testnetId
+      : 0; // or throw, or handle as you see fit
 
   const [form, setForm] = useState({
     title: "",
@@ -152,39 +156,34 @@ export default function OpenDisputeModal({
   const debouncedWitnessQuery = useDebounce(witnessSearchQuery, 300);
 
   const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
-    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
+    useAllAccounts(
+      { search: debouncedWitnessQuery, top: 20 },
+      { enabled: debouncedWitnessQuery.length >= 2 },
+    );
 
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
 
-    const allAccounts = accountsResponse?.results ?? []; // moved inside
-
-    const cleanQuery = debouncedWitnessQuery.startsWith("@")
-      ? debouncedWitnessQuery.slice(1)
-      : debouncedWitnessQuery;
-    const q = cleanQuery.toLowerCase();
-
     const cleanDefendant = form.defendant.startsWith("@")
       ? form.defendant.slice(1).toLowerCase()
       : form.defendant.toLowerCase();
 
-    return allAccounts.filter((u) => {
+    return (accountsResponse?.results ?? []).filter((u) => {
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
       if (!telegram) return false;
+
+      // Exclude current user
       if (telegram.toLowerCase() === currentUserTelegram.toLowerCase())
         return false;
+
+      // Exclude whoever is already named as defendant
       if (telegram.toLowerCase() === cleanDefendant) return false;
 
-      return (
-        u.username?.toLowerCase().includes(q) ||
-        u.telegram?.username?.toLowerCase().includes(q) ||
-        u.telegramInfo?.toLowerCase().includes(q) ||
-        u.walletAddress?.toLowerCase().includes(q)
-      );
+      return true;
     });
   }, [
     accountsResponse,
@@ -814,12 +813,12 @@ export default function OpenDisputeModal({
                         type="button"
                         onClick={() => handleSelectChain(chain.mainnetId)}
                         disabled={isSwitchingChain}
-                        className={`relative flex flex-col ... ${isSwitchingChain ? "cursor-wait opacity-60" : ""}`}
+                        className={`relative flex flex-col ... ${isSwitchingChain ? "cursor-wait opacity-60" : "rounded-lg border border-cyan-500/30 py-2"}`}
                       >
                         <img
                           src={chain.icon}
                           alt={chain.name}
-                          className="h-8 w-8 rounded-full"
+                          className="rounded-fullz mx-auto h-8 w-8"
                         />
                         <span className="text-xs font-medium">
                           {chain.name}

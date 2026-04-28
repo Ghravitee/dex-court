@@ -53,10 +53,10 @@ export const ALL_CHAINS = [
 ];
 
 export const config = getDefaultConfig({
-  appName: "Abyss App",
+  appName: "DexCourt",
   projectId,
   chains: [mainnet, sepolia, bsc, bscTestnet, base, baseSepolia], // Support all chains
-  ssr: true,
+  ssr: false,
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),

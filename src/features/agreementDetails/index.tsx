@@ -947,7 +947,7 @@ export default function AgreementDetails() {
             )}
 
             {/* Delivery status */}
-            {agreement.status === "pending_approval" && (
+            {agreement.status === "pending_approval" && isParticipant && (
               <div className="card-cyan rounded-xl p-6">
                 <h3 className="mb-4 text-lg font-semibold text-white">
                   Delivery Status
@@ -972,6 +972,7 @@ export default function AgreementDetails() {
 
             {/* Payment action */}
             {agreement.status === "disputed" &&
+              isParticipant &&
               disputeStatus === "Pending Payment" &&
               getDisputeFiledByFromTimeline(agreement, user) && (
                 <div className="card-cyan rounded-xl p-6">

@@ -24,6 +24,10 @@ interface BannerProps {
 
 interface AdminUsersManagerProps {
   users: AdminUser[];
+  totalAccounts: number;
+  isFetchingNextPage: boolean;
+  hasNextPage: boolean;
+  fetchNextPage: () => void;
 }
 
 function Banner({ kind, message, onDismiss }: BannerProps) {
@@ -53,7 +57,13 @@ function Banner({ kind, message, onDismiss }: BannerProps) {
   );
 }
 
-export function AdminUsersManager({ users }: AdminUsersManagerProps) {
+export function AdminUsersManager({
+  users,
+  totalAccounts,
+  isFetchingNextPage,
+  hasNextPage,
+  fetchNextPage,
+}: AdminUsersManagerProps) {
   const { isLoading, error, refetch } = useAdminUsers();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [feedback, setFeedback] = useState<{
@@ -201,6 +211,26 @@ export function AdminUsersManager({ users }: AdminUsersManagerProps) {
                 />
               ))}
             </div>
+
+            {/* Load more */}
+            {hasNextPage && (
+              <div className="flex items-center justify-center border-t border-white/[0.06] p-4">
+                <button
+                  onClick={fetchNextPage}
+                  disabled={isFetchingNextPage}
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-5 py-2 text-sm text-white/70 transition hover:bg-white/10 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    `Load more (${totalAccounts - users.length} remaining)`
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

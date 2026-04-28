@@ -1,13 +1,14 @@
-// src/features/admin/pages/AdminUsers.tsx
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
-import { useAdminUsers } from "../hooks/useAdminUsers";
+import { useAdminUsers, useAdminCounts } from "../hooks/useAdminUsers";
 import { AdminUsersManager } from "../components/AdminUsersManager";
 import { StatCard } from "../components/StatCard";
-import type { AdminStats } from "../types";
+import type { AdminStats, AdminUser } from "../types";
 
 function deriveStats(
-  users: ReturnType<typeof useAdminUsers>["data"],
+  users: AdminUser[] | undefined,
+  totalAccounts?: number,
+  totalAdmins?: number, // ← from dedicated query
 ): AdminStats {
   if (!users) {
     return {
@@ -22,11 +23,10 @@ function deriveStats(
   }
 
   return {
-    totalUsers: users.length,
-    admins: users.filter((u) => u.isAdmin).length,
+    totalUsers: totalAccounts ?? users.length,
+    admins: totalAdmins ?? users.filter((u) => u.isAdmin).length, // ← backend total takes priority
     judges: users.filter((u) => u.role === 2).length,
     community: users.filter((u) => u.role === 1).length,
-    // basicUsers: users.filter((u) => u.role === 0).length,
     verified: users.filter((u) => u.isVerified).length,
     walletConnected: users.filter((u) => u.walletAddress).length,
     telegramLinked: users.filter((u) => u.telegram?.username).length,
@@ -34,21 +34,25 @@ function deriveStats(
 }
 
 export default function AdminUsers() {
-  // Single query — AdminUsersManager reuses the same cache entry (same queryKey)
-  const { data: users, isLoading, error } = useAdminUsers();
+  const {
+    data: users,
+    isLoading,
+    error,
+    totalAccounts,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useAdminUsers();
 
-  const validUsers = useMemo(
-    () => users?.filter((u) => u.username || u.walletAddress) ?? [],
-    [users],
+  const { data: adminCountData } = useAdminCounts();
+
+  const stats = useMemo(
+    () => deriveStats(users, totalAccounts, adminCountData?.totalAccounts),
+    [users, totalAccounts, adminCountData],
   );
-
-  console.log(validUsers, "valid users");
-
-  const stats = useMemo(() => deriveStats(validUsers), [validUsers]);
 
   return (
     <div className="space-y-8">
-      {/* ── Page header ── */}
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight text-white/90">
           User Management
@@ -58,7 +62,6 @@ export default function AdminUsers() {
         </p>
       </div>
 
-      {/* ── Error state (page-level) ── */}
       {error && (
         <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-6 text-center">
           <p className="font-semibold text-red-400">Error Loading Users</p>
@@ -70,7 +73,6 @@ export default function AdminUsers() {
         </div>
       )}
 
-      {/* ── Primary stats ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           singular="Total User"
@@ -79,21 +81,18 @@ export default function AdminUsers() {
           isLoading={isLoading}
           colorClass="cyan"
         />
-
         <StatCard
           singular="Admin"
           value={stats.admins}
           isLoading={isLoading}
           colorClass="yellow"
         />
-
         <StatCard
           singular="Judge"
           value={stats.judges}
           isLoading={isLoading}
           colorClass="blue"
         />
-
         <StatCard
           singular="Community Member"
           plural="Community Members"
@@ -103,7 +102,6 @@ export default function AdminUsers() {
         />
       </div>
 
-      {/* ── Secondary stats (only when data is ready) ── */}
       {!isLoading && users && users.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard
@@ -112,14 +110,12 @@ export default function AdminUsers() {
             value={stats.verified}
             colorClass="green"
           />
-
           <StatCard
             singular="Wallet Connected User"
             plural="Wallet Connected Users"
             value={stats.walletConnected}
             colorClass="purple"
           />
-
           <StatCard
             singular="Telegram Linked User"
             plural="Telegram Linked Users"
@@ -129,7 +125,6 @@ export default function AdminUsers() {
         </div>
       )}
 
-      {/* ── Loading placeholder for secondary stats ── */}
       {isLoading && (
         <div className="flex items-center justify-center gap-2 py-2 text-sm text-white/40">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -137,8 +132,14 @@ export default function AdminUsers() {
         </div>
       )}
 
-      {/* ── Users manager ── */}
-      <AdminUsersManager users={validUsers} />
+      {/* No more validUsers filter — backend is clean now */}
+      <AdminUsersManager
+        users={users ?? []}
+        totalAccounts={totalAccounts}
+        isFetchingNextPage={isFetchingNextPage}
+        hasNextPage={hasNextPage ?? false}
+        fetchNextPage={fetchNextPage}
+      />
     </div>
   );
 }

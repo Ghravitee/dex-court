@@ -70,18 +70,18 @@ const PlaintiffReplyModal = ({
 
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-  // Fetch all accounts once — cached, no per-keystroke requests
+  // ✅ Backend does the searching now
   const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
-    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
+    useAllAccounts(
+      { search: debouncedWitnessQuery, top: 20 },
+      { enabled: debouncedWitnessQuery.length >= 2 },
+    );
 
-  // Client-side filter
+  // ✅ useMemo only excludes current user now
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
 
-    const allAccounts = accountsResponse?.results ?? [];
-
-    const q = debouncedWitnessQuery.toLowerCase();
-    return allAccounts.filter((u) => {
+    return (accountsResponse?.results ?? []).filter((u) => {
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
@@ -90,16 +90,11 @@ const PlaintiffReplyModal = ({
         telegram.toLowerCase() === currentUserTelegram.toLowerCase()
       )
         return false;
-      return (
-        u.username?.toLowerCase().includes(q) ||
-        u.telegram?.username?.toLowerCase().includes(q) ||
-        u.telegramInfo?.toLowerCase().includes(q) ||
-        u.walletAddress?.toLowerCase().includes(q)
-      );
+
+      return true;
     });
   }, [accountsResponse, debouncedWitnessQuery, currentUserTelegram]);
 
-  // Show/hide suggestions
   useEffect(() => {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
   }, [debouncedWitnessQuery]);

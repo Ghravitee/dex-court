@@ -4,8 +4,11 @@ import type { AdminRoleValue } from "./types";
 export const AdminErrorCode = {
   MissingData: 1,
   AccountNotFound: 7,
-  SameAccount: 11,
   InternalServerError: 10,
+  SameAccount: 11,
+  MissingWallet: 12, // ← add
+  InvalidEnum: 13, // ← add
+  InvalidData: 14, // ← add
 } as const;
 
 export type AdminErrorCode =
@@ -41,5 +44,5 @@ export const ROLE_CONFIG: Record<
   },
 };
 
-export const STALE_TIME = 5 * 60 * 1000;   // 5 min
-export const GC_TIME   = 10 * 60 * 1000;  // 10 min
+export const STALE_TIME = 5 * 60 * 1000; // 5 min
+export const GC_TIME = 10 * 60 * 1000; // 10 min

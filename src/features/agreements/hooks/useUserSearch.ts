@@ -31,32 +31,30 @@ export function useUserSearch() {
   const debouncedSearchQuery = useDebounce(userSearchQuery, 300);
 
   const { data: accountsResponse, isLoading: isUserSearchLoading } =
-    useAllAccounts({}, { enabled: debouncedSearchQuery.length >= 2 });
+    useAllAccounts(
+      {
+        search: debouncedSearchQuery, // ← goes to ?search=
+        top: 20, // ← enough results for a dropdown
+      },
+      {
+        enabled: debouncedSearchQuery.length >= 2,
+      },
+    );
 
   const currentUserTelegram = getCurrentUserTelegram(user);
 
   const filteredResults = useMemo(() => {
     if (debouncedSearchQuery.length < 2) return [];
 
-    const allAccounts = accountsResponse?.results ?? []; // moved inside
-    const q = debouncedSearchQuery.toLowerCase();
+    const allAccounts = accountsResponse?.results ?? [];
 
     return allAccounts.filter((u) => {
       const telegram = cleanTelegramUsername(
         u.telegram?.username ?? u.telegramInfo ?? "",
       );
-      if (
-        telegram &&
-        telegram.toLowerCase() === currentUserTelegram.toLowerCase()
-      ) {
-        return false;
-      }
-
-      return (
-        u.username?.toLowerCase().includes(q) ||
-        u.telegram?.username?.toLowerCase().includes(q) ||
-        u.telegramInfo?.toLowerCase().includes(q) ||
-        u.walletAddress?.toLowerCase().includes(q)
+      // Only exclude yourself — backend already matched the search text
+      return !(
+        telegram && telegram.toLowerCase() === currentUserTelegram.toLowerCase()
       );
     });
   }, [accountsResponse, debouncedSearchQuery, currentUserTelegram]);

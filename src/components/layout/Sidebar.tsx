@@ -44,9 +44,10 @@ export function Sidebar({
   onLoginClick: () => void;
 }) {
   const navigate = useNavigate();
-  const { isAuthenticated, user, logout, loginMethod } = useAuth();
+  const { isAuthenticated, user, logout, loginMethod, isAuthInitialized } =
+    useAuth();
   const { isAdmin } = useAdminAccess();
-  const { isConnected, address } = useAccount();
+  const { isConnected, isReconnecting, address } = useAccount();
   const { disconnect } = useDisconnect();
   const {
     autoSignIn,
@@ -65,6 +66,7 @@ export function Sidebar({
   // Auto sign-in in Sidebar (only for mobile, or when Topbar might not be mounted)
   useEffect(() => {
     const handleSidebarAutoSignIn = async () => {
+      if (!isAuthInitialized) return;
       // Only proceed in mobile mode or if sidebar is expanded on desktop
       if (!mobile && !expanded) return;
 
@@ -114,6 +116,7 @@ export function Sidebar({
     loginMethod,
     walletValidation,
     autoSignIn,
+    isAuthInitialized,
   ]);
 
   // Reset on disconnect
@@ -397,7 +400,34 @@ export function Sidebar({
                 openAccountModal,
               }) => {
                 const ready = mounted;
-                const connected = ready && account && chain;
+                // ✅ Gate on wagmi's isConnected, same fix as Topbar
+                const connected = ready && account && chain && isConnected;
+
+                // Case 0: Reconnecting after page reload — don't flash "Connect Wallet"
+                if (ready && isReconnecting) {
+                  return (
+                    <button
+                      disabled
+                      className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300 opacity-70"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="truncate">Reconnecting...</span>
+                    </button>
+                  );
+                }
+
+                // ✅ Case 0.5: wagmi says connected but RainbowKit hasn't hydrated account/chain yet
+                if (ready && isConnected && (!account || !chain)) {
+                  return (
+                    <button
+                      disabled
+                      className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300 opacity-70"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="truncate">Loading wallet...</span>
+                    </button>
+                  );
+                }
 
                 // Case 1: Wallet connected AND authenticated with wallet
                 if (isAuthenticated && loginMethod === "wallet" && connected) {
@@ -442,7 +472,7 @@ export function Sidebar({
                   );
                 }
 
-                // Connected wallet but not authenticated
+                // Case 3: Connected but not authenticated
                 if (connected) {
                   return (
                     <button
@@ -466,7 +496,7 @@ export function Sidebar({
                   );
                 }
 
-                // Not connected
+                // Case 4: Not connected
                 return (
                   <button
                     onClick={openConnectModal}

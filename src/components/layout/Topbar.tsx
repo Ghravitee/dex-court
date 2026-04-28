@@ -30,8 +30,9 @@ export function Topbar({
   showLogo?: boolean;
 }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const { isAuthenticated, user, loginMethod, logout } = useAuth();
-  const { isConnected, address } = useAccount();
+  const { isAuthenticated, user, loginMethod, logout, isAuthInitialized } =
+    useAuth();
+  const { isConnected, isReconnecting, address } = useAccount();
   // const { disconnect } = useDisconnect();
 
   const {
@@ -48,24 +49,37 @@ export function Topbar({
       <div className="group relative flex items-center gap-2">
         <div
           className={`relative flex size-6 items-center justify-center rounded-lg ${
-            isConnected
-              ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
-              : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
+            isReconnecting
+              ? "bg-gradient-to-br from-amber-400/20 to-yellow-500/10"
+              : isConnected
+                ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+                : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
           }`}
         >
-          {isConnected ? (
+          {isReconnecting ? (
+            <Loader2 className="size-4 animate-spin text-amber-400" />
+          ) : isConnected ? (
             <Wallet className="size-4 text-green-400" />
           ) : (
             <Wallet className="size-4 text-red-400" />
           )}
           <div
             className={`absolute -top-1 -right-1 size-2 rounded-full border-2 border-gray-900 ${
-              isConnected ? "bg-green-400" : "bg-red-400"
+              isReconnecting
+                ? "animate-pulse bg-amber-400"
+                : isConnected
+                  ? "bg-green-400"
+                  : "bg-red-400"
             }`}
           />
         </div>
+
         <div className="text-xs whitespace-nowrap text-white">
-          {isConnected ? "connected ✓" : "disconnected ✗"}
+          {isReconnecting
+            ? "reconnecting..."
+            : isConnected
+              ? "connected ✓"
+              : "disconnected ✗"}
         </div>
       </div>
 
@@ -125,6 +139,9 @@ export function Topbar({
   // SINGLE AUTO SIGN-IN TRIGGER: Only in Topbar, not in LoginModal
   useEffect(() => {
     const handleAutoSignIn = async () => {
+      if (!isAuthInitialized) {
+        return;
+      }
       // Only proceed if wallet is connected and we have an address
       if (!isConnected || !address) {
         return;
@@ -178,6 +195,7 @@ export function Topbar({
     loginMethod,
     autoSignIn,
     walletValidation,
+    isAuthInitialized,
   ]);
 
   useAccountEffect({
@@ -388,30 +406,43 @@ export function Topbar({
         </div>
 
         {/* Mobile status indicators - shown next to menu button */}
+        {/* Mobile status indicators - shown next to menu button */}
         <div className="mr-2 flex flex-1 items-center justify-end gap-2 lg:hidden">
           <div className="flex items-center gap-2">
             {/* Wallet Status Badge */}
             <div className="flex items-center gap-1">
               <div
                 className={`relative flex size-5 items-center justify-center rounded-md ${
-                  isConnected
-                    ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
-                    : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
+                  isReconnecting
+                    ? "bg-gradient-to-br from-amber-400/20 to-yellow-500/10"
+                    : isConnected
+                      ? "bg-gradient-to-br from-green-400/20 to-emerald-500/10"
+                      : "bg-gradient-to-br from-red-400/20 to-rose-500/10"
                 }`}
               >
-                {isConnected ? (
+                {isReconnecting ? (
+                  <Loader2 className="size-4 animate-spin text-amber-400" />
+                ) : isConnected ? (
                   <Wallet className="size-4 text-green-400" />
                 ) : (
                   <Wallet className="size-4 text-red-400" />
                 )}
                 <div
                   className={`absolute -top-1 -right-1 size-1.5 rounded-full border border-gray-900 ${
-                    isConnected ? "bg-green-400" : "bg-red-400"
+                    isReconnecting
+                      ? "animate-pulse bg-amber-400"
+                      : isConnected
+                        ? "bg-green-400"
+                        : "bg-red-400"
                   }`}
                 />
               </div>
               <div className="text-xs whitespace-nowrap text-white">
-                {isConnected ? "connected ✓" : "disconnected ✗"}
+                {isReconnecting
+                  ? "reconnecting..."
+                  : isConnected
+                    ? "connected ✓"
+                    : "disconnected ✗"}
               </div>
             </div>
 
@@ -518,7 +549,21 @@ export function Topbar({
               mounted,
             }) => {
               const ready = mounted;
-              const connected = ready && account && chain;
+              // ✅ Gate on wagmi's isConnected, not just RainbowKit's account/chain
+              const connected = ready && account && chain && isConnected;
+
+              // Case 0: Wallet is reconnecting after page reload — show spinner
+              if (ready && isReconnecting) {
+                return (
+                  <button
+                    disabled
+                    className="flex cursor-not-allowed items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 opacity-70"
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Reconnecting...</span>
+                  </button>
+                );
+              }
 
               // Case 1: Wallet connected AND authenticated with wallet
               if (isAuthenticated && loginMethod === "wallet" && connected) {

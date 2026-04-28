@@ -93,14 +93,6 @@ function normaliseAccount(raw: any): AccountSummaryDTO {
   };
 }
 
-// Normalises whatever shape the list endpoints return into a plain array
-function extractAccountList(response: any): any[] {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.results)) return response.results;
-  console.warn("[accountService] Unexpected list response shape:", response);
-  return [];
-}
-
 // ─── Query functions ───────────────────────────────────────────────────────────
 // These are the functions TanStack Query calls inside queryFn.
 // They throw on failure so TanStack Query can handle retries and error state.
@@ -126,14 +118,26 @@ export async function fetchAccountByUsername(
   return normaliseAccount(response.data);
 }
 
+// services/accountService.ts
+
 export async function fetchAllAccounts(
   params?: FetchAccountsParams,
 ): Promise<AccountListResponse> {
-  const response = await api.get("/accounts", { params });
+  const resolvedParams: FetchAccountsParams = {
+    top: 10, // back to sensible default — backend does the filtering now
+    skip: 0,
+    ...params,
+  };
+
+  const response = await api.get("/accounts", { params: resolvedParams });
+
+  const rawList = response.data.results ?? response.data.accounts ?? [];
+  const normalized = rawList.map(normaliseAccount);
+
   return {
     totalAccounts: response.data.totalAccounts ?? 0,
-    totalResults: response.data.totalResults ?? 0,
-    results: extractAccountList(response.data).map(normaliseAccount),
+    totalResults: response.data.totalResults ?? normalized.length,
+    results: normalized,
   };
 }
 

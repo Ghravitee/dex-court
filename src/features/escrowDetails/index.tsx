@@ -459,7 +459,8 @@ export default function EscrowDetails() {
     isServiceRecipient &&
     !onChainAgreement?.pendingCancellation &&
     onChainAgreement?.deliverySubmited &&
-    !onChainAgreement?.completed
+    !onChainAgreement?.completed &&
+    !onChainAgreement?.disputed
   ) {
     actionInfoItems.push(
       <ActionInfoBlurb key="review-delivery" color="green">
@@ -1662,7 +1663,7 @@ export default function EscrowDetails() {
             )}
 
             {/* Pending dispute payment CTA */}
-            {isDisputePending && (
+            {isDisputePending && !onChainAgreement?.disputed && (isServiceProvider || isServiceRecipient) &&  (
               <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 lg:p-6">
                 <h3
                   className={`mb-4 text-lg font-semibold ${disputeStatus === "pending_payment" ? "text-yellow-500" : "text-blue-400"}`}

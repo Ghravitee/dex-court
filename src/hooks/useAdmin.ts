@@ -46,9 +46,11 @@ export const useAdminUsers = () => {
     queryFn: async (): Promise<AccountSummaryDTO[]> => {
       try {
         console.log("🔐 [Hook] Fetching admin users...");
-        const users = await apiService.getAdminUsers();
-        console.log(`🔐 [Hook] Successfully fetched ${users.length} users`);
-        return users;
+        const result = await apiService.getAdminUsers(); // ← now returns { users, totalAccounts }
+        console.log(
+          `🔐 [Hook] Successfully fetched ${result.users.length} users`,
+        );
+        return result.users; // ← unwrap the array
       } catch (error: unknown) {
         devError("🔐 [Hook] Error in useAdminUsers:", error);
 

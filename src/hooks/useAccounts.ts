@@ -42,7 +42,8 @@ export const accountKeys = {
   byId: (id: string) => ["account", "id", id] as const,
   byUsername: (username: string) => ["account", "username", username] as const,
   byWallet: (address: string) => ["account", "wallet", address] as const,
-  all: () => ["accounts", "all"] as const, // params appended at call site
+  all: () => ["accounts", "all"] as const,
+  judges: () => ["accounts", "judges"] as const, // ← isolated
 };
 
 // ─── Shared stale times ────────────────────────────────────────────────────────
@@ -140,7 +141,7 @@ export function useJudges(
   options?: Partial<UseQueryOptions<AccountListResponse>>,
 ) {
   return useQuery({
-    queryKey: [...accountKeys.all(), { isJudge: true, ...params }] as const,
+    queryKey: [...accountKeys.judges(), params] as const, // ← own namespace
     queryFn: () => fetchAllAccounts({ ...params, isJudge: true }),
     staleTime: STALE.list,
     ...options,
@@ -202,12 +203,11 @@ export function useUploadAvatar() {
 /** Promote a list of accounts to the Judge role (admin only). */
 export function useUpdateAccountsToJudge() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (accountsId: number[]) => updateAccountsToJudge(accountsId),
     onSuccess: () => {
-      // Role changes affect the full list and individual profiles
       queryClient.invalidateQueries({ queryKey: accountKeys.all() });
+      queryClient.invalidateQueries({ queryKey: accountKeys.judges() }); // ← add
     },
   });
 }
@@ -215,11 +215,11 @@ export function useUpdateAccountsToJudge() {
 /** Demote a list of accounts to the Community role (admin only). */
 export function useUpdateAccountsToCommunity() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (accountsId: number[]) => updateAccountsToCommunity(accountsId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accountKeys.all() });
+      queryClient.invalidateQueries({ queryKey: accountKeys.judges() }); // ← add
     },
   });
 }

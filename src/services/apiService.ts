@@ -51,11 +51,10 @@ class ApiService {
     try {
       devLog("🔐 Making API request to:", `${this.baseURL}${config.url}`);
 
-      // Get token and set it directly (no Bearer prefix)
       const token = localStorage.getItem("authToken");
       const headers = {
         ...config.headers,
-        ...(token && { Authorization: token }), // Raw token, no Bearer
+        ...(token && { Authorization: token }),
       };
 
       const response = await api({
@@ -66,17 +65,42 @@ class ApiService {
       devLog("🔐 API Success:", response.status, response.data);
       return response.data as T;
     } catch (error: any) {
-      console.error("🔐 API request failed:", error);
+      // 🔴 LOG 7 — raw axios error before we touch anything
+      console.log("🔴 [request] raw error from axios:", {
+        message: error?.message,
+        responseStatus: error?.response?.status,
+        responseData: error?.response?.data,
+        isAxiosError: error?.isAxiosError,
+      });
 
-      if (error.response?.status === 500) {
-        throw new Error("Server error: Please try again later");
-      }
+      const data = error.response?.data;
+      const status: number | undefined = error.response?.status;
 
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
+      const serverMessage =
+        data?.message ||
+        data?.error_description ||
+        data?.title ||
+        (Array.isArray(data?.errors) ? data.errors.join(", ") : null) ||
+        (typeof data === "string" && data.length < 300 ? data : null);
 
-      throw new Error(error.message || "An unexpected error occurred");
+      const message = serverMessage
+        ? `[${status}] ${serverMessage}`
+        : error.message || "An unexpected error occurred";
+
+      const enriched = new Error(message) as any;
+      enriched.status = status;
+      enriched.data = data;
+      enriched.response = error.response;
+
+      // 🔴 LOG 8 — what we're throwing after enrichment
+      console.log("🔴 [request] throwing enriched error:", {
+        message: enriched.message,
+        status: enriched.status,
+        data: enriched.data,
+        hasResponse: !!enriched.response,
+      });
+
+      throw enriched;
     }
   }
 
@@ -386,37 +410,46 @@ class ApiService {
    * Get all users for admin management
    */
 
-  async getAdminUsers(): Promise<AccountSummaryDTO[]> {
+  async getAdminUsers(params?: {
+    skip?: number;
+    top?: number;
+    isAdmin?: boolean;
+  }): Promise<{ users: AccountSummaryDTO[]; totalAccounts: number }> {
     try {
-      devLog("🔐 [API] Fetching all users for admin...");
+      devLog("🔐 [API] Fetching admin users...");
 
-      // Use the same endpoint as agreementService.getAllUsers()
       const response = await this.request<any>({
         method: "GET",
         url: "/accounts",
+        params: {
+          top: params?.top ?? 10,
+          skip: params?.skip ?? 0,
+          ...(params?.isAdmin !== undefined && { isAdmin: params.isAdmin }),
+        },
       });
 
       devLog("🔐 [API] Raw users response:", response);
 
       let users: any[] = [];
+      const totalAccounts: number = response?.totalAccounts ?? 0;
 
-      // AFTER — .results is now the only shape; .accounts fallback removed
       if (response && Array.isArray(response.results)) {
         users = response.results;
       } else if (Array.isArray(response)) {
         users = response;
       } else {
         console.warn("🔐 [API] Unexpected users response format:", response);
-        users = [];
       }
 
-      devLog(`🔐 [API] Found ${users.length} users`);
+      devLog(`🔐 [API] Found ${users.length} users, total: ${totalAccounts}`);
 
-      // Transform to AccountSummaryDTO
-      return users.map((user) => this.transformToAccountSummaryDTO(user));
+      return {
+        users: users.map((user) => this.transformToAccountSummaryDTO(user)),
+        totalAccounts,
+      };
     } catch (error) {
       console.error("🔐 [API] Error getting admin users:", error);
-      throw new Error("Failed to fetch users list");
+      throw error;
     }
   }
 }

@@ -150,28 +150,35 @@ export const EscrowRejectDeliveryModal = ({
 
   // Fetch all accounts once — cached, no per-keystroke network requests
   const { data: accountsResponse, isLoading: isWitnessSearchLoading } =
-    useAllAccounts({}, { enabled: debouncedWitnessQuery.length >= 2 });
+    useAllAccounts(
+      { search: debouncedWitnessQuery, top: 20 },
+      { enabled: debouncedWitnessQuery.length >= 2 },
+    );
 
   const witnessSearchResults = useMemo(() => {
     if (debouncedWitnessQuery.length < 2) return [];
 
-    const allAccounts = accountsResponse?.results ?? [];
+    const cleanDefendant = localDefendant.startsWith("@")
+      ? localDefendant.slice(1).toLowerCase()
+      : localDefendant.toLowerCase();
 
-    const q = debouncedWitnessQuery.startsWith("@")
-      ? debouncedWitnessQuery.slice(1).toLowerCase()
-      : debouncedWitnessQuery.toLowerCase();
-
-    return allAccounts.filter((u) => {
+    return (accountsResponse?.results ?? []).filter((u) => {
       const t = u.telegram?.username ?? u.telegramInfo ?? u.username ?? "";
+
+      // Exclude current user
       if (t.toLowerCase() === currentUserTelegram.toLowerCase()) return false;
-      return (
-        u.username?.toLowerCase().includes(q) ||
-        u.telegram?.username?.toLowerCase().includes(q) ||
-        u.telegramInfo?.toLowerCase().includes(q) ||
-        u.walletAddress?.toLowerCase().includes(q)
-      );
+
+      // Exclude defendant
+      if (cleanDefendant && t.toLowerCase() === cleanDefendant) return false;
+
+      return true;
     });
-  }, [accountsResponse, debouncedWitnessQuery, currentUserTelegram]);
+  }, [
+    accountsResponse,
+    debouncedWitnessQuery,
+    currentUserTelegram,
+    localDefendant,
+  ]);
 
   useEffect(() => {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);

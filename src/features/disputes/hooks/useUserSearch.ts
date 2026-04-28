@@ -1,5 +1,5 @@
 // features/disputes/hooks/useUserSearch.ts
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   cleanTelegramUsername,
   getCurrentUserTelegram,
@@ -29,63 +29,44 @@ export function useUserSearch() {
 
   const currentUserTelegram = getCurrentUserTelegram(currentUser);
 
-  // Fetch all accounts once — cached for 10 minutes, shared across all
-  // instances of this hook so only one network request is ever made.
-  // Only enabled when the user has typed enough to show suggestions.
-  const isSearching =
-    debouncedDefendantQuery.length >= 1 || debouncedWitnessQuery.length >= 2;
+  // ✅ Two separate backend queries — each only fires when its field is active
+  const { data: defendantResponse, isLoading: isDefendantLoading } =
+    useAllAccounts(
+      { search: debouncedDefendantQuery, top: 20 },
+      { enabled: debouncedDefendantQuery.length >= 1 },
+    );
 
-  const { data: accountsResponse, isLoading } = useAllAccounts(
-    {},
-    { enabled: isSearching },
-  );
-  // Filter helper — excludes the current user from results
-  const filterAccounts = useCallback(
-    (query: string) => {
-      if (!query) return [];
-
-      const allAccounts = accountsResponse?.results ?? []; // moved inside
-
-      const clean = query.startsWith("@") ? query.slice(1) : query;
-      const q = clean.toLowerCase();
-
-      return allAccounts.filter((u) => {
-        const telegram = cleanTelegramUsername(
-          u.telegram?.username ?? u.telegramInfo ?? "",
-        );
-        if (
-          telegram &&
-          telegram.toLowerCase() === currentUserTelegram.toLowerCase()
-        ) {
-          return false;
-        }
-
-        return (
-          u.username?.toLowerCase().includes(q) ||
-          u.telegram?.username?.toLowerCase().includes(q) ||
-          u.telegramInfo?.toLowerCase().includes(q) ||
-          u.walletAddress?.toLowerCase().includes(q)
-        );
-      });
-    },
-    [accountsResponse, currentUserTelegram],
+  const { data: witnessResponse, isLoading: isWitnessLoading } = useAllAccounts(
+    { search: debouncedWitnessQuery, top: 20 },
+    { enabled: debouncedWitnessQuery.length >= 2 },
   );
 
-  const defendantResults = useMemo(
-    () =>
-      debouncedDefendantQuery.length >= 1
-        ? filterAccounts(debouncedDefendantQuery)
-        : [],
-    [debouncedDefendantQuery, filterAccounts],
-  );
+  // ✅ useMemo now only excludes the current user — no text matching needed
+  const defendantResults = useMemo(() => {
+    if (debouncedDefendantQuery.length < 1) return [];
 
-  const witnessResults = useMemo(
-    () =>
-      debouncedWitnessQuery.length >= 2
-        ? filterAccounts(debouncedWitnessQuery)
-        : [],
-    [debouncedWitnessQuery, filterAccounts],
-  );
+    return (defendantResponse?.results ?? []).filter((u) => {
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      return !(
+        telegram && telegram.toLowerCase() === currentUserTelegram.toLowerCase()
+      );
+    });
+  }, [defendantResponse, debouncedDefendantQuery, currentUserTelegram]);
+
+  const witnessResults = useMemo(() => {
+    if (debouncedWitnessQuery.length < 2) return [];
+
+    return (witnessResponse?.results ?? []).filter((u) => {
+      const telegram = cleanTelegramUsername(
+        u.telegram?.username ?? u.telegramInfo ?? "",
+      );
+      return !(
+        telegram && telegram.toLowerCase() === currentUserTelegram.toLowerCase()
+      );
+    });
+  }, [witnessResponse, debouncedWitnessQuery, currentUserTelegram]);
 
   // Show/hide suggestions based on query length
   useEffect(() => {
@@ -96,7 +77,7 @@ export function useUserSearch() {
     setShowWitnessSuggestions(debouncedWitnessQuery.length >= 2);
   }, [debouncedWitnessQuery]);
 
-  // Click-outside handler
+  // Click-outside handler — unchanged
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -116,12 +97,13 @@ export function useUserSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Return shape unchanged — components don't need to know anything changed
   return {
     defendant: {
       searchQuery: defendantSearchQuery,
       setSearchQuery: setDefendantSearchQuery,
       results: defendantResults,
-      isLoading: isLoading && debouncedDefendantQuery.length >= 1,
+      isLoading: isDefendantLoading,
       showSuggestions: showDefendantSuggestions,
       setShowSuggestions: setShowDefendantSuggestions,
       ref: defendantSearchRef,
@@ -130,7 +112,7 @@ export function useUserSearch() {
       searchQuery: witnessSearchQuery,
       setSearchQuery: setWitnessSearchQuery,
       results: witnessResults,
-      isLoading: isLoading && debouncedWitnessQuery.length >= 2,
+      isLoading: isWitnessLoading,
       showSuggestions: showWitnessSuggestions,
       setShowSuggestions: setShowWitnessSuggestions,
       activeIndex: activeWitnessIndex,
