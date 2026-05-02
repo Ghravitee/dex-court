@@ -17,6 +17,10 @@ import { useRouteLoading } from "./hooks/useRouteLoading";
 const Reputation = lazy(
   () => import("./features/reputation/components/ReputationPage"),
 );
+
+// Add this lazy import
+const AdminWeb3Configs = lazy(() => import("./features/admin/pages/AdminWeb3Configs"));
+
 const AdminUsers = lazy(() => import("./features/admin/pages/AdminUsers"));
 // const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
 
@@ -132,6 +136,8 @@ function AppContent() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminUsers />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="web3-configs" element={<AdminWeb3Configs />} />
+
             {/* <Route path="analytics" element={<AdminAnalytics />} /> */}
           </Route>
 

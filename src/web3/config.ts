@@ -11,22 +11,22 @@ export const CHAIN_ENV_MAP: Record<
 };
 
 export const SUPPORTED_CHAINS = [
-  // {
-  //   id: 1,
-  //   name: "Ethereum",
-  //   symbol: "ETH",
-  //   mainnetId: 1,
-  //   testnetId: 11155111,
-  //   icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
-  // },
-  // {
-  //   id: 56,
-  //   name: "BNB Chain",
-  //   symbol: "BNB",
-  //   mainnetId: 56,
-  //   testnetId: 97,
-  //   icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png",
-  // },
+  {
+    id: 1,
+    name: "Ethereum",
+    symbol: "ETH",
+    mainnetId: 1,
+    testnetId: 11155111,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
+  },
+  {
+    id: 56,
+    name: "BNB Chain",
+    symbol: "BNB",
+    mainnetId: 56,
+    testnetId: 97,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png",
+  },
   {
     id: 8453,
     name: "Base",
@@ -39,22 +39,22 @@ export const SUPPORTED_CHAINS = [
 
 export const ESCROW_CA: Record<number, `0x${string}`> = {
   1: "0x",
-  // 11155111: "0xe5CE3debDD7ccF0FF6264B6Bd0BA8AA52419DD66", old CA (V1)
-  11155111: "0x28028712B38C3f82094b78B47b8FF6a4cAdFa4F0",
+  // 11155111: "0x28028712B38C3f82094b78B47b8FF6a4cAdFa4F0", // old
+  11155111: "0x03f38d73469Bd5951F9C01a2ee9c72530e9BC012",
   56: "0x", // BNB mainnet
   97: "0xED92b05Ec6e89386bC1046aa322C5ECd70966791", // BNB testnet
   8453: "0xC31d204deb180A776436a8E8f8dd5F750004e708", // Base mainnet
-  84532: "0xED92b05Ec6e89386bC1046aa322C5ECd70966791", // Base Sepolia testnet
+  84532: "0x393E0c2996c1295EeAef4F390cDafB6DC9424D75", // Base Sepolia testnet
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
   1: "0x",
-  // 11155111: "0xF0FFF4d2A7d60A2Ac695Bd6f03f6B2160B79427e", Old CA (V1)
-  11155111: "0x301d62367Dff429eCB9cdFfCC13A214519C8A7a9",
+  // 11155111: "0x301d62367Dff429eCB9cdFfCC13A214519C8A7a9", // old
+  11155111: "0x646b5510EF87050c950688CeAF649b932ac00580",
   56: "0x",
   97: "0x588458BbC7D4a033C31b46945BA8B509E4495F45",
   8453: "0x5414a68b58d6d50CF429E58E2F4868203B692a7c",
-  84532: "0x588458BbC7D4a033C31b46945BA8B509E4495F45",
+  84532: "0xF77E3277AeDa4cf2426D79E2D383b309578149B5",
 };
 
 export const KNOWN_TOKEN_ADDRESSES: Record<string, Record<number, string>> = {
@@ -1800,6 +1800,11 @@ export const VOTING_ABI = {
       "outputs": [
         {
           "name": "totalDisputes_",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "totalFeesCollected_",
           "type": "uint256",
           "internalType": "uint256"
         }

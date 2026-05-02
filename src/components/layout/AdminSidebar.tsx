@@ -12,6 +12,12 @@ const adminRoutes = [
     icon: <Users size={20} />,
     description: "Manage user roles and permissions",
   },
+  {
+    path: "/admin/web3-configs",
+    label: "Web3 Management",
+    icon: <Shield size={20} />,
+    description: "Manage Web3 integrations and settings",
+  },
   // {
   //   path: "/admin/analytics",
   //   label: "Analytics",
