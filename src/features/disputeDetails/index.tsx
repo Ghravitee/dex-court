@@ -34,6 +34,14 @@ export default function DisputeDetails() {
     refreshDispute,
   } = useDisputeData(id);
 
+  devLog("🧩 RAW DISPUTE DATA", {
+    plaintiff: dispute?.plaintiff,
+    plaintiffData: dispute?.plaintiffData,
+    defendant: dispute?.defendant,
+    defendantData: dispute?.defendantData,
+    witnesses: dispute?.witnesses,
+  });
+
   // ─── Role ──────────────────────────────────────────────────────────────────
   const {
     isUserJudge,
@@ -125,6 +133,51 @@ export default function DisputeDetails() {
     dispute.witnesses?.defendant?.map((w) => w.username) || [];
   const safeDescription = dispute.description || "No description provided.";
   const safeClaim = dispute.claim || "No claim specified.";
+
+  const chatParticipants = [
+    ...(dispute.plaintiffData?.username || dispute.plaintiff
+      ? [
+          {
+            username: dispute.plaintiffData?.username ?? dispute.plaintiff,
+            role: "plaintiff" as const,
+            avatarId: dispute.plaintiffData?.avatarId ?? null,
+            id: dispute.plaintiffData?.userId
+              ? parseInt(dispute.plaintiffData.userId)
+              : undefined, // ✅ Fix
+          },
+        ]
+      : []),
+
+    ...(dispute.defendantData?.username || dispute.defendant
+      ? [
+          {
+            username: dispute.defendantData?.username ?? dispute.defendant,
+            role: "defendant" as const,
+            avatarId: dispute.defendantData?.avatarId ?? null,
+            id: dispute.defendantData?.userId
+              ? parseInt(dispute.defendantData.userId)
+              : undefined, // ✅ Fix
+          },
+        ]
+      : []),
+
+    // Witnesses already work - no changes needed
+    ...(dispute.witnesses?.plaintiff?.map((w) => ({
+      username: w.username,
+      role: "witness" as const,
+      avatarId: w.avatarId ?? null,
+      id: w.id,
+    })) ?? []),
+
+    ...(dispute.witnesses?.defendant?.map((w) => ({
+      username: w.username,
+      role: "witness" as const,
+      avatarId: w.avatarId ?? null,
+      id: w.id,
+    })) ?? []),
+  ];
+
+  devLog("🧩 CHAT PARTICIPANTS (FINAL INPUT)", chatParticipants);
 
   return (
     <div className="animate-fade-in space-y-6 py-6 text-white">
@@ -219,8 +272,13 @@ export default function DisputeDetails() {
       />
 
       {/* Chat */}
+      {/* Chat */}
       <div className="mt-8">
-        <DisputeChat disputeId={parseInt(id!)} userRole={getUserRole()} />
+        <DisputeChat
+          disputeId={parseInt(id!)}
+          userRole={getUserRole()}
+          participants={chatParticipants}
+        />
       </div>
 
       {/* ─── Modals ────────────────────────────────────────────────────────── */}

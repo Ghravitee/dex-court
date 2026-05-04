@@ -1,102 +1,194 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "../../../components/ui/button";
-
-export const LoadingScreen = () => (
-  <div className="relative flex min-h-screen items-center justify-center">
-    <div className="text-center">
-      <div className="relative mx-auto mb-8">
-        <div className="mx-auto size-32 animate-spin rounded-full border-4 border-cyan-400/30 border-t-cyan-400" />
-        <div className="absolute inset-0 mx-auto size-32 animate-ping rounded-full border-2 border-cyan-400/40" />
-      </div>
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-cyan-300">
-          Loading Agreement
-        </h3>
-        <p className="text-sm text-cyan-200/70">
-          Preparing your agreement details...
-        </p>
-      </div>
-      <div className="mt-4 flex justify-center space-x-1">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-2 w-2 animate-bounce rounded-full bg-cyan-400/60"
-            style={{ animationDelay: `${i * 0.1}s` }}
-          />
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-interface NotFoundProps {
-  isAccessRestricted?: boolean;
-}
-
-export const NotFoundScreen = ({
-  isAccessRestricted = false,
-}: NotFoundProps) => {
-  const navigate = useNavigate();
-
+export function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="flex flex-col items-center justify-center text-center">
-        <div className="mb-6">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-cyan-500/10">
-            <AlertTriangle className="h-10 w-10 text-red-400" />
-          </div>
-          <h2 className="mb-2 text-2xl font-bold text-white">
-            {isAccessRestricted ? "Access Restricted" : "Agreement Not Found"}
-          </h2>
-          <div className="mb-6 max-w-md text-cyan-200/80">
-            {isAccessRestricted ? (
-              <p>
-                You don't have permission to view this agreement. Only
-                participants and the creator can view private agreements.
-              </p>
-            ) : (
-              <p>
-                The agreement you're looking for doesn't exist or may have been
-                removed. Please check the agreement ID and try again.
-              </p>
-            )}
-          </div>
+    <div className="relative flex min-h-screen items-center justify-center">
+      <style>{`
+        @keyframes dc-spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes dc-pulse {
+          0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px #22d3ee); }
+          50%       { opacity: 0.3; filter: none; }
+        }
+        @keyframes dc-fade {
+          0%, 100% { opacity: 0.45; }
+          50%       { opacity: 1; }
+        }
+        .ls-ring {
+          position: absolute;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          border-top-color: #22d3ee;
+          animation: dc-spin linear infinite;
+        }
+        .ls-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: clamp(100px, 16vw, 140px);
+          height: clamp(100px, 16vw, 140px);
+        }
+        .ls-ring-1 {
+          width: clamp(100px, 16vw, 140px);
+          height: clamp(100px, 16vw, 140px);
+          animation-duration: 1.4s;
+        }
+        .ls-ring-2 {
+          width: clamp(75px, 12vw, 105px);
+          height: clamp(75px, 12vw, 105px);
+          animation-duration: 1s;
+          animation-direction: reverse;
+          border-top-color: rgba(34,211,238,0.45);
+        }
+        .ls-ring-3 {
+          width: clamp(50px, 8vw, 70px);
+          height: clamp(50px, 8vw, 70px);
+          animation-duration: 0.65s;
+          border-top-color: rgba(34,211,238,0.2);
+        }
+        .ls-icon {
+          position: relative;
+          z-index: 2;
+          animation: dc-pulse 1.6s ease-in-out infinite;
+          width: clamp(44px, 7vw, 58px);
+          height: clamp(44px, 7vw, 58px);
+        }
+        .ls-label {
+          font-family: Georgia, serif;
+          font-size: clamp(10px, 1.4vw, 13px);
+          letter-spacing: 0.22em;
+          color: rgba(34,211,238,0.5);
+          text-transform: uppercase;
+          animation: dc-fade 1.6s ease-in-out infinite;
+        }
+      `}</style>
+
+      {/* Background glow */}
+      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
+        <div className="size-64 rounded-full bg-cyan-500/10 blur-3xl" />
+      </div>
+
+      <div className="relative z-10 flex flex-col items-center gap-6">
+        <div className="ls-wrapper">
+          <div className="ls-ring ls-ring-1" />
+          <div className="ls-ring ls-ring-2" />
+          <div className="ls-ring ls-ring-3" />
+
+          <svg className="ls-icon" viewBox="0 0 36 36" fill="none">
+            {/* Hexagon */}
+            <path
+              d="M18 2 L31 9.5 L31 26.5 L18 34 L5 26.5 L5 9.5 Z"
+              stroke="#22d3ee"
+              strokeWidth="1.8"
+              fill="rgba(34,211,238,0.06)"
+              strokeLinejoin="round"
+            />
+            {/* Beam */}
+            <line
+              x1="11"
+              y1="14"
+              x2="25"
+              y2="14"
+              stroke="#22d3ee"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            {/* Centre post */}
+            <line
+              x1="18"
+              y1="14"
+              x2="18"
+              y2="26"
+              stroke="#22d3ee"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            {/* Left pan strings */}
+            <line
+              x1="13"
+              y1="14"
+              x2="11"
+              y2="20"
+              stroke="#22d3ee"
+              strokeWidth="1"
+              strokeLinecap="round"
+            />
+            <line
+              x1="13"
+              y1="14"
+              x2="15"
+              y2="20"
+              stroke="#22d3ee"
+              strokeWidth="1"
+              strokeLinecap="round"
+            />
+            {/* Right pan strings */}
+            <line
+              x1="23"
+              y1="14"
+              x2="21"
+              y2="20"
+              stroke="#22d3ee"
+              strokeWidth="1"
+              strokeLinecap="round"
+            />
+            <line
+              x1="23"
+              y1="14"
+              x2="25"
+              y2="20"
+              stroke="#22d3ee"
+              strokeWidth="1"
+              strokeLinecap="round"
+            />
+            {/* Left pan */}
+            <path
+              d="M10 20 Q13 22.5 16 20"
+              stroke="#22d3ee"
+              strokeWidth="1.4"
+              fill="none"
+              strokeLinecap="round"
+            />
+            {/* Right pan */}
+            <path
+              d="M20 20 Q23 22.5 26 20"
+              stroke="#22d3ee"
+              strokeWidth="1.4"
+              fill="none"
+              strokeLinecap="round"
+            />
+            {/* Base */}
+            <line
+              x1="15"
+              y1="26"
+              x2="21"
+              y2="26"
+              stroke="#22d3ee"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-          {!isAccessRestricted && (
-            <Button
-              onClick={() => window.location.reload()}
-              variant="outline"
-              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-            >
-              <Loader2 className="mr-2 h-4 w-4" />
-              Refresh & Retry
-            </Button>
-          )}
-          <Button
-            onClick={() => navigate("/agreements")}
-            className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
-          >
-            Back to Agreements
-          </Button>
+        {/* Text */}
+        <div className="flex flex-col items-center gap-2">
+          <p className="ls-label">Loading Agreement</p>
+          <p className="text-sm text-cyan-200/50">
+            Preparing your Agreement details…
+          </p>
         </div>
 
-        {!isAccessRestricted && (
-          <div className="mt-8 flex w-fit justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
-            <div className="text-sm text-cyan-300">
-              <p className="mb-1 font-medium">Troubleshooting tips:</p>
-              <ul className="space-y-1">
-                <li>• Check if the agreement ID is correct</li>
-                <li>• Verify your internet connection</li>
-                <li>• The agreement may have been deleted</li>
-                <li>• Try refreshing the page</li>
-              </ul>
-            </div>
-          </div>
-        )}
+        {/* Bouncing dots */}
+        <div className="flex gap-1.5">
+          {[0, 0.15, 0.3].map((delay, i) => (
+            <div
+              key={i}
+              className="size-1.5 animate-bounce rounded-full bg-cyan-400/50"
+              style={{ animationDelay: `${delay}s` }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
-};
+}

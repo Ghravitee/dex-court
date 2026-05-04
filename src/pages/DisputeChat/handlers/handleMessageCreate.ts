@@ -29,7 +29,7 @@ export async function handleMessageCreate({
 
   socket.emit(
     "message:create",
-    { disputeId, content },
+    { disputeId, content: content.trim() === "" ? " " : content },
     async (res: DisputeSocketMessageCreateDTO) => {
       if (!res.ok || !res.message) {
         console.error("Error sending message:", res.error);

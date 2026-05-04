@@ -4,8 +4,8 @@ import { Outlet, Navigate, useLocation } from "react-router-dom";
 import { AdminSidebar } from "./AdminSidebar";
 import { AdminTopbar } from "./AdminTopbar";
 import { useAdminAccess } from "../../hooks/useAdmin";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth"; // Import useAuth to check loading state
+import { AdminLoadingScreen } from "./AdminLoadingScreen"; // A dedicated loading screen for admin panel
 
 export const AdminLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -28,14 +28,7 @@ export const AdminLayout = () => {
 
   // Show loading state during initial app load or when auth is loading
   if (initialLoad || isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 to-black">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
-          <span className="text-cyan-300">Loading admin panel...</span>
-        </div>
-      </div>
-    );
+    return <AdminLoadingScreen />;
   }
 
   // Only redirect if we're absolutely sure the user is not an admin

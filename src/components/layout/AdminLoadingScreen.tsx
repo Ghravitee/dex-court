@@ -1,4 +1,4 @@
-export function LoadingScreen() {
+export function AdminLoadingScreen() {
   return (
     <div className="relative flex min-h-screen items-center justify-center">
       <style>{`
@@ -172,10 +172,7 @@ export function LoadingScreen() {
 
         {/* Text */}
         <div className="flex flex-col items-center gap-2">
-          <p className="ls-label">Loading Dispute</p>
-          <p className="text-sm text-cyan-200/50">
-            Preparing your Dispute details…
-          </p>
+          <p className="ls-label">Loading Admin Panel</p>
         </div>
 
         {/* Bouncing dots */}

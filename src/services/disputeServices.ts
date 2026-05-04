@@ -220,7 +220,7 @@ function mapStatusToFrontend(status: DisputeStatusEnum): FrontendStatus {
 function extractUserData(user: any) {
   return {
     username: user?.username ?? "Unknown",
-    userId: user?.id?.toString() ?? "0",
+    userId: user?.id?.toString() ?? "0", // ⚠️ Stored as userId (string), NOT id
     avatarId: user?.avatarId ?? user?.avatar?.id ?? null,
     telegramUsername:
       user?.telegramUsername ?? user?.telegram?.username ?? null,
