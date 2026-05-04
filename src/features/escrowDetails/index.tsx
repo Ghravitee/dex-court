@@ -483,7 +483,8 @@ export default function EscrowDetails() {
     !onChainAgreement?.disputed &&
     !onChainAgreement?.completed &&
     onChainAgreement?.funded &&
-    disputeStatus !== "pending_locking_funds"
+    disputeStatus !== "pending_locking_funds" &&
+    disputeStatus !== "pending_payment"
   ) {
     actionInfoItems.push(
       <ActionInfoBlurb key="cancel-order" color="orange">
@@ -586,7 +587,8 @@ export default function EscrowDetails() {
     !onChainAgreement?.completed &&
     !onChainAgreement?.frozen &&
     !onChainAgreement?.pendingCancellation &&
-    disputeStatus !== "pending_locking_funds"
+    disputeStatus !== "pending_locking_funds" &&
+    disputeStatus !== "pending_payment"
   ) {
     actionInfoItems.push(
       <ActionInfoBlurb key="raise-dispute" color="purple">
@@ -1663,54 +1665,56 @@ export default function EscrowDetails() {
             )}
 
             {/* Pending dispute payment CTA */}
-            {isDisputePending && !onChainAgreement?.disputed && (isServiceProvider || isServiceRecipient) &&  (
-              <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 lg:p-6">
-                <h3
-                  className={`mb-4 text-lg font-semibold ${disputeStatus === "pending_payment" ? "text-yellow-500" : "text-blue-400"}`}
-                >
-                  {disputeStatus === "pending_payment"
-                    ? "Complete Payment for Dispute"
-                    : "Complete Fund Locking for Dispute"}
-                </h3>
-                {isDisputeFiler ? (
-                  <>
-                    <p className="mb-4 text-sm text-cyan-200/80">
-                      {disputeStatus === "pending_payment"
-                        ? "Your dispute requires payment to become active."
-                        : "Your pro bono dispute requires fund locking on the blockchain."}
-                    </p>
-                    <Button
-                      onClick={handleOpenPendingDisputeModal}
-                      disabled={!onChainAgreement?.id || !disputeVotingId}
-                      variant="outline"
-                      className="border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
-                    >
-                      {disputeStatus === "pending_payment" ? (
-                        <>
-                          <Wallet className="mr-2 h-4 w-4" />
-                          Complete Payment
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="mr-2 h-4 w-4" />
-                          Lock Funds Now
-                        </>
-                      )}
-                    </Button>
-                  </>
-                ) : (
-                  <div className="rounded-lg border border-gray-500/30 bg-gray-500/10 p-4">
-                    <p className="text-sm text-gray-400">
-                      The other party needs to complete the{" "}
-                      {disputeStatus === "pending_payment"
-                        ? "payment"
-                        : "fund locking"}{" "}
-                      for this dispute.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            {isDisputePending &&
+              !onChainAgreement?.disputed &&
+              (isServiceProvider || isServiceRecipient) && (
+                <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 lg:p-6">
+                  <h3
+                    className={`mb-4 text-lg font-semibold ${disputeStatus === "pending_payment" ? "text-yellow-500" : "text-blue-400"}`}
+                  >
+                    {disputeStatus === "pending_payment"
+                      ? "Complete Payment for Dispute"
+                      : "Complete Fund Locking for Dispute"}
+                  </h3>
+                  {isDisputeFiler ? (
+                    <>
+                      <p className="mb-4 text-sm text-cyan-200/80">
+                        {disputeStatus === "pending_payment"
+                          ? "Your dispute requires payment to become active."
+                          : "Your pro bono dispute requires fund locking on the blockchain."}
+                      </p>
+                      <Button
+                        onClick={handleOpenPendingDisputeModal}
+                        disabled={!onChainAgreement?.id || !disputeVotingId}
+                        variant="outline"
+                        className="border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                      >
+                        {disputeStatus === "pending_payment" ? (
+                          <>
+                            <Wallet className="mr-2 h-4 w-4" />
+                            Complete Payment
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="mr-2 h-4 w-4" />
+                            Lock Funds Now
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-gray-500/30 bg-gray-500/10 p-4">
+                      <p className="text-sm text-gray-400">
+                        The other party needs to complete the{" "}
+                        {disputeStatus === "pending_payment"
+                          ? "payment"
+                          : "fund locking"}{" "}
+                        for this dispute.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
             {/* Dispute info */}
             {escrow._raw?.disputes?.length > 0 && (

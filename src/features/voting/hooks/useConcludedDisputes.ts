@@ -43,6 +43,10 @@ export const useConcludedDisputes = () => {
             const username = comment.username || comment.handle || "Anonymous";
 
             return {
+              // accountId is what UserAvatar needs as `userId` to build the
+              // avatar URL. Without it, UserAvatar receives undefined and falls
+              // back to initials even when avatarId is present.
+              accountId: comment.accountId,
               handle: username,
               text: text,
               avatarId: comment.avatarId || null,

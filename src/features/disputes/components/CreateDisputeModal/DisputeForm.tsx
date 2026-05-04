@@ -399,7 +399,7 @@ export const DisputeForm = ({
         <Button
           type="button"
           variant="outline"
-          className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
+          className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10 hidden"
           onClick={onSaveDraft}
           disabled={isDisabled}
         >

@@ -35,25 +35,82 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
     return c.winner === "dismissed" && totalVotes === 0;
   }, [c.winner, totalVotes]);
 
-  const weightedPercentages = useMemo(() => {
-    const judgeWeight = 0.7;
-    const communityWeight = 0.3;
+  // Merge Tier 1 + Tier 2 into a single "Community" group, including dismiss.
+  const communityVotes = useMemo(() => {
+    const plaintiff =
+      (c.votesPerGroup?.communityTierOne?.plaintiff || 0) +
+      (c.votesPerGroup?.communityTierTwo?.plaintiff || 0);
+    const defendant =
+      (c.votesPerGroup?.communityTierOne?.defendant || 0) +
+      (c.votesPerGroup?.communityTierTwo?.defendant || 0);
+    const dismiss =
+      (c.votesPerGroup?.communityTierOne?.dismiss || 0) +
+      (c.votesPerGroup?.communityTierTwo?.dismiss || 0);
+    const total = plaintiff + defendant + dismiss;
 
-    const judgePlaintiffPct = c.percentagesPerGroup?.judges?.plaintiff || 0;
-    const communityPlaintiffPct =
-      ((c.percentagesPerGroup?.communityTierOne?.plaintiff || 0) +
-        (c.percentagesPerGroup?.communityTierTwo?.plaintiff || 0)) /
-      2;
-
-    const weightedPlaintiffPct =
-      judgePlaintiffPct * judgeWeight + communityPlaintiffPct * communityWeight;
-    const weightedDefendantPct = 100 - weightedPlaintiffPct;
+    // Each percentage is computed independently so dismiss votes don't get
+    // silently folded into the defendant slice.
+    const plaintiffPct = total > 0 ? Math.round((plaintiff / total) * 100) : 0;
+    const defendantPct = total > 0 ? Math.round((defendant / total) * 100) : 0;
+    const dismissPct = total > 0 ? 100 - plaintiffPct - defendantPct : 0;
 
     return {
-      plaintiff: weightedPlaintiffPct,
-      defendant: weightedDefendantPct,
+      plaintiff,
+      defendant,
+      dismiss,
+      total,
+      plaintiffPct,
+      defendantPct,
+      dismissPct,
     };
-  }, [c.percentagesPerGroup]);
+  }, [c.votesPerGroup]);
+
+  // Derive total dismiss votes across all groups for the summary row.
+  const totalDismissVotes = useMemo(() => {
+    return (c.votesPerGroup?.judges?.dismiss || 0) + communityVotes.dismiss;
+  }, [c.votesPerGroup, communityVotes.dismiss]);
+
+  // Plain-English verdict summary
+  // Plain-English verdict summary
+  const verdictSummary = useMemo(() => {
+    if (isDismissedDueToNoVotes) return "Nobody voted, so the case was closed";
+    if (c.winner === "dismissed")
+      return "The case was closed without a clear winner";
+
+    const judgesVoted = (c.votesPerGroup?.judges?.total || 0) > 0;
+    const communityVoted = communityVotes.total > 0;
+
+    if (!judgesVoted && !communityVoted) {
+      return "The case was decided automatically — no one voted";
+    }
+    if (!judgesVoted) {
+      return `Only community members voted — they sided with the ${c.winner}`;
+    }
+    if (!communityVoted) {
+      return `Only judges voted — they sided with the ${c.winner}`;
+    }
+
+    const judgesPlaintiffPct = c.percentagesPerGroup?.judges?.plaintiff || 0;
+    const judgesFavor = judgesPlaintiffPct >= 50 ? "plaintiff" : "defendant";
+    const communityFavor =
+      communityVotes.plaintiffPct >= 50 ? "plaintiff" : "defendant";
+
+    if (judgesFavor === communityFavor) {
+      return `Both judges and community members agreed — the ${c.winner} wins`;
+    }
+    return `Judges overruled the community — the ${c.winner} wins`;
+  }, [
+    c.winner,
+    isDismissedDueToNoVotes,
+    c.percentagesPerGroup,
+    c.votesPerGroup,
+    communityVotes,
+  ]);
+
+  // Judges' per-outcome percentages — each computed independently from the API.
+  const judgesPlaintiffPct = c.percentagesPerGroup?.judges?.plaintiff || 0;
+  const judgesDefendantPct = c.percentagesPerGroup?.judges?.defendant || 0;
+  const judgesDismissPct = c.percentagesPerGroup?.judges?.dismiss || 0;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-white/10">
@@ -71,7 +128,7 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
 
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-cyan-300">Plaintiff: </span>{" "}
+                  <span className="font-medium text-blue-400">Plaintiff: </span>
                   <UsernameWithAvatar
                     username={c.parties.plaintiff}
                     avatarId={c.parties.plaintiffAvatar || null}
@@ -80,7 +137,9 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </div>
                 vs{" "}
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-pink-300">Defendant: </span>
+                  <span className="font-medium text-yellow-400">
+                    Defendant:{" "}
+                  </span>
                   <UsernameWithAvatar
                     username={c.parties.defendant}
                     avatarId={c.parties.defendantAvatar || null}
@@ -89,16 +148,17 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </div>
               </div>
             </div>
+
             <div className="text-right text-sm">
               <div className="text-white/90">
                 Verdict:{" "}
                 <span
-                  className={`${
+                  className={`font-semibold ${
                     c.winner === "dismissed"
-                      ? "text-yellow-400"
+                      ? "text-slate-400"
                       : c.winner === "plaintiff"
-                        ? "text-cyan-300"
-                        : "text-pink-300"
+                        ? "text-blue-400"
+                        : "text-yellow-400"
                   }`}
                 >
                   {c.winner === "dismissed"
@@ -109,9 +169,9 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </span>
               </div>
               <div className="text-muted-foreground text-xs">
-                Total votes: {totalVotes}
+                {totalVotes} {totalVotes === 1 ? "vote" : "votes"} total
                 {isDismissedDueToNoVotes && (
-                  <div className="mt-1 text-xs text-yellow-400">
+                  <div className="mt-1 text-xs text-slate-400">
                     No votes cast
                   </div>
                 )}
@@ -119,21 +179,22 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
             </div>
           </div>
 
-          <AccordionTrigger className="px-5"></AccordionTrigger>
+          <AccordionTrigger className="px-5" />
 
           <AccordionContent className="mt-3 px-5">
             <div className="space-y-4">
+              {/* ── Final Verdict ── */}
               <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/20 p-4 text-center">
-                <div className="mb-2 text-lg text-emerald-200">
+                <div className="mb-2 text-sm tracking-wide text-emerald-200 uppercase">
                   Final Verdict
                 </div>
                 <div
                   className={`mb-2 text-2xl font-bold ${
                     c.winner === "plaintiff"
-                      ? "text-cyan-300"
+                      ? "text-blue-400"
                       : c.winner === "defendant"
-                        ? "text-pink-300"
-                        : "text-yellow-300"
+                        ? "text-yellow-400"
+                        : "text-slate-300"
                   }`}
                 >
                   {c.winner === "plaintiff"
@@ -142,225 +203,181 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                       ? "Defendant Wins"
                       : "Case Dismissed"}
                 </div>
-                <div className="text-emerald-200">
-                  {isDismissedDueToNoVotes
-                    ? "No votes were cast during the voting period"
-                    : `${Math.round(weightedPercentages.plaintiff)}% weighted majority`}
-                </div>
+                <div className="text-sm text-emerald-200">{verdictSummary}</div>
               </div>
 
+              {/* ── Voting Breakdown ── */}
               {!isDismissedDueToNoVotes && (
-                <div className="glass rounded-lg border border-cyan-400/30 bg-white/5 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
-                  <div className="mb-2 text-sm font-medium text-white/90">
-                    Voting Breakdown
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="mb-4 text-sm font-medium text-white/90">
+                    How people voted
                   </div>
 
+                  {/* Color legend */}
+                  <div className="mb-4 flex flex-wrap items-center gap-4 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-blue-500" />
+                      <span className="text-blue-300">Plaintiff</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-yellow-500" />
+                      <span className="text-yellow-300">Defendant</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-slate-500" />
+                      <span className="text-slate-400">Dismissed</span>
+                    </div>
+                  </div>
+
+                  {/* ── Judges bar ── */}
                   {c.votesPerGroup?.judges && (
-                    <div className="mb-4">
-                      <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
-                        <span>
-                          Judges — {c.votesPerGroup.judges.total} votes
-                        </span>
-                        <span>
-                          {c.percentagesPerGroup?.judges?.plaintiff || 0}% favor
-                          Plaintiff
+                    <div className="mb-5">
+                      <div className="mb-1 flex items-center justify-between text-xs text-white/70">
+                        <span className="font-medium">
+                          ⚖️ Judges
+                          <span className="ml-1 text-white/40">
+                            ({c.votesPerGroup.judges.total}{" "}
+                            {c.votesPerGroup.judges.total === 1
+                              ? "vote"
+                              : "votes"}
+                            )
+                          </span>
                         </span>
                       </div>
 
-                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
+                      {/* 3-segment flex bar: Plaintiff | Dismiss | Defendant */}
+                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-white/10">
                         <motion.div
-                          className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-800"
+                          className="h-full bg-blue-500"
                           initial={{ width: 0 }}
-                          animate={{
-                            width: `${c.percentagesPerGroup?.judges?.plaintiff || 0}%`,
-                          }}
+                          animate={{ width: `${judgesPlaintiffPct}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                        />
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${judgesDismissPct}%` }}
                           transition={{
-                            duration: 1,
+                            duration: 0.8,
                             ease: "easeOut",
-                            delay: 0,
+                            delay: 0.1,
                           }}
                         />
                         <motion.div
-                          className="absolute top-0 right-0 h-full rounded-r-full bg-pink-600"
+                          className="h-full bg-yellow-500"
                           initial={{ width: 0 }}
-                          animate={{
-                            width: `${c.percentagesPerGroup?.judges?.defendant || 0}%`,
-                          }}
+                          animate={{ width: `${judgesDefendantPct}%` }}
                           transition={{
-                            duration: 1,
+                            duration: 0.8,
                             ease: "easeOut",
-                            delay: 0,
+                            delay: 0.2,
                           }}
                         />
                       </div>
 
-                      <div className="mt-1 flex justify-between text-[11px]">
-                        <span className="text-cyan-300">
-                          Plaintiff: {c.votesPerGroup.judges.plaintiff} votes
+                      <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
+                        <span className="text-blue-300">
+                          {c.votesPerGroup.judges.plaintiff} Plaintiff
                         </span>
-                        <span className="text-pink-300">
-                          Defendant: {c.votesPerGroup.judges.defendant} votes
+                        {(c.votesPerGroup.judges.dismiss || 0) > 0 && (
+                          <span className="text-slate-400">
+                            {c.votesPerGroup.judges.dismiss} Dismissed
+                          </span>
+                        )}
+                        <span className="text-yellow-300">
+                          {c.votesPerGroup.judges.defendant} Defendant
                         </span>
                       </div>
                     </div>
                   )}
 
-                  {c.votesPerGroup?.communityTierOne &&
-                    c.votesPerGroup.communityTierOne.total > 0 && (
-                      <div className="mb-4">
-                        <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
-                          <span>
-                            Community Tier 1 —{" "}
-                            {c.votesPerGroup.communityTierOne.total} votes
+                  {/* ── Community bar (Tier 1 + Tier 2 merged) ── */}
+                  {communityVotes.total > 0 && (
+                    <div className="mb-5">
+                      <div className="mb-1 flex items-center justify-between text-xs text-white/70">
+                        <span className="font-medium">
+                          👥 Community Members
+                          <span className="ml-1 text-white/40">
+                            ({communityVotes.total}{" "}
+                            {communityVotes.total === 1 ? "vote" : "votes"})
                           </span>
-                          <span>
-                            {c.percentagesPerGroup?.communityTierOne
-                              ?.plaintiff || 0}
-                            % favor Plaintiff
-                          </span>
-                        </div>
-
-                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
-                          <motion.div
-                            className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-300"
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${c.percentagesPerGroup?.communityTierOne?.plaintiff || 0}%`,
-                            }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: 0.2,
-                            }}
-                          />
-                          <motion.div
-                            className="absolute top-0 right-0 h-full rounded-r-full bg-pink-300/60"
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${c.percentagesPerGroup?.communityTierOne?.defendant || 0}%`,
-                            }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: 0.2,
-                            }}
-                          />
-                        </div>
-
-                        <div className="mt-1 flex justify-between text-[11px]">
-                          <span className="text-cyan-300">
-                            Plaintiff:{" "}
-                            {c.votesPerGroup.communityTierOne.plaintiff} votes
-                          </span>
-                          <span className="text-pink-300">
-                            Defendant:{" "}
-                            {c.votesPerGroup.communityTierOne.defendant} votes
-                          </span>
-                        </div>
+                        </span>
                       </div>
-                    )}
 
-                  {c.votesPerGroup?.communityTierTwo &&
-                    c.votesPerGroup.communityTierTwo.total > 0 && (
-                      <div className="mb-4">
-                        <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
-                          <span>
-                            Community Tier 2 —{" "}
-                            {c.votesPerGroup.communityTierTwo.total} votes
-                          </span>
-                          <span>
-                            {c.percentagesPerGroup?.communityTierTwo
-                              ?.plaintiff || 0}
-                            % favor Plaintiff
-                          </span>
-                        </div>
-
-                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
-                          <motion.div
-                            className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-200"
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${c.percentagesPerGroup?.communityTierTwo?.plaintiff || 0}%`,
-                            }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: 0.3,
-                            }}
-                          />
-                          <motion.div
-                            className="absolute top-0 right-0 h-full rounded-r-full bg-pink-200/60"
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${c.percentagesPerGroup?.communityTierTwo?.defendant || 0}%`,
-                            }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: 0.3,
-                            }}
-                          />
-                        </div>
-
-                        <div className="mt-1 flex justify-between text-[11px]">
-                          <span className="text-cyan-300">
-                            Plaintiff:{" "}
-                            {c.votesPerGroup.communityTierTwo.plaintiff} votes
-                          </span>
-                          <span className="text-pink-300">
-                            Defendant:{" "}
-                            {c.votesPerGroup.communityTierTwo.defendant} votes
-                          </span>
-                        </div>
+                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-white/10">
+                        <motion.div
+                          className="h-full bg-blue-400"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityVotes.plaintiffPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.15,
+                          }}
+                        />
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityVotes.dismissPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.25,
+                          }}
+                        />
+                        <motion.div
+                          className="h-full bg-yellow-400"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityVotes.defendantPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.35,
+                          }}
+                        />
                       </div>
+
+                      <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
+                        <span className="text-blue-300">
+                          {communityVotes.plaintiff} Plaintiff
+                        </span>
+                        {communityVotes.dismiss > 0 && (
+                          <span className="text-slate-400">
+                            {communityVotes.dismiss} Dismissed
+                          </span>
+                        )}
+                        <span className="text-yellow-300">
+                          {communityVotes.defendant} Defendant
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Total summary row */}
+                  <div className="mt-2 rounded-md bg-white/5 px-3 py-2 text-xs text-white/60">
+                    Total:{" "}
+                    <span className="font-medium text-blue-300">
+                      {voteResults.plaintiffVotes} Plaintiff
+                    </span>
+                    {" · "}
+                    <span className="font-medium text-yellow-300">
+                      {voteResults.defendantVotes} Defendant
+                    </span>
+                    {totalDismissVotes > 0 && (
+                      <>
+                        {" · "}
+                        <span className="font-medium text-slate-400">
+                          {totalDismissVotes} Dismissed
+                        </span>
+                      </>
                     )}
-
-                  <div>
-                    <div className="text-muted-foreground mb-1 flex justify-between text-xs">
-                      <span>Weighted Total (70% Judges, 30% Community)</span>
-                      <span>
-                        {weightedPercentages.plaintiff.toFixed(1)}% favor
-                        Plaintiff
-                      </span>
-                    </div>
-
-                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <motion.div
-                        className="absolute top-0 left-0 h-full rounded-l-full bg-cyan-400"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${weightedPercentages.plaintiff}%` }}
-                        transition={{
-                          duration: 1,
-                          ease: "easeOut",
-                          delay: 0.5,
-                        }}
-                      />
-                      <motion.div
-                        className="absolute top-0 right-0 h-full rounded-r-full bg-pink-400/60"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${weightedPercentages.defendant}%` }}
-                        transition={{
-                          duration: 1,
-                          ease: "easeOut",
-                          delay: 0.5,
-                        }}
-                      />
-                    </div>
-
-                    <div className="mt-1 flex justify-between text-[11px]">
-                      <span className="text-cyan-300">
-                        Plaintiff: {voteResults.plaintiffVotes} votes
-                      </span>
-                      <span className="text-pink-300">
-                        Defendant: {voteResults.defendantVotes} votes
-                      </span>
-                    </div>
                   </div>
                 </div>
               )}
 
+              {/* ── Judges' Comments ── */}
               {c.comments && c.comments.length > 0 ? (
-                <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="mb-2 text-sm font-medium text-white/90">
                     Judges' Comments
                   </div>
@@ -372,12 +389,12 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                       >
                         <div className="flex items-center gap-2">
                           <UserAvatar
-                            userId={comment.handle.replace("@", "")}
+                            userId={String(comment.accountId ?? "")}
                             avatarId={comment.avatarId || null}
-                            username={comment.handle}
+                            username={comment.handle || comment.username || ""}
                             size="sm"
                           />
-                          <div className="text-sm font-medium text-cyan-300">
+                          <div className="text-sm font-medium text-blue-300">
                             {formatDisplayName(comment.handle)}
                           </div>
                         </div>
@@ -387,7 +404,7 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                   </div>
                 </div>
               ) : (
-                <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="text-sm font-medium text-white/90">
                     Judges' Comments
                   </div>
@@ -397,7 +414,8 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </div>
               )}
 
-              <div className="glass rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-transparent p-4">
+              {/* ── Case Description ── */}
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <div className="text-sm font-medium text-white/90">
                   Case Description
                 </div>
@@ -406,13 +424,14 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </p>
                 <Link
                   to={`/disputes/${c.id}`}
-                  className="mt-3 inline-flex items-center text-xs text-cyan-300 hover:underline"
+                  className="mt-3 inline-flex items-center text-xs text-blue-300 hover:underline"
                   prefetch="intent"
                 >
                   <ExternalLink className="mr-1 h-3.5 w-3.5" /> View on Disputes
                 </Link>
               </div>
 
+              {/* ── Dev-only debug panel ── */}
               {process.env.NODE_ENV === "development" && (
                 <div className="rounded-lg border border-gray-400/30 bg-gray-500/10 p-3">
                   <div className="text-xs text-gray-300">

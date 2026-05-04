@@ -79,10 +79,12 @@ export function EscrowModal({
   const footerNote = () => {
     // Get the native symbol from SUPPORTED_CHAINS using the mainnetId
     const nativeSymbol =
-      form.token === "ETH" && selectedMainnetId
-        ? (SUPPORTED_CHAINS.find((c) => c.mainnetId === selectedMainnetId)
-            ?.symbol ?? "ETH")
-        : form.token;
+      form.token === "custom"
+        ? (form.resolvedTokenSymbol ?? "custom token") // 👈
+        : form.token === "ETH" && selectedMainnetId
+          ? (SUPPORTED_CHAINS.find((c) => c.mainnetId === selectedMainnetId)
+              ?.symbol ?? "ETH")
+          : form.token;
 
     if (escrowType === "myself" && form.payer === "me") {
       return (

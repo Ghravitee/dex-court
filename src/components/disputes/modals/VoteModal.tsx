@@ -137,10 +137,10 @@ const VoteOption = ({
   // Get role-specific styling
   const roleColor =
     optionType === "plaintiff"
-      ? "text-cyan-300"
+      ? "text-blue-300"
       : optionType === "defendant"
-        ? "text-pink-300"
-        : "text-yellow-300";
+        ? "text-yellow-400"
+        : "text-slate-300";
 
   return (
     <button
@@ -384,12 +384,12 @@ export const VoteModal = ({
                             size="sm"
                           />
                           <div>
-                            <div className="text-xs text-cyan-300">
+                            <div className="text-xs text-blue-400">
                               {formatTelegramUsernameForDisplay(
                                 dispute?.plaintiff || "",
                               )}
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-cyan-200/70">
+                            <div className="flex items-center gap-1 text-xs text-blue-200/70">
                               Plaintiff
                               {isCurrentUserPlaintiff() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
@@ -427,12 +427,12 @@ export const VoteModal = ({
                             size="sm"
                           />
                           <div>
-                            <div className="text-xs text-pink-300">
+                            <div className="text-xs text-yellow-300">
                               {formatTelegramUsernameForDisplay(
                                 dispute?.defendant || "",
                               )}
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-pink-200/70">
+                            <div className="flex items-center gap-1 text-xs text-yellow-200/70">
                               Defendant
                               {isCurrentUserDefendant() && (
                                 <VscVerifiedFilled className="h-3 w-3 text-green-400" />
@@ -458,16 +458,16 @@ export const VoteModal = ({
                     <VoteOption
                       label={
                         <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-500/20">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-500/20">
                             <span className="text-xl">
-                              <MinusCircle className="text-orange-400" />
+                              <MinusCircle className="text-slate-400" />
                             </span>
                           </div>
                           <div>
-                            <div className="text-xs text-yellow-300">
+                            <div className="text-xs text-slate-300">
                               No Winner
                             </div>
-                            <div className="text-xs text-yellow-200/70">
+                            <div className="text-xs text-slate-200/70">
                               Case dismissed
                             </div>
                           </div>

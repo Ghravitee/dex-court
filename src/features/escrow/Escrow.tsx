@@ -286,7 +286,10 @@ export default function EscrowPage() {
                 <Button
                   variant="outline"
                   className="group rounded-xl border-2 border-cyan-400/40 bg-cyan-500/5 px-6 py-3 font-semibold text-cyan-200 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-100 hover:shadow-lg hover:shadow-cyan-500/20 active:translate-y-0"
-                  onClick={previewCreationSteps}
+                  onClick={() => {
+                    setOpen(true); // 👈 open the modal first
+                    previewCreationSteps();
+                  }}
                 >
                   Preview Steps
                 </Button>

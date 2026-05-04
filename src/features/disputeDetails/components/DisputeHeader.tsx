@@ -107,7 +107,7 @@ export const DisputeHeader = ({
         {dispute.status === "Pending" && (
           <Button
             variant="outline"
-            className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+            className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
             onClick={onEscalateToVote}
             disabled={escalating}
           >
@@ -123,7 +123,7 @@ export const DisputeHeader = ({
         {canFinalize && (
           <Button
             variant="outline"
-            className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+            className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
             onClick={onFinalizeVote}
             disabled={finalizing}
           >
