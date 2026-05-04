@@ -34,14 +34,12 @@ export function ContractConfigsTab({
   onUpdateVotingConfig,
   onSetDisputeResolver,
   onSetFeeRecipient,
-  onFreezeAgreement,
   onRecoverStuckEthEscrow,
   onRecoverStuckEthVoting,
   onRecoverStuckTokenEscrow,
   onRecoverStuckTokenVoting,
   isUpdatingEscrow,
   isUpdatingVoting,
-  isFreezingAgreement,
   isRecoveringEscrowEth,
   isRecoveringVotingEth,
   isRecoveringEscrowToken,
@@ -65,11 +63,6 @@ export function ContractConfigsTab({
 
   const [resolverForm, setResolverForm] = useState("");
   const [feeRecipientForm, setFeeRecipientForm] = useState("");
-
-  const [freezeForm, setFreezeForm] = useState({
-    id: "",
-    status: false,
-  });
 
   const [recoverForm, setRecoverForm] = useState({
     token: "",
@@ -193,10 +186,6 @@ export function ContractConfigsTab({
     });
   };
 
-  const handleFreeze = async () => {
-    await onFreezeAgreement(BigInt(freezeForm.id || "0"), freezeForm.status);
-  };
-
   const handleRecoverEscrowEth = async () => {
     await onRecoverStuckEthEscrow(parseEther(recoverForm.amount || "0"));
   };
@@ -221,13 +210,6 @@ export function ContractConfigsTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total agreements" value={escrowAgreements} />
-        <StatCard label="Total disputes" value={escrowDisputes} />
-        <StatCard label="Fees taken" value={`${escrowFees} ETH`} />
-        <StatCard label="Total escrowed" value={`${escrowedEth} ETH`} />
-      </div>
-
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
           <ContractHeader
@@ -287,11 +269,6 @@ export function ContractConfigsTab({
             address={votingAddress}
             explorerUrl={`${explorerBase}/address/${votingAddress}`}
           />
-
-          <div className="mb-2 grid grid-cols-2 gap-3">
-            <StatCard label="Total disputes" value={votingDisputes} />
-            <StatCard label="Fees collected" value={`${votingFees} ETH`} />
-          </div>
 
           <ConfigField
             label="Dispute duration (s)"
@@ -378,39 +355,6 @@ export function ContractConfigsTab({
 
         <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
           <h3 className="text-sm font-semibold text-white/90">Maintenance</h3>
-
-          <ConfigField
-            label="Agreement ID"
-            hint="123"
-            current="used for freeze / unfreeze"
-            value={freezeForm.id}
-            onChange={(v) => setFreezeForm((f) => ({ ...f, id: v }))}
-          />
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFreezeForm((f) => ({ ...f, status: true }))}
-              className="flex-1 rounded-lg bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 ring-1 ring-white/10 hover:bg-white/10"
-            >
-              Freeze
-            </button>
-            <button
-              onClick={() => setFreezeForm((f) => ({ ...f, status: false }))}
-              className="flex-1 rounded-lg bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 ring-1 ring-white/10 hover:bg-white/10"
-            >
-              Unfreeze
-            </button>
-          </div>
-
-          <button
-            onClick={handleFreeze}
-            disabled={isFreezingAgreement}
-            className="w-full rounded-lg bg-purple-500/20 px-4 py-2.5 text-sm font-medium text-purple-300 ring-1 ring-purple-400/30 transition-all hover:bg-purple-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isFreezingAgreement
-              ? "Updating freeze status..."
-              : "Apply freeze status"}
-          </button>
 
           <div className="h-px bg-white/10" />
 
