@@ -7,24 +7,6 @@ import { ESCROW_ABI, VOTING_ABI } from "../../../web3/config";
 import { ConfigField } from "./ConfigField";
 import { ContractHeader } from "./ContractHeader";
 
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-white/5 p-4">
-      <p className="mb-1 text-xs text-white/40">{label}</p>
-      <p className="text-xl font-semibold text-white/90">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-white/30">{sub}</p>}
-    </div>
-  );
-}
-
 export function ContractConfigsTab({
   activeChainId,
   escrowAddress,
@@ -79,16 +61,6 @@ export function ContractConfigsTab({
     },
   });
 
-  const { data: escrowStatsRaw } = useReadContract({
-    address: escrowAddress,
-    abi: ESCROW_ABI.abi,
-    functionName: "getStats",
-    chainId: activeChainId,
-    query: {
-      enabled: Boolean(escrowAddress),
-    },
-  });
-
   const { data: votingConfigRaw } = useReadContract({
     address: votingAddress,
     abi: VOTING_ABI.abi,
@@ -99,22 +71,8 @@ export function ContractConfigsTab({
     },
   });
 
-  const { data: votingStatsRaw } = useReadContract({
-    address: votingAddress,
-    abi: VOTING_ABI.abi,
-    functionName: "getStats",
-    chainId: activeChainId,
-    query: {
-      enabled: Boolean(votingAddress),
-    },
-  });
-
   const escrowConfig = escrowConfigRaw as
     | { platformFeeBp: bigint; feeAmount: bigint; disputeDuration: bigint; grace1Duration: bigint; grace2Duration: bigint }
-    | undefined;
-
-  const escrowStats = escrowStatsRaw as
-    | { agreementsTotal: bigint; disputesTotal: bigint; smoothTotal: bigint; feesTaken: bigint; escrowedEth: bigint; _feeRecipient: string }
     | undefined;
 
   const votingConfig = votingConfigRaw as
@@ -145,17 +103,6 @@ export function ContractConfigsTab({
     setFeeRecipientForm(votingConfig.feeRec ?? "");
   }, [votingConfig]);
 
-  const escrowAgreements = String(escrowStats?.agreementsTotal ?? 0n);
-  const escrowDisputes = String(escrowStats?.disputesTotal ?? 0n);
-  const escrowFees = formatEther(escrowStats?.feesTaken ?? 0n);
-  const escrowedEth = formatEther(escrowStats?.escrowedEth ?? 0n);
-
-  const votingStats = votingStatsRaw as
-    | { totalDisputes_: bigint; totalFeesCollected_: bigint }
-    | undefined;
-
-  const votingDisputes = String(votingStats?.totalDisputes_ ?? 0n);
-  const votingFees = formatEther(votingStats?.totalFeesCollected_ ?? 0n);
 
   const handleUpdateEscrow = async () => {
     console.log("Updating escrow config with", escrowForm);
