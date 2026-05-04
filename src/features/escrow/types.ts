@@ -103,6 +103,7 @@ export interface EscrowFormState {
   evidence: UploadedFile[];
   milestones: Milestone[];
   tokenDecimals: number;
+  resolvedTokenSymbol?: string;
 }
 
 export const initialFormState: EscrowFormState = {

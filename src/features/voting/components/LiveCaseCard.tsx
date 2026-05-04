@@ -43,7 +43,6 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
     weight,
     markAsVoted,
     isInitialCheck,
-    // refetch: refetchVotingStatus,
   } = useVotingStatus(parseInt(c.id), c.rawDispute);
 
   const remain = Math.max(0, c.endsAt - currentTime);
@@ -132,19 +131,22 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
         duration: 4000,
       });
 
-      setLocalVoted(true); // immediate local override
-      markAsVoted(); // keeps the hook state consistent
+      // Set local state immediately so the UI reflects the voted status
+      // without waiting for the server round-trip.
+      setLocalVoted(true);
+      markAsVoted();
       setChoice(null);
       setComment("");
-      // remove refetchVotingStatus() entirely
 
-      if ("requestIdleCallback" in window) {
-        requestIdleCallback(() => {
-          refetchLiveDisputes();
-        });
-      } else {
-        setTimeout(refetchLiveDisputes, 1000);
-      }
+      // Delay the list refetch so the server has time to persist the vote
+      // before useVotingStatus re-runs on the refreshed card.
+      //
+      // Why this matters: refetchLiveDisputes() can remount the card component,
+      // resetting localVoted to false. If the refetch fires before the server
+      // has confirmed the vote, hasVoted also comes back false — making the
+      // user appear un-voted even though they just voted successfully.
+      // A 3-second buffer is enough for the API to settle in practice.
+      setTimeout(refetchLiveDisputes, 3000);
     } catch (error: any) {
       console.error("❌ Vote failed:", error);
 
@@ -160,14 +162,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
     } finally {
       setIsVoting(false);
     }
-  }, [
-    choice,
-    comment,
-    c.id,
-    refetchLiveDisputes,
-    markAsVoted,
-    // refetchVotingStatus,
-  ]);
+  }, [choice, comment, c.id, refetchLiveDisputes, markAsVoted]);
 
   const handleCommentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -188,6 +183,8 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
     return info.length > 0 ? `(${info.join(", ")})` : "";
   }, [canVote, tier, weight]);
 
+  // localVoted handles the immediate post-vote UI; hasVoted takes over once
+  // the component remounts after the delayed refetch and the server confirms.
   const voted = localVoted || hasVoted;
 
   return (
@@ -209,7 +206,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
               </Link>
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-cyan-300">Plaintiff: </span>{" "}
+                  <span className="font-medium text-blue-400">Plaintiff: </span>{" "}
                   <UsernameWithAvatar
                     username={c.parties.plaintiff}
                     avatarId={c.parties.plaintiffAvatar || null}
@@ -218,7 +215,9 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                 </div>
                 vs{" "}
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-pink-300">Defendant: </span>
+                  <span className="font-medium text-yellow-400">
+                    Defendant:{" "}
+                  </span>
                   <UsernameWithAvatar
                     username={c.parties.defendant}
                     avatarId={c.parties.defendantAvatar || null}

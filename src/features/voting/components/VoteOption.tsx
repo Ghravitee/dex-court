@@ -32,7 +32,7 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
     choice !== "dismissed";
 
   const roleColor =
-    optionType === "plaintiff" ? "text-cyan-300" : "text-pink-300";
+    optionType === "plaintiff" ? "text-blue-400" : "text-yellow-400";
 
   return (
     <button
@@ -56,7 +56,7 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
       )}
 
       {optionType === "dismissed" && (
-        <div className="text-xs font-semibold text-yellow-300 uppercase">
+        <div className="text-xs font-semibold text-slate-300 uppercase">
           Dismiss Case
         </div>
       )}
@@ -73,9 +73,9 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
         </div>
       ) : optionType === "dismissed" ? (
         <div className="flex flex-col items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-500/20">
             <span className="text-xl">
-              <MinusCircle className="text-orange-400" />
+              <MinusCircle className="text-slate-400" />
             </span>
           </div>
           <span className="text-xs">No winner</span>

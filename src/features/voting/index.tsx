@@ -405,15 +405,15 @@ export default function Voting() {
 
         <div className="flex items-center gap-4 text-xs text-white/70">
           <div className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full bg-cyan-400/80" />
+            <span className="h-3 w-3 rounded-full bg-blue-400/80" />
             <span>Plaintiff</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full bg-pink-400/80" />
+            <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
             <span>Defendant</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
+            <span className="h-3 w-3 rounded-full bg-slate-400/80" />
             <span>Dismissed</span>
           </div>
         </div>

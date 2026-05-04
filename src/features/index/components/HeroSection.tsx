@@ -10,9 +10,9 @@ export const HeroSection = () => {
             DexCourt dApp
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            A decentralized platform for trustless agreements, transparent
-            dispute resolution, and on-chain reputation. Govern your deals and
-            votes with full cryptographic assurance.
+            A decentralized platform for binding on-chain agreements, fair
+            dispute resolution, and reputation that can't be faked. Your deals,
+            your rules — enforced by code, not promises.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link to="/agreements">

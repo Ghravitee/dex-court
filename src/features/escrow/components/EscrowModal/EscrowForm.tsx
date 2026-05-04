@@ -198,7 +198,11 @@ export function EscrowForm({
       !resolvedChainId
     ) {
       setResolvedTokenMeta(null);
-      setForm((p) => ({ ...p, tokenDecimals: 18 })); // reset to safe default
+      setForm((p) => ({
+        ...p,
+        tokenDecimals: 18,
+        resolvedTokenSymbol: undefined,
+      })); // 👈
       return;
     }
 
@@ -223,7 +227,11 @@ export function EscrowForm({
           setResolvedTokenMeta({
             symbol: symbol as string,
           });
-          setForm((p) => ({ ...p, tokenDecimals: Number(decimals) }));
+          setForm((p) => ({
+            ...p,
+            tokenDecimals: Number(decimals),
+            resolvedTokenSymbol: symbol as string,
+          }));
         }
       } catch {
         if (!cancelled) setResolvedTokenMeta(null);
