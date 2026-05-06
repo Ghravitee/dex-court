@@ -4,8 +4,8 @@ import { cn } from "../../lib/utils";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { UserAvatar } from "../UserAvatar";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
-import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AppLink } from "../AppLink";
 
 interface AgreementItem {
   id: string;
@@ -277,7 +277,7 @@ export const InfiniteMovingAgreements = ({
               key={`${item.id}-${idx}`}
               onClick={() => handleCardClick(idx)}
             >
-              <Link
+              <AppLink
                 to={`/agreements/${item.id}`}
                 className="block h-full w-full no-underline"
                 onClick={(e) => e.stopPropagation()} // Prevent card click handler from firing
@@ -335,7 +335,7 @@ export const InfiniteMovingAgreements = ({
                     </div>
                   </div>
                 </blockquote>
-              </Link>
+              </AppLink>
 
               {/* Click indicator */}
               <div className="absolute right-2 bottom-2 opacity-0 transition-opacity hover:opacity-100">

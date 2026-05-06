@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import Admin from "../../../components/ui/svgcomponents/Admin";
+import { AppLink } from "../../../components/AppLink";
 
 interface RoleSectionProps {
   roles: {
@@ -28,12 +28,12 @@ export const RoleSection = ({ roles }: RoleSectionProps) => {
             You have full access to the admin panel for user management and
             platform analytics.
           </div>
-          <Link
+          <AppLink
             to="/admin"
             className="rounded-lg border-yellow-400/40 bg-yellow-600/20 px-4 py-2 font-medium text-yellow-100 transition-colors hover:bg-yellow-500/30"
           >
             Access Admin Panel
-          </Link>
+          </AppLink>
         </div>
       </section>
     );

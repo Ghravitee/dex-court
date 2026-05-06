@@ -13,13 +13,16 @@ import { GlobalLoader } from "./components/GlobalLoader";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { PageTransitionLoader } from "./components/PageTransitionLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
+import { RouteLoadingProvider } from "./context/RouteLoadingContext";
 
 const Reputation = lazy(
   () => import("./features/reputation/components/ReputationPage"),
 );
 
 // Add this lazy import
-const AdminWeb3Configs = lazy(() => import("./features/admin/pages/AdminWeb3Configs"));
+const AdminWeb3Configs = lazy(
+  () => import("./features/admin/pages/AdminWeb3Configs"),
+);
 
 const AdminUsers = lazy(() => import("./features/admin/pages/AdminUsers"));
 // const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics"));
@@ -90,7 +93,6 @@ function AppContent() {
   const isRouteLoading = useRouteLoading();
 
   const showInitialLoader = !isAuthInitialized || authLoading;
-  const showTransitionLoader = isRouteLoading && isAuthInitialized;
 
   return (
     <TooltipProvider>
@@ -105,7 +107,7 @@ function AppContent() {
       {showInitialLoader && <GlobalLoader />}
 
       {/* Small top transition loader */}
-      {showTransitionLoader && <PageTransitionLoader />}
+      <PageTransitionLoader isLoading={isRouteLoading && isAuthInitialized} />
 
       <Suspense fallback={<GlobalLoader />}>
         <Routes>
@@ -156,7 +158,9 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppContent />
+        <RouteLoadingProvider>
+          <AppContent />
+        </RouteLoadingProvider>
       </BrowserRouter>
     </AuthProvider>
   );

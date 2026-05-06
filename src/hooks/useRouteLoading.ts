@@ -1,16 +1,15 @@
-import { useEffect, useState } from "react";
+// src/hooks/useRouteLoading.ts
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { useRouteLoadingContext } from "../context/RouteLoadingContext";
 
 export const useRouteLoading = () => {
+  const { isLoading, stopLoading } = useRouteLoadingContext();
   const location = useLocation();
-  const [isRouteLoading, setIsRouteLoading] = useState(false);
 
   useEffect(() => {
-    setIsRouteLoading(true);
+    stopLoading();
+  }, [location.pathname, stopLoading]);
 
-    const timer = setTimeout(() => setIsRouteLoading(false), 400);
-    return () => clearTimeout(timer);
-  }, [location.pathname]);
-
-  return isRouteLoading;
+  return isLoading;
 };

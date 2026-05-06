@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import { MessageCircle, Upload, UserCheck, Shield } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "../../../components/UserAvatar";
@@ -6,6 +5,7 @@ import { EvidenceDisplay } from "../../../components/disputes/EvidenceDisplay";
 import { cleanTelegramUsername } from "../../../lib/usernameUtils";
 import type { DisputeRow, EvidenceItem } from "../../../types";
 import { formatDisplayName } from "../utils/formatter";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   dispute: DisputeRow;
@@ -22,8 +22,6 @@ export const DefendantColumn = ({
   isCurrentUserDefendant,
   onViewEvidence,
 }: Props) => {
-  const navigate = useNavigate();
-
   return (
     <div className="space-y-6">
       {/* Defendant Header */}
@@ -40,17 +38,12 @@ export const DefendantColumn = ({
         <div>
           <h2 className="text-lg font-bold text-yellow-400">Defendant</h2>
           <div className="flex items-center gap-2 text-sm text-yellow-300">
-            <button
-              type="button"
-              onClick={() =>
-                navigate(
-                  `/profile/${encodeURIComponent(cleanTelegramUsername(dispute.defendant))}`,
-                )
-              }
+            <AppLink
+              to={`/profile/${encodeURIComponent(cleanTelegramUsername(dispute.defendant))}`}
               className="hover:text-yellow-200 hover:underline"
             >
               {formatDisplayName(dispute.defendant)}
-            </button>
+            </AppLink>
             {isCurrentUserDefendant() && (
               <VscVerifiedFilled className="h-4 w-4 text-green-400" />
             )}
@@ -111,19 +104,13 @@ export const DefendantColumn = ({
           </h3>
           <div className="flex flex-wrap gap-2">
             {defendantWitnesses.map((witness, index) => (
-              <button
+              <AppLink
                 key={index}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(
-                    `/profile/${encodeURIComponent(cleanTelegramUsername(witness))}`,
-                  );
-                }}
+                to={`/profile/${encodeURIComponent(cleanTelegramUsername(witness))}`}
                 className="rounded-full bg-yellow-500/20 px-3 py-1 text-sm text-yellow-300 transition-colors hover:bg-yellow-500/30 hover:text-yellow-200 hover:underline"
               >
                 {formatDisplayName(witness)}
-              </button>
+              </AppLink>
             ))}
           </div>
         </div>

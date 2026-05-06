@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useMemo } from "react";
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Accordion,
@@ -14,6 +13,7 @@ import { calculateVoteResults } from "../../../lib/voteCalculations";
 import { UsernameWithAvatar } from "./UsernameWithAvatar";
 import { formatDisplayName } from "../utils/formatting";
 import { type DoneCaseCardProps } from "../types";
+import { AppLink } from "../../../components/AppLink";
 
 export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
   const voteResults = useMemo(() => {
@@ -118,13 +118,13 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
         <AccordionItem value="case">
           <div className="flex items-center justify-between gap-3 px-5 pt-4">
             <div>
-              <Link
+              <AppLink
                 to={`/disputes/${c.id}`}
                 className="inline-flex items-center hover:underline"
                 prefetch="intent"
               >
                 <h2 className="font-semibold text-white/90">{c.title}</h2>
-              </Link>
+              </AppLink>
 
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
@@ -422,13 +422,13 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 <p className="text-muted-foreground mt-1 text-sm break-all">
                   {c.description}
                 </p>
-                <Link
+                <AppLink
                   to={`/disputes/${c.id}`}
                   className="mt-3 inline-flex items-center text-xs text-blue-300 hover:underline"
                   prefetch="intent"
                 >
                   <ExternalLink className="mr-1 h-3.5 w-3.5" /> View on Disputes
-                </Link>
+                </AppLink>
               </div>
 
               {/* ── Dev-only debug panel ── */}

@@ -20,6 +20,7 @@ import { EscrowModal } from "./components/EscrowModal";
 import { NetworkWarning } from "./components/EscrowModal/NetworkWarning";
 import { StatusMessages } from "./components/EscrowModal/StatusMessages";
 import { MAX_IMAGE_SIZE, MAX_DOCUMENT_SIZE, MAX_TOTAL_SIZE } from "./constants";
+import { EscrowPageLoadingScreen } from "./components/EscrowPageLoadingScreen";
 
 export default function EscrowPage() {
   const { isConnected } = useAccount();
@@ -259,6 +260,10 @@ export default function EscrowPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (loading && allEscrows.length === 0 && !error) {
+    return <EscrowPageLoadingScreen />;
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

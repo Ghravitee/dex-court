@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
+import { AppLink } from "../../../components/AppLink";
 
 export const HeroSection = () => {
   return (
@@ -15,19 +15,19 @@ export const HeroSection = () => {
             your rules — enforced by code, not promises.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link to="/agreements">
+            <AppLink to="/agreements">
               <Button variant="neon" className="neon-hover">
                 Create Agreement
               </Button>
-            </Link>
-            <Link to="/disputes">
+            </AppLink>
+            <AppLink to="/disputes">
               <Button
                 variant="outline"
                 className="border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/10"
               >
                 Create Dispute
               </Button>
-            </Link>
+            </AppLink>
           </div>
         </div>
       </div>

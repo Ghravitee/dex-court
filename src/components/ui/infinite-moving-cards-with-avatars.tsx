@@ -1,10 +1,10 @@
 import { cn } from "../../lib/utils";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { UserAvatar } from "../UserAvatar";
-import { Link } from "react-router-dom";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
 import { AvatarErrorBoundary } from "../AvatarErrorBoundary";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AppLink } from "../AppLink";
 
 interface AgreementItem {
   quote: string;
@@ -327,7 +327,7 @@ export const InfiniteMovingCardsWithAvatars = ({
     if (type === "judges" && ("avatarId" in item || "avatar" in item)) {
       const judgeItem = item as JudgeItem;
       return (
-        <Link
+        <AppLink
           to={`/profile/${judgeItem.rawName ?? judgeItem.userId}`}
           className="block h-full w-full"
           onClick={(e) => e.stopPropagation()}
@@ -367,7 +367,7 @@ export const InfiniteMovingCardsWithAvatars = ({
               {item.title}
             </span>
           </div> */}
-        </Link>
+        </AppLink>
       );
     }
 
@@ -593,7 +593,7 @@ export const InfiniteMovingCardsWithAvatars = ({
             >
               {(type === "disputes" || type === "live-voting") &&
               "id" in item ? (
-                <Link
+                <AppLink
                   to={
                     type === "live-voting"
                       ? `/disputes/${item.id}` // Changed from `/voting` to `/disputes/${item.id}`
@@ -605,7 +605,7 @@ export const InfiniteMovingCardsWithAvatars = ({
                   <blockquote className="h-full">
                     {renderCardContent(item)}
                   </blockquote>
-                </Link>
+                </AppLink>
               ) : (
                 <blockquote className="h-full">
                   {renderCardContent(item)}

@@ -1,6 +1,6 @@
 import { AlertTriangle, RefreshCw, ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
+import { AppLink } from "./AppLink";
 
 interface ErrorScreenProps {
   onRetry?: () => void;
@@ -35,12 +35,12 @@ export function ErrorScreen({ onRetry, errorMessage }: ErrorScreenProps) {
                 Try Again
               </Button>
             )}
-            <Link to="/escrow">
+            <AppLink to="/escrow">
               <Button variant="neon" className="neon-hover">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Escrows
               </Button>
-            </Link>
+            </AppLink>
           </div>
         </div>
       </div>

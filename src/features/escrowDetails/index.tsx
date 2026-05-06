@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   ArrowLeft,
   FileText,
@@ -65,10 +65,12 @@ import { toast } from "sonner";
 import { ActionInfoBlurb } from "../../components/ActionInfoBlurb";
 import React from "react";
 import { LoadingScreen } from "../../components/LoadingScreen";
+import { useNavigation } from "../../hooks/useNavigation";
+import { AppLink } from "../../components/AppLink";
 
 export default function EscrowDetails() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
   const { user } = useAuth();
 
   // ─── Data ──────────────────────────────────────────────────────────────────
@@ -345,12 +347,12 @@ export default function EscrowDetails() {
             <p className="text-muted-foreground mb-6">{config.message}</p>
             <div className="flex justify-center gap-3">
               {config.showBack && (
-                <Link to="/escrow">
+                <AppLink to="/escrow">
                   <Button variant="neon" className="neon-hover">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Escrows
                   </Button>
-                </Link>
+                </AppLink>
               )}
               {!config.showBack && (
                 <Button
@@ -582,7 +584,7 @@ export default function EscrowDetails() {
           <div className="flex space-x-4 self-start lg:mr-4">
             <Button
               variant="outline"
-              onClick={() => navigate("/escrow")}
+              onClick={() => navigateTo("/escrow")}
               className="border-white/15 text-cyan-200 hover:bg-cyan-500/10"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -627,13 +629,13 @@ export default function EscrowDetails() {
               )}
 
             {escrow._raw?.disputes?.length > 0 && (
-              <Link
+              <AppLink
                 to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
                 className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
               >
                 <AlertTriangle className="h-4 w-4" />
                 View Dispute
-              </Link>
+              </AppLink>
             )}
           </div>
 
@@ -1732,18 +1734,14 @@ export default function EscrowDetails() {
                                       size="sm"
                                     />
                                   )}
-                                  <button
-                                    onClick={() =>
-                                      navigate(
-                                        `/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`,
-                                      )
-                                    }
+                                  <AppLink
+                                    to={`/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`}
                                     className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
                                   >
                                     {formatUsernameForDisplay(
                                       disputeInfo.filedBy,
                                     )}
-                                  </button>
+                                  </AppLink>
                                   {user &&
                                     disputeInfo.filedBy &&
                                     normalizeUsername(user.username) ===
@@ -1762,13 +1760,13 @@ export default function EscrowDetails() {
                         "pending_payment" &&
                         getDisputeStatusFromAgreement(escrow) !==
                           "pending_locking_funds" && (
-                          <Link
+                          <AppLink
                             to={`/disputes/${escrow._raw.disputes[0].disputeId}`}
                             className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
                           >
                             <AlertTriangle className="h-4 w-4" />
                             Go to Dispute
-                          </Link>
+                          </AppLink>
                         )}
                     </div>
                   </div>

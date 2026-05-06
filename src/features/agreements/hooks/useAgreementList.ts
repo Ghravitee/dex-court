@@ -24,11 +24,12 @@ export function useAgreementList() {
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
   };
 
-  const { data, isLoading, error, refetch } = useAgreements(queryParams, {
-    // Keep previous page data visible while next page loads
-    // so the table doesn't flash empty between page changes
-    placeholderData: (prev) => prev,
-  });
+  const { data, isLoading, isFetching, error, refetch } = useAgreements(
+    queryParams,
+    {
+      placeholderData: (prev) => prev,
+    },
+  );
 
   const agreements = (data?.results ?? []).map(transformApiAgreement);
   const totalAgreements = data?.totalAgreements ?? 0;
@@ -72,6 +73,7 @@ export function useAgreementList() {
     loading: isLoading,
     error: error ? resolveErrorMessage(error as any) : null,
     currentPage,
+    isFetching,
     pageSize,
     totalAgreements,
     tableFilter,

@@ -1,4 +1,3 @@
-import { Link, useNavigate } from "react-router-dom";
 import { AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
@@ -10,6 +9,8 @@ import {
 import type { Agreement } from "../../../types";
 import { AgreementSkeleton } from "./AgreementSkeleton";
 import { AgreementStatusBadge } from "./AgreementStatusBadge";
+import { useNavigation } from "../../../hooks/useNavigation";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   agreements: Agreement[];
@@ -37,7 +38,7 @@ export const AgreementTable = ({
   onPageChange,
   onPageSizeChange,
 }: Props) => {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
   const totalPages = Math.ceil(totalAgreements / pageSize);
 
   const pageNumbers = Array.from(
@@ -117,7 +118,7 @@ export const AgreementTable = ({
                     key={a.id}
                     className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-white/5"
                     onClick={() =>
-                      navigate(
+                      navigateTo(
                         a.useEscrow ? `/escrow/${a.id}` : `/agreements/${a.id}`,
                       )
                     }
@@ -143,13 +144,13 @@ export const AgreementTable = ({
                             username={cleanTelegramUsername(a.createdBy)}
                             size="sm"
                           />
-                          <Link
+                          <AppLink
                             to={`/profile/${encodeURIComponent(cleanTelegramUsername(a.createdBy))}`}
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()} // still works, fires before startLoading
                             className="text-cyan-300 hover:text-cyan-200 hover:underline"
                           >
                             {formatParty(a.createdBy)}
-                          </Link>
+                          </AppLink>
                         </div>
 
                         <span className="text-cyan-400">
@@ -167,13 +168,13 @@ export const AgreementTable = ({
                             username={cleanTelegramUsername(a.counterparty)}
                             size="sm"
                           />
-                          <Link
+                          <AppLink
                             to={`/profile/${encodeURIComponent(cleanTelegramUsername(a.counterparty))}`}
                             onClick={(e) => e.stopPropagation()}
                             className="text-cyan-300 hover:text-cyan-200 hover:underline"
                           >
                             {formatParty(a.counterparty)}
-                          </Link>
+                          </AppLink>
                         </div>
                       </div>
                     </td>

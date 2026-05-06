@@ -30,25 +30,32 @@ class ReputationService {
     return { ...data, hasMore };
   }
 
+  // Change the return type to include total
   async getLeaderboard(
     top: number = 10,
     skip: number = 0,
     sort: SortDirection = "desc",
     search?: string,
-  ): Promise<LeaderboardAccount[]> {
+  ): Promise<{ results: LeaderboardAccount[]; total: number }> {
     const params = { top, skip, sort, ...(search ? { search } : {}) };
-    const response = await api.get("/accounts/reputation/leaderboard", { params });
+    const response = await api.get("/accounts/reputation/leaderboard", {
+      params,
+    });
 
-    // Normalise varying response shapes from the API
     const raw = response.data;
-    if (Array.isArray(raw)) return raw;
-    if (Array.isArray(raw?.results)) return raw.results;
-    if (Array.isArray(raw?.data)) return raw.data;
 
-    console.warn("[ReputationService] Unexpected leaderboard response shape:", raw);
-    return [];
+    const results: LeaderboardAccount[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.results)
+        ? raw.results
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : [];
+
+    const total: number = raw?.total ?? raw?.totalResults ?? results.length;
+
+    return { results, total };
   }
-
   async getGlobalUpdates(
     top: number = 5,
     skip: number = 0,

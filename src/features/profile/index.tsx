@@ -7,7 +7,6 @@ import { Button } from "../../components/ui/button";
 import { useAuth } from "../../hooks/useAuth";
 import { LoginModal } from "../../components/LoginModal";
 import type { AccountUpdateRequest } from "../../services/apiService";
-import { useNavigate } from "react-router-dom";
 import { useDisputes } from "../../hooks/useDisputes";
 import type { DisputeRow } from "../../types";
 import { WalletLinkingModal } from "../../components/WalletLinkingModal";
@@ -40,10 +39,11 @@ import {
 } from "./utils/formatters";
 import { useUpdateAccount, useUploadAvatar } from "../../hooks/useAccounts";
 import { devLog } from "../../utils/logger";
+import { useNavigation } from "../../hooks/useNavigation";
 
 export default function Profile() {
   const { isAuthenticated, user, login, refreshUser } = useAuth();
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
 
   // State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -193,20 +193,20 @@ export default function Profile() {
 
   const handleDisputeClick = useCallback(
     (disputeId: string) => {
-      navigate(`/disputes/${disputeId}`);
+      navigateTo(`/disputes/${disputeId}`);
     },
-    [navigate],
+    [navigateTo],
   );
 
   const handleAgreementClick = useCallback(
     (agreementId: string, isEscrow: boolean = false) => {
       if (isEscrow) {
-        navigate(`/escrow/${agreementId}`);
+        navigateTo(`/escrow/${agreementId}`);
       } else {
-        navigate(`/agreements/${agreementId}`);
+        navigateTo(`/agreements/${agreementId}`);
       }
     },
-    [navigate],
+    [navigateTo],
   );
 
   const handleLogin = useCallback(async () => {

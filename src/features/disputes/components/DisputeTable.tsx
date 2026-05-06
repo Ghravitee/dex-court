@@ -1,5 +1,5 @@
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigation } from "../../../hooks/useNavigation";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { FaArrowRightArrowLeft } from "react-icons/fa6";
@@ -9,6 +9,7 @@ import { DisputeSkeleton } from "./DisputeSkeleton";
 import { DisputeStatusBadge } from "./DisputeStatusBadge";
 import { DisputePagination } from "./DisputePagination";
 import { formatPartyDisplay } from "../utils/formatters";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   disputes: DisputeRow[];
@@ -41,7 +42,7 @@ export const DisputeTable = ({
   onPageSizeChange,
   onRefetch,
 }: Props) => {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
 
   return (
     <div className="rounded-xl border border-b-2 border-white/10 p-0 ring-1 ring-white/10">
@@ -133,7 +134,7 @@ export const DisputeTable = ({
               disputes.map((d) => (
                 <tr
                   key={d.id}
-                  onClick={() => navigate(`/disputes/${d.id}`)}
+                  onClick={() => navigateTo(`/disputes/${d.id}`)}
                   className="cursor-pointer border-t border-white/10 text-xs transition hover:bg-cyan-500/10"
                 >
                   <td className="text-muted-foreground min-w-[120px] px-5 py-4">
@@ -163,7 +164,7 @@ export const DisputeTable = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(
+                            navigateTo(
                               `/profile/${encodeURIComponent(cleanTelegramUsername(d.plaintiff))}`,
                             );
                           }}
@@ -188,17 +189,13 @@ export const DisputeTable = ({
                           username={cleanTelegramUsername(d.defendant)}
                           size="sm"
                         />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(
-                              `/profile/${encodeURIComponent(cleanTelegramUsername(d.defendant))}`,
-                            );
-                          }}
+                        <AppLink
+                          to={`/profile/${encodeURIComponent(cleanTelegramUsername(d.plaintiff))}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="max-w-[60px] truncate text-cyan-300 hover:text-cyan-200 hover:underline lg:max-w-none"
                         >
-                          {formatPartyDisplay(d.defendant)}
-                        </button>
+                          {formatPartyDisplay(d.plaintiff)}
+                        </AppLink>
                       </div>
                     </div>
                   </td>

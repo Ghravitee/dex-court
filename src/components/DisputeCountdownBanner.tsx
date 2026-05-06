@@ -100,7 +100,7 @@ export const JudgeCountdownBanner = ({ votePendingAt }: Props) => {
 
   return (
     <div
-      className={`max-w-xl rounded-2xl border p-4 sm:p-5 md:p-6 ${colorScheme.border} ${colorScheme.gradient} bg-gradient-to-br to-transparent shadow-lg`}
+      className={`rounded-2xl border p-4 sm:p-5 md:p-6 ${colorScheme.border} ${colorScheme.gradient} bg-gradient-to-br to-transparent shadow-lg`}
     >
       {/* Icon + heading with badge */}
       <div className="mb-4 flex items-center justify-between">

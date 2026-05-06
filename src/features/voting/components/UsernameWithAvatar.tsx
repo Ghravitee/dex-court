@@ -1,8 +1,8 @@
 import React, { useMemo } from "react";
-import { Link } from "react-router-dom";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { formatDisplayName, formatUsername } from "../utils/formatting";
 import { type UsernameWithAvatarProps } from "../types";
+import { AppLink } from "../../../components/AppLink";
 
 export const UsernameWithAvatar: React.FC<UsernameWithAvatarProps> = ({
   username,
@@ -25,13 +25,13 @@ export const UsernameWithAvatar: React.FC<UsernameWithAvatarProps> = ({
         username={cleanUsername}
         size="sm"
       />
-      <Link
+      <AppLink
         to={`/profile/${cleanUsername}`}
         className="transition-colors hover:text-cyan-300"
         prefetch="intent"
       >
         {displayName}
-      </Link>
+      </AppLink>
     </div>
   );
 };

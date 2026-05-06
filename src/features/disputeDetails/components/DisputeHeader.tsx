@@ -7,11 +7,11 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 import type { DisputeRow } from "../../../types";
 import { DisputeStatusBadge } from "./DisputeStatusBadge";
 import { JudgeCountdownBanner } from "../../../components/DisputeCountdownBanner";
+import { useNavigation } from "../../../hooks/useNavigation";
 
 interface Props {
   dispute: DisputeRow;
@@ -58,7 +58,7 @@ export const DisputeHeader = ({
   onFinalizeVote,
   onOpenSettleModal,
 }: Props) => {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
 
   return (
     <div className="mb-6 flex flex-col gap-4">
@@ -66,7 +66,7 @@ export const DisputeHeader = ({
         {/* Left: back + status + role badges */}
         <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-6">
           <Button
-            onClick={() => navigate("/disputes")}
+            onClick={() => navigateTo("/disputes")}
             variant="outline"
             className="w-fit self-start border-white/15 text-cyan-200 hover:bg-cyan-500/10"
           >
@@ -106,7 +106,7 @@ export const DisputeHeader = ({
           {dispute.status === "Pending" && (
             <Button
               variant="outline"
-              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
               onClick={onEscalateToVote}
               disabled={escalating}
             >
@@ -121,7 +121,7 @@ export const DisputeHeader = ({
           {canFinalize && (
             <Button
               variant="outline"
-              className="border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
+              className="hidden border-purple-400/30 text-purple-300 hover:bg-purple-500/10"
               onClick={onFinalizeVote}
               disabled={finalizing}
             >

@@ -1,10 +1,10 @@
 import { Clock, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { cleanTelegramUsername } from "../../../lib/usernameUtils";
 import type { DisputeRow } from "../../../types";
 import { formatDisplayName } from "../utils/formatter";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   dispute: DisputeRow;
@@ -17,8 +17,6 @@ export const DisputeOverviewCard = ({
   isCurrentUserPlaintiff,
   isCurrentUserDefendant,
 }: Props) => {
-  const navigate = useNavigate();
-
   return (
     <div className="card-cyan rounded-2xl p-6 shadow-lg">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -54,21 +52,15 @@ export const DisputeOverviewCard = ({
                 username={cleanTelegramUsername(dispute.plaintiff)}
                 size="sm"
               />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(
-                    `/profile/${encodeURIComponent(cleanTelegramUsername(dispute.plaintiff))}`,
-                  );
-                }}
+              <AppLink
+                to={`/profile/${encodeURIComponent(cleanTelegramUsername(dispute.plaintiff))}`}
                 className="flex items-center gap-2 text-cyan-300 hover:text-cyan-200 hover:underline"
               >
                 {formatDisplayName(dispute.plaintiff)}
                 {isCurrentUserPlaintiff() && (
                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                 )}
-              </button>
+              </AppLink>
             </div>
 
             <span className="text-white/50">vs</span>
@@ -84,21 +76,15 @@ export const DisputeOverviewCard = ({
                 username={cleanTelegramUsername(dispute.defendant)}
                 size="sm"
               />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(
-                    `/profile/${encodeURIComponent(cleanTelegramUsername(dispute.defendant))}`,
-                  );
-                }}
+              <AppLink
+                to={`/profile/${encodeURIComponent(cleanTelegramUsername(dispute.defendant))}`}
                 className="flex items-center gap-2 text-yellow-300 hover:text-yellow-200 hover:underline"
               >
                 {formatDisplayName(dispute.defendant)}
                 {isCurrentUserDefendant() && (
                   <VscVerifiedFilled className="h-4 w-4 text-green-400" />
                 )}
-              </button>
+              </AppLink>
             </div>
           </div>
         </div>

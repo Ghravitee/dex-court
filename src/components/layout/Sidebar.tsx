@@ -1,5 +1,5 @@
 // Sidebar.tsx - UPDATED WITH AUTO SIGN-IN
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   BadgeDollarSign,
   FileText,
@@ -29,6 +29,8 @@ import { UserAvatar } from "../../components/UserAvatar";
 import { useEffect, useRef } from "react";
 import logo from "../../assets/logo.webp";
 import { devLog } from "../../utils/logger";
+import { useRouteLoadingContext } from "../../context/RouteLoadingContext";
+import { useNavigation } from "../../hooks/useNavigation";
 
 export function Sidebar({
   expanded,
@@ -43,7 +45,9 @@ export function Sidebar({
   setMobileOpen?: (v: boolean) => void;
   onLoginClick: () => void;
 }) {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
+
+  const { startLoading } = useRouteLoadingContext();
   const { isAuthenticated, user, logout, loginMethod, isAuthInitialized } =
     useAuth();
   const { isAdmin } = useAdminAccess();
@@ -261,7 +265,7 @@ export function Sidebar({
 
   const handleProfileClick = () => {
     if (isAuthenticated) {
-      navigate("/profile");
+      navigateTo("/profile");
       if (!expanded && setExpanded) setExpanded(true);
     } else {
       onLoginClick();
@@ -315,7 +319,10 @@ export function Sidebar({
           <NavLink
             key={item.to}
             to={item.to}
-            onClick={() => mobile && setMobileOpen?.(false)}
+            onClick={() => {
+              startLoading();
+              if (mobile) setMobileOpen?.(false);
+            }}
             className={({ isActive }) =>
               cn(
                 "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
@@ -346,7 +353,10 @@ export function Sidebar({
             {isAuthenticated && (
               <NavLink
                 to="/profile"
-                onClick={() => setMobileOpen?.(false)}
+                onClick={() => {
+                  startLoading(); // 👈 add this
+                  setMobileOpen?.(false);
+                }}
                 className={({ isActive }) =>
                   cn(
                     "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition",

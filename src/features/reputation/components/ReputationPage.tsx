@@ -16,6 +16,7 @@ import { calculate30DayChange } from "../utils/calculations";
 import { formatUsername } from "../utils/formatters";
 
 import type { LeaderboardAccount, SortDirection } from "../types";
+import { ReputationPageLoadingScreen } from "./ReputationPageLoadingScreen";
 
 export default function ReputationPage() {
   const [query, setQuery] = useState("");
@@ -42,6 +43,10 @@ export default function ReputationPage() {
     queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     queryClient.invalidateQueries({ queryKey: ["global-updates"] });
   };
+
+  if (leaderboard.loading && leaderboard.data.length === 0 && !anyError) {
+    return <ReputationPageLoadingScreen />;
+  }
 
   if (anyError) {
     return (
@@ -100,14 +105,11 @@ export default function ReputationPage() {
           <Leaderboard
             data={leaderboard.data}
             loading={leaderboard.loading}
-            loadingMore={leaderboard.loadingMore}
-            hasMore={leaderboard.hasMore}
             sortDir={sortDir}
             onSortToggle={() =>
               setSortDir((d) => (d === "desc" ? "asc" : "desc"))
             }
             onRowClick={setSelectedProfile}
-            onLoadMore={leaderboard.loadMore}
             selectedId={selectedProfile?.id}
           />
 

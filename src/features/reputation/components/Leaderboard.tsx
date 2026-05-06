@@ -1,32 +1,26 @@
 // features/reputation/components/Leaderboard.tsx
 import { TrendingDown, TrendingUp, Award } from "lucide-react";
-import { Link } from "react-router-dom";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { formatUsername, getDisplayName } from "../utils/formatters";
 import { DisputesBreakdown } from "./DisputesBreakdown";
 import type { LeaderboardAccount, SortDirection } from "../types";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   data: LeaderboardAccount[];
   loading: boolean;
-  loadingMore: boolean;
-  hasMore: boolean;
   sortDir: SortDirection;
   onSortToggle: () => void;
   onRowClick: (user: LeaderboardAccount) => void;
-  onLoadMore: () => void;
   selectedId?: number;
 }
 
 export function Leaderboard({
   data,
   loading,
-  loadingMore,
-  hasMore,
   sortDir,
   onSortToggle,
   onRowClick,
-  onLoadMore,
   selectedId,
 }: Props) {
   return (
@@ -58,7 +52,7 @@ export function Leaderboard({
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="max-h-[600px] overflow-x-auto overflow-y-auto">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-left text-white/50">
@@ -88,7 +82,7 @@ export function Leaderboard({
         </table>
       </div>
 
-      {hasMore && (
+      {/* {hasMore && (
         <div className="flex justify-center border-t border-white/10 p-4">
           <button
             onClick={onLoadMore}
@@ -105,7 +99,7 @@ export function Leaderboard({
             )}
           </button>
         </div>
-      )}
+      )} */}
     </section>
   );
 }
@@ -158,13 +152,13 @@ function LeaderboardRow({
           size="md"
         />
         <div>
-          <Link
+          <AppLink
             to={`/profile/${user.username}`} // full address, no slicing
             className="text-white transition hover:text-cyan-500 hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {displayName} {/* truncated via getDisplayName */}
-          </Link>
+          </AppLink>
           {recentChange !== 0 && (
             <div
               className={`text-xs ${recentChange > 0 ? "text-emerald-400" : "text-red-400"}`}

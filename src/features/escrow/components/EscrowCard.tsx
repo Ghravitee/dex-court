@@ -1,10 +1,10 @@
-import { Link } from "react-router-dom";
 import { Eye } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { formatWalletAddress, resolveTokenDisplay } from "../utils/formatters";
 import type { OnChainEscrowData } from "../types";
 import { SUPPORTED_CHAINS } from "../../../web3/config";
+import { AppLink } from "../../../components/AppLink";
 
 interface EscrowCardProps {
   escrow: OnChainEscrowData;
@@ -77,7 +77,7 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
   );
 
   return (
-    <Link
+    <AppLink
       to={`/escrow/${e.id}`}
       className="web3-corner-border group relative rounded-3xl p-[2px]"
     >
@@ -167,6 +167,6 @@ export function EscrowCard({ escrow: e }: EscrowCardProps) {
           </Button>
         </div>
       </div>
-    </Link>
+    </AppLink>
   );
 }

@@ -7,7 +7,8 @@ import {
 } from "../utils/formatters";
 import { ReputationTimeline } from "./ReputationTimeline";
 import type { ReputationHistoryResponse, ReputationEvent } from "../types";
-import { Link } from "react-router-dom";
+
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   profile: { username: string };
@@ -41,12 +42,12 @@ export function ReputationHistory({
         <div>
           <h2 className="">
             Reputation History for{" "}
-            <Link
+            <AppLink
               to={`/profile/${profile.username}`}
               className="text-cyan-300 transition hover:text-cyan-400 hover:underline"
             >
               {getDisplayName(profile.username)}
-            </Link>
+            </AppLink>
           </h2>
           <p className="text-xs text-white/50">
             Showing {eventsShown} of {history.total} events · Base:{" "}

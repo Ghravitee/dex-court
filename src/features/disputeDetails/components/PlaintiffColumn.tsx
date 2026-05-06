@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import { MessageCircle, Upload, UserCheck } from "lucide-react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "../../../components/UserAvatar";
@@ -6,6 +5,7 @@ import { EvidenceDisplay } from "../../../components/disputes/EvidenceDisplay";
 import { cleanTelegramUsername } from "../../../lib/usernameUtils";
 import type { DisputeRow, EvidenceItem } from "../../../types";
 import { formatDisplayName } from "../utils/formatter";
+import { useNavigation } from "../../../hooks/useNavigation";
 
 interface Props {
   dispute: DisputeRow;
@@ -26,7 +26,7 @@ export const PlaintiffColumn = ({
   isCurrentUserPlaintiff,
   onViewEvidence,
 }: Props) => {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
 
   return (
     <div className="space-y-6">
@@ -47,7 +47,7 @@ export const PlaintiffColumn = ({
             <button
               type="button"
               onClick={() =>
-                navigate(
+                navigateTo(
                   `/profile/${encodeURIComponent(cleanTelegramUsername(dispute.plaintiff))}`,
                 )
               }
@@ -121,7 +121,7 @@ export const PlaintiffColumn = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(
+                    navigateTo(
                       `/profile/${encodeURIComponent(cleanTelegramUsername(witness))}`,
                     );
                   }}

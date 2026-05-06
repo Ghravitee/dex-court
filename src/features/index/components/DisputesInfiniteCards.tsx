@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import { Scale, Users, FileText, AlertCircle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
 import { useRecentDisputes } from "../hooks/useRecentDisputes";
 import { PulseLoader } from "./PulseLoader";
+import { AppLink } from "../../../components/AppLink";
 
 export const DisputesInfiniteCards = () => {
   const { disputes, loading, error } = useRecentDisputes();
@@ -36,7 +36,7 @@ export const DisputesInfiniteCards = () => {
         <h3 className="glow-text text-lg font-semibold text-cyan-100 sm:text-xl">
           Recent Disputes
         </h3>
-        <Link to="/disputes">
+        <AppLink to="/disputes">
           <Button
             variant="outline"
             size="sm"
@@ -46,7 +46,7 @@ export const DisputesInfiniteCards = () => {
             <Scale className="mr-2 h-4 w-4" />
             View All
           </Button>
-        </Link>
+        </AppLink>
       </div>
 
       {loading && (

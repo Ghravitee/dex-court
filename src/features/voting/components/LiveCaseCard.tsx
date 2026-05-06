@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 import {
   Accordion,
@@ -18,6 +17,7 @@ import { UsernameWithAvatar } from "./UsernameWithAvatar";
 import { MemoizedVoteOption } from "./VoteOption";
 import { fmtRemain } from "../utils/dateUtils";
 import { type LiveCaseCardProps } from "../types";
+import { AppLink } from "../../../components/AppLink";
 
 export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
   c,
@@ -197,13 +197,13 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
         <AccordionItem value="item-1">
           <div className="flex flex-col justify-between px-4 pt-4 sm:flex-row sm:items-center">
             <div>
-              <Link
+              <AppLink
                 to={`/disputes/${c.id}`}
                 className="inline-flex items-center hover:underline"
                 prefetch="intent"
               >
                 <h2 className="font-semibold text-white/90">{c.title}</h2>
-              </Link>
+              </AppLink>
               <div className="text-muted-foreground my-4 flex flex-col items-center gap-2 text-xs sm:flex-row">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-blue-400">Plaintiff: </span>{" "}
@@ -295,14 +295,14 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
 
           <AccordionContent className="mt-3 px-5">
             <div className="space-y-3">
-              <Link
+              <AppLink
                 to={`/disputes/${c.id}`}
                 className="inline-flex items-center text-xs text-cyan-300 hover:underline"
                 prefetch="intent"
               >
                 <ExternalLink className="mr-1 h-5 w-5" />
                 <span className="mt-1">Details</span>
-              </Link>
+              </AppLink>
 
               <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                 <div className="mb-2 text-sm font-medium text-white/90">

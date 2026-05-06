@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Link } from "react-router-dom";
 import { VscVerifiedFilled } from "react-icons/vsc";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { useAuth } from "../../../hooks/useAuth";
@@ -11,6 +10,7 @@ import {
   normalizeUsername,
   getDisputeInfo,
 } from "../utils/helpers";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   agreement: Agreement;
@@ -54,7 +54,7 @@ export const AgreementTimeline = ({
               username={agreement.creator || ""}
               size="sm"
             />
-            <Link
+            <AppLink
               to={`/profile/${encodeURIComponent(
                 agreement.creator?.startsWith("@")
                   ? agreement.creator.slice(1)
@@ -63,7 +63,7 @@ export const AgreementTimeline = ({
               className="hover:text-blue-300 hover:underline"
             >
               {formatCreatorUsername(agreement.creator)}
-            </Link>
+            </AppLink>
             {isCreator && (
               <VscVerifiedFilled className="size-5 text-green-400" />
             )}
@@ -143,7 +143,7 @@ export const AgreementTimeline = ({
                       size="sm"
                     />
                   )}
-                  <Link
+                  <AppLink
                     to={`/profile/${encodeURIComponent(
                       disputeInfo.filedBy?.replace(/^@/, "") || "",
                     )}`}
@@ -153,7 +153,7 @@ export const AgreementTimeline = ({
                     {disputeInfo.filedBy.startsWith("0x")
                       ? formatWalletAddress(disputeInfo.filedBy)
                       : formatCreatorUsername(disputeInfo.filedBy)}
-                  </Link>
+                  </AppLink>
                   {user &&
                     disputeInfo.filedBy &&
                     normalizeUsername(user.username) ===
@@ -163,12 +163,12 @@ export const AgreementTimeline = ({
                 </div>
               )}
               {agreement._raw?.disputes?.length > 0 && (
-                <Link
+                <AppLink
                   to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
                   className="mt-2 text-xs text-violet-300 underline hover:text-violet-200"
                 >
                   View Dispute Details
-                </Link>
+                </AppLink>
               )}
             </div>
           )}

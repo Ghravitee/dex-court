@@ -375,7 +375,7 @@ const MentionDropdown = ({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-white">
-                      @{p.username.replace(/^@/, "")}
+                      {formatUsername(p.username)}
                     </div>
                   </div>
                   <span
@@ -420,14 +420,17 @@ const renderMessageContent = (
       }
 
       return (
-        <span key={i} className="inline-flex items-center gap-1">
+        <span key={i} className="inline align-middle">
           <UserAvatar
             userId={user.id?.toString() ?? ""}
             avatarId={user.avatarId ?? null}
             username={user.username}
             size="sm"
+            className="inline-block align-middle"
           />
-          <span className="font-semibold text-cyan-300">@{user.username}</span>
+          <span className="ml-2 font-semibold text-cyan-300">
+            @{user.username}
+          </span>
         </span>
       );
     }
@@ -486,7 +489,7 @@ export default function DisputeChat({
         username: m.username,
 
         // prefer message role, fallback to existing
-        role: m.role ?? existing?.role ?? "community",
+        role: existing?.role ?? m.role ?? "judge",
 
         // prefer message avatar, fallback to existing
         avatarId: m.avatarId ?? existing?.avatarId ?? null,
@@ -742,6 +745,11 @@ export default function DisputeChat({
           const canDeleteThisMessage = isMine && canDelete;
           const formattedUsername = formatUsername(m.username);
 
+          const normalize = (u: string) => u.replace(/^@/, "").toLowerCase();
+          const resolvedRole = allParticipants.find(
+            (p) => normalize(p.username) === normalize(m.username),
+          )?.role;
+
           return (
             <div
               key={m.id}
@@ -772,7 +780,7 @@ export default function DisputeChat({
                       )}
                       <span className="text-cyan-300">{formattedUsername}</span>
                     </div>
-                    {m.role && <RoleBadge role={m.role} />}
+                    {resolvedRole && <RoleBadge role={resolvedRole} />}
                   </div>
                   <span className="text-[10px] font-normal text-gray-400/70">
                     {formatMessageTime(m.creationDate)}

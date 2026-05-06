@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   ArrowLeft,
   FileText,
@@ -36,7 +36,7 @@ import { EvidenceDisplay } from "../../components/disputes/EvidenceDisplay";
 
 import { useAgreementData } from "./hooks/useAgreementData";
 import { useAgreementActions } from "./hooks/useAgreementActions";
-import { LoadingScreen, NotFoundScreen } from "./components/LoadingScreen";
+import { LoadingScreen } from "./components/LoadingScreen";
 import { RejectDeliveryModal } from "./components/modals/RejectDeliveryModal";
 import { PendingDisputeModal } from "./components/modals/PendingDisputeModal";
 import { AgreementTimeline } from "./components/AgreementTimeline";
@@ -71,10 +71,14 @@ import {
   normalizeUsername,
 } from "./utils/helpers";
 import { ActionInfoBlurb } from "../../components/ActionInfoBlurb";
+import { NotFoundScreen } from "../../components/NotFoundScreen";
+import { AppLink } from "../../components/AppLink";
+import { useNavigation } from "../../hooks/useNavigation";
 
 export default function AgreementDetails() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
+
   const { user } = useAuth();
 
   // ─── Data ──────────────────────────────────────────────────────────────────
@@ -304,7 +308,7 @@ export default function AgreementDetails() {
           <div className="flex flex-col items-center space-y-4 space-x-4 sm:flex-row sm:space-y-0">
             <Button
               variant="outline"
-              onClick={() => navigate("/agreements")}
+              onClick={() => navigateTo("/agreements")}
               className="w-fit self-start border-white/15 text-cyan-200 hover:bg-cyan-500/10"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -327,13 +331,13 @@ export default function AgreementDetails() {
               {agreement._raw?.disputes?.length > 0 &&
                 disputeStatus !== "Pending Payment" &&
                 rejectDisputeStatus !== "Pending Payment" && (
-                  <Link
+                  <AppLink
                     to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
                     className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/20 hover:text-purple-200"
                   >
                     <AlertTriangle className="h-4 w-4" />
                     View Dispute
-                  </Link>
+                  </AppLink>
                 )}
             </div>
           </div>
@@ -380,12 +384,12 @@ export default function AgreementDetails() {
                       username={agreement.creator || ""}
                       size="sm"
                     />
-                    <Link
+                    <AppLink
                       to={`/profile/${(agreement.creator || "").replace(/^@/, "")}`}
                       className="text-[11px] text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                     >
                       {formatCreatorUsername(agreement.creator)}
-                    </Link>
+                    </AppLink>
                     {isCreator && (
                       <VscVerifiedFilled className="size-5 text-green-400" />
                     )}
@@ -428,14 +432,14 @@ export default function AgreementDetails() {
                                 username={party.username}
                                 size="sm"
                               />
-                              <Link
+                              <AppLink
                                 to={`/profile/${encodeURIComponent(party.username.replace(/^@/, ""))}`}
                                 className="text-xs text-cyan-300 hover:text-cyan-200 hover:underline sm:text-base"
                               >
                                 {party.username.startsWith("@0x")
                                   ? `${party.username.slice(1, 7)}..${party.username.slice(-4)}`
                                   : party.username}
-                              </Link>
+                              </AppLink>
                               {party.isMe && (
                                 <VscVerifiedFilled className="size-5 text-green-400" />
                               )}
@@ -699,7 +703,7 @@ export default function AgreementDetails() {
                                           size="sm"
                                         />
                                       )}
-                                      <Link
+                                      <AppLink
                                         to={`/profile/${disputeInfo.filedBy?.replace(/^@/, "") || ""}`}
                                         className="text-xs font-medium text-purple-200 hover:text-purple-100 hover:underline"
                                       >
@@ -708,7 +712,7 @@ export default function AgreementDetails() {
                                               disputeInfo.filedBy,
                                             )
                                           : disputeInfo.filedBy}
-                                      </Link>
+                                      </AppLink>
                                       {user &&
                                         disputeInfo.filedBy &&
                                         normalizeUsername(user.username) ===
@@ -723,13 +727,13 @@ export default function AgreementDetails() {
                               </div>
                             )}
                           </div>
-                          <Link
+                          <AppLink
                             to={`/disputes/${agreement._raw.disputes[0].disputeId}`}
                             className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-200 transition-colors hover:bg-purple-500/30 hover:text-white"
                           >
                             <AlertTriangle className="h-4 w-4" />
                             Go to Dispute
-                          </Link>
+                          </AppLink>
                         </div>
                       </div>
                       {disputeTriggeredByRejection && (

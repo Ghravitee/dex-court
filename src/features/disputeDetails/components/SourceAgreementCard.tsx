@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom";
 import { FileText, ArrowRight } from "lucide-react";
 import type { DisputeRow } from "../../../types";
+import { AppLink } from "../../../components/AppLink";
 
 interface Props {
   agreement: NonNullable<DisputeRow["agreement"]>;
@@ -32,7 +32,7 @@ export const SourceAgreementCard = ({ agreement }: Props) => (
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Link
+            <AppLink
               to={
                 agreement.type === 2
                   ? `/escrow/${agreement.id}`
@@ -43,7 +43,7 @@ export const SourceAgreementCard = ({ agreement }: Props) => (
               <FileText className="h-4 w-4" />
               View Source Agreement
               <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            </AppLink>
           </div>
         </div>
       </div>

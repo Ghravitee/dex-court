@@ -1,10 +1,10 @@
 // LiveVotingInfiniteCards.tsx
-import { Link } from "react-router-dom";
 import { Vote, Users, Clock, AlertCircle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { InfiniteMovingCardsWithAvatars } from "../../../components/ui/infinite-moving-cards-with-avatars";
 import { useLiveVotingDisputes } from "../hooks/useLiveVotingDisputes";
 import { DottedSpinner } from "./DottedSpinner";
+import { AppLink } from "../../../components/AppLink";
 
 export const LiveVotingInfiniteCards = () => {
   const { liveDisputes, loading, error } = useLiveVotingDisputes();
@@ -15,7 +15,7 @@ export const LiveVotingInfiniteCards = () => {
         <h3 className="glow-text text-lg font-semibold text-cyan-100 sm:text-xl">
           Live Voting
         </h3>
-        <Link to="/voting">
+        <AppLink to="/voting">
           <Button
             variant="outline"
             size="sm"
@@ -25,7 +25,7 @@ export const LiveVotingInfiniteCards = () => {
             <Vote className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Participate in </span>Voting
           </Button>
-        </Link>
+        </AppLink>
       </div>
 
       {loading && (

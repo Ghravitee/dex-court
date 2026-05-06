@@ -7,6 +7,7 @@ import { useAgreementList } from "./hooks/useAgreementList";
 import { AgreementFilters } from "./components/AgreementFilters";
 import { AgreementTable } from "./components/AgreementTable";
 import { CreateAgreementModal } from "./components/CreateAgreementModal/index";
+import { AgreementsPageLoadingScreen } from "./components/AgreementsPageLoadingScreen";
 
 export default function Agreements() {
   const { isAuthenticated, user, isAuthInitialized } = useAuth();
@@ -28,7 +29,12 @@ export default function Agreements() {
     handlePageChange,
     handlePageSizeChange,
     loadAgreements,
+    isFetching,
   } = useAgreementList();
+
+  if (loading && agreements.length === 0) {
+    return <AgreementsPageLoadingScreen />;
+  }
 
   return (
     <div className="relative">
@@ -73,14 +79,14 @@ export default function Agreements() {
             onFilterChange={setTableFilter}
             sortOrder={sortOrder}
             onToggleSort={toggleSortOrder}
-            loading={loading}
+            loading={isFetching}
             onRefetch={loadAgreements}
           />
 
           {/* Table */}
           <AgreementTable
             agreements={agreements}
-            loading={loading}
+            loading={isFetching}
             error={error}
             totalAgreements={totalAgreements}
             pageSize={pageSize}

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useState, useMemo, useCallback } from "react";
 import { FaUser, FaHandshake } from "react-icons/fa";
 import { FiAlertCircle } from "react-icons/fi";
@@ -30,11 +30,12 @@ import {
   formatHandle,
   formatPartyUsername,
 } from "./utils/formatters";
+import { useNavigation } from "../../hooks/useNavigation";
 
 export default function UserProfile() {
   const { handle } = useParams<{ handle: string }>();
   const { isAuthenticated, user: currentUser } = useAuth();
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const decodedHandle = useMemo(() => {
@@ -154,19 +155,19 @@ export default function UserProfile() {
   const handleAgreementClick = useCallback(
     (agreementId: string, isEscrow: boolean = false) => {
       if (isEscrow) {
-        navigate(`/escrow/${agreementId}`);
+        navigateTo(`/escrow/${agreementId}`);
       } else {
-        navigate(`/agreements/${agreementId}`);
+        navigateTo(`/agreements/${agreementId}`);
       }
     },
-    [navigate],
+    [navigateTo],
   );
 
   const handleDisputeClick = useCallback(
     (disputeId: string) => {
-      navigate(`/disputes/${disputeId}`);
+      navigateTo(`/disputes/${disputeId}`);
     },
-    [navigate],
+    [navigateTo],
   );
 
   const getUserRoleInEscrowDeal = useCallback(
@@ -227,7 +228,7 @@ export default function UserProfile() {
         error={error || "User not found"}
         handle={decodedHandle}
         onRetry={() => refetch()}
-        onGoToMyProfile={() => navigate("/profile")}
+        onGoToMyProfile={() => navigateTo("/profile")}
       />
     );
   }

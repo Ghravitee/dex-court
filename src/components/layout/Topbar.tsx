@@ -19,8 +19,8 @@ import { LoginModal } from "../LoginModal";
 import { FaTelegramPlane } from "react-icons/fa";
 import { UserAvatar } from "../UserAvatar";
 import logo from "../../assets/logo.webp";
-import { Link } from "react-router-dom";
 import { devLog } from "../../utils/logger";
+import { AppLink } from "../AppLink";
 
 export function Topbar({
   onMenuClick,
@@ -388,7 +388,7 @@ export function Topbar({
 
         {/* Left: Logo (shown on mobile when showLogo is true) */}
         {showLogo && (
-          <Link to={"/"} className="flex items-center gap-2 lg:hidden">
+          <AppLink to={"/"} className="flex items-center gap-2 lg:hidden">
             <img
               src={logo}
               alt="DexCourt Logo"
@@ -397,7 +397,7 @@ export function Topbar({
             <span className="glow-text hidden leading-none font-semibold text-cyan-300 sm:block">
               DexCourt
             </span>
-          </Link>
+          </AppLink>
         )}
 
         {/* ADD STATUS INDICATORS HERE - Desktop */}

@@ -1,9 +1,9 @@
 import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
+import { useNavigation } from "../../../hooks/useNavigation";
 
 export const NotFoundScreen = () => {
-  const navigate = useNavigate();
+  const { navigateTo } = useNavigation();
 
   return (
     <div className="flex min-h-screen justify-center">
@@ -33,7 +33,7 @@ export const NotFoundScreen = () => {
             Refresh & Retry
           </Button>
           <Button
-            onClick={() => navigate("/disputes")}
+            onClick={() => navigateTo("/disputes")}
             className="border-white/15 bg-cyan-600/20 text-cyan-200 hover:bg-cyan-500/30"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
