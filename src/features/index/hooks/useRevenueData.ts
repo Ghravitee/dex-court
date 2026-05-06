@@ -1,29 +1,54 @@
-import { useState, useEffect } from "react";
+// src/features/index/hooks/useRevenueData.ts
+import { useEffect, useState } from "react";
+import { api } from "../../../lib/apiClient";
 
-export interface RevenueDataPoint {
+type RevenueApiPoint = {
+  timestamp: string;
+  platformRevenue: string;
+};
+
+export type RevenueDataPoint = {
   rawDate: string;
-  amount: number; // real revenue amount per event
-}
+  amount: number;
+};
 
-interface UseRevenueDataResult {
-  data: RevenueDataPoint[];
-  loading: boolean;
-  error: string | null;
-}
+const DECIMALS = 18;
 
-export const useRevenueData = (): UseRevenueDataResult => {
+export function useRevenueData() {
   const [data, setData] = useState<RevenueDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO: replace with real API call
-    // e.g. const res = await revenueService.getAll();
-    //      setData(res.map(r => ({ rawDate: r.createdAt, amount: r.amount })));
-    setData([]);
-    setLoading(false);
-    setError(null);
+    const load = async () => {
+      try {
+        setLoading(true);
+
+        const response = await api.get<RevenueApiPoint[]>("/agreement/stats/revenue");
+        const json = response.data;
+
+        const transformed: RevenueDataPoint[] = json.map((p, i) => {
+          const prev = i === 0 ? 0n : BigInt(json[i - 1].platformRevenue);
+          const current = BigInt(p.platformRevenue);
+          const delta = current > prev ? current - prev : 0n;
+          const eth = Number(delta) / 10 ** DECIMALS;
+
+          return {
+            rawDate: p.timestamp,
+            amount: eth,
+          };
+        });
+
+        setData(transformed);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load revenue");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
   }, []);
 
   return { data, loading, error };
-};
+}

@@ -6,8 +6,6 @@ export interface RevenueChartPoint {
   totalRevenue: number;
 }
 
-const BASE_REVENUE = 0;
-
 export const groupRevenueByTimeframe = (
   data: RevenueDataPoint[],
   timeframe: "daily" | "weekly" | "monthly",
@@ -15,21 +13,21 @@ export const groupRevenueByTimeframe = (
   if (data.length === 0) return [];
 
   if (timeframe === "daily") {
-    let cumulative = BASE_REVENUE;
+    let cumulative = 0;
     return data.map((d) => {
       cumulative += d.amount;
+      const date = new Date(d.rawDate);
+      const displayDate = `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}`;
       return {
-        period: d.rawDate,
+        period: displayDate,
         newRevenue: d.amount,
         totalRevenue: cumulative,
       };
     });
   }
 
-  const grouped = new Map<
-    string,
-    { new: number; total: number; rawDate: string }
-  >();
+  const grouped = new Map<string, { new: number; rawDate: string }>();
+  
 
   data.forEach((point) => {
     const date = new Date(point.rawDate);
@@ -38,19 +36,14 @@ export const groupRevenueByTimeframe = (
     if (timeframe === "weekly") {
       const oneJan = new Date(date.getFullYear(), 0, 1);
       const weekNumber = Math.ceil(
-        ((date.getTime() - oneJan.getTime()) / 86400000 + oneJan.getDay() + 1) /
-          7,
+        ((date.getTime() - oneJan.getTime()) / 86400000 + oneJan.getDay() + 1) / 7,
       );
       key = `${date.getFullYear()}-W${weekNumber}`;
     } else {
       key = `${date.getFullYear()}-${date.getMonth()}`;
     }
 
-    const existing = grouped.get(key) ?? {
-      new: 0,
-      total: 0,
-      rawDate: point.rawDate,
-    };
+    const existing = grouped.get(key) ?? { new: 0, rawDate: point.rawDate };
     existing.new += point.amount;
     grouped.set(key, existing);
   });
@@ -59,7 +52,7 @@ export const groupRevenueByTimeframe = (
     a.rawDate.localeCompare(b.rawDate),
   );
 
-  let cumulative = BASE_REVENUE;
+  let cumulative = 0;
   return sorted.map(([key, { new: newAmount }]) => {
     cumulative += newAmount;
 
@@ -71,9 +64,7 @@ export const groupRevenueByTimeframe = (
       const monthIndex = parseInt(parts[1]);
       period = isNaN(monthIndex)
         ? "Unknown"
-        : new Date(2000, monthIndex, 1).toLocaleString("default", {
-            month: "short",
-          });
+        : new Date(2000, monthIndex, 1).toLocaleString("default", { month: "short" });
     }
 
     return { period, newRevenue: newAmount, totalRevenue: cumulative };
