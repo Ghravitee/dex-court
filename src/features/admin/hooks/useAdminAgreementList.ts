@@ -7,7 +7,7 @@ import { AgreementTypeEnum } from "../../escrow/constants";
 import { getAgreementExistOnchain } from "../../../web3/readContract";
 import type { AdminAgreement } from "../types";
 
-export type AdminAgreementFilter = "all" | "disputed" | "frozen" | "active" | "completed";
+export type AdminAgreementFilter = "all" | "disputed" | "active" | "completed";
 
 export function useAdminAgreementList(activeChainId: number) {
     const [allAgreements, setAllAgreements] = useState<AdminAgreement[]>([]);
@@ -28,7 +28,10 @@ export function useAdminAgreementList(activeChainId: number) {
                 type: AgreementTypeEnum.ESCROW,
             });
 
+            console.log("Raw API response:", response);
+
             const list = response.results || [];
+            // console.log("Fetched agreements:", list);
             const transformed = list
                 .map(transformApiAgreementToEscrow)
                 .filter((e) => !activeChainId || e.chainId === activeChainId);
@@ -106,9 +109,6 @@ export function useAdminAgreementList(activeChainId: number) {
         if (statusFilter !== "all") {
             result = result.filter((e) => {
                 if (statusFilter === "disputed") return e.status === "disputed";
-                if (statusFilter === "frozen") {
-                    return (e as { _raw?: { onChainData?: { frozen?: boolean } } })._raw?.onChainData?.frozen === true;
-                }
                 if (statusFilter === "completed") return e.status === "completed";
                 if (statusFilter === "active") return (
                     e.status !== "disputed" &&

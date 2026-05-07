@@ -201,7 +201,6 @@ export type Escrow = {
     | "signed"
     | "cancelled"
     | "completed"
-    | "frozen"
     | "disputed";
   deadline: string;
   type: "public" | "private";

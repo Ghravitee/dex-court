@@ -131,6 +131,8 @@ export interface AgreementSummaryDTO {
   payeeWalletAddress?: string;
   payerWalletAddress?: string;
   data?: any;
+  isFrozen?: boolean;
+  freezeReason: 'dispute' | 'admin' | null;
 }
 
 export interface AgreementMineListDTO {
@@ -172,6 +174,8 @@ export interface AgreementDetailsDTO {
   completedAt?: string;
   updatedAt?: string;
   escrowContractAddress?: string;
+  isFrozen?: boolean;
+  freezeReason?: 'dispute' | 'admin' | null;
 }
 
 export interface UserDTO {
@@ -398,7 +402,7 @@ export async function rejectDelivery(
         contractAgreementId: data.contractAgreementId,
       }),
       ...(data.chainId && { chainId: data.chainId }),
-      ...(data.chainId && {disputeContractAddress: VOTING_CA[data.chainId]}),
+      ...(data.chainId && { disputeContractAddress: VOTING_CA[data.chainId] }),
       ...(data.txHash && { txHash: data.txHash }),
     };
     await api.patch(`/agreement/${agreementId}/delivery/reject`, payload);

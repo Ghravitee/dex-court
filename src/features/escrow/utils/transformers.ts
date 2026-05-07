@@ -59,6 +59,7 @@ export const transformApiAgreementToEscrow = (
       username: apiAgreement.firstParty.username,
       avatarId: apiAgreement.firstParty.avatarId,
     };
+    
   }
 
   return {
@@ -85,6 +86,6 @@ export const transformApiAgreementToEscrow = (
     escrowAddress: apiAgreement.escrowContractAddress,
     source: "direct API fields only",
     payerDetails,
-    payeeDetails,
+    payeeDetails
   };
 };

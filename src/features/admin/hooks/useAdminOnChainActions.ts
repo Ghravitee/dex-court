@@ -21,7 +21,6 @@ const INITIAL_LOADING: Record<TxAction, boolean> = {
   setVotingConfig: false,
   setDisputeResolver: false,
   setFeeRecipient: false,
-  freezeAgreement: false,
   recoverStuckEthEscrow: false,
   recoverStuckEthVoting: false,
   recoverStuckTokenEscrow: false,
@@ -259,18 +258,6 @@ export function useAdminOnChainActions({
     [escrowAddress, submitTx]
   );
 
-  const freezeAgreement = useCallback(
-    async (id: bigint, status: boolean, contractAddress?: `0x${string}`) => {
-      await submitTx("freezeAgreement", {
-        contract: contractAddress ?? escrowAddress as `0x${string}`,
-        abi: ESCROW_ABI.abi,
-        functionName: "freezeAgreement",
-        args: [id, status],
-      });
-    },
-    [escrowAddress, submitTx]
-  );
-
   const recoverStuckEthEscrow = useCallback(
     async (amount: bigint) => {
       await submitTx("recoverStuckEthEscrow", {
@@ -334,7 +321,6 @@ export function useAdminOnChainActions({
     setVotingConfig,
     setDisputeResolver,
     setFeeRecipient,
-    freezeAgreement,
     recoverStuckEthEscrow,
     recoverStuckEthVoting,
     recoverStuckTokenEscrow,

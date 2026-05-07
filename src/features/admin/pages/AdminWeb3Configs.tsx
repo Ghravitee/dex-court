@@ -39,7 +39,6 @@ export default function AdminWeb3Configs() {
         setVotingConfig,
         setDisputeResolver,
         setFeeRecipient,
-        freezeAgreement,
         recoverStuckEthEscrow,
         recoverStuckEthVoting,
         recoverStuckTokenEscrow,
@@ -198,14 +197,12 @@ export default function AdminWeb3Configs() {
                     onUpdateVotingConfig={setVotingConfig}
                     onSetDisputeResolver={setDisputeResolver}
                     onSetFeeRecipient={setFeeRecipient}
-                    onFreezeAgreement={freezeAgreement}
                     onRecoverStuckEthEscrow={recoverStuckEthEscrow}
                     onRecoverStuckEthVoting={recoverStuckEthVoting}
                     onRecoverStuckTokenEscrow={recoverStuckTokenEscrow}
                     onRecoverStuckTokenVoting={recoverStuckTokenVoting}
                     isUpdatingEscrow={loadingStates.setEscrowConfig}
                     isUpdatingVoting={loadingStates.setVotingConfig}
-                    isFreezingAgreement={loadingStates.freezeAgreement}
                     isRecoveringEscrowEth={loadingStates.recoverStuckEthEscrow}
                     isRecoveringVotingEth={loadingStates.recoverStuckEthVoting}
                     isRecoveringEscrowToken={loadingStates.recoverStuckTokenEscrow}

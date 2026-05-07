@@ -37,29 +37,31 @@ export const SUPPORTED_CHAINS = [
   },
 ];
 
+// Deployed law at: 0xFccbD3B1Ed523aB548C80c908ed86514F0DC1BaD
+
 export const ESCROW_CA: Record<number, `0x${string}`> = {
-  1: "0x",
+  1: "0xE0c0C3E684c755450C54Ef908592eD15550468DA",
   // 11155111: "0x28028712B38C3f82094b78B47b8FF6a4cAdFa4F0", // old
-  11155111: "0x03f38d73469Bd5951F9C01a2ee9c72530e9BC012",
+  11155111: "0xAfBf16e6881A9DA25e2AcB255286CB18b6fd6E26",
   56: "0x", // BNB mainnet
   97: "0xED92b05Ec6e89386bC1046aa322C5ECd70966791", // BNB testnet
-  8453: "0xC31d204deb180A776436a8E8f8dd5F750004e708", // Base mainnet
-  84532: "0x393E0c2996c1295EeAef4F390cDafB6DC9424D75", // Base Sepolia testnet
+  8453: "0xE0c0C3E684c755450C54Ef908592eD15550468DA", // Base mainnet
+  84532: "0x6234414B0999dA536fd20BbdeE271D84D6b29439", // Base Sepolia testnet
 };
 
 export const VOTING_CA: Record<number, `0x${string}`> = {
-  1: "0x",
+  1: "0x6F925E5498C030D822a3C7c4f8143f3f3610c696",
   // 11155111: "0x301d62367Dff429eCB9cdFfCC13A214519C8A7a9", // old
-  11155111: "0x646b5510EF87050c950688CeAF649b932ac00580",
+  11155111: "0x4F58e6e772C188cE5Bd0Ce2AaCA610836702a327",
   56: "0x",
   97: "0x588458BbC7D4a033C31b46945BA8B509E4495F45",
-  8453: "0x5414a68b58d6d50CF429E58E2F4868203B692a7c",
-  84532: "0xF77E3277AeDa4cf2426D79E2D383b309578149B5",
+  8453: "0x6F925E5498C030D822a3C7c4f8143f3f3610c696",
+  84532: "0x964f4428186a160E0cf022043130A481af706b17",
 };
 
 export const KNOWN_TOKEN_ADDRESSES: Record<string, Record<number, string>> = {
   LAW: {
-    // 1: "0x",       // Ethereum
+    1: "0xFccbD3B1Ed523aB548C80c908ed86514F0DC1BaD",       // Ethereum
     // 11155111: "0x1098404bb1eA8E9E0659C2365448374523cDaB7D",
     // 56: "0x",       // BSC
     // 97: "0x697dE18375db7fCc6ad3C95682Cbf4d55CF8ad0c",
@@ -98,7 +100,7 @@ export const getExplorerUrl = (chainId: number): string => {
 };
 
 export const ESCROW_ABI = {
-  abi: [
+  "abi": [
     {
       "type": "constructor",
       "inputs": [
@@ -332,24 +334,6 @@ export const ESCROW_ABI = {
           "name": "votingId",
           "type": "uint256",
           "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "freezeAgreement",
-      "inputs": [
-        {
-          "name": "id",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "status",
-          "type": "bool",
-          "internalType": "bool"
         }
       ],
       "outputs": [],
@@ -967,25 +951,6 @@ export const ESCROW_ABI = {
         },
         {
           "name": "privateMode",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "AgreementFrozen",
-      "inputs": [
-        {
-          "name": "id",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "status",
           "type": "bool",
           "indexed": false,
           "internalType": "bool"
@@ -1619,11 +1584,6 @@ export const ESCROW_ABI = {
     },
     {
       "type": "error",
-      "name": "NotFrozen",
-      "inputs": []
-    },
-    {
-      "type": "error",
       "name": "NotParty",
       "inputs": []
     },
@@ -1715,11 +1675,6 @@ export const VOTING_ABI = {
         },
         {
           "name": "_feeRecipient",
-          "type": "address",
-          "internalType": "address"
-        },
-        {
-          "name": "_voteToken",
           "type": "address",
           "internalType": "address"
         },
@@ -1827,11 +1782,6 @@ export const VOTING_ABI = {
               "internalType": "uint256"
             },
             {
-              "name": "vToken",
-              "type": "address",
-              "internalType": "address"
-            },
-            {
               "name": "feeRec",
               "type": "address",
               "internalType": "address"
@@ -1934,11 +1884,6 @@ export const VOTING_ABI = {
           "name": "_disputeDuration",
           "type": "uint256",
           "internalType": "uint256"
-        },
-        {
-          "name": "_vToken",
-          "type": "address",
-          "internalType": "address"
         },
         {
           "name": "_feeRec",
@@ -2131,12 +2076,6 @@ export const VOTING_ABI = {
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
-        },
-        {
-          "name": "voteToken",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
         },
         {
           "name": "feeRecipient",

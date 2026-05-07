@@ -10,7 +10,6 @@ import type { AdminAgreement } from "../types";
 const STATUS_FILTERS: { key: AdminAgreementFilter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "disputed", label: "Disputed" },
-    { key: "frozen", label: "Frozen" },
     { key: "active", label: "Active" },
     { key: "completed", label: "Completed" },
 ];
@@ -18,7 +17,6 @@ const STATUS_FILTERS: { key: AdminAgreementFilter; label: string }[] = [
 function StatusBadge({ status }: { status: string }) {
     const styles: Record<string, string> = {
         disputed: "bg-red-500/10 text-red-400 border border-red-500/20",
-        frozen: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
         active: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
         completed: "bg-white/5 text-white/40 border border-white/10",
         cancelled: "bg-orange-500/10 text-orange-400 border border-orange-500/20",
@@ -175,7 +173,6 @@ export function AgreementOperationsTab({
 
     const {
         finalizeEscrowDispute,
-        freezeAgreement,
         loadingStates,
         uiError,
         uiSuccess,
@@ -186,18 +183,6 @@ export function AgreementOperationsTab({
         escrowAddress: `0x${string}`;
         votingId?: string;
     } | null>(null)
-
-    const handleFreeze = (
-        onChainId: string,
-        escrowAddr: string,
-        freeze: boolean,
-    ) => {
-        freezeAgreement(
-            BigInt(onChainId),
-            freeze,
-            escrowAddr as `0x${string}`,
-        );
-    };
 
     const handleFinalizeConfirm = (
         id: bigint,
@@ -232,7 +217,7 @@ export function AgreementOperationsTab({
                 {/* Header row */}
                 <div className="flex items-center justify-between">
                     <p className="text-xs text-white/40">
-                        Look up agreements to freeze, unfreeze, or finalize disputes.
+                        Look up agreements to finalize disputes.
                     </p>
                     <button
                         onClick={loadAgreements}
@@ -300,10 +285,7 @@ export function AgreementOperationsTab({
                         
                         {filteredAgreements.map((agreement: AdminAgreement) => {
                             const raw = agreement._raw;
-                            const isFrozen = raw?.onChainData?.frozen === true;
                             const isDisputed = agreement.status === "disputed";
-                            const isCompleted = agreement.status === "completed";
-                            const isFreezing = loadingStates.freezeAgreement;
                             const agreementEscrowAddress = agreement.escrowAddress as `0x${string}`;
                             const onChainId = agreement.onChainId ?? agreement.id;
                             const disputeVotingId = raw?.disputes?.[0]?.votingId?.toString();
@@ -321,9 +303,7 @@ export function AgreementOperationsTab({
                                                 #{agreement.id}
                                             </a>
                                             <StatusBadge status={agreement.status} />
-                                            {isFrozen && (
-                                                <StatusBadge status="frozen" />
-                                            )}
+                        
                                         </div>
                                         <p className="text-xs text-white/50 truncate max-w-[280px]">
                                             {agreement.title}
@@ -340,28 +320,6 @@ export function AgreementOperationsTab({
 
                                     {/* Actions */}
                                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                                        {!isCompleted && (
-                                            isFrozen ? (
-                                                <button
-                                                    onClick={() => handleFreeze(onChainId, agreementEscrowAddress, false)}
-                                                    disabled={isFreezing}
-                                                    className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/20 text-blue-400/70 hover:bg-blue-500/10 hover:text-blue-400 disabled:opacity-40 transition-all flex items-center gap-1.5"
-                                                >
-                                                    {isFreezing && <Loader2 size={11} className="animate-spin" />}
-                                                    Unfreeze
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleFreeze(onChainId, agreementEscrowAddress, true)}
-                                                    disabled={isFreezing}
-                                                    className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40 transition-all flex items-center gap-1.5"
-                                                >
-                                                    {isFreezing && <Loader2 size={11} className="animate-spin" />}
-                                                    Freeze
-                                                </button>
-                                            )
-                                        )}
-
                                         {isDisputed && (
                                             <button
                                                 onClick={() => setFinalizeTarget({

@@ -70,7 +70,6 @@ export type TxAction =
   | "setVotingConfig"
   | "setDisputeResolver"
   | "setFeeRecipient"
-  | "freezeAgreement"
   | "recoverStuckEthEscrow"
   | "recoverStuckEthVoting"
   | "recoverStuckTokenEscrow"
@@ -111,14 +110,12 @@ export interface ContractConfigsTabProps {
   onUpdateVotingConfig: (newConfig: VotingConfigInput) => Promise<void>;
   onSetDisputeResolver: (resolver: `0x${string}`) => Promise<void>;
   onSetFeeRecipient: (recipient: `0x${string}`) => Promise<void>;
-  onFreezeAgreement: (id: bigint, status: boolean) => Promise<void>;
   onRecoverStuckEthEscrow: (amount: bigint) => Promise<void>;
   onRecoverStuckEthVoting: (amount: bigint) => Promise<void>;
   onRecoverStuckTokenEscrow: (token: `0x${string}`, amount: bigint) => Promise<void>;
   onRecoverStuckTokenVoting: (token: `0x${string}`, amount: bigint) => Promise<void>;
   isUpdatingEscrow: boolean;
   isUpdatingVoting: boolean;
-  isFreezingAgreement: boolean;
   isRecoveringEscrowEth: boolean;
   isRecoveringVotingEth: boolean;
   isRecoveringEscrowToken: boolean;
@@ -147,9 +144,8 @@ export type AgreementStatus =
   | "expired"
   | "disputed"
   | "pending_approval"
-  | "frozen";
 
-  // Add near the top, after imports:
+// Add near the top, after imports:
 interface AgreementRaw {
   onChainData?: {
     frozen?: boolean;
