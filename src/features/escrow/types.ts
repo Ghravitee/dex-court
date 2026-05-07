@@ -59,8 +59,6 @@ export interface ExtendedEscrowWithOnChain extends ExtendedEscrowBase {
     username?: string;
     avatarId?: number | null;
   };
-  isFrozen?: boolean;
-  freezeReason?: 'dispute' | 'admin' | null;
 }
 
 export interface OnChainEscrowData extends ExtendedEscrowWithOnChain {
