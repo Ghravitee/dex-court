@@ -390,7 +390,10 @@ export function useEscrowCreation({
             counterParty: counterPartyAddr,
             deadline: deadline.toISOString(),
             amount: parseFloat(form.amount),
-            tokenSymbol: form.token === "custom" ? "custom" : form.token,
+            tokenSymbol: form.token === "custom"
+              ? (form.resolvedTokenSymbol ?? "custom")   // fallback if not yet fetched
+              : form.token,
+            // tokenSymbol: form.token === "custom" ? "custom" : form.token,
             customTokenAddress:
               form.token === "custom" ? form.customTokenAddress : undefined,
             includesFunds: true,

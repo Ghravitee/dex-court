@@ -290,6 +290,9 @@ export async function createAgreement(
   if (data.secureTheFunds !== undefined)
     formData.append("secureTheFunds", data.secureTheFunds.toString());
   if (data.tokenSymbol) formData.append("tokenSymbol", data.tokenSymbol);
+  if (data.tokenSymbol === "custom") {
+    formData.append("customTokenAddress", data.customTokenAddress ?? "");
+  }
   if (data.amount) formData.append("amount", data.amount.toString());
   if (data.chainId) formData.append("chainId", data.chainId.toString());
   if (data.contractAgreementId)

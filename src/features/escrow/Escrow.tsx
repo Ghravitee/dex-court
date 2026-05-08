@@ -124,6 +124,18 @@ export default function EscrowPage() {
     },
   });
 
+  // Add this right after the decimals hook
+  const { data: createTokenSymbol } = useReadContract({
+    address: isValidAddress(form.customTokenAddress)
+      ? (form.customTokenAddress as `0x${string}`)
+      : undefined,
+    abi: ERC20_ABI.abi,
+    functionName: "symbol",
+    query: {
+      enabled: isValidAddress(form.customTokenAddress) && form.token === "custom",
+    },
+  });
+
   useEffect(() => {
     if (
       typeof createTokenDecimals === "number" ||
@@ -135,6 +147,12 @@ export default function EscrowPage() {
       }));
     }
   }, [createTokenDecimals, setForm]);
+
+  useEffect(() => {
+    if (typeof createTokenSymbol === "string" && form.token === "custom") {
+      setForm(prev => ({ ...prev, resolvedTokenSymbol: createTokenSymbol }));
+    }
+  }, [createTokenSymbol, setForm, form.token]);
 
   // ── Chain config error ────────────────────────────────────────────────────
   useEffect(() => {
@@ -160,19 +178,19 @@ export default function EscrowPage() {
       step: Parameters<typeof previewStep>[0];
       msg: string;
     }> = [
-      { step: "creating_backend", msg: "Creating agreement in database..." },
-      {
-        step: "awaiting_approval",
-        msg: "Token approval required. Please check your wallet...",
-      },
-      { step: "approving", msg: "Approving token spending..." },
-      { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
-      {
-        step: "waiting_confirmation",
-        msg: "Transaction submitted. Waiting for blockchain confirmation...",
-      },
-      { step: "success", msg: "Escrow created successfully!" },
-    ];
+        { step: "creating_backend", msg: "Creating agreement in database..." },
+        {
+          step: "awaiting_approval",
+          msg: "Token approval required. Please check your wallet...",
+        },
+        { step: "approving", msg: "Approving token spending..." },
+        { step: "creating_onchain", msg: "Creating escrow on blockchain..." },
+        {
+          step: "waiting_confirmation",
+          msg: "Transaction submitted. Waiting for blockchain confirmation...",
+        },
+        { step: "success", msg: "Escrow created successfully!" },
+      ];
 
     PREVIEW_STEPS.forEach(({ step, msg }, i) => {
       setTimeout(() => previewStep(step, msg), i * 2000);
@@ -254,7 +272,8 @@ export default function EscrowPage() {
       });
       setOpen(false);
       resetForm();
-    } catch {
+    } catch (e) {
+      console.error("Error creating escrow:", e);
       toast.error("Failed to create escrow");
     } finally {
       setIsSubmitting(false);
