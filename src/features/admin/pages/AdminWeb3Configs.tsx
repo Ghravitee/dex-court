@@ -1,6 +1,6 @@
 // src/features/admin/pages/AdminWeb3Configs.tsx
 import { useState, useMemo } from "react";
-import { RefreshCw, Shield, Settings, AlertTriangle } from "lucide-react";
+import { RefreshCw, Shield, Settings, AlertTriangle, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { useSwitchChain } from "wagmi";
 import {
@@ -8,10 +8,12 @@ import {
     VOTING_CA,
     getExplorerUrl,
     SUPPORTED_CHAINS,
+    KNOWN_TOKEN_ADDRESSES,
 } from "../../../web3/config";
 import { useChainSelection } from "../../../config/useChainSelection";
 import { ContractConfigsTab } from "../components/ContractConfigs";
 import { AgreementOperationsTab } from "../components/AgreementOperationsTab";
+import { TokenAdminTab } from "../components/TokenAdminTab";
 import type { Tab } from "../types";
 import { useAdminOnChainActions } from "../hooks/useAdminOnChainActions";
 
@@ -33,6 +35,9 @@ export default function AdminWeb3Configs() {
                 : resolveChainId(SUPPORTED_CHAINS[0].mainnetId),
         [selectedMainnetId, resolveChainId]
     );
+
+
+    const tokenAddress = KNOWN_TOKEN_ADDRESSES.LAW[activeChainId] ?? "";
 
     const {
         setEscrowConfig,
@@ -171,6 +176,7 @@ export default function AdminWeb3Configs() {
                     [
                         { key: "configs", label: "Contract configs", icon: Settings },
                         { key: "operations", label: "Agreement operations", icon: Shield },
+                        { key: "token", label: "Token management", icon: Coins },
                     ] as const
                 ).map(({ key, label, icon: Icon }) => (
                     <button
@@ -213,6 +219,13 @@ export default function AdminWeb3Configs() {
                 <AgreementOperationsTab
                     activeChainId={activeChainId}
                     escrowAddress={escrowAddress as `0x${string}`}
+                    explorerBase={explorerBase}
+                />
+            )}
+            {tab === "token" && (
+                <TokenAdminTab
+                    activeChainId={activeChainId}
+                    tokenAddress={tokenAddress as `0x${string}`}
                     explorerBase={explorerBase}
                 />
             )}

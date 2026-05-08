@@ -36,7 +36,7 @@ export interface AdminStats {
   telegramLinked: number;
 }
 
-export type Tab = "configs" | "operations";
+export type Tab = "configs" | "operations" | "token";
 
 export interface EscrowConfigInput {
   platformFeeBp: bigint;
