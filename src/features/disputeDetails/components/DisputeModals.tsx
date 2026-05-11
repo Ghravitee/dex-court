@@ -29,7 +29,7 @@ interface Props {
   isJudge: boolean;
   onCloseVoteModal: () => void;
   onVoteChange: (
-    choice: "plaintiff" | "defendant" | "dismissed" | null,
+    choice: "plaintiff" | "defendant" | "dismissed" | "split" | null, // 🆕
     comment: string,
   ) => void;
   onCastVote: () => Promise<void>;

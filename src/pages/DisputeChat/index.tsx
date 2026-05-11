@@ -45,6 +45,7 @@ interface DisputeChatProps {
   disputeId: number;
   userRole?: DisputeChatRole;
   participants?: ChatParticipant[];
+  votingInProgress?: boolean;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -364,7 +365,7 @@ const MentionDropdown = ({
                     e.preventDefault();
                     onSelect(p.username);
                   }}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cyan-500/10"
+                  className="flex w-full items-center gap-1 px-3 py-2.5 text-left transition-colors hover:bg-cyan-500/10"
                 >
                   <UserAvatar
                     userId={p.id?.toString() ?? ""}
@@ -428,7 +429,7 @@ const renderMessageContent = (
             size="sm"
             className="inline-block align-middle"
           />
-          <span className="ml-2 font-semibold text-cyan-300">
+          <span className="ml-1 font-semibold text-cyan-300">
             @{user.username}
           </span>
         </span>
@@ -444,6 +445,7 @@ export default function DisputeChat({
   disputeId,
   userRole,
   participants = [],
+  votingInProgress = false,
 }: DisputeChatProps) {
   const token = localStorage.getItem("authToken") ?? "";
   const { user } = useAuth();
@@ -463,7 +465,8 @@ export default function DisputeChat({
   const socketRef = useRef<any>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const canSend = canUserSendMessages(userRole);
+  // Update canSend to respect voting state
+  const canSend = canUserSendMessages(userRole) && !votingInProgress;
   const canDelete = canUserDeleteMessages(userRole);
 
   // Merge passed participants with judges discovered from message history
@@ -923,11 +926,24 @@ export default function DisputeChat({
       ) : (
         <div className="mt-4 border-t border-cyan-800/40 pt-4 text-center">
           <div className="flex items-center justify-center gap-2 text-sm text-cyan-400/70">
-            <EyeOff className="h-4 w-4" />
-            <span>Read-only access</span>
+            {votingInProgress ? (
+              <>
+                <Gavel className="h-4 w-4 text-purple-400/70" />
+                <span className="text-purple-300/70">
+                  Chat is locked during voting
+                </span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-4 w-4" />
+                <span>Read-only access</span>
+              </>
+            )}
           </div>
           <p className="mt-1 text-xs text-cyan-400/50">
-            Only plaintiffs, defendants, witnesses, and judges can send messages
+            {votingInProgress
+              ? "Message sending is disabled once a vote is in progress"
+              : "Only plaintiffs, defendants, witnesses, and judges can send messages"}
           </p>
         </div>
       )}

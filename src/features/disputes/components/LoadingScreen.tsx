@@ -54,7 +54,6 @@ export function LoadingScreen() {
           height: clamp(44px, 7vw, 58px);
         }
         .ls-label {
-          font-family: Georgia, serif;
           font-size: clamp(10px, 1.4vw, 13px);
           letter-spacing: 0.22em;
           color: rgba(34,211,238,0.5);
@@ -176,17 +175,6 @@ export function LoadingScreen() {
           <p className="text-sm text-cyan-200/50">
             Preparing your disputes list...
           </p>
-        </div>
-
-        {/* Bouncing dots */}
-        <div className="flex gap-1.5">
-          {[0, 0.15, 0.3].map((delay, i) => (
-            <div
-              key={i}
-              className="size-1.5 animate-bounce rounded-full bg-cyan-400/50"
-              style={{ animationDelay: `${delay}s` }}
-            />
-          ))}
         </div>
       </div>
     </div>

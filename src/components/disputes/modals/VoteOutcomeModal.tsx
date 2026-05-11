@@ -73,10 +73,12 @@ const VoteOutcomeModal = ({
         plaintiff: 0,
         defendant: 0,
         dismiss: 0,
+        split: 0, // 🆕 split
         total: 0,
         plaintiffPct: 0,
         defendantPct: 0,
         dismissPct: 0,
+        splitPct: 0, // 🆕 splitPct
       };
     }
     const plaintiff =
@@ -88,21 +90,27 @@ const VoteOutcomeModal = ({
     const dismiss =
       (voteOutcome.votesPerGroup?.communityTierOne?.dismiss || 0) +
       (voteOutcome.votesPerGroup?.communityTierTwo?.dismiss || 0);
-    const total = plaintiff + defendant + dismiss;
+    const split = // 🆕
+      (voteOutcome.votesPerGroup?.communityTierOne?.split || 0) + // 🆕
+      (voteOutcome.votesPerGroup?.communityTierTwo?.split || 0); // 🆕
+    const total = plaintiff + defendant + dismiss + split; // 🆕 include split
 
-    // Each percentage computed independently — dismiss votes don't bleed into defendant.
     const plaintiffPct = total > 0 ? Math.round((plaintiff / total) * 100) : 0;
     const defendantPct = total > 0 ? Math.round((defendant / total) * 100) : 0;
-    const dismissPct = total > 0 ? 100 - plaintiffPct - defendantPct : 0;
+    const dismissPct = total > 0 ? Math.round((dismiss / total) * 100) : 0;
+    const splitPct =
+      total > 0 ? 100 - plaintiffPct - defendantPct - dismissPct : 0; // 🆕
 
     return {
       plaintiff,
       defendant,
       dismiss,
+      split, // 🆕
       total,
       plaintiffPct,
       defendantPct,
       dismissPct,
+      splitPct, // 🆕
     };
   }, [voteOutcome]);
 
@@ -111,45 +119,92 @@ const VoteOutcomeModal = ({
     return voteOutcome?.votesPerGroup?.judges?.dismiss || 0;
   }, [voteOutcome]);
 
-  const totalDismissVotes = judgesDismissVotes + communityMerged.dismiss;
+  const judgesSplitVotes = useMemo(() => {
+    return voteOutcome?.votesPerGroup?.judges?.split || 0;
+  }, [voteOutcome]);
 
-  // ── Plain-English verdict summary — uses communityMerged (raw counts),
-  // NOT the flat communityPct/communityVotes API fields which don't reliably
-  // reflect the merged Tier 1 + Tier 2 split. This keeps it in sync with DoneCaseCard.
+  const totalDismissVotes = judgesDismissVotes + communityMerged.dismiss;
+  const totalSplitVotes = judgesSplitVotes + communityMerged.split;
+
   const verdictSummary = useMemo(() => {
     if (!voteOutcome) return "";
 
-    const { winner, judgeVotes, judgePct } = voteOutcome;
+    const { winner, votesPerGroup, percentagesPerGroup } = voteOutcome;
 
+    const judgesTotal = votesPerGroup?.judges?.total || 0;
+    const communityTotal = communityMerged.total;
     const isDismissedNoVotes =
-      winner === "dismissed" &&
-      (judgeVotes || 0) === 0 &&
-      communityMerged.total === 0;
+      winner === "dismissed" && judgesTotal === 0 && communityTotal === 0;
 
     if (isDismissedNoVotes) return "Nobody voted, so the case was closed";
     if (winner === "dismissed")
       return "The case was closed without a clear winner";
 
-    const judgesVoted = (judgeVotes || 0) > 0;
-    const communityVoted = communityMerged.total > 0;
+    const judgesVoted = judgesTotal > 0;
+    const communityVoted = communityTotal > 0;
 
-    if (!judgesVoted && !communityVoted) {
+    if (!judgesVoted && !communityVoted)
       return "The case was decided automatically — no one voted";
-    }
-    if (!judgesVoted) {
-      return `Only community members voted — they sided with the ${winner}`;
-    }
-    if (!communityVoted) {
-      return `Only judges voted — they sided with the ${winner}`;
+
+    if (winner === "split") {
+      // Work out what judges favoured most
+      const judgesSplitPct = percentagesPerGroup?.judges?.split || 0;
+      const judgesDismissPct = percentagesPerGroup?.judges?.dismiss || 0;
+      const judgesPlaintiffPct = percentagesPerGroup?.judges?.plaintiff || 0;
+      const judgesDefendantPct = percentagesPerGroup?.judges?.defendant || 0;
+
+      const judgesTopOutcome = [
+        { label: "split", pct: judgesSplitPct },
+        { label: "dismiss", pct: judgesDismissPct },
+        { label: "plaintiff", pct: judgesPlaintiffPct },
+        { label: "defendant", pct: judgesDefendantPct },
+      ].reduce((a, b) => (b.pct > a.pct ? b : a)).label;
+
+      // Work out what community favoured most
+      const communitySplitPct = communityMerged.splitPct;
+      const communityDismissPct = communityMerged.dismissPct;
+      const communityPlaintiffPct = communityMerged.plaintiffPct;
+      const communityDefendantPct = communityMerged.defendantPct;
+
+      const communityTopOutcome = [
+        { label: "split", pct: communitySplitPct },
+        { label: "dismiss", pct: communityDismissPct },
+        { label: "plaintiff", pct: communityPlaintiffPct },
+        { label: "defendant", pct: communityDefendantPct },
+      ].reduce((a, b) => (b.pct > a.pct ? b : a)).label;
+
+      if (!judgesVoted)
+        return "Community members leaned toward a split — both parties share responsibility";
+      if (!communityVoted)
+        return "Judges leaned toward a split — both parties share responsibility";
+
+      // Both voted — describe agreement or disagreement
+      if (judgesTopOutcome === "split" && communityTopOutcome === "split")
+        return "Both judges and community leaned toward a split — both parties share responsibility";
+      if (judgesTopOutcome === "split" && communityTopOutcome !== "split")
+        return `Judges leaned toward a split while the community favoured the ${communityTopOutcome} — split outcome prevailed`;
+      if (judgesTopOutcome !== "split" && communityTopOutcome === "split")
+        return `Community leaned toward a split while judges were divided — split outcome prevailed`;
+
+      // Neither group's top pick was split, but weighted average pushed it over
+      return "Votes were divided across outcomes — the weighted result determined a split";
     }
 
-    const judgesFavor = (judgePct || 0) >= 50 ? "plaintiff" : "defendant";
+    // Non-split winner — original logic preserved
+    if (!judgesVoted)
+      return `Only community members voted — they sided with the ${winner}`;
+    if (!communityVoted)
+      return `Only judges voted — they sided with the ${winner}`;
+
+    const judgesFavor =
+      (percentagesPerGroup?.judges?.plaintiff || 0) >= 50
+        ? "plaintiff"
+        : "defendant";
     const communityFavor =
       communityMerged.plaintiffPct >= 50 ? "plaintiff" : "defendant";
 
-    if (judgesFavor === communityFavor) {
+    if (judgesFavor === communityFavor)
       return `Both judges and community members agreed — the ${winner} wins`;
-    }
     return `Judges overruled the community — the ${winner} wins`;
   }, [voteOutcome, communityMerged]);
 
@@ -226,21 +281,15 @@ const VoteOutcomeModal = ({
     );
   }
 
-  const {
-    winner,
-    judgeVotes,
-    // communityVotes,
-    judgePct,
-    // communityPct,
-    comments,
-  } = voteOutcome;
+  const { winner, judgePct, comments } = voteOutcome;
 
-  const judgesVoted = (judgeVotes || 0) > 0;
+  const judgesVoted = (voteOutcome.judgeVotes || 0) > 0;
   const communityVoted = communityMerged.total > 0;
   const hasAnyVotes = judgesVoted || communityVoted;
 
-  // Judges defendant % = whatever remains after plaintiff + dismiss.
-  const judgesDefendantPct = 100 - (judgePct || 0) - judgesDismissPct;
+  const judgesSplitPct = voteOutcome?.percentagesPerGroup?.judges?.split || 0; // 🆕
+  const judgesDefendantPct =
+    100 - (judgePct || 0) - judgesDismissPct - judgesSplitPct; // 🆕
 
   return (
     <AnimatePresence mode="wait">
@@ -290,14 +339,18 @@ const VoteOutcomeModal = ({
                       ? "text-blue-400"
                       : winner === "defendant"
                         ? "text-yellow-400"
-                        : "text-slate-300"
+                        : winner === "split"
+                          ? "text-purple-400" // 🆕
+                          : "text-slate-300"
                   }`}
                 >
                   {winner === "plaintiff"
                     ? "Plaintiff Wins"
                     : winner === "defendant"
                       ? "Defendant Wins"
-                      : "Case Dismissed"}
+                      : winner === "split"
+                        ? "Split Decision" // 🆕
+                        : "Case Dismissed"}
                 </div>
                 <div className="text-sm text-emerald-200">{verdictSummary}</div>
               </div>
@@ -320,6 +373,10 @@ const VoteOutcomeModal = ({
                       <span className="text-yellow-300">Defendant</span>
                     </div>
                     <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-purple-500" />
+                      <span className="text-purple-300">Split</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
                       <span className="inline-block h-3 w-3 rounded-sm bg-slate-500" />
                       <span className="text-slate-400">Dismissed</span>
                     </div>
@@ -332,7 +389,8 @@ const VoteOutcomeModal = ({
                         <span className="font-medium">
                           ⚖️ Judges
                           <span className="ml-1 text-white/40">
-                            ({judgeVotes} {judgeVotes === 1 ? "vote" : "votes"})
+                            ({voteOutcome.judgeVotes}{" "}
+                            {voteOutcome.judgeVotes === 1 ? "vote" : "votes"})
                           </span>
                         </span>
                       </div>
@@ -346,16 +404,6 @@ const VoteOutcomeModal = ({
                           transition={{ duration: 0.8, ease: "easeOut" }}
                         />
                         <motion.div
-                          className="h-full bg-slate-500"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${judgesDismissPct}%` }}
-                          transition={{
-                            duration: 0.8,
-                            ease: "easeOut",
-                            delay: 0.1,
-                          }}
-                        />
-                        <motion.div
                           className="h-full bg-yellow-500"
                           initial={{ width: 0 }}
                           animate={{ width: `${judgesDefendantPct}%` }}
@@ -365,20 +413,45 @@ const VoteOutcomeModal = ({
                             delay: 0.2,
                           }}
                         />
+                        <motion.div
+                          className="h-full bg-purple-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${judgesSplitPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.3,
+                          }} // 🆕
+                        />
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${judgesDismissPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.1,
+                          }}
+                        />
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
                         <span className="text-blue-300">
                           {voteResults.plaintiffJudgeVotes} Plaintiff
                         </span>
+                        <span className="text-yellow-300">
+                          {voteResults.defendantJudgeVotes} Defendant
+                        </span>
+                        {judgesSplitVotes > 0 && (
+                          <span className="text-purple-300">
+                            {judgesSplitVotes} Split
+                          </span>
+                        )}
                         {judgesDismissVotes > 0 && (
                           <span className="text-slate-400">
                             {judgesDismissVotes} Dismissed
                           </span>
                         )}
-                        <span className="text-yellow-300">
-                          {voteResults.defendantJudgeVotes} Defendant
-                        </span>
                       </div>
                     </div>
                   )}
@@ -410,16 +483,6 @@ const VoteOutcomeModal = ({
                           }}
                         />
                         <motion.div
-                          className="h-full bg-slate-500"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${communityMerged.dismissPct}%` }}
-                          transition={{
-                            duration: 0.8,
-                            ease: "easeOut",
-                            delay: 0.25,
-                          }}
-                        />
-                        <motion.div
                           className="h-full bg-yellow-400"
                           initial={{ width: 0 }}
                           animate={{
@@ -431,20 +494,46 @@ const VoteOutcomeModal = ({
                             delay: 0.35,
                           }}
                         />
+                        <motion.div
+                          className="h-full bg-purple-400"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityMerged.splitPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.45,
+                          }} // 🆕
+                        />
+
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityMerged.dismissPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.25,
+                          }}
+                        />
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
                         <span className="text-blue-300">
                           {voteResults.plaintiffCommunityVotes} Plaintiff
                         </span>
+                        <span className="text-yellow-300">
+                          {voteResults.defendantCommunityVotes} Defendant
+                        </span>
+                        {communityMerged.split > 0 && (
+                          <span className="text-purple-300">
+                            {communityMerged.split} Split
+                          </span>
+                        )}
                         {communityMerged.dismiss > 0 && (
                           <span className="text-slate-400">
                             {communityMerged.dismiss} Dismissed
                           </span>
                         )}
-                        <span className="text-yellow-300">
-                          {voteResults.defendantCommunityVotes} Defendant
-                        </span>
                       </div>
                     </div>
                   )}
@@ -459,6 +548,14 @@ const VoteOutcomeModal = ({
                     <span className="font-medium text-yellow-300">
                       {voteResults.defendantVotes} Defendant
                     </span>
+                    {totalSplitVotes > 0 && (
+                      <>
+                        {" · "}
+                        <span className="font-medium text-purple-400">
+                          {totalSplitVotes} Split
+                        </span>
+                      </>
+                    )}
                     {totalDismissVotes > 0 && (
                       <>
                         {" · "}

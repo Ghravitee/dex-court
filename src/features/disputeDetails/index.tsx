@@ -278,6 +278,7 @@ export default function DisputeDetails() {
           disputeId={parseInt(id!)}
           userRole={getUserRole()}
           participants={chatParticipants}
+          votingInProgress={dispute.status === "Vote in Progress"}
         />
       </div>
 

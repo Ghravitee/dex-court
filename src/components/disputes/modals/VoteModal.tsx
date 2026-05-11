@@ -1,9 +1,5 @@
 import { Button } from "../../../components/ui/button";
 import { UserAvatar } from "../../../components/UserAvatar";
-// import {
-//   cleanTelegramUsername,
-//   formatTelegramUsernameForDisplay,
-// } from "../../../lib/usernameUtils";
 import {
   Info,
   MinusCircle,
@@ -11,20 +7,21 @@ import {
   ThumbsDown,
   ThumbsUp,
   X,
+  Loader2,
+  GitMerge,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback } from "react";
 import { VscVerifiedFilled } from "react-icons/vsc";
 
 import type { VoteData, DisputeRow } from "../../../types";
-import { Loader2 } from "lucide-react";
 
 interface VoteModalProps {
   isOpen: boolean;
   onClose: () => void;
   voteData: VoteData;
   onVoteChange: (
-    choice: "plaintiff" | "defendant" | "dismissed" | null,
+    choice: "plaintiff" | "defendant" | "dismissed" | "split" | null, // 🆕
     comment: string,
   ) => void;
   onCastVote: () => void;
@@ -120,8 +117,8 @@ const VoteOption = ({
   label: string | React.ReactNode;
   active: boolean;
   onClick: () => void;
-  choice: "plaintiff" | "defendant" | "dismissed" | null;
-  optionType: "plaintiff" | "defendant" | "dismissed";
+  choice: "plaintiff" | "defendant" | "dismissed" | "split" | null;
+  optionType: "plaintiff" | "defendant" | "dismissed" | "split";
   disabled?: boolean;
   username?: string;
   avatarId?: number | null;
@@ -132,7 +129,9 @@ const VoteOption = ({
     choice &&
     choice !== optionType &&
     choice !== "dismissed" &&
-    optionType !== "dismissed";
+    choice !== "split" && // 🆕
+    optionType !== "dismissed" &&
+    optionType !== "split"; // 🆕
 
   // Get role-specific styling
   const roleColor =
@@ -209,7 +208,8 @@ export const VoteModal = ({
   }, []);
 
   const handleVoteChoice = useCallback(
-    (choice: "plaintiff" | "defendant" | "dismissed") => {
+    (choice: "plaintiff" | "defendant" | "dismissed" | "split") => {
+      // 🆕
       onVoteChange(choice, voteData.comment);
     },
     [onVoteChange, voteData.comment],
@@ -249,7 +249,7 @@ export const VoteModal = ({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="glass card-cyan relative top-5 max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl sm:max-h-[90vh]"
+          className="glass card-cyan relative top-5 flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl sm:max-h-[80vh]"
           onClick={handleModalClick}
         >
           {/* Header */}
@@ -272,7 +272,7 @@ export const VoteModal = ({
           </div>
 
           {/* Content */}
-          <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6">
             {!canUserVote ? (
               <div className="py-8 text-center">
                 <div className="mb-4 text-2xl">🚫</div>
@@ -452,6 +452,29 @@ export const VoteModal = ({
                         dispute?.defendantData?.userId ||
                         cleanTelegramUsername(dispute?.defendant || "")
                       }
+                    />
+
+                    <VoteOption
+                      label={
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/20">
+                            <GitMerge className="h-4 w-4 text-purple-400" />
+                          </div>
+                          <div>
+                            <div className="text-xs text-purple-300">
+                              Both Parties
+                            </div>
+                            <div className="text-xs text-purple-200/70">
+                              Split outcome
+                            </div>
+                          </div>
+                        </div>
+                      }
+                      active={voteData.choice === "split"}
+                      onClick={() => handleVoteChoice("split")}
+                      choice={voteData.choice}
+                      optionType="split"
+                      disabled={isSubmitting}
                     />
 
                     {/* Dismiss Option */}

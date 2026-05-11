@@ -17,11 +17,13 @@ export const useConcludedDisputes = () => {
 
       if (response?.results) {
         const concludedDisputes = response.results.map((dispute: any) => {
-          let winner: "plaintiff" | "defendant" | "dismissed" = "dismissed";
-
+          let winner: "plaintiff" | "defendant" | "dismissed" | "split" =
+            "dismissed";
           if (dispute.result === 1) winner = "plaintiff";
           else if (dispute.result === 2) winner = "defendant";
-          else if (dispute.result === 3) winner = "dismissed";
+          else if (dispute.result === 4)
+            winner = "dismissed"; // Dismissed = 4
+          else if (dispute.result === 6) winner = "split";
 
           const judgeVotes = dispute.votesPerGroup?.judges?.total || 0;
           const communityVotes =
@@ -30,9 +32,9 @@ export const useConcludedDisputes = () => {
 
           const judgePct = dispute.percentagesPerGroup?.judges?.plaintiff || 0;
           const communityPct =
-            (dispute.percentagesPerGroup?.communityTierOne?.plaintiff ||
-              0 + dispute.percentagesPerGroup?.communityTierTwo?.plaintiff ||
-              0) / 2;
+            ((dispute.percentagesPerGroup?.communityTierOne?.plaintiff || 0) +
+              (dispute.percentagesPerGroup?.communityTierTwo?.plaintiff || 0)) /
+            2;
 
           const comments = (dispute.comments || []).map((comment: any) => {
             const text =
@@ -75,26 +77,45 @@ export const useConcludedDisputes = () => {
               plaintiff: 0,
               defendant: 0,
               dismiss: 0,
+              split: 0, // 🆕
             },
             votesPerGroup: dispute.votesPerGroup || {
-              judges: { plaintiff: 0, defendant: 0, dismiss: 0, total: 0 },
+              judges: {
+                plaintiff: 0,
+                defendant: 0,
+                dismiss: 0,
+                split: 0,
+                total: 0,
+              },
               communityTierOne: {
                 plaintiff: 0,
                 defendant: 0,
                 dismiss: 0,
+                split: 0,
                 total: 0,
               },
               communityTierTwo: {
                 plaintiff: 0,
                 defendant: 0,
                 dismiss: 0,
+                split: 0,
                 total: 0,
               },
             },
             percentagesPerGroup: dispute.percentagesPerGroup || {
-              judges: { plaintiff: 0, defendant: 0, dismiss: 0 },
-              communityTierOne: { plaintiff: 0, defendant: 0, dismiss: 0 },
-              communityTierTwo: { plaintiff: 0, defendant: 0, dismiss: 0 },
+              judges: { plaintiff: 0, defendant: 0, dismiss: 0, split: 0 },
+              communityTierOne: {
+                plaintiff: 0,
+                defendant: 0,
+                dismiss: 0,
+                split: 0,
+              },
+              communityTierTwo: {
+                plaintiff: 0,
+                defendant: 0,
+                dismiss: 0,
+                split: 0,
+              },
             },
             comments,
             rawData: dispute,

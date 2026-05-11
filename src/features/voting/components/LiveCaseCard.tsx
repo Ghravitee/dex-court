@@ -18,6 +18,7 @@ import { MemoizedVoteOption } from "./VoteOption";
 import { fmtRemain } from "../utils/dateUtils";
 import { type LiveCaseCardProps } from "../types";
 import { AppLink } from "../../../components/AppLink";
+import { DisputeVoteEnum } from "../../../types";
 
 export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
   c,
@@ -27,7 +28,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
   isJudge = false,
 }) => {
   const [choice, setChoice] = useState<
-    "plaintiff" | "defendant" | "dismissed" | null
+    "plaintiff" | "defendant" | "dismissed" | "split" | null
   >(null);
   const [comment, setComment] = useState("");
   const [isVoting, setIsVoting] = useState(false);
@@ -113,7 +114,14 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
       });
 
       await disputeService.castVote(disputeId, {
-        voteType: choice === "plaintiff" ? 1 : choice === "defendant" ? 2 : 3,
+        voteType:
+          choice === "plaintiff"
+            ? DisputeVoteEnum.Plaintiff
+            : choice === "defendant"
+              ? DisputeVoteEnum.Defendant
+              : choice === "split"
+                ? DisputeVoteEnum.Split
+                : DisputeVoteEnum.DismissCase,
         comment: comment,
       });
 
@@ -124,7 +132,9 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
           ? "Plaintiff"
           : choice === "defendant"
             ? "Defendant"
-            : "Dismiss Case";
+            : choice === "split"
+              ? "Split"
+              : "Dismiss Case";
 
       toast.success("Vote Cast! ✅", {
         description: `You voted for ${voteAction}. Thank you for participating!`,
@@ -306,7 +316,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
 
               <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                 <div className="mb-2 text-sm font-medium text-white/90">
-                  Case Description
+                  Plaintiff's claim
                 </div>
                 <p className="text-sm text-white/80">{c.description}</p>
               </div>
@@ -414,7 +424,7 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                   </h4>
 
                   {!voted && !isExpired && (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <MemoizedVoteOption
                         label={`Plaintiff (${c.parties.plaintiff})`}
                         active={choice === "plaintiff"}
@@ -438,6 +448,14 @@ export const LiveCaseCard: React.FC<LiveCaseCardProps> = ({
                         avatarId={c.parties.defendantAvatar || null}
                         userId={c.parties.defendantId}
                         roleLabel="Defendant"
+                      />
+                      <MemoizedVoteOption
+                        label="Split"
+                        active={choice === "split"}
+                        onClick={() => setChoice("split")}
+                        choice={choice}
+                        optionType="split"
+                        disabled={isExpired}
                       />
                       <MemoizedVoteOption
                         label="Dismiss Case"

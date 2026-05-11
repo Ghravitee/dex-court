@@ -190,11 +190,11 @@ export const DisputeTable = ({
                           size="sm"
                         />
                         <AppLink
-                          to={`/profile/${encodeURIComponent(cleanTelegramUsername(d.plaintiff))}`}
+                          to={`/profile/${encodeURIComponent(cleanTelegramUsername(d.defendant))}`}
                           onClick={(e) => e.stopPropagation()}
                           className="max-w-[60px] truncate text-cyan-300 hover:text-cyan-200 hover:underline lg:max-w-none"
                         >
-                          {formatPartyDisplay(d.plaintiff)}
+                          {formatPartyDisplay(d.defendant)}
                         </AppLink>
                       </div>
                     </div>

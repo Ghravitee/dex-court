@@ -95,6 +95,10 @@ const ERROR_CODE_MESSAGES: Record<ErrorCodeEnum, string> = {
   [ErrorCodeEnum.Forbidden]: "You are not authorized to perform this action.",
   [ErrorCodeEnum.InvalidStatus]:
     "This action cannot be performed in the current dispute status.",
+  [ErrorCodeEnum.VoteSnapshotMissing]:
+    "Voting snapshot unavailable. Please contact support.", // 🆕
+  [ErrorCodeEnum.WalletNotInVoteSnapshot]:
+    "Your wallet was not found in the voting snapshot for this dispute.", // 🆕
 };
 
 function handleDisputeError(error: any): never {
@@ -171,8 +175,10 @@ const ELIGIBILITY_REASON_MESSAGES: Partial<Record<number, string>> = {
   [ErrorCodeEnum.InvalidEnum]: "Invalid dispute data",
   [ErrorCodeEnum.InvalidData]: "Invalid dispute data",
   [ErrorCodeEnum.InvalidStatus]: "Dispute is not in voting phase",
-  [ErrorCodeEnum.Forbidden]:
-    "You must hold at least 0.5% of the $LAW token supply to vote",
+  [ErrorCodeEnum.Forbidden]: "You are not permitted to vote on this dispute",
+  [ErrorCodeEnum.VoteSnapshotMissing]: "Voting snapshot unavailable", // 🆕
+  [ErrorCodeEnum.WalletNotInVoteSnapshot]:
+    "Your wallet is not in the voting snapshot", // 🆕
 };
 
 // Export for use in hooks
@@ -184,6 +190,9 @@ export const VOTE_ELIGIBILITY_REASONS = {
   IS_PARTY: "You cannot vote on a dispute you are involved in.",
   INSUFFICIENT_LAW:
     "You must hold at least 0.5% of the $LAW token supply to vote.",
+  VOTE_SNAPSHOT_MISSING: "Voting snapshot unavailable. Please contact support.", // 🆕
+  WALLET_NOT_IN_SNAPSHOT:
+    "Your wallet was not found in the voting snapshot for this dispute.", // 🆕
 };
 
 // ─── Status mapping ────────────────────────────────────────────────────────────
@@ -301,7 +310,13 @@ export async function fetchVoteOutcome(
 
   return {
     winner:
-      d.result === 1 ? "plaintiff" : d.result === 2 ? "defendant" : "dismissed",
+      d.result === 1
+        ? "plaintiff"
+        : d.result === 2
+          ? "defendant"
+          : d.result === 6
+            ? "split"
+            : "dismissed",
     judgeVotes: d.votesPerGroup?.judges?.total ?? 0,
     communityVotes:
       (d.votesPerGroup?.communityTierOne?.total ?? 0) +
@@ -309,9 +324,9 @@ export async function fetchVoteOutcome(
     judgePct: d.percentagesPerGroup?.judges?.plaintiff ?? 0,
     communityPct: d.percentagesPerGroup?.communityTierOne?.plaintiff ?? 0,
     comments: d.comments ?? [],
-    weighted: d.weighted,
-    votesPerGroup: d.votesPerGroup,
-    percentagesPerGroup: d.percentagesPerGroup,
+    weighted: d.weighted, // already spread as-is, backend now includes split here
+    votesPerGroup: d.votesPerGroup, // same — backend adds split key
+    percentagesPerGroup: d.percentagesPerGroup, // same
   };
 }
 
@@ -330,26 +345,34 @@ export async function checkVoteEligibility(
     let userMessage: string;
 
     switch (reason) {
-      case ErrorCodeEnum.AccountNotFound: // 7
+      case ErrorCodeEnum.AccountNotFound:
         userMessage = VOTE_ELIGIBILITY_REASONS.ACCOUNT_NOT_FOUND;
         break;
-      case ErrorCodeEnum.MissingWallet: // 12
+      case ErrorCodeEnum.MissingWallet:
         userMessage = VOTE_ELIGIBILITY_REASONS.NO_WALLET;
         break;
-      case ErrorCodeEnum.InvalidEnum: // 13
-      case ErrorCodeEnum.InvalidData: // 14
+      case ErrorCodeEnum.InvalidEnum:
+      case ErrorCodeEnum.InvalidData:
         userMessage = VOTE_ELIGIBILITY_REASONS.INVALID_DISPUTE;
         break;
-      case ErrorCodeEnum.InvalidStatus: // 16
+      case ErrorCodeEnum.InvalidStatus:
         userMessage = VOTE_ELIGIBILITY_REASONS.NOT_IN_VOTING_PHASE;
         break;
-      case ErrorCodeEnum.Forbidden: // 17
-        userMessage = VOTE_ELIGIBILITY_REASONS.INSUFFICIENT_LAW;
+      case ErrorCodeEnum.Forbidden:
+        // Covers: plaintiff/defendant voting in own dispute, duplicate vote,
+        // community member submitting judge-only comment
+        userMessage = VOTE_ELIGIBILITY_REASONS.IS_PARTY;
+        break;
+      case ErrorCodeEnum.VoteSnapshotMissing: // 🆕
+        userMessage = VOTE_ELIGIBILITY_REASONS.VOTE_SNAPSHOT_MISSING;
+        break;
+      case ErrorCodeEnum.WalletNotInVoteSnapshot: // 🆕
+        userMessage = VOTE_ELIGIBILITY_REASONS.WALLET_NOT_IN_SNAPSHOT;
         break;
       default:
         userMessage =
           ELIGIBILITY_REASON_MESSAGES[reason] ??
-          `Not eligible (code: ${reason})`;
+          `Not eligible to vote (code: ${reason})`;
     }
 
     return {
@@ -365,7 +388,12 @@ export async function checkVoteEligibility(
         [ErrorCodeEnum.InvalidData]: "Invalid dispute data",
         [ErrorCodeEnum.InvalidStatus]: "Dispute is not in voting phase",
         [ErrorCodeEnum.AccountNotFound]: "User account not found",
-        [ErrorCodeEnum.Forbidden]: "User is not allowed to vote",
+        [ErrorCodeEnum.Forbidden]:
+          "You are not permitted to vote on this dispute",
+        [ErrorCodeEnum.MissingWallet]: "You must connect a wallet to vote", // 🆕
+        [ErrorCodeEnum.VoteSnapshotMissing]: "Voting snapshot unavailable", // 🆕
+        [ErrorCodeEnum.WalletNotInVoteSnapshot]:
+          "Your wallet is not in the voting snapshot", // 🆕
       };
       return {
         canVote: false,
@@ -634,6 +662,8 @@ export function transformDisputeDetailsToRow(
     claim: dispute.plaintiffComplaint?.formalClaim ?? "No claim specified",
     plaintiff: plaintiffData.username,
     defendant: defendantData.username,
+    plaintiffComplaintCreatedAt: dispute.plaintiffComplaint?.createdAt ?? null,
+    defendantResponseCreatedAt: dispute.defendantResponse?.createdAt ?? null,
     description:
       dispute.plaintiffComplaint?.description ?? "No description provided",
     witnesses: transformWitnesses(dispute.witnesses),
@@ -647,8 +677,7 @@ export function transformDisputeDetailsToRow(
           evidence: transformEvidenceFiles(
             dispute.defendantResponse.evidenceFiles ?? [],
           ),
-          createdAt:
-            dispute.defendantResponse.createdAt ?? new Date().toISOString(),
+          createdAt: dispute.defendantResponse.createdAt ?? null, // ← was new Date().toISOString()
         }
       : undefined,
     plaintiffData,

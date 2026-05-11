@@ -43,7 +43,10 @@ export const JudgeCountdownBanner = ({ votePendingAt }: Props) => {
     const interval = setInterval(() => {
       const t = getTimeLeft(deadline);
       setTimeLeft(t);
-      if (t.total <= 0) clearInterval(interval);
+      if (t.total <= 0) {
+        clearInterval(interval);
+        setTimeout(() => window.location.reload(), 2000); // give the backend a moment
+      }
     }, 1000);
 
     return () => clearInterval(interval);

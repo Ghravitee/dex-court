@@ -48,7 +48,7 @@ export interface DoneCase {
     defendantId: string;
   };
   description: string;
-  winner: "plaintiff" | "defendant" | "dismissed";
+  winner: "plaintiff" | "defendant" | "dismissed" | "split"; // 🆕 add "split"
   judgeVotes: number;
   communityVotes: number;
   judgePct: number;
@@ -57,24 +57,28 @@ export interface DoneCase {
     plaintiff: number;
     defendant: number;
     dismiss: number;
+    split: number; // 🆕 add
   };
   votesPerGroup: {
     judges: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
       total: number;
     };
     communityTierOne: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
       total: number;
     };
     communityTierTwo: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
       total: number;
     };
   };
@@ -83,16 +87,19 @@ export interface DoneCase {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
     };
     communityTierOne: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
     };
     communityTierTwo: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
     };
   };
   comments: Array<{
@@ -105,14 +112,19 @@ export interface DoneCase {
   rawData?: any;
 }
 
-export type VoteChoice = "plaintiff" | "defendant" | "dismissed" | null;
+export type VoteChoice =
+  | "plaintiff"
+  | "defendant"
+  | "dismissed"
+  | "split"
+  | null;
 
 export interface VoteOptionProps {
   label: string;
   active: boolean;
   onClick: () => void;
   choice: VoteChoice;
-  optionType: "plaintiff" | "defendant" | "dismissed";
+  optionType: "plaintiff" | "defendant" | "dismissed" | "split";
   disabled?: boolean;
   username?: string;
   avatarId?: number | null;

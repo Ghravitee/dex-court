@@ -70,7 +70,6 @@ export const EscrowPageLoadingScreen = () => {
           transform-origin: center;
         }
         .escrow-label {
-          font-family: Georgia, serif;
           font-size: clamp(10px, 1.4vw, 13px);
           letter-spacing: 0.22em;
           color: rgba(34,211,238,0.5);
@@ -79,6 +78,7 @@ export const EscrowPageLoadingScreen = () => {
           margin-top: clamp(20px, 3vw, 32px);
           text-align: center;
           padding: 0 16px;
+          font-weight: 700;
         }
       `}</style>
 

@@ -201,6 +201,7 @@ export type Escrow = {
     | "signed"
     | "cancelled"
     | "completed"
+    | "frozen"
     | "disputed";
   deadline: string;
   type: "public" | "private";
@@ -305,23 +306,36 @@ export type DisputeStatusEnum =
 export const DisputeResultEnum = {
   PlaintiffWon: 1,
   DefendantWon: 2,
-  Cancelled: 3,
+  Tie: 3,
   Dismissed: 4,
+  Cancelled: 5,
+  Split: 6,
 } as const;
 export type DisputeResultEnum =
   (typeof DisputeResultEnum)[keyof typeof DisputeResultEnum];
 
+export const DisputeVoteEnum = {
+  Plaintiff: 1,
+  Defendant: 2,
+  DismissCase: 3,
+  Split: 4,
+} as const;
+export type DisputeVoteEnum =
+  (typeof DisputeVoteEnum)[keyof typeof DisputeVoteEnum];
+
 export const ErrorCodeEnum = {
   MissingData: 1,
-  InvalidEnum: 13,
-  MissingWallet: 12,
   AccountNotFound: 7,
-  SameAccount: 11,
-  WitnessesNotFound: 18,
-  InvalidData: 14,
   InternalServerError: 10,
-  Forbidden: 17,
+  SameAccount: 11,
+  MissingWallet: 12,
+  InvalidEnum: 13,
+  InvalidData: 14,
   InvalidStatus: 16,
+  Forbidden: 17,
+  WitnessesNotFound: 18,
+  VoteSnapshotMissing: 24, // 🆕
+  WalletNotInVoteSnapshot: 25, // 🆕
 } as const;
 export type ErrorCodeEnum = (typeof ErrorCodeEnum)[keyof typeof ErrorCodeEnum];
 
@@ -504,8 +518,8 @@ export interface DisputeRow {
   evidence: EvidenceFile[]; // This should match the API EvidenceFile structure
   defendantResponse?: {
     description: string;
-    evidence: EvidenceFile[]; // This should match the API EvidenceFile structure
-    createdAt: string;
+    evidence: EvidenceFile[];
+    createdAt: string | null; // ← was string
   };
   plaintiffReply?: {
     description: string;
@@ -517,6 +531,8 @@ export interface DisputeRow {
   hasVoted?: boolean;
   agreementId?: number;
   agreementTitle?: string;
+  plaintiffComplaintCreatedAt?: string | null;
+  defendantResponseCreatedAt?: string | null;
 
   votingId?: number | null;
   contractAgreementId?: number | null;
@@ -558,7 +574,7 @@ export interface UploadedFile {
 }
 
 export interface VoteData {
-  choice: "plaintiff" | "defendant" | "dismissed" | null;
+  choice: "plaintiff" | "defendant" | "dismissed" | "split" | null; // 🆕
   comment: string;
 }
 
@@ -602,7 +618,7 @@ export interface CommentData {
 }
 
 export interface VoteOutcomeData {
-  winner: "plaintiff" | "defendant" | "dismissed";
+  winner: "plaintiff" | "defendant" | "dismissed" | "split";
   judgeVotes: number;
   communityVotes: number;
   judgePct: number;
@@ -612,24 +628,28 @@ export interface VoteOutcomeData {
     plaintiff: number;
     defendant: number;
     dismiss: number;
+    split: number;
   };
   votesPerGroup?: {
     judges: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // ✅ already there
       total: number;
     };
     communityTierOne: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
       total: number;
     };
     communityTierTwo: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
       total: number;
     };
   };
@@ -638,16 +658,19 @@ export interface VoteOutcomeData {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // ✅ already there
     };
     communityTierOne: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
     };
     communityTierTwo: {
       plaintiff: number;
       defendant: number;
       dismiss: number;
+      split: number; // 🆕 add
     };
   };
 }

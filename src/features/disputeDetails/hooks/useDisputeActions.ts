@@ -132,7 +132,7 @@ export function useDisputeActions({
   // ─── Voting ────────────────────────────────────────────────────────────────
   const handleVoteChange = useCallback(
     (
-      choice: "plaintiff" | "defendant" | "dismissed" | null,
+      choice: "plaintiff" | "defendant" | "dismissed" | "split" | null, // 🆕
       comment: string,
     ) => {
       setVoteData({ choice, comment });
@@ -151,7 +151,9 @@ export function useDisputeActions({
             ? 1
             : voteData.choice === "defendant"
               ? 2
-              : 3,
+              : voteData.choice === "split"
+                ? 4 // 🆕
+                : 3,
         comment: voteData.comment,
       });
       toast.dismiss(loadingToast);
@@ -161,7 +163,9 @@ export function useDisputeActions({
           ? "You voted for the Plaintiff"
           : voteData.choice === "defendant"
             ? "You voted for the Defendant"
-            : "You voted to dismiss the case";
+            : voteData.choice === "split"
+              ? "You voted for a Split outcome" // 🆕
+              : "You voted to dismiss the case";
       toast.success("Vote Submitted Successfully! 🗳️", {
         description: `${msg}. Your vote is now confidential.`,
       });

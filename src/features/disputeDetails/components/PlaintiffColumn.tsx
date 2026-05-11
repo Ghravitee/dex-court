@@ -69,7 +69,12 @@ export const PlaintiffColumn = ({
             <MessageCircle className="h-4 w-4" />
             Initial Complaint
             <span className="text-muted-foreground ml-auto text-xs">
-              {new Date(dispute.createdAt).toLocaleDateString()}
+              {new Date(
+                dispute.plaintiffComplaintCreatedAt ?? dispute.createdAt,
+              ).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
             </span>
           </h3>
           <div className="space-y-4">

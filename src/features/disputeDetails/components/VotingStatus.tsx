@@ -28,7 +28,6 @@ export const VotingStatus = ({
   reason,
   hasVoted,
   handleOpenVoteModal,
-  tier,
   weight,
 }: Props) => {
   if (!dispute || dispute.status !== "Vote in Progress") return null;
@@ -66,7 +65,8 @@ export const VotingStatus = ({
                 : "As the defendant, you cannot vote in your own dispute."}
             </p>
             <p className="mt-2 text-xs text-amber-300/70">
-              Voting is for community members and judges only.
+              Voting is for Judges and Eligible community members and judges
+              only.
             </p>
           </div>
         </div>
@@ -115,11 +115,11 @@ export const VotingStatus = ({
             </h3>
             <p className="text-center text-sm text-cyan-200">
               Your vote will help resolve this dispute fairly.
-              {tier && (
+              {/* {tier && (
                 <span className="mt-1 block text-cyan-300">
                   Tier {tier} Voter
                 </span>
-              )}
+              )} */}
               {weight && weight > 1 && (
                 <span className="mt-1 block font-semibold text-cyan-300">
                   Voting Weight: {weight}x
@@ -160,8 +160,8 @@ export const VotingStatus = ({
             Voting in Progress
           </h3>
           <p className="text-sm text-amber-200">
-            This dispute is currently being voted on by eligible community
-            members.
+            This dispute is currently being voted on by Judges and Eligible
+            community members.
           </p>
           {reason && <p className="mt-2 text-xs text-amber-300/70">{reason}</p>}
         </div>

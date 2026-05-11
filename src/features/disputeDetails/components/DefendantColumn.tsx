@@ -58,11 +58,17 @@ export const DefendantColumn = ({
             <h3 className="mb-3 flex items-center gap-2 font-semibold text-yellow-300">
               <MessageCircle className="h-4 w-4" />
               Response to Claims
-              <span className="text-muted-foreground ml-auto text-xs">
-                {new Date(
-                  dispute.defendantResponse.createdAt,
-                ).toLocaleDateString()}
-              </span>
+              {dispute.defendantResponse.createdAt && (
+                <span className="text-muted-foreground ml-auto text-xs">
+                  {new Date(dispute.defendantResponse.createdAt).toLocaleString(
+                    undefined,
+                    {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    },
+                  )}
+                </span>
+              )}
             </h3>
             <p className="text-sm leading-relaxed text-yellow-100">
               {dispute.defendantResponse.description}

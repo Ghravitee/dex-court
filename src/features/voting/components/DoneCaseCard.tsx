@@ -46,22 +46,27 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
     const dismiss =
       (c.votesPerGroup?.communityTierOne?.dismiss || 0) +
       (c.votesPerGroup?.communityTierTwo?.dismiss || 0);
-    const total = plaintiff + defendant + dismiss;
+    const split = // 🆕
+      (c.votesPerGroup?.communityTierOne?.split || 0) + // 🆕
+      (c.votesPerGroup?.communityTierTwo?.split || 0); // 🆕
+    const total = plaintiff + defendant + dismiss + split; // 🆕 include split
 
-    // Each percentage is computed independently so dismiss votes don't get
-    // silently folded into the defendant slice.
     const plaintiffPct = total > 0 ? Math.round((plaintiff / total) * 100) : 0;
     const defendantPct = total > 0 ? Math.round((defendant / total) * 100) : 0;
-    const dismissPct = total > 0 ? 100 - plaintiffPct - defendantPct : 0;
+    const dismissPct = total > 0 ? Math.round((dismiss / total) * 100) : 0;
+    const splitPct =
+      total > 0 ? 100 - plaintiffPct - defendantPct - dismissPct : 0; // 🆕
 
     return {
       plaintiff,
       defendant,
       dismiss,
+      split, // 🆕 add split
       total,
       plaintiffPct,
       defendantPct,
       dismissPct,
+      splitPct, // 🆕 add splitPct
     };
   }, [c.votesPerGroup]);
 
@@ -71,7 +76,6 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
   }, [c.votesPerGroup, communityVotes.dismiss]);
 
   // Plain-English verdict summary
-  // Plain-English verdict summary
   const verdictSummary = useMemo(() => {
     if (isDismissedDueToNoVotes) return "Nobody voted, so the case was closed";
     if (c.winner === "dismissed")
@@ -80,24 +84,59 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
     const judgesVoted = (c.votesPerGroup?.judges?.total || 0) > 0;
     const communityVoted = communityVotes.total > 0;
 
-    if (!judgesVoted && !communityVoted) {
+    if (!judgesVoted && !communityVoted)
       return "The case was decided automatically — no one voted";
-    }
-    if (!judgesVoted) {
-      return `Only community members voted — they sided with the ${c.winner}`;
-    }
-    if (!communityVoted) {
-      return `Only judges voted — they sided with the ${c.winner}`;
+
+    if (c.winner === "split") {
+      const judgesTopOutcome = [
+        { label: "split", pct: c.percentagesPerGroup?.judges?.split || 0 },
+        { label: "dismiss", pct: c.percentagesPerGroup?.judges?.dismiss || 0 },
+        {
+          label: "plaintiff",
+          pct: c.percentagesPerGroup?.judges?.plaintiff || 0,
+        },
+        {
+          label: "defendant",
+          pct: c.percentagesPerGroup?.judges?.defendant || 0,
+        },
+      ].reduce((a, b) => (b.pct > a.pct ? b : a)).label;
+
+      const communityTopOutcome = [
+        { label: "split", pct: communityVotes.splitPct },
+        { label: "dismiss", pct: communityVotes.dismissPct },
+        { label: "plaintiff", pct: communityVotes.plaintiffPct },
+        { label: "defendant", pct: communityVotes.defendantPct },
+      ].reduce((a, b) => (b.pct > a.pct ? b : a)).label;
+
+      if (!judgesVoted)
+        return "Community members leaned toward a split — both parties share responsibility";
+      if (!communityVoted)
+        return "Judges leaned toward a split — both parties share responsibility";
+
+      if (judgesTopOutcome === "split" && communityTopOutcome === "split")
+        return "Both judges and community leaned toward a split — both parties share responsibility";
+      if (judgesTopOutcome === "split" && communityTopOutcome !== "split")
+        return `Judges leaned toward a split while the community favoured the ${communityTopOutcome} — split outcome prevailed`;
+      if (judgesTopOutcome !== "split" && communityTopOutcome === "split")
+        return "Community leaned toward a split while judges were divided — split outcome prevailed";
+
+      return "Votes were divided across outcomes — the weighted result determined a split";
     }
 
-    const judgesPlaintiffPct = c.percentagesPerGroup?.judges?.plaintiff || 0;
-    const judgesFavor = judgesPlaintiffPct >= 50 ? "plaintiff" : "defendant";
+    if (!judgesVoted)
+      return `Only community members voted — they sided with the ${c.winner}`;
+    if (!communityVoted)
+      return `Only judges voted — they sided with the ${c.winner}`;
+
+    const judgesFavor =
+      (c.percentagesPerGroup?.judges?.plaintiff || 0) >= 50
+        ? "plaintiff"
+        : "defendant";
     const communityFavor =
       communityVotes.plaintiffPct >= 50 ? "plaintiff" : "defendant";
 
-    if (judgesFavor === communityFavor) {
+    if (judgesFavor === communityFavor)
       return `Both judges and community members agreed — the ${c.winner} wins`;
-    }
     return `Judges overruled the community — the ${c.winner} wins`;
   }, [
     c.winner,
@@ -156,16 +195,20 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                   className={`font-semibold ${
                     c.winner === "dismissed"
                       ? "text-slate-400"
-                      : c.winner === "plaintiff"
-                        ? "text-blue-400"
-                        : "text-yellow-400"
+                      : c.winner === "split"
+                        ? "text-purple-400"
+                        : c.winner === "plaintiff"
+                          ? "text-blue-400"
+                          : "text-yellow-400"
                   }`}
                 >
                   {c.winner === "dismissed"
                     ? "Dismissed"
-                    : c.winner === "plaintiff"
-                      ? "Plaintiff"
-                      : "Defendant"}
+                    : c.winner === "split"
+                      ? "Split"
+                      : c.winner === "plaintiff"
+                        ? "Plaintiff"
+                        : "Defendant"}
                 </span>
               </div>
               <div className="text-muted-foreground text-xs">
@@ -190,18 +233,22 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                 </div>
                 <div
                   className={`mb-2 text-2xl font-bold ${
-                    c.winner === "plaintiff"
-                      ? "text-blue-400"
-                      : c.winner === "defendant"
-                        ? "text-yellow-400"
-                        : "text-slate-300"
+                    c.winner === "dismissed"
+                      ? "text-slate-400"
+                      : c.winner === "split"
+                        ? "text-purple-400"
+                        : c.winner === "plaintiff"
+                          ? "text-blue-400"
+                          : "text-yellow-400"
                   }`}
                 >
                   {c.winner === "plaintiff"
                     ? "Plaintiff Wins"
                     : c.winner === "defendant"
                       ? "Defendant Wins"
-                      : "Case Dismissed"}
+                      : c.winner === "split"
+                        ? "Split Decision"
+                        : "Case Dismissed"}
                 </div>
                 <div className="text-sm text-emerald-200">{verdictSummary}</div>
               </div>
@@ -222,6 +269,10 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                     <div className="flex items-center gap-1.5">
                       <span className="inline-block h-3 w-3 rounded-sm bg-yellow-500" />
                       <span className="text-yellow-300">Defendant</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-purple-500" />
+                      <span className="text-purple-300">Split</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="inline-block h-3 w-3 rounded-sm bg-slate-500" />
@@ -253,16 +304,7 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                           animate={{ width: `${judgesPlaintiffPct}%` }}
                           transition={{ duration: 0.8, ease: "easeOut" }}
                         />
-                        <motion.div
-                          className="h-full bg-slate-500"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${judgesDismissPct}%` }}
-                          transition={{
-                            duration: 0.8,
-                            ease: "easeOut",
-                            delay: 0.1,
-                          }}
-                        />
+
                         <motion.div
                           className="h-full bg-yellow-500"
                           initial={{ width: 0 }}
@@ -273,20 +315,48 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                             delay: 0.2,
                           }}
                         />
+                        <motion.div
+                          className="h-full bg-purple-500"
+                          initial={{ width: 0 }}
+                          animate={{
+                            width: `${c.percentagesPerGroup?.judges?.split || 0}%`,
+                          }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.3,
+                          }}
+                        />
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${judgesDismissPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.1,
+                          }}
+                        />
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
                         <span className="text-blue-300">
                           {c.votesPerGroup.judges.plaintiff} Plaintiff
                         </span>
+
+                        <span className="text-yellow-300">
+                          {c.votesPerGroup.judges.defendant} Defendant
+                        </span>
+                        {(c.votesPerGroup?.judges?.split || 0) > 0 && (
+                          <span className="text-purple-300">
+                            {c.votesPerGroup.judges.split} Split
+                          </span>
+                        )}
                         {(c.votesPerGroup.judges.dismiss || 0) > 0 && (
                           <span className="text-slate-400">
                             {c.votesPerGroup.judges.dismiss} Dismissed
                           </span>
                         )}
-                        <span className="text-yellow-300">
-                          {c.votesPerGroup.judges.defendant} Defendant
-                        </span>
                       </div>
                     </div>
                   )}
@@ -316,16 +386,6 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                           }}
                         />
                         <motion.div
-                          className="h-full bg-slate-500"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${communityVotes.dismissPct}%` }}
-                          transition={{
-                            duration: 0.8,
-                            ease: "easeOut",
-                            delay: 0.25,
-                          }}
-                        />
-                        <motion.div
                           className="h-full bg-yellow-400"
                           initial={{ width: 0 }}
                           animate={{ width: `${communityVotes.defendantPct}%` }}
@@ -335,20 +395,45 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                             delay: 0.35,
                           }}
                         />
+                        <motion.div
+                          className="h-full bg-purple-400"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityVotes.splitPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.45,
+                          }}
+                        />
+                        <motion.div
+                          className="h-full bg-slate-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${communityVotes.dismissPct}%` }}
+                          transition={{
+                            duration: 0.8,
+                            ease: "easeOut",
+                            delay: 0.25,
+                          }}
+                        />
                       </div>
 
                       <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
                         <span className="text-blue-300">
                           {communityVotes.plaintiff} Plaintiff
                         </span>
+                        <span className="text-yellow-300">
+                          {communityVotes.defendant} Defendant
+                        </span>
+                        {communityVotes.split > 0 && (
+                          <span className="text-purple-300">
+                            {communityVotes.split} Split
+                          </span>
+                        )}
                         {communityVotes.dismiss > 0 && (
                           <span className="text-slate-400">
                             {communityVotes.dismiss} Dismissed
                           </span>
                         )}
-                        <span className="text-yellow-300">
-                          {communityVotes.defendant} Defendant
-                        </span>
                       </div>
                     </div>
                   )}
@@ -363,6 +448,14 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
                     <span className="font-medium text-yellow-300">
                       {voteResults.defendantVotes} Defendant
                     </span>
+                    {(voteResults.splitVotes || 0) > 0 && ( // needs splitVotes from calculateVoteResults
+                      <>
+                        {" · "}
+                        <span className="font-medium text-purple-400">
+                          {voteResults.splitVotes} Split
+                        </span>
+                      </>
+                    )}
                     {totalDismissVotes > 0 && (
                       <>
                         {" · "}
@@ -417,7 +510,7 @@ export const DoneCaseCard: React.FC<DoneCaseCardProps> = ({ c }) => {
               {/* ── Case Description ── */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <div className="text-sm font-medium text-white/90">
-                  Case Description
+                  Plaintiff's claim
                 </div>
                 <p className="text-muted-foreground mt-1 text-sm break-all">
                   {c.description}

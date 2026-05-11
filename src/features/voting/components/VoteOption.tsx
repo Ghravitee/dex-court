@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { ThumbsUp, ThumbsDown, MinusCircle } from "lucide-react";
+import { ThumbsUp, ThumbsDown, MinusCircle, GitMerge } from "lucide-react";
 import { UserAvatar } from "../../../components/UserAvatar";
 import { formatDisplayName, formatUsername } from "../utils/formatting";
 import { type VoteOptionProps } from "../types";
@@ -19,7 +19,9 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
   const displayLabel = useMemo(() => {
     if (username) {
       const formattedName = formatDisplayName(username);
-      return optionType === "dismissed" ? "Dismiss Case" : `${formattedName}`;
+      if (optionType === "dismissed") return "Dismiss Case";
+      if (optionType === "split") return "Split";
+      return formattedName;
     }
     return label;
   }, [username, label, optionType]);
@@ -29,10 +31,17 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
     choice !== null &&
     !active &&
     optionType !== "dismissed" &&
+    optionType !== "split" &&
     choice !== "dismissed";
 
   const roleColor =
-    optionType === "plaintiff" ? "text-blue-400" : "text-yellow-400";
+    optionType === "plaintiff"
+      ? "text-blue-400"
+      : optionType === "split"
+        ? "text-purple-400"
+        : "text-yellow-400";
+
+  const isSpecialOption = optionType === "dismissed" || optionType === "split";
 
   return (
     <button
@@ -49,19 +58,29 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
       {showThumbsUp && <ThumbsUp className="h-4 w-4" />}
       {showThumbsDown && <ThumbsDown className="h-4 w-4" />}
 
-      {optionType !== "dismissed" && roleLabel && (
+      {/* Role label — only for plaintiff/defendant */}
+      {!isSpecialOption && roleLabel && (
         <div className={`text-xs font-semibold uppercase ${roleColor}`}>
           {roleLabel}
         </div>
       )}
 
+      {/* Dismissed header label */}
       {optionType === "dismissed" && (
         <div className="text-xs font-semibold text-slate-300 uppercase">
           Dismiss Case
         </div>
       )}
 
-      {username && avatarId && userId && optionType !== "dismissed" ? (
+      {/* Split header label */}
+      {optionType === "split" && (
+        <div className="text-xs font-semibold text-purple-300 uppercase">
+          Split
+        </div>
+      )}
+
+      {/* Plaintiff / Defendant — with avatar */}
+      {username && avatarId && userId && !isSpecialOption ? (
         <div className="flex flex-col items-center gap-2">
           <UserAvatar
             userId={userId}
@@ -74,11 +93,16 @@ export const VoteOption: React.FC<VoteOptionProps> = ({
       ) : optionType === "dismissed" ? (
         <div className="flex flex-col items-center gap-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-500/20">
-            <span className="text-xl">
-              <MinusCircle className="text-slate-400" />
-            </span>
+            <MinusCircle className="text-slate-400" />
           </div>
           <span className="text-xs">No winner</span>
+        </div>
+      ) : optionType === "split" ? (
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500/20">
+            <GitMerge className="text-purple-400" />
+          </div>
+          <span className="text-xs">Both parties</span>
         </div>
       ) : (
         <span>{displayLabel}</span>
